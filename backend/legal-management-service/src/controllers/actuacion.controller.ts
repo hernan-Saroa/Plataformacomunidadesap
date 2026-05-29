@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException, Req, Delete } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -58,11 +58,45 @@ export class ActuacionController {
         console.log('Body recibido:', body);
         console.log('Archivo recibido:', file);
         
+        let parsedMetadata: any = {};
+        if (body.metadata) {
+            if (typeof body.metadata === 'string') {
+                try {
+                    parsedMetadata = JSON.parse(body.metadata);
+                } catch (e) {
+                    parsedMetadata = {};
+                }
+            } else if (typeof body.metadata === 'object') {
+                parsedMetadata = { ...body.metadata };
+            }
+        }
+
+        let documentosAsociados: string[] = [];
+        if (body.documentosAsociados) {
+            if (typeof body.documentosAsociados === 'string') {
+                try {
+                    documentosAsociados = JSON.parse(body.documentosAsociados);
+                } catch (e) {
+                    if (body.documentosAsociados.includes(',')) {
+                        documentosAsociados = body.documentosAsociados.split(',').map((s: string) => s.trim());
+                    } else {
+                        documentosAsociados = [body.documentosAsociados];
+                    }
+                }
+            } else if (Array.isArray(body.documentosAsociados)) {
+                documentosAsociados = body.documentosAsociados;
+            }
+        } else if (parsedMetadata.documentosAsociados) {
+            documentosAsociados = parsedMetadata.documentosAsociados;
+        }
+
+        parsedMetadata.documentosAsociados = documentosAsociados;
+
         const data: Partial<Actuacion> = {
             ...body,
             usuarioResponsable: body.responsable || 'Sistema',
             metadata: {
-                ...body.metadata,
+                ...parsedMetadata,
                 estado: body.estado || 'Registrado',
                 observaciones: body.observaciones || ''
             },
@@ -169,12 +203,21 @@ export class ActuacionController {
     async devolver(
         @Param('actuacionId') actuacionId: string,
         @Body('observaciones') observaciones: string,
+        @Body('skipStageUpdate') skipStageUpdate?: boolean,
         @Req() req?: any
     ) {
         const access = getLegalAccessFromRequest(req);
         const email = access.userEmail || 'sistema@esap.edu.co';
         const name = access.userName || 'Usuario';
-        return this.actuacionService.devolverActuacion(actuacionId, observaciones, email, name);
+        return this.actuacionService.devolverActuacion(actuacionId, observaciones, email, name, !!skipStageUpdate);
+    }
+
+    @Delete(':actuacionId')
+    async eliminar(
+        @Param('actuacionId') actuacionId: string
+    ): Promise<{ message: string }> {
+        await this.actuacionService.eliminarActuacion(actuacionId);
+        return { message: 'Actuación eliminada con éxito' };
     }
 }
 

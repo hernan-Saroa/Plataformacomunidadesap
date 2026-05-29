@@ -4,6 +4,7 @@ interface ModalNuevaDemandaProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (demanda: NuevaDemandaData) => void;
+  tableroSeleccionado?: string;
 }
 
 export interface NuevaDemandaData {
@@ -128,7 +129,7 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
   };
 }
 
-export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
+export function ModalNuevaDemanda({ isOpen, onClose, onSave, tableroSeleccionado }: ModalNuevaDemandaProps) {
   const handleSave = (data: NuevaDemandaDataRestaurado) => {
     onSave(mapDemandaData(data));
   };
@@ -138,6 +139,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
+      tableroSeleccionado={tableroSeleccionado}
     />
   );
 }

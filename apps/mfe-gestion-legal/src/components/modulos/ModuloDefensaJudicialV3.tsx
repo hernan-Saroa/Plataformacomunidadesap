@@ -46,6 +46,7 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { calcularProgreso } from '../core/expedienteShared';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
 import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
@@ -72,6 +73,27 @@ const ItemTypes = {
   EXPEDIENTE: 'expediente'
 };
 
+const normalizeString = (str: string) => {
+  return str
+    ?.toLowerCase()
+    ?.normalize('NFD')
+    ?.replace(/[\u0300-\u036f]/g, '')
+    ?.trim() || '';
+};
+
+const getBoardCookie = (): string => {
+  if (typeof document === 'undefined') return '';
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; esap_defensa_judicial_tablero_seleccionado=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || '';
+  return '';
+};
+
+const setBoardCookie = (val: string) => {
+  if (typeof document === 'undefined') return;
+  document.cookie = `esap_defensa_judicial_tablero_seleccionado=${val}; path=/; max-age=31536000; SameSite=Lax`;
+};
+
 export function ModuloDefensaJudicialV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos, tiposProcesosActivos: allTiposProcesos } = useConfiguracionModulo('defensa-judicial');
@@ -83,12 +105,34 @@ export function ModuloDefensaJudicialV3() {
   });
 
   // Selector de tablero (por tipo de proceso)
-  const [tableroSeleccionado, setTableroSeleccionado] = useState<string>('');
+  const [tableroSeleccionado, setTableroSeleccionado] = useState<string>(() => {
+    return getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || '';
+  });
+
+  const handleCambiarTablero = (val: string) => {
+    setTableroSeleccionado(val);
+    setBoardCookie(val);
+    localStorage.setItem('esap_defensa_judicial_tablero_seleccionado', val);
+  };
 
   // Sincronizar tableroSeleccionado con el primer tipo de proceso activo al cargar
   useEffect(() => {
-    if (tiposProcesosActivos.length > 0 && !tableroSeleccionado) {
-      setTableroSeleccionado(tiposProcesosActivos[0].id);
+    if (tiposProcesosActivos.length > 0) {
+      const persistedBoard = getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || tableroSeleccionado;
+      const isValid = tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
+      
+      if (isValid) {
+        if (tableroSeleccionado !== persistedBoard) {
+          setTableroSeleccionado(persistedBoard);
+        }
+        setBoardCookie(persistedBoard);
+        localStorage.setItem('esap_defensa_judicial_tablero_seleccionado', persistedBoard);
+      } else {
+        const defaultId = tiposProcesosActivos[0].id;
+        setTableroSeleccionado(defaultId);
+        setBoardCookie(defaultId);
+        localStorage.setItem('esap_defensa_judicial_tablero_seleccionado', defaultId);
+      }
     }
   }, [tiposProcesosActivos, tableroSeleccionado]);
 
@@ -114,6 +158,7 @@ export function ModuloDefensaJudicialV3() {
   const [filtroAbogado, setFiltroAbogado] = useState<string>('TODOS');
   const [filtroFecha, setFiltroFecha] = useState<string>('');
   const [abogadosList, setAbogadosList] = useState<{ id: string; nombre: string }[]>([]);
+  const [usuariosList, setUsuariosList] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Estado local para manejar drag and drop
@@ -258,10 +303,11 @@ export function ModuloDefensaJudicialV3() {
     try {
       setLoading(true);
 
-      // Cargar expedientes y abogados en paralelo
-      const [data, abogadosData] = await Promise.all([
+      // Cargar expedientes, abogados y todos los usuarios activos en paralelo
+      const [data, abogadosData, todosLosUsuarios] = await Promise.all([
         legalService.getExpedientes(),
-        legalService.getAbogadosDashboard()
+        legalService.getAbogadosDashboard(),
+        authService.getTodosLosUsuariosActivos() // picked up from shell
       ]);
 
       // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
@@ -276,6 +322,14 @@ export function ModuloDefensaJudicialV3() {
           }
         });
         setAbogadosList(lista);
+      }
+
+      if (Array.isArray(todosLosUsuarios)) {
+        const listado: { id: string; nombre: string }[] = todosLosUsuarios.map((u: any) => ({
+          id: String(u.id),
+          nombre: u.nombre
+        }));
+        setUsuariosList(listado);
       }
 
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
@@ -471,29 +525,105 @@ export function ModuloDefensaJudicialV3() {
     // Si la etapa es la misma, no hacer nada
     if (expediente.etapa === nuevaEtapa) return;
 
-    // Validar reglas de aprobación de la etapa destino
-    const colDestino = columnasTablero.find((col: any) => col.id === nuevaEtapa);
-    if (colDestino) {
-      const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colDestino;
-      if (aprobacionTipo === 'rol' && aprobacionRol) {
-        const hasRol = authService.hasRole(aprobacionRol) || authService.isSuperAdmin();
-        if (!hasRol) {
-          toast.error('Movimiento bloqueado por regla de aprobación', {
-            description: `Se requiere el rol "${aprobacionRol}" para mover expedientes a la etapa "${colDestino.nombre}".`
+    // Obtener la configuración de la etapa actual
+    const etapaActualNorm = normalizeString(expediente.etapa || '');
+    const colActual = columnasTablero.find((col: any) => 
+      normalizeString(col.id) === etapaActualNorm || 
+      normalizeString(col.nombre) === etapaActualNorm
+    );
+    const requiereAprobacion = colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno';
+
+    // Bloquear arrastre hacia atrás si la etapa requiere aprobación (debe ser por modal con observaciones)
+    const currentIndex = columnasTablero.findIndex((col: any) => 
+      normalizeString(col.id) === etapaActualNorm || 
+      normalizeString(col.nombre) === etapaActualNorm
+    );
+    const destStageNorm = normalizeString(nuevaEtapa);
+    const destIndex = columnasTablero.findIndex((col: any) => 
+      normalizeString(col.id) === destStageNorm || 
+      normalizeString(col.nombre) === destStageNorm
+    );
+
+    if (currentIndex !== -1 && destIndex !== -1 && destIndex < currentIndex && requiereAprobacion) {
+      toast.error('Movimiento no permitido', {
+        description: 'Para devolver el expediente a la etapa anterior, por favor abra el expediente y utilice el botón "Devolver Etapa" para registrar las observaciones obligatorias.',
+        duration: 7000
+      });
+      return;
+    }
+
+    if (requiereAprobacion) {
+      // Validar que todas las actuaciones tengan los documentos firmados antes de cambiar etapa
+      try {
+        const idToCheck = expediente.uuid || expediente.id;
+        const [actuacionesList, documentosList] = await Promise.all([
+          legalService.getActuaciones(idToCheck),
+          legalService.getDocumentos(idToCheck)
+        ]);
+
+        const isDocSigned = (d: any) => {
+          if (!d) return false;
+          if (d.descripcion) {
+            try {
+              const data = JSON.parse(d.descripcion);
+              return !!(data && data.firmado);
+            } catch (e) {
+              return false;
+            }
+          }
+          return false;
+        };
+
+        const checkActuacionDocsSigned = (act: any) => {
+          const associatedDocIds = act.metadata?.documentosAsociados || [];
+          if (associatedDocIds.length === 0) return true;
+          
+          const resolvedDocs = documentosList.filter((doc: any) => {
+            const docIdStr = String(doc.id);
+            return associatedDocIds.some((id: any) => String(id) === docIdStr);
+          });
+          
+          return resolvedDocs.every((doc: any) => isDocSigned(doc));
+        };
+
+        const actuacionesConDocsSinFirmar = actuacionesList.filter((a: any) => {
+          return !checkActuacionDocsSigned(a);
+        });
+
+        if (actuacionesConDocsSinFirmar.length > 0) {
+          toast.error('No se puede cambiar de etapa. Existen actuaciones con documentos sin firmar.', {
+            description: `Las siguientes actuaciones tienen documentos pendientes de firma: ${actuacionesConDocsSinFirmar.map((a: any) => a.descripcion).join(', ')}`
           });
           return;
         }
-      } else if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
-        const currentUser = authService.getCurrentUser();
-        const currentUserId = currentUser?.id || currentUser?.id_user || (currentUser as any)?.uuid;
-        const isAuthorizedUser = currentUserId === aprobacionUsuario || authService.isSuperAdmin();
-        if (!isAuthorizedUser) {
-          const abogadoReq = abogadosList.find((a) => a.id === aprobacionUsuario);
-          const nameDisplay = abogadoReq ? abogadoReq.nombre : 'un abogado específico';
-          toast.error('Movimiento bloqueado por regla de aprobación', {
-            description: `Solo el usuario asignado/autorizado "${nameDisplay}" puede mover expedientes a la etapa "${colDestino.nombre}".`
-          });
-          return;
+      } catch (error) {
+        console.warn('No se pudieron verificar las firmas de los documentos de las actuaciones:', error);
+      }
+
+      // Validar reglas de aprobación de la etapa ACTUAL (para poder continuar/salir de ella)
+      if (colActual) {
+        const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+        if (aprobacionTipo === 'rol' && aprobacionRol) {
+          const hasRol = authService.hasRole(aprobacionRol) || authService.isSuperAdmin();
+          if (!hasRol) {
+            toast.error('Movimiento bloqueado por regla de aprobación', {
+              description: `Se requiere el rol "${aprobacionRol}" para aprobar la etapa "${colActual.nombre}" y continuar.`
+            });
+            return;
+          }
+        } else if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+          const currentUser = authService.getCurrentUser();
+          const currentUserId = currentUser?.id || currentUser?.id_user || (currentUser as any)?.uuid;
+          const isAuthorizedUser = currentUserId === aprobacionUsuario || authService.isSuperAdmin();
+          if (!isAuthorizedUser) {
+            const userReq = usuariosList.find((u) => String(u.id) === String(aprobacionUsuario)) || 
+                            abogadosList.find((a) => String(a.id) === String(aprobacionUsuario));
+            const nameDisplay = userReq ? userReq.nombre : 'un abogado específico';
+            toast.error('Movimiento bloqueado por regla de aprobación', {
+              description: `Solo el usuario asignado/autorizado "${nameDisplay}" puede aprobar la etapa "${colActual.nombre}".`
+            });
+            return;
+          }
         }
       }
     }
@@ -514,6 +644,29 @@ export function ModuloDefensaJudicialV3() {
     } catch (error) {
       // Si falla la consulta de tareas, permitir el cambio (fallo silencioso)
       console.warn('No se pudieron verificar tareas:', error);
+    }
+
+    // Validar si la nueva etapa requiere aprobación
+    const colDestino = destIndex !== -1 ? columnasTablero[destIndex] : null;
+    const destinoRequiereAprobacion = !!(colDestino && colDestino.aprobacionTipo && colDestino.aprobacionTipo !== 'ninguno');
+
+    if (destinoRequiereAprobacion) {
+      try {
+        const idToCheck = expediente.uuid || expediente.id;
+        const actuacionesList = await legalService.getActuaciones(idToCheck);
+        const tieneActuacionProcesal = (actuacionesList || []).some(
+          (a: any) => a.tipoActuacion !== 'NOTA_INTERNA' && a.tipoActuacion !== 'NOTA'
+        );
+        if (!tieneActuacionProcesal) {
+          toast.error('No se puede enviar a aprobación', {
+            description: 'Debe registrar al menos una actuación procesal antes de enviar a aprobación.',
+            duration: 5000
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn('No se pudieron verificar las actuaciones para aprobación:', error);
+      }
     }
 
     // Optimistic Update
@@ -906,7 +1059,7 @@ export function ModuloDefensaJudicialV3() {
         labelMobile: 'Demanda',
         icon: <Plus className="w-4 h-4 mr-1" />,
         onClick: () => setModalNuevaDemandaOpen(true),
-        className: 'bg-[#003DA5] hover:bg-[#002e7d] text-white font-bold transition-all shadow-sm'
+        className: 'bg-gradient-to-r from-[#003DA5] to-[#1E40AF] hover:from-[#1E3A8A] hover:to-[#1D4ED8] text-white font-bold transition-all duration-200 shadow-sm hover:shadow active:scale-95 rounded-lg border-0'
       });
     }
     btns.push({
@@ -922,7 +1075,7 @@ export function ModuloDefensaJudicialV3() {
         }
         setModalFiltrosReporteOpen(true);
       },
-      className: 'bg-white hover:bg-gray-50 border border-gray-300 text-[#003DA5] hover:text-[#002e7d] font-bold transition-all shadow-sm'
+      className: 'bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-[#003DA5] font-bold transition-all duration-200 shadow-sm hover:shadow active:scale-95 rounded-lg'
     });
     return btns;
   };
@@ -937,46 +1090,11 @@ export function ModuloDefensaJudicialV3() {
 
   return (
     <div className="space-y-3 md:space-y-4">
-      {/* Header con Info Tooltip */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <ModuleHeader
-            title="Tablero Kanban Operativo"
-            subtitle="Gestión visual de demandas judiciales contra ESAP"
-            buttons={addBtnsPermission()}
-            toggleView={{
-              current: tipoVista,
-              onChange: (v: string) => setTipoVista(v as VistaModulo),
-              options: [
-                { label: 'Kanban', icon: <Columns3 className="w-4 h-4" /> },
-                { label: 'Lista', icon: <List className="w-4 h-4" /> },
-                { label: 'Archivados', icon: <Archive className="w-4 h-4" /> }
-              ]
-            }}
-            customActions={
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider hidden md:inline">
-                  Tablero:
-                </span>
-                <select
-                  value={tableroSeleccionado}
-                  onChange={(e) => setTableroSeleccionado(e.target.value)}
-                  className="px-3 py-2 bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 text-blue-700 font-bold rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer"
-                  style={{ minHeight: isMobile ? '40px' : '44px' }}
-                >
-                  {tiposProcesosActivos.map((tp: any) => (
-                    <option key={tp.id} value={tp.id}>
-                      Tablero: {tp.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            }
-          />
-        </div>
-
-        {/* Info Tooltip - Guía de flujo */}
-        <div className="flex-shrink-0 pt-1">
+      <ModuleHeader
+        title="Tablero Kanban Operativo"
+        subtitle="Gestión visual de demandas judiciales contra ESAP"
+        buttons={addBtnsPermission()}
+        infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Defensa Judicial"
             variant="icon"
@@ -1023,66 +1141,98 @@ export function ModuloDefensaJudicialV3() {
               }
             ]}
           />
-        </div>
-      </div>
-
-
-
-      {/* Filtros */}
-      <ModuleFilters
-        searchValue={busqueda}
-        onSearchChange={setBusqueda}
-        filters={[
-          {
-            type: 'date-range',
-            label: 'Fecha de Creación',
-            value: filtroFecha,
-            onChange: setFiltroFecha,
-            placeholder: 'Fecha Creación'
-          },
-          {
-            type: 'select',
-            label: 'Etapa Procesal',
-            value: filtroEtapa,
-            onChange: setFiltroEtapa,
-            options: [
-              { value: 'TODAS', label: 'Todas las etapas' },
-              ...etapas.map((e: any) => ({ value: e.nombre, label: e.nombre }))
-            ]
-          },
-          {
-            type: 'select',
-            label: 'Tipo de Proceso',
-            value: filtroTipo,
-            onChange: setFiltroTipo,
-            options: [
-              { value: 'TODOS', label: 'Todos los tipos' },
-              ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
-            ]
-          },
-          ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR)
-            ? [{
-                type: 'select' as const,
-                label: 'Abogado',
-                value: filtroAbogado,
-                onChange: setFiltroAbogado,
-                options: [
-                  { value: 'TODOS', label: 'Todos los abogados' },
-                  { value: 'Sin asignar', label: 'Sin abogado asignado' },
-                  ...abogadosList.map(a => ({ value: a.nombre, label: a.nombre }))
-                ]
-              }]
-            : [])
-        ]}
-        totalItems={totalExpedientes}
-        filteredItems={expedientesVisibles.length}
-        onClearFilters={() => {
-          setBusqueda('');
-          setFiltroEtapa('TODAS');
-          setFiltroTipo('TODOS');
-          setFiltroAbogado('TODOS');
-          setFiltroFecha('');
+        }
+        toggleView={{
+          current: tipoVista,
+          onChange: (v: string) => setTipoVista(v as VistaModulo),
+          options: [
+            { label: 'Kanban', icon: <Columns3 className="w-4 h-4" /> },
+            { label: 'Lista', icon: <List className="w-4 h-4" /> },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" /> }
+          ]
         }}
+        customActions={
+          <ModuleFilters
+            borderless
+            searchValue={busqueda}
+            onSearchChange={setBusqueda}
+            filters={[
+              {
+                type: 'date-range',
+                label: 'Fecha de Creación',
+                value: filtroFecha,
+                onChange: setFiltroFecha,
+                placeholder: 'Fecha Creación'
+              },
+              {
+                type: 'select',
+                label: 'Etapa Procesal',
+                value: filtroEtapa,
+                onChange: setFiltroEtapa,
+                options: [
+                  { value: 'TODAS', label: 'Todas las etapas' },
+                  ...etapas.map((e: any) => ({ value: e.nombre, label: e.nombre }))
+                ]
+              },
+              {
+                type: 'select',
+                label: 'Tipo de Proceso',
+                value: filtroTipo,
+                onChange: setFiltroTipo,
+                options: [
+                  { value: 'TODOS', label: 'Todos los tipos' },
+                  ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
+                ]
+              },
+              ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR)
+                ? [{
+                    type: 'select' as const,
+                    label: 'Abogado',
+                    value: filtroAbogado,
+                    onChange: setFiltroAbogado,
+                    options: [
+                      { value: 'TODOS', label: 'Todos los abogados' },
+                      { value: 'Sin asignar', label: 'Sin abogado asignado' },
+                      ...abogadosList.map(a => ({ value: a.nombre, label: a.nombre }))
+                    ]
+                  }]
+                : [])
+            ]}
+            totalItems={totalExpedientes}
+            filteredItems={expedientesVisibles.length}
+            showCounter={false}
+            onClearFilters={() => {
+              setBusqueda('');
+              setFiltroEtapa('TODAS');
+              setFiltroTipo('TODOS');
+              setFiltroAbogado('TODOS');
+              setFiltroFecha('');
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <select
+                  value={tableroSeleccionado}
+                  onChange={(e) => handleCambiarTablero(e.target.value)}
+                  className="pl-2.5 pr-7 py-1 bg-white hover:bg-slate-50 border border-slate-200 hover:border-blue-500 text-blue-800 font-bold rounded-lg text-xs transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 shadow-sm cursor-pointer appearance-none"
+                  style={{ 
+                    minHeight: isMobile ? '34px' : '36px',
+                    backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
+                    backgroundPosition: 'right 0.4rem center',
+                    backgroundSize: '1rem',
+                    backgroundRepeat: 'no-repeat'
+                  }}
+                >
+                  {tiposProcesosActivos.map((tp: any) => (
+                    <option key={tp.id} value={tp.id} className="pl-3 py-1.5" style={{ paddingLeft: '8px' }}>
+                      {'\u00A0\u00A0' + tp.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </ModuleFilters>
+        }
       />
 
       {/* Tablero Kanban - Diseño migrado desde SuperApp Gestión Legal */}
@@ -1149,6 +1299,7 @@ export function ModuloDefensaJudicialV3() {
         isOpen={modalNuevaDemandaOpen}
         onClose={() => setModalNuevaDemandaOpen(false)}
         onSave={handleSaveNuevaDemanda}
+        tableroSeleccionado={tableroSeleccionado}
       />
 
       {/* Modal Filtros Reporte */}
@@ -1225,11 +1376,7 @@ function ColumnaKanban({
 
   return (
     <div
-      className="flex-shrink-0"
-      initial={{ width: 320 }}
-      animate={{ width: 320 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
-      style={{ maxWidth: '320px' }}
+      className="flex-shrink-0 w-[260px] sm:w-[280px] md:w-[320px]"
     >
       <Card className="h-full border border-gray-200 bg-white">
         <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
@@ -1299,6 +1446,7 @@ interface TarjetaExpedienteProps {
 }
 
 function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
+  const { estadosActivos } = useConfiguracionModulo('defensa-judicial');
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [showEliminarModal, setShowEliminarModal] = useState(false);
   const [motivoEliminar, setMotivoEliminar] = useState('');
@@ -1337,8 +1485,14 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   };
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
-  const porcentajeTiempo = Math.min(100, Math.max(0, Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100)));
-  const procesoVencido = expediente.diasRestantes < 0;
+  const { porcentajeGlobal: porcentajeTiempo, procesoVencido } = calcularProgreso(
+    expediente.diasTotales,
+    expediente.diasRestantes,
+    expediente.etapa,
+    estadosActivos,
+    expediente.documentos,
+    expediente.actuaciones
+  );
   const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
   const canDrag = authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT);
@@ -1450,8 +1604,8 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
             },
             {
               icon: <AlertCircle className="w-3.5 h-3.5" />,
-              // Evitamos porcentajes negativos o mayores a 100% si diasRestantes es negativo
-              label: expediente.diasRestantes < 0 ? '0%' : `${porcentajeTiempo}%`,
+              // Muestra el progreso global multi-factor
+              label: `${porcentajeTiempo}%`,
               color: procesoVencido ? ESAP_TOKENS.colors.danger : ESAP_TOKENS.colors.text.secondary,
             },
           ]}

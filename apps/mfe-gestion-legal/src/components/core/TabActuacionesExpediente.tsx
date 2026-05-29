@@ -6,12 +6,13 @@
  * ✅ Header con botones parametrizables
  */
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X } from 'lucide-react';
+import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Card } from '@esap-mfe/shared-ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import type { ActuacionExpediente } from './expedienteShared';
@@ -25,7 +26,7 @@ import { FirmaDigitalActuacion, FirmaData } from './FirmaDigitalActuacion';
 interface BotonAccion {
   label: string;
   icono: React.ReactNode;
-  onClick: () => void;
+  onClick: () => Promise<any> | void;
   color: string; // hex color for bg
 }
 
@@ -64,6 +65,10 @@ interface TabActuacionesExpedienteProps {
   onRegistrarPrimera?: () => void;
   expedienteId?: string;
   onReloadExpediente?: () => void;
+  onViewDocument?: (doc: any) => void;
+  onAutoAdvanceStage?: () => void;
+  onDeleteActuacion?: (id: string) => Promise<void> | void;
+  onSendEmail?: (data: { para: string; cc?: string; asunto: string; cuerpo: string; archivos?: File[] }) => void;
 }
 
 export function TabActuacionesExpediente({
@@ -76,9 +81,163 @@ export function TabActuacionesExpediente({
   labelRegistrar = 'Registrar Primera Actuación',
   onRegistrarPrimera,
   expedienteId,
-  onReloadExpediente
+  onReloadExpediente,
+  onViewDocument,
+  onAutoAdvanceStage,
+  onDeleteActuacion,
+  onSendEmail
 }: TabActuacionesExpedienteProps) {
   const [firmaSeleccionadaUrl, setFirmaSeleccionadaUrl] = useState<string | null>(null);
+  const [lockedButtons, setLockedButtons] = useState<number[]>([]);
+
+  const handleButtonClick = async (btn: BotonAccion, idx: number) => {
+    if (lockedButtons.includes(idx)) return;
+    setLockedButtons(prev => [...prev, idx]);
+    try {
+      const result = btn.onClick();
+      if (result instanceof Promise) {
+        await result;
+      }
+    } catch (err) {
+      console.error('Error executing action:', err);
+    } finally {
+      setTimeout(() => {
+        setLockedButtons(prev => prev.filter(i => i !== idx));
+      }, 1500);
+    }
+  };
+
+  // Helper to check if all associated documents for an actuation are signed
+  const checkAllAssociatedDocsSigned = (act: ActuacionExpediente) => {
+    const associatedDocIds = act.metadata?.documentosAsociados || [];
+    const resolvedDocs = documentosExpediente.filter(doc => {
+      const docIdStr = String(doc.id);
+      return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
+    });
+    const isDocSigned = (d: any) => {
+      if (!d) return false;
+      if (d.descripcion) {
+        try {
+          const data = JSON.parse(d.descripcion);
+          return !!(data && data.firmado);
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    };
+    return resolvedDocs.every(doc => isDocSigned(doc));
+  };
+
+  const handleSendEmail = async (actuacion: ActuacionExpediente) => {
+    const loadingToastId = toast.loading('🔄 Preparando correo y descargando adjuntos...', { duration: 0 } as any);
+    try {
+      const filesToAttach: File[] = [];
+
+      const urlToFile = async (url: string, filename: string): Promise<File | null> => {
+        try {
+          let storedFilename = url.split('/').pop() || 'documento';
+          if (url.includes('/correos/adjuntos/')) {
+            const regex = /\/adjuntos\/([^/]+)/;
+            const match = url.match(regex);
+            if (match) {
+              storedFilename = match[1];
+              if (storedFilename.endsWith('/download')) {
+                storedFilename = storedFilename.replace('/download', '');
+              }
+            }
+          }
+          
+          let downloadUrl = '';
+          if (url.includes('/correos/adjuntos/')) {
+            const baseUrl = buildServiceAssetUrl('legal', '');
+            const cleanUrl = url.startsWith('/legal') ? url.replace('/legal', '') : url;
+            downloadUrl = `${baseUrl.replace(/\/$/, '')}${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+          } else {
+            downloadUrl = buildServiceAssetUrl('legal', `/files/download/${encodeURIComponent(storedFilename)}?name=${encodeURIComponent(filename)}`);
+          }
+
+          const response = await fetch(downloadUrl);
+          if (!response.ok) return null;
+          const blob = await response.blob();
+          return new File([blob], filename, { type: blob.type || 'application/pdf' });
+        } catch (e) {
+          console.error('Error fetching file for email attachment:', e);
+          return null;
+        }
+      };
+
+      // Documento principal
+      if (actuacion.documentoUrl) {
+        const docName = actuacion.documentoNombre || 'documento.pdf';
+        const fileObj = await urlToFile(actuacion.documentoUrl, docName);
+        if (fileObj) filesToAttach.push(fileObj);
+      }
+
+      // Documentos asociados
+      const associatedDocIds = actuacion.metadata?.documentosAsociados || [];
+      const resolvedDocs = documentosExpediente.filter(doc => {
+        const docIdStr = String(doc.id);
+        return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
+      });
+
+      for (const doc of resolvedDocs) {
+        const docUrl = doc.archivoUrl || doc.url;
+        if (docUrl) {
+          const docName = doc.nombre || 'documento_asociado.pdf';
+          const fileObj = await urlToFile(docUrl, docName);
+          if (fileObj) filesToAttach.push(fileObj);
+        }
+      }
+
+      const emailData = {
+        para: '',
+        asunto: `Actuación: ${actuacion.descripcion} - Expediente #${expedienteId || actuacion.expedienteId || ''}`,
+        cuerpo: `Cordial saludo,\n\nSe remite la actuación "${actuacion.descripcion}" relacionada con el expediente #${expedienteId || actuacion.expedienteId || ''}.\n\nDetalles de la actuación:\n- Tipo: ${actuacion.tipo}\n- Fecha: ${actuacion.fecha}\n\nAtentamente,\nOficina Jurídica ESAP`,
+        archivos: filesToAttach,
+      };
+
+      toast.success('📨 Correo preparado con adjuntos', { id: loadingToastId });
+      
+      if (onSendEmail) {
+        onSendEmail(emailData);
+      } else {
+        toast.error('La funcionalidad de envío de correo no está disponible en este contexto.', { id: loadingToastId });
+      }
+    } catch (error) {
+      console.error('Error al preparar el correo:', error);
+      toast.error('❌ Error al preparar el correo con los adjuntos', { id: loadingToastId });
+    }
+  };
+
+  const canDeleteActuacion = (act: ActuacionExpediente) => {
+    // 1. No se pueden eliminar las transiciones de etapa ni trazas del sistema
+    if (act.tipo === 'CAMBIO_ETAPA' || (act.origen && act.origen !== 'MANUAL')) {
+      return false;
+    }
+    // 2. No se pueden eliminar actuaciones ya autorizadas
+    if (act.metadata?.estadoAutorizacion === 'AUTORIZADO') {
+      return false;
+    }
+    const associatedDocIds = act.metadata?.documentosAsociados || [];
+    const resolvedDocs = documentosExpediente.filter(doc => {
+      const docIdStr = String(doc.id);
+      return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
+    });
+    const isDocSigned = (d: any) => {
+      if (!d) return false;
+      if (d.descripcion) {
+        try {
+          const data = JSON.parse(d.descripcion);
+          return !!(data && data.firmado);
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    };
+    return !resolvedDocs.some(doc => isDocSigned(doc));
+  };
   
   // Modal de Firma
   const [modalFirmaActuacion, setModalFirmaActuacion] = useState<ActuacionExpediente | null>(null);
@@ -93,6 +252,101 @@ export function TabActuacionesExpediente({
   const [modalDevolucionActuacion, setModalDevolucionActuacion] = useState<ActuacionExpediente | null>(null);
   const [observacionesDevolucion, setObservacionesDevolucion] = useState('');
   const [enviandoDevolucion, setEnviandoDevolucion] = useState(false);
+
+  // Modal de Detalle de Actuación
+  const [actuacionDetalle, setActuacionDetalle] = useState<ActuacionExpediente | null>(null);
+
+  // Mapa de resolución de nombres de usuario
+  const [userNamesMap, setUserNamesMap] = useState<Record<string, string>>({});
+
+  // Lista de documentos del expediente para resolver adjuntos
+  const [documentosExpediente, setDocumentosExpediente] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (expedienteId) {
+      legalService.getDocumentos(expedienteId)
+        .then((docs) => {
+          if (Array.isArray(docs)) {
+            setDocumentosExpediente(docs);
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching documentos in TabActuacionesExpediente:', err);
+        });
+    }
+  }, [expedienteId, actuaciones]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadUsers() {
+      const map: Record<string, string> = {};
+      try {
+        const profesionales = await authService.getProfesionales();
+        if (active && Array.isArray(profesionales)) {
+          profesionales.forEach((u: any) => {
+            const id = u.id || u.id_user || u.user?.id_user || u.person?.id;
+            const firstName = u.person?.first_name || u.first_name || '';
+            const lastName = u.person?.last_name || u.last_name || '';
+            const fullName = u.full_name || u.fullName || `${firstName} ${lastName}`.trim();
+            if (id && fullName) {
+              map[String(id)] = fullName;
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching profesionales in TabActuacionesExpediente:', err);
+      }
+
+      try {
+        const abogados = await legalService.getAbogadosDashboard();
+        if (active && Array.isArray(abogados)) {
+          abogados.forEach((abogado: any) => {
+            const id = abogado.id;
+            const fullName = abogado.nombreCompleto || abogado.nombre;
+            if (id && fullName) {
+              map[String(id)] = fullName;
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching abogados dashboard in TabActuacionesExpediente:', err);
+      }
+
+      try {
+        const todosLosUsuarios = await authService.getTodosLosUsuariosActivos();
+        if (active && Array.isArray(todosLosUsuarios)) {
+          todosLosUsuarios.forEach((u: any) => {
+            if (u.id && u.nombre) {
+              map[String(u.id)] = u.nombre;
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching todos los usuarios in TabActuacionesExpediente:', err);
+      }
+
+      if (active) {
+        setUserNamesMap(map);
+      }
+    }
+
+    loadUsers();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Lock body scroll when modals are open
+  useEffect(() => {
+    if (modalFirmaActuacion || modalDevolucionActuacion || actuacionDetalle) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [modalFirmaActuacion, modalDevolucionActuacion, actuacionDetalle]);
 
   const getFriendlyRoleName = (role: string) => {
     if (role === 'JEFE_GESTION_LEGAL') return 'Jefe de Gestión Legal';
@@ -238,7 +492,12 @@ export function TabActuacionesExpediente({
         dummyFile
       );
       
-      if (onReloadExpediente) onReloadExpediente();
+      toast.success('✍️ Actuación firmada y autorizada exitosamente');
+      if (onAutoAdvanceStage) {
+        onAutoAdvanceStage();
+      } else if (onReloadExpediente) {
+        onReloadExpediente();
+      }
     } catch (err: any) {
       console.error(err);
       const errorMsg = err?.response?.data?.message || 'Error al procesar la firma electrónica. Verifica el OTP.';
@@ -280,6 +539,27 @@ export function TabActuacionesExpediente({
     }
   };
 
+  const downloadDocumentFile = async (docUrl: string, docNombre: string) => {
+    try {
+      const storedFilename = docUrl.split('/').pop() || 'documento';
+      const downloadName = docNombre || storedFilename;
+      const downloadUrl = buildServiceAssetUrl('legal', `/files/download/${encodeURIComponent(storedFilename)}?name=${encodeURIComponent(downloadName)}`);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error('Error al descargar');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      toast.error('No se pudo descargar el archivo.');
+    }
+  };
+
   return (
     <div className="space-y-3">
       {/* ==================== HEADER ==================== */}
@@ -293,23 +573,33 @@ export function TabActuacionesExpediente({
             </Badge>
           </h4>
             <div className="flex items-center gap-2">
-              {botonesAccion.map((btn, idx) => (
-                <Button
-                  key={idx}
-                  className="text-white font-semibold shadow-sm hover:opacity-90 transition-opacity border-none"
-                  style={{ 
-                    background: btn.color, 
-                    height: '26px', 
-                    padding: '0 10px', 
-                    fontSize: '11px', 
-                    borderRadius: '6px' 
-                  }}
-                  onClick={btn.onClick}
-                >
-                  {btn.icono}
-                  {btn.label}
-                </Button>
-              ))}
+              {botonesAccion.map((btn, idx) => {
+                const getBtnClasses = (color: string) => {
+                  if (color === '#003DA5') return 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs';
+                  if (color === '#10B981') return 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs';
+                  if (color === '#7C3AED') return 'bg-violet-600 hover:bg-violet-700 text-white shadow-xs';
+                  if (color === '#EF4444') return 'bg-red-600 hover:bg-red-700 text-white shadow-xs';
+                  return 'bg-slate-700 hover:bg-slate-800 text-white shadow-xs';
+                };
+                const isLocked = lockedButtons.includes(idx);
+                return (
+                  <Button
+                    key={idx}
+                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md' : 'opacity-60 cursor-not-allowed pointer-events-none'} border-none ${getBtnClasses(btn.color)}`}
+                    onClick={() => handleButtonClick(btn, idx)}
+                    disabled={isLocked}
+                  >
+                    {isLocked ? (
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0 mr-0.5" />
+                    ) : (
+                      btn.icono && React.isValidElement(btn.icono)
+                        ? React.cloneElement(btn.icono as React.ReactElement, { className: 'w-3.5 h-3.5 flex-shrink-0 mr-0' })
+                        : btn.icono
+                    )}
+                    {btn.label}
+                  </Button>
+                );
+              })}
             </div>
         </div>
       </Card>
@@ -391,18 +681,19 @@ export function TabActuacionesExpediente({
                           size="sm"
                           variant="outline"
                           onClick={() => onReasignarAudiencia(audiencia)}
-                          className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold text-xs"
+                          className="h-8 px-3 text-xs font-bold text-amber-700 border border-amber-200 bg-amber-50/50 hover:bg-amber-50 hover:border-amber-300 hover:shadow-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
                         >
-                          🔄 Reasignar
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Reasignar
                         </Button>
                         {onEliminarAudiencia && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => onEliminarAudiencia(audiencia.id)}
-                            className="text-red-600 border-red-300 hover:bg-red-50 font-bold text-xs"
+                            className="h-8 px-3 text-xs font-bold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-50 hover:border-red-300 hover:shadow-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
                           >
-                            <Trash2 className="w-3 h-3 mr-1" />
+                            <Trash2 className="w-3.5 h-3.5" />
                             Eliminar
                           </Button>
                         )}
@@ -448,7 +739,7 @@ export function TabActuacionesExpediente({
         </Card>
       )}
 
-      {/* ==================== TIMELINE DE ACTUACIONES ==================== */}
+      {/* ==================== TIMELINE DE ACTUACIONES (WORLD-CLASS DESIGN) ==================== */}
       {actuaciones.length === 0 ? (
         <Card className="p-10 text-center border border-dashed border-gray-300 bg-gray-50/50 rounded-2xl shadow-sm">
           <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300 drop-shadow-sm" />
@@ -460,235 +751,186 @@ export function TabActuacionesExpediente({
           </p>
         </Card>
       ) : (
-        <div className="relative mt-6">
-          {/* Línea temporal vertical */}
-          <div className="absolute left-[14px] top-4 bottom-4 w-[3px] bg-gradient-to-b from-blue-500 via-indigo-400 to-transparent rounded-full opacity-80" />
+        <div className="mt-6 space-y-4">
+          {actuaciones.map((actuacion, idx) => {
+            const isCompleted = actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA';
+            const isScheduled = actuacion.estado === 'Programado';
+            const isRecent = idx === 0;
+            const hasUnsignedDocs = !checkAllAssociatedDocsSigned(actuacion);
 
-          {actuaciones.map((actuacion, idx) => (
-            <div key={actuacion.id} className="relative pl-12 pb-8 last:pb-0 group">
-              {/* Punto en la línea */}
-              <div
-                className="absolute left-0 top-4 w-8 h-8 rounded-full border-4 border-white shadow-[0_4px_10px_rgba(0,0,0,0.12)] flex items-center justify-center transition-transform duration-300 group-hover:scale-110 z-10"
-                style={{ background: idx === 0 ? 'linear-gradient(135deg, #2563EB, #4F46E5)' : (idx === 1 ? 'linear-gradient(135deg, #60A5FA, #818CF8)' : '#E2E8F0') }}
+            return (
+              <Card 
+                key={actuacion.id}
+                className={`group relative overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer rounded-xl border ${
+                  hasUnsignedDocs 
+                    ? 'border-amber-300 hover:border-amber-400 bg-amber-50/10 hover:bg-amber-50/20' 
+                    : 'border-slate-200 hover:border-blue-300 bg-white hover:bg-slate-50/50'
+                }`}
+                onClick={() => setActuacionDetalle(actuacion)}
               >
-                {idx === 0 && <Activity className="w-3.5 h-3.5 text-white animate-pulse" />}
-              </div>
+                {/* Decorator on the left based on status */}
+                <div 
+                  className="absolute left-0 top-0 bottom-0 w-1.5 transition-all duration-300 group-hover:w-2"
+                  style={{ background: isCompleted ? '#10B981' : isScheduled ? '#8B5CF6' : '#F59E0B' }}
+                />
 
-              <Card className={`p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl rounded-2xl ${idx === 0 ? 'border border-indigo-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-gradient-to-br from-white to-blue-50/30' : 'border border-gray-100 shadow-sm bg-white hover:border-blue-100'}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge
-                      className="text-xs font-bold px-2.5 py-1"
-                      style={{
-                        background: idx === 0 ? 'linear-gradient(135deg, #003DA5, #2563EB)' : (idx === 1 ? 'linear-gradient(135deg, #3B82F6, #60A5FA)' : '#F3F4F6'),
-                        color: idx <= 1 ? '#FFFFFF' : '#4B5563',
-                        border: 'none',
-                        boxShadow: idx <= 1 ? '0 2px 4px rgba(37,99,235,0.2)' : 'none'
-                      }}
-                    >
-                      {actuacion.fecha}
-                    </Badge>
-                    {actuacion.hora && (
-                      <Badge variant="outline" className="text-xs font-semibold bg-white shadow-sm border-gray-200">
-                        <Clock className="w-3 h-3 mr-1 text-gray-500" />
-                        {actuacion.hora}
-                      </Badge>
-                    )}
-                    <Badge variant="outline" className="text-xs font-semibold bg-gray-50 text-gray-700 border-gray-200">
-                      {actuacion.tipo}
-                    </Badge>
-                    {actuacion.origen && actuacion.origen !== 'MANUAL' && (
-                      <Badge className="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                        {actuacion.origen}
-                      </Badge>
-                    )}
-                    <Badge className={`text-xs font-bold shadow-sm ${actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                      {actuacion.estado || 'Registrado'}
-                    </Badge>
-                  </div>
-                  {idx === 0 && (
-                    <Badge className="text-xs bg-gradient-to-r from-emerald-400 to-teal-500 text-white font-bold shadow-md border-0 animate-pulse px-3 py-1">
-                      ⚡ Más Reciente
-                    </Badge>
-                  )}
-                </div>
-                
-                <h5 className="text-base font-bold text-gray-800 mb-2 leading-snug">
-                  {actuacion.descripcion}
-                </h5>
-                
-                <div className="flex flex-col gap-1.5 mb-4 mt-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50/50 p-2 rounded-lg border border-gray-100 w-fit">
-                    <div className="bg-white p-1 rounded-md shadow-sm border border-gray-100">
-                      <User className="w-3.5 h-3.5 text-blue-600" />
-                    </div>
-                    <span><span className="font-semibold text-gray-700">Responsable:</span> {actuacion.responsable || 'Sistema'}</span>
-                  </div>
-                  {actuacion.metadata?.observaciones && (
-                    <div className="text-sm text-gray-600 bg-blue-50/30 p-3 rounded-lg border border-blue-100 mt-1 flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5">💬</span>
-                      <p className="italic leading-relaxed">{actuacion.metadata.observaciones}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Flujo de Autorización y Firma Electrónica */}
-                {actuacion.metadata?.estadoAutorizacion === 'PENDIENTE' && (
-                  <div className="mb-4 p-4 rounded-xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-orange-50/40 shadow-sm space-y-3 relative overflow-hidden group/alert">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-400/20 to-orange-500/20 blur-2xl rounded-full -mr-10 -mt-10 transition-transform duration-700 group-hover/alert:scale-150" />
-                    <div className="flex items-center gap-2 text-sm font-bold text-amber-900 relative z-10">
-                      <div className="p-1.5 bg-amber-100 rounded-lg shadow-sm border border-amber-200/50">
-                        <Lock className="w-4 h-4 text-amber-600 animate-pulse" />
-                      </div>
-                      <span>Autorización y Firma Electrónica Requerida</span>
-                    </div>
-                    {isUserAuthorizedToApprove(actuacion.metadata) ? (
-                      <div className="flex items-center gap-3 relative z-10 pt-1">
-                        <Button
-                          size="sm"
-                          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 border-0 h-9 px-4 rounded-lg"
-                          onClick={() => handleOpenFirmaModal(actuacion)}
-                        >
-                          <PenTool className="w-4 h-4" />
-                          Firmar y Autorizar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-white border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 hover:text-red-700 font-bold text-xs shadow-sm transition-all h-9 px-4 rounded-lg"
-                          onClick={() => handleOpenDevolucionModal(actuacion)}
-                        >
-                          Devolver con observaciones
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="relative z-10 flex items-center gap-2 text-sm text-amber-800 bg-white/60 backdrop-blur-sm p-2.5 rounded-lg border border-amber-200/50">
-                        <Lock className="w-4 h-4 text-amber-500" />
-                        <span>Esperando firma por parte de: <strong>{actuacion.metadata?.aprobacionTipo === 'rol' ? `Rol: ${getFriendlyRoleName(actuacion.metadata.aprobacionRol)}` : 'Usuario Asignado'}</strong></span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO' && (
-                  <div className="mb-3 p-3 rounded-lg border border-green-200 bg-green-50/50 space-y-2">
-                    <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-green-800">
-                      <div className="flex items-center gap-2 font-bold">
-                        <Badge className="bg-green-600 text-white font-bold">✓ Autorizado y Firmado</Badge>
-                        <span>Firmado electrónicamente por {actuacion.metadata.firmadoPor}</span>
-                      </div>
-                      {actuacion.metadata.fechaFirma && (
-                        <span className="text-gray-500 font-semibold">
-                          Fecha: {formatFechaHora(actuacion.metadata.fechaFirma)}
+                 <div className="p-3 sm:p-4 pl-5 sm:pl-6">
+                  <div className="flex flex-col gap-2">
+                    {/* Row 1: Title, ID & Date / User metadata */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <h4 className="text-[14px] font-extrabold text-slate-800 group-hover:text-blue-700 transition-colors truncate">
+                          {actuacion.descripcion}
+                        </h4>
+                        {isRecent && (
+                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none font-bold text-[9px] px-1.5 py-0.2 rounded shadow-xs shrink-0">
+                            ✨ Nuevo
+                          </Badge>
+                        )}
+                        <span className="text-[9px] font-semibold text-slate-400 font-mono shrink-0">
+                          #{actuacion.id}
                         </span>
-                      )}
-                    </div>
-                    {actuacion.metadata.firmaFotoUrl && (
-                      <button
-                        onClick={() => setFirmaSeleccionadaUrl(actuacion.metadata.firmaFotoUrl)}
-                        className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline bg-transparent border-none cursor-pointer p-0"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Ver Firma Adjunta
-                      </button>
-                    )}
-                  </div>
-                )}
+                      </div>
 
-                {actuacion.metadata?.estadoAutorizacion === 'DEVUELTO' && (
-                  <div className="mb-3 p-3 rounded-lg border border-red-200 bg-red-50/50 space-y-1">
-                    <div className="flex items-center gap-2 text-xs font-bold text-red-800">
-                      <Badge className="bg-red-600 text-white font-bold">⚠️ Devuelto</Badge>
-                      <span>Devuelto con observaciones por {actuacion.metadata.devueltoPor}</span>
+                      {/* Compact Date/Time and Responsable inline */}
+                      <div className="flex items-center gap-2.5 text-[11px] text-slate-500 font-semibold shrink-0">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {actuacion.fecha} {actuacion.hora && `• ${actuacion.hora}`}
+                        </span>
+                        <span className="text-slate-300 font-normal">|</span>
+                        <span className="flex items-center gap-1 text-slate-600">
+                          <User className="w-3 h-3 text-slate-400" />
+                          {actuacion.responsable || 'Sistema'}
+                        </span>
+                      </div>
                     </div>
-                    {actuacion.metadata.observacionesDevolucion && (
-                      <p className="text-xs text-red-700 bg-white p-2 rounded border border-red-100 font-semibold mt-1">
-                        &ldquo;{actuacion.metadata.observacionesDevolucion}&rdquo;
-                      </p>
-                    )}
-                    {actuacion.metadata.fechaDevolucion && (
-                      <p className="text-[10px] text-gray-400 text-right">
-                        Fecha: {formatFechaHora(actuacion.metadata.fechaDevolucion)}
-                      </p>
-                    )}
-                  </div>
-                )}
 
-                {/* Documento adjunto */}
-                {actuacion.documentoUrl && (
-                  <div className="mb-2 p-2 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Paperclip className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-xs font-bold text-blue-800 truncate max-w-[200px]">
-                        {actuacion.documentoNombre || 'Documento adjunto'}
-                      </span>
+                    {/* Row 2: Badges (Status/Tags) & Comments (inline) & Actions (inline right) */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1.5 border-t border-slate-100/60">
+                      {/* Badges and Comments */}
+                      <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                        <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-200">
+                          <FileText className="w-3 h-3 text-slate-400" />
+                          {actuacion.tipo}
+                        </span>
+                        
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                          style={{
+                            background: isCompleted ? '#ECFDF5' : isScheduled ? '#F5F3FF' : '#FFFBEB',
+                            color: isCompleted ? '#059669' : isScheduled ? '#7C3AED' : '#D97706',
+                            borderColor: isCompleted ? '#D1FAE5' : isScheduled ? '#EDE9FE' : '#FEF3C7'
+                          }}
+                        >
+                          {isCompleted ? <CheckCircle className="w-3 h-3" /> : isScheduled ? <Calendar className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
+                          {actuacion.estado === 'COMPLETADA' ? 'Completado' : actuacion.estado}
+                        </span>
+
+                        {hasUnsignedDocs && (
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded text-[10px] font-extrabold border border-amber-200 animate-pulse">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            Firma Pendiente
+                          </span>
+                        )}
+
+                        {actuacion.origen && actuacion.origen !== 'MANUAL' && (
+                          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-indigo-100">
+                            <Settings className="w-3 h-3 text-indigo-400" />
+                            {actuacion.origen}
+                          </span>
+                        )}
+
+                        {actuacion.metadata?.observaciones && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 italic bg-slate-50 border border-slate-100 rounded px-2 py-0.5 truncate max-w-[200px] sm:max-w-[300px]" title={actuacion.metadata.observaciones}>
+                            📝 {actuacion.metadata.observaciones}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Actions and status on the right */}
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {actuacion.metadata?.estadoAutorizacion === 'PENDIENTE' && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {checkAllAssociatedDocsSigned(actuacion) ? (
+                              <Badge className="bg-emerald-50 border border-emerald-200 text-emerald-850 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-emerald-50 shadow-none">
+                                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                Documentos Firmados
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-amber-50 shadow-none">
+                                <Lock className="w-3 h-3 text-amber-600 animate-pulse" />
+                                Firma Pendiente ({actuacion.metadata.aprobacionTipo === 'rol' ? getFriendlyRoleName(actuacion.metadata.aprobacionRol) : 'Usuario'})
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO' && (
+                          <Badge className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-emerald-50 shadow-none">
+                            <CheckCircle className="w-3 h-3 text-emerald-600" />
+                            Firmado por {actuacion.metadata.firmadoPor}
+                          </Badge>
+                        )}
+
+                        {actuacion.metadata?.estadoAutorizacion === 'DEVUELTO' && (
+                          <Badge className="bg-red-50 border border-red-200 text-red-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-red-50 shadow-none" title={actuacion.metadata.observacionesDevolucion}>
+                            <X className="w-3 h-3 text-red-600" />
+                            Devuelto por {actuacion.metadata.devueltoPor}
+                          </Badge>
+                        )}
+
+                        {onSendEmail && !hasUnsignedDocs && (!actuacion.metadata?.aprobacionTipo || actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO') && (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSendEmail(actuacion);
+                            }}
+                            variant="outline"
+                            className="h-8 px-3 text-xs font-bold text-violet-750 border border-violet-200 bg-violet-50/30 hover:bg-violet-50 hover:border-violet-300 hover:shadow-xs rounded-lg transition-all flex items-center gap-1.5"
+                            title="Enviar Correo con Actuación y Adjuntos"
+                          >
+                            <Mail className="w-3.5 h-3.5 text-violet-600" />
+                            <span>Enviar Correo</span>
+                          </Button>
+                        )}
+
+                        {actuacion.documentoUrl && (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadDocumentFile(actuacion.documentoUrl!, actuacion.documentoNombre || 'documento');
+                            }}
+                            variant="outline"
+                            className="h-8 px-3 text-xs font-bold text-blue-700 border border-blue-200 bg-blue-50/30 hover:bg-blue-50 hover:border-blue-300 hover:shadow-xs rounded-lg transition-all flex items-center gap-1.5"
+                            title={actuacion.documentoNombre || 'Descargar Documento'}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Descargar</span>
+                          </Button>
+                        )}
+
+                        {onDeleteActuacion && canDeleteActuacion(actuacion) && (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteActuacion(String(actuacion.id));
+                            }}
+                            variant="outline"
+                            className="h-8 px-3 text-xs font-bold text-red-650 hover:text-red-800 border-red-200 hover:bg-red-50 hover:border-red-300 hover:shadow-xs rounded-lg transition-all flex items-center gap-1.5 bg-white"
+                            title="Eliminar Actuación"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                            <span>Eliminar</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Extract the stored filename from the documentoUrl (e.g. "/uploads/abc123.pdf" → "abc123.pdf")
-                          const storedFilename = actuacion.documentoUrl!.split('/').pop() || 'documento';
-                          const downloadName = actuacion.documentoNombre || storedFilename;
-                          const downloadUrl = buildServiceAssetUrl('legal', `/files/download/${encodeURIComponent(storedFilename)}?name=${encodeURIComponent(downloadName)}`);
-                          
-                          const response = await fetch(downloadUrl);
-                          if (!response.ok) throw new Error('Error al descargar');
-                          
-                          const blob = await response.blob();
-                          const blobUrl = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = blobUrl;
-                          a.download = downloadName;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(blobUrl);
-                        } catch (err) {
-                          console.error('Error descargando archivo de actuación:', err);
-                          alert('No se pudo descargar el archivo. Verifique que el archivo exista en el servidor.');
-                        }
-                      }}
-                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer bg-transparent border-none"
-                    >
-                      <Download className="w-3 h-3" />
-                      Descargar
-                    </button>
                   </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                      <User className="w-3 h-3" />
-                      {actuacion.responsable}
-                    </p>
-                    {actuacion.createdAt && (
-                      <p className="text-xs text-gray-400">
-                        Registrado: {actuacion.createdAt}
-                      </p>
-                    )}
-                  </div>
-                  <Badge
-                    className="text-xs font-semibold"
-                    style={{
-                      background: actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA'
-                        ? '#D1FAE5'
-                        : actuacion.estado === 'Programado'
-                          ? '#EDE9FE'
-                          : '#FEF3C7',
-                      color: actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA'
-                        ? '#065F46'
-                        : actuacion.estado === 'Programado'
-                          ? '#5B21B6'
-                          : '#92400E'
-                    }}
-                  >
-                    {actuacion.estado === 'COMPLETADA' ? 'Completado' : actuacion.estado}
-                  </Badge>
                 </div>
               </Card>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -698,8 +940,28 @@ export function TabActuacionesExpediente({
           expedienteId={expedienteId || String(modalFirmaActuacion.expedienteId)}
           radicado={expedienteId || String(modalFirmaActuacion.expedienteId)}
           actuacionDescripcion={modalFirmaActuacion.descripcion}
-          firmanteNombre={(authService.getCurrentUser() as any)?.nombre || 'Usuario Funcionario'}
-          firmanteCargo={getFriendlyRoleName((authService.getCurrentUser() as any)?.role || 'Funcionario')}
+          firmanteNombre={(() => {
+            const u = authService.getCurrentUser() as any;
+            if (!u) return 'Usuario Funcionario';
+            return u.fullName || u.full_name || u.name || u.nombre || (u.person?.first_name ? `${u.person.first_name} ${u.person.last_name ?? ''}`.trim() : null) || u.email || 'Usuario Funcionario';
+          })()}
+          firmanteCargo={(() => {
+            const u = authService.getCurrentUser() as any;
+            if (!u) return 'Funcionario';
+            const roles = u.roles || [];
+            const hasRole = (roleCode: string) => roles.some((r: any) => {
+              if (typeof r === 'string') return r === roleCode;
+              return r?.code === roleCode || r?.name === roleCode;
+            });
+            if (hasRole('JEFE_GESTION_LEGAL')) return 'Jefe de Gestión Legal';
+            if (hasRole('RESUELVE_GESTION_LEGAL')) return 'Abogado Sustanciador (Resuelve)';
+            if (roles.length > 0) {
+              const firstRole = roles[0];
+              if (typeof firstRole === 'string') return firstRole;
+              return firstRole.displayName || firstRole.name || firstRole.code || 'Funcionario';
+            }
+            return 'Funcionario';
+          })()}
           etapaLabel="Autorización de Actuación"
           correoDestino={(authService.getCurrentUser() as any)?.email}
           onVerifyCodigo={async (codigo) => {
@@ -716,19 +978,23 @@ export function TabActuacionesExpediente({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {modalDevolucionActuacion && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
-            >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
-              onClick={(e) => e.stopPropagation()}
-            >
+              <motion.div 
+                key="modal-devolucion-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm pointer-events-auto"
+                onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+              >
+              <motion.div
+                key="modal-devolucion-content"
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
+                onClick={(e) => e.stopPropagation()}
+              >
               <button
                 onClick={() => setModalDevolucionActuacion(null)}
                 className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors z-20"
@@ -741,7 +1007,7 @@ export function TabActuacionesExpediente({
                 <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-red-400/10 to-rose-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
                 
                 <div className="mb-6 relative z-10 flex items-start gap-4 pr-8">
-                  <div className="bg-gradient-to-br from-red-500 to-rose-600 p-3 rounded-xl shadow-lg shadow-red-200 flex items-center justify-center shrink-0">
+                  <div className="bg-red-600 p-3 rounded-xl shadow-lg flex items-center justify-center shrink-0">
                     <X className="w-6 h-6 text-white" />
                   </div>
                   <div>
@@ -777,7 +1043,7 @@ export function TabActuacionesExpediente({
                       Cancelar
                     </Button>
                     <Button
-                      className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-bold h-11 px-6 rounded-xl shadow-md hover:shadow-lg transition-all"
+                      className="bg-red-600 hover:bg-red-700 text-white font-bold h-11 px-6 rounded-xl shadow-md hover:shadow-lg transition-all"
                       onClick={handleConfirmarDevolucion}
                       disabled={enviandoDevolucion || !observacionesDevolucion.trim()}
                     >
@@ -793,6 +1059,516 @@ export function TabActuacionesExpediente({
                   </div>
                 </div>
               </div>
+            </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Modal de Detalle de Actuación (World Class Design) */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {actuacionDetalle && (
+              <motion.div 
+                key="modal-detalle-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm pointer-events-auto"
+                onClick={() => setActuacionDetalle(null)}
+                onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+              >
+              <motion.div
+                key="modal-detalle-content"
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden relative flex flex-col max-h-[90vh]"
+                onClick={(e) => e.stopPropagation()}
+              >
+              {/* Header */}
+              <div className="relative p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 to-indigo-50/30 overflow-hidden shrink-0">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setActuacionDetalle(null); }}
+                  className="absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-900 rounded-full hover:bg-white/90 transition-colors z-[100] cursor-pointer"
+                >
+                  <X className="w-5 h-5 pointer-events-none" />
+                </button>
+                
+                <div className="flex items-start gap-4 pr-8 relative z-10">
+                  <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-3.5 rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center shrink-0">
+                    <Activity className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="pt-1">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wider">
+                        {actuacionDetalle.tipo}
+                      </span>
+                      <span className="text-[11px] font-bold text-gray-500 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        {actuacionDetalle.fecha} {actuacionDetalle.hora && `- ${actuacionDetalle.hora}`}
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-black text-gray-900 leading-tight">
+                      Detalle de la Actuación
+                    </h2>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 overflow-y-auto space-y-6 flex-1 min-h-0">
+                
+                {/* Bloque Principal */}
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 block">Descripción Completa</label>
+                  <p className="text-[15px] font-medium text-gray-800 leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                    {actuacionDetalle.descripcion}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Bloque Estado */}
+                  <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+                      <Activity className="w-3 h-3 text-slate-400" /> Estado
+                    </label>
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-bold inline-block border"
+                      style={{
+                        background: (actuacionDetalle.estado === 'Completado' || actuacionDetalle.estado === 'COMPLETADA') ? '#D1FAE5' : actuacionDetalle.estado === 'Programado' ? '#EDE9FE' : '#FEF3C7',
+                        color: (actuacionDetalle.estado === 'Completado' || actuacionDetalle.estado === 'COMPLETADA') ? '#065F46' : actuacionDetalle.estado === 'Programado' ? '#5B21B6' : '#92400E',
+                        borderColor: (actuacionDetalle.estado === 'Completado' || actuacionDetalle.estado === 'COMPLETADA') ? '#A7F3D0' : actuacionDetalle.estado === 'Programado' ? '#DDD6FE' : '#FDE68A'
+                      }}
+                    >
+                      {actuacionDetalle.estado === 'COMPLETADA' ? 'Completado' : actuacionDetalle.estado}
+                    </span>
+                  </div>
+
+                  {/* Bloque Responsable */}
+                  <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+                      <User className="w-3 h-3 text-slate-400" /> Responsable de Registro
+                    </label>
+                    <span className="text-sm font-bold text-gray-800">
+                      {userNamesMap[String(actuacionDetalle.responsable)] || actuacionDetalle.responsable || 'Sistema Automático'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Adjuntos y Estado de Firma */}
+                <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-slate-400" /> Adjuntos y Estado de Firma
+                  </label>
+                  {(() => {
+                    const associatedDocIds = actuacionDetalle.metadata?.documentosAsociados || [];
+                    const resolvedDocs = documentosExpediente.filter(doc => {
+                      const docIdStr = String(doc.id);
+                      return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
+                    });
+                    const hasDocs = actuacionDetalle.documentoUrl || resolvedDocs.length > 0;
+
+                    if (!hasDocs) {
+                      return (
+                        <div className="p-3 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-center">
+                          <p className="text-xs font-medium text-slate-400">Sin documentos adjuntos en esta actuación.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          {actuacionDetalle.documentoUrl && (() => {
+                            const isMainDocSigned = actuacionDetalle.metadata?.estadoAutorizacion === 'AUTORIZADO';
+                            return (
+                              <div className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/70 transition-colors">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <FileText className="w-4.5 h-4.5 text-blue-600 shrink-0" />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Documento Principal</p>
+                                      <Badge 
+                                        className={`text-[9px] font-extrabold px-1.5 py-0 rounded border ${
+                                          isMainDocSigned 
+                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                                        }`}
+                                      >
+                                        {isMainDocSigned ? '✓ Firmado' : '⚠ Sin Firmar'}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs font-bold text-gray-700 truncate" title={actuacionDetalle.documentoNombre}>
+                                      {actuacionDetalle.documentoNombre || 'documento.pdf'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-[11px] font-bold text-blue-700 hover:text-blue-800 border-blue-200 hover:bg-blue-50 shrink-0 flex items-center gap-1"
+                                  onClick={() => downloadDocumentFile(actuacionDetalle.documentoUrl!, actuacionDetalle.documentoNombre || 'documento.pdf')}
+                                >
+                                  <Download className="w-3.5 h-3.5" /> Descargar
+                                </Button>
+                              </div>
+                            );
+                          })()}
+
+                          {resolvedDocs.map((doc: any, index: number) => {
+                            const isDocSigned = (d: any) => {
+                              if (!d) return false;
+                              if (d.descripcion) {
+                                try {
+                                  const data = JSON.parse(d.descripcion);
+                                  return !!(data && data.firmado);
+                                } catch (e) {
+                                  return false;
+                                }
+                              }
+                              return false;
+                            };
+                            const signed = isDocSigned(doc);
+                            
+                            return (
+                              <div key={doc.id || index} className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/70 transition-colors">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <FileText className="w-4.5 h-4.5 text-indigo-600 shrink-0" />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Documento Asociado #{index + 1}</p>
+                                      <Badge 
+                                        className={`text-[9px] font-extrabold px-1.5 py-0 rounded border ${
+                                          signed 
+                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                                        }`}
+                                      >
+                                        {signed ? '✓ Firmado' : '⚠ Sin Firmar'}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs font-bold text-gray-700 truncate" title={doc.nombre}>
+                                      {doc.nombre}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex gap-1.5 shrink-0">
+                                  {doc.archivoUrl && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 text-[11px] font-bold text-blue-700 hover:text-blue-800 border-blue-200 hover:bg-blue-50 flex items-center gap-1"
+                                      onClick={() => downloadDocumentFile(doc.archivoUrl, doc.nombre)}
+                                    >
+                                      <Download className="w-3.5 h-3.5" /> Descargar
+                                    </Button>
+                                  )}
+                                  {!signed && onViewDocument && doc.archivoUrl && (
+                                    <Button
+                                      size="sm"
+                                      className="h-8 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1 bg-white"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setActuacionDetalle(null);
+                                        onViewDocument({
+                                          id: doc.id,
+                                          nombre: doc.nombre,
+                                          url: doc.archivoUrl,
+                                          tipo: doc.tipo || 'Documento Asociado',
+                                          descripcion: doc.descripcion || ''
+                                        });
+                                      }}
+                                    >
+                                      <PenTool className="w-3.5 h-3.5 text-emerald-600" /> Firmar
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-4 pt-2 border-t border-slate-100">
+                          {actuacionDetalle.metadata?.estadoAutorizacion === 'AUTORIZADO' ? (
+                            <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl space-y-1 shadow-sm">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Firmado electrónicamente
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-emerald-100/50 text-[11px] text-emerald-700">
+                                <p>
+                                  <strong>Firmante:</strong> {userNamesMap[String(actuacionDetalle.metadata.firmadoPor)] || actuacionDetalle.metadata.firmadoPor || 'Usuario Autorizado'}
+                                </p>
+                                {(actuacionDetalle.metadata.firmadoPorEmail || actuacionDetalle.metadata.firmadoPorCorreo) && (
+                                  <p>
+                                    <strong>Correo:</strong> {actuacionDetalle.metadata.firmadoPorEmail || actuacionDetalle.metadata.firmadoPorCorreo}
+                                  </p>
+                                )}
+                                {(actuacionDetalle.metadata.fechaFirma || actuacionDetalle.metadata.fechaAutorizacion) && (
+                                  <p className="sm:col-span-2">
+                                    <strong>Fecha de Firma:</strong> {formatFechaHora(actuacionDetalle.metadata.fechaFirma || actuacionDetalle.metadata.fechaAutorizacion)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ) : actuacionDetalle.metadata?.estadoAutorizacion === 'PENDIENTE' ? (
+                            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50/30 border border-amber-200 rounded-xl space-y-2 shadow-sm">
+                              <div className="flex items-center gap-2 text-xs font-black text-amber-800 uppercase tracking-wider">
+                                <Lock className="w-4 h-4 text-amber-600 animate-bounce" />
+                                Firma y Aprobación Pendiente
+                              </div>
+                              <p className="text-xs text-amber-700 leading-relaxed">
+                                Esta actuación y sus documentos asociados se encuentran en estado <strong className="text-amber-900 font-extrabold">SIN FIRMA</strong>. Se requiere la firma electrónica del aprobador para formalizar la actuación.
+                              </p>
+                              {isUserAuthorizedToApprove(actuacionDetalle.metadata) ? (
+                                <div className="bg-amber-100/50 p-3 rounded-lg border border-amber-200/40 text-xs text-amber-950 font-semibold mt-2 flex flex-col gap-1">
+                                  <span>👉 Usted es el usuario/rol autorizado.</span>
+                                  <span className="text-[11px] font-medium text-amber-800">Puede autorizar y firmar digitalmente esta actuación usando los botones del footer de este modal.</span>
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-amber-600 bg-amber-50/50 p-2 rounded border border-amber-100">
+                                  <strong>Aprobador requerido:</strong> {actuacionDetalle.metadata.aprobacionTipo === 'rol' ? getFriendlyRoleName(actuacionDetalle.metadata.aprobacionRol) : (userNamesMap[String(actuacionDetalle.metadata.aprobacionUsuario)] || actuacionDetalle.metadata.aprobacionUsuario)}
+                                </p>
+                              )}
+                            </div>
+                          ) : actuacionDetalle.metadata?.estadoAutorizacion === 'DEVUELTO' ? (
+                            <div className="p-3 bg-red-50 border border-red-100 rounded-xl space-y-1 shadow-sm">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-red-800">
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                                Devuelto con observaciones
+                              </div>
+                              <p className="text-[11px] text-red-700">
+                                <strong>Devuelto por:</strong> {userNamesMap[String(actuacionDetalle.metadata.devueltoPor)] || actuacionDetalle.metadata.devueltoPor || 'Revisor'}
+                              </p>
+                              {actuacionDetalle.metadata.observacionesDevolucion && (
+                                <p className="text-[11px] text-red-600 italic bg-white/60 p-2.5 rounded-lg border border-red-100 mt-1 leading-relaxed">
+                                  "{actuacionDetalle.metadata.observacionesDevolucion}"
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl shadow-sm">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                                <CheckCircle className="w-3.5 h-3.5 text-slate-400" />
+                                No requiere firma
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Esta actuación fue registrada de manera directa y no requiere firma o aprobación formal.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Regla de Aprobación del Flujo Kanban */}
+                <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-slate-400" /> Reglas de Transición Kanban (Columna)
+                  </label>
+                  {actuacionDetalle.metadata?.aprobacionTipo ? (
+                    <div className="space-y-2">
+                      <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg flex items-start gap-3">
+                        <Lock className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-indigo-900">Requiere Autorización para ingresar a la columna</p>
+                          <p className="text-[11px] text-indigo-700 mt-1 leading-relaxed">
+                            {actuacionDetalle.metadata.aprobacionTipo === 'rol' ? (
+                              <>
+                                <strong>Rol Aprobador:</strong> {getFriendlyRoleName(actuacionDetalle.metadata.aprobacionRol)} (<code>{actuacionDetalle.metadata.aprobacionRol}</code>)
+                              </>
+                            ) : (
+                              <>
+                                <strong>Usuario Aprobador Asignado:</strong> {userNamesMap[String(actuacionDetalle.metadata.aprobacionUsuario)] || `Usuario (ID: ${actuacionDetalle.metadata.aprobacionUsuario})`}
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-emerald-50/30 border border-emerald-100 rounded-lg flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-emerald-950">Entrada Directa</p>
+                        <p className="text-[11px] text-emerald-700 mt-0.5 leading-relaxed">
+                          Esta actuación no requiere aprobación de firma ni autorización de terceros para avanzar en el tablero Kanban del proceso judicial.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bloque Origen y Metadata */}
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex gap-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1 block">Origen</label>
+                    <span className="text-xs font-bold text-slate-700">{actuacionDetalle.origen || 'MANUAL'}</span>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1 block">ID Sistema</label>
+                    <span className="text-xs font-bold text-slate-500 font-mono">#{actuacionDetalle.id}</span>
+                  </div>
+                </div>
+
+                {/* Bloque de Observaciones */}
+                {actuacionDetalle.metadata?.observaciones && (
+                  <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                    <label className="text-[10px] font-black text-blue-400 uppercase tracking-wider mb-1.5 block flex items-center gap-1.5">
+                      <FileText className="w-3 h-3" /> Observaciones del autor
+                    </label>
+                    <p className="text-sm text-blue-900 italic leading-relaxed">
+                      "{actuacionDetalle.metadata.observaciones}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer (Document Download and Actions) */}
+              <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-4 shrink-0 rounded-b-2xl">
+                <div className="flex-1 min-w-0">
+                  {(() => {
+                    const associatedDocIds = actuacionDetalle.metadata?.documentosAsociados || [];
+                    const resolvedDocs = documentosExpediente.filter(doc => {
+                      const docIdStr = String(doc.id);
+                      return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
+                    });
+
+                    if (actuacionDetalle.documentoUrl) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-200">
+                            <Paperclip className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Documento Adjunto</p>
+                            <p className="text-xs font-bold text-gray-700 truncate" title={actuacionDetalle.documentoNombre}>
+                              {actuacionDetalle.documentoNombre || 'Documento'}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    } else if (resolvedDocs.length > 0) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-200">
+                            <Paperclip className="w-4 h-4 text-indigo-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Documentos Asociados</p>
+                            <p className="text-xs font-bold text-gray-700 truncate">
+                              {resolvedDocs.length} {resolvedDocs.length === 1 ? 'documento asociado' : 'documentos asociados'}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <p className="text-[11px] font-medium text-gray-400 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 opacity-50" /> Sin documento adjunto
+                        </p>
+                      );
+                    }
+                  })()}
+                </div>
+                
+                <div className="flex gap-2 shrink-0">
+                  {actuacionDetalle.metadata?.estadoAutorizacion === 'PENDIENTE' && (
+                    <div className="flex gap-2 shrink-0">
+                      {isUserAuthorizedToApprove(actuacionDetalle.metadata) ? (
+                        <>
+                          <Button
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-700 text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const act = actuacionDetalle;
+                              setActuacionDetalle(null);
+                              handleOpenDevolucionModal(act);
+                            }}
+                          >
+                            <CornerUpLeft className="w-4 h-4" /> Devolver
+                          </Button>
+                          {checkAllAssociatedDocsSigned(actuacionDetalle) ? (
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const act = actuacionDetalle;
+                                setActuacionDetalle(null);
+                                handleOpenFirmaModal(act);
+                              }}
+                            >
+                              <PenTool className="w-4 h-4" /> Autorizar Actuación
+                            </Button>
+                          ) : (
+                            <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold py-1 px-3 inline-flex items-center gap-1.5 rounded-lg hover:bg-amber-50 shadow-none">
+                              <Lock className="w-4 h-4 text-amber-600 animate-pulse" />
+                              Firma Pendiente (Documentos)
+                            </Badge>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {checkAllAssociatedDocsSigned(actuacionDetalle) ? (
+                            <Badge className="bg-emerald-50 border border-emerald-250 text-emerald-800 text-xs font-bold py-1 px-3 inline-flex items-center gap-1.5 rounded-lg hover:bg-emerald-50 shadow-none">
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              Documentos Firmados
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold py-1 px-3 inline-flex items-center gap-1.5 rounded-lg hover:bg-amber-50 shadow-none">
+                              <Lock className="w-4 h-4 text-amber-600 animate-pulse" />
+                              Firma Pendiente
+                            </Badge>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {onSendEmail && checkAllAssociatedDocsSigned(actuacionDetalle) && (!actuacionDetalle.metadata?.aprobacionTipo || actuacionDetalle.metadata?.estadoAutorizacion === 'AUTORIZADO') && (
+                    <Button 
+                      size="sm"
+                      className="text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9 border-none"
+                      style={{ background: '#7C3AED' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const act = actuacionDetalle;
+                        setActuacionDetalle(null);
+                        handleSendEmail(act);
+                      }}
+                    >
+                      <Mail className="w-4 h-4" /> Enviar Correo
+                    </Button>
+                  )}
+                  {actuacionDetalle.documentoUrl && (
+                    <Button 
+                      size="sm"
+                      className="bg-orange-600 hover:bg-orange-700 text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9"
+                      onClick={() => downloadDocumentFile(actuacionDetalle.documentoUrl!, actuacionDetalle.documentoNombre || 'documento')}
+                    >
+                      <Download className="w-4 h-4" /> Descargar
+                    </Button>
+                  )}
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={(e) => { e.stopPropagation(); setActuacionDetalle(null); }} 
+                    className="font-bold text-gray-600 cursor-pointer z-50 h-9"
+                  >
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+
             </motion.div>
             </motion.div>
           )}

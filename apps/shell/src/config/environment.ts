@@ -88,8 +88,10 @@ const getBrowserGatewayUrl = (): string | null => {
 
   const { protocol, hostname, origin } = window.location;
 
-  if (isLoopbackHost(hostname)) {
-    return `${protocol}//${hostname}:3000`;
+  // Si estamos en desarrollo local o usando un túnel de Cloudflare, usamos el origen directamente
+  // para que las peticiones vayan al proxy de Vite.
+  if (ENV === 'development' || isLoopbackHost(hostname) || hostname.endsWith('.trycloudflare.com')) {
+    return origin.replace(/\/$/, '');
   }
 
   return `${origin.replace(/\/$/, '')}/services`;

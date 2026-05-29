@@ -325,6 +325,8 @@ export class LegalService {
         responsable?: string;
         estado?: string;
         observaciones?: string;
+        documentosAsociados?: string[];
+        metadata?: any;
         file?: File;
     }): Promise<Actuacion> {
         if (data.file) {
@@ -336,9 +338,19 @@ export class LegalService {
             if (data.responsable) formData.append('responsable', data.responsable);
             if (data.estado) formData.append('estado', data.estado);
             if (data.observaciones) formData.append('observaciones', data.observaciones);
+            if (data.documentosAsociados) {
+                formData.append('documentosAsociados', typeof data.documentosAsociados === 'string' ? data.documentosAsociados : JSON.stringify(data.documentosAsociados));
+            }
+            if (data.metadata) {
+                formData.append('metadata', typeof data.metadata === 'string' ? data.metadata : JSON.stringify(data.metadata));
+            }
             return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
+    }
+
+    async deleteActuacion(expedienteId: string, id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${id}`);
     }
 
     // Abogados

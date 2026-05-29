@@ -340,6 +340,8 @@ export class LegalService {
         responsable?: string;
         estado?: string;
         observaciones?: string;
+        documentosAsociados?: string[];
+        metadata?: any;
         file?: File;
     }): Promise<Actuacion> {
         if (data.file) {
@@ -351,6 +353,12 @@ export class LegalService {
             if (data.responsable) formData.append('responsable', data.responsable);
             if (data.estado) formData.append('estado', data.estado);
             if (data.observaciones) formData.append('observaciones', data.observaciones);
+            if (data.documentosAsociados) {
+                formData.append('documentosAsociados', typeof data.documentosAsociados === 'string' ? data.documentosAsociados : JSON.stringify(data.documentosAsociados));
+            }
+            if (data.metadata) {
+                formData.append('metadata', typeof data.metadata === 'string' ? data.metadata : JSON.stringify(data.metadata));
+            }
             return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
@@ -367,8 +375,12 @@ export class LegalService {
         return apiClient.upload<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar`, formData);
     }
 
-    async devolverActuacion(expedienteId: string, actuacionId: string, observaciones: string): Promise<any> {
-        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/devolver`, { observaciones });
+    async devolverActuacion(expedienteId: string, actuacionId: string, observaciones: string, skipStageUpdate?: boolean): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/devolver`, { observaciones, skipStageUpdate });
+    }
+
+    async deleteActuacion(expedienteId: string, id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${id}`);
     }
 
     // Abogados
@@ -459,6 +471,12 @@ export class LegalService {
 
     async actualizarDocumento(id: string, data: Partial<Documento>): Promise<Documento> {
         return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}`, data);
+    }
+
+    async actualizarDocumentoArchivo(id: string, file: File): Promise<Documento> {
+        const formData = new FormData();
+        formData.append('archivo', file);
+        return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}/upload`, formData);
     }
 
     async eliminarDocumento(id: string): Promise<void> {
@@ -622,6 +640,10 @@ export class LegalService {
 
     async replaceDocumentoConsulta(documentoId: string, formData: FormData): Promise<any> {
         return apiClient.upload<any>(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}/replace`, formData);
+    }
+
+    async actualizarDocumentoConsulta(documentoId: string, data: { firmado?: boolean; nombre?: string; descripcion?: string }): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}`, data);
     }
 
     getDocumentosConsultaDownloadUrl(consultaId: string): string {

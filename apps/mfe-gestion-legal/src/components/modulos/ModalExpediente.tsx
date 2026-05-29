@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ModalExpediente - Modal COMPLETO de visualización del expediente judicial
  * ✅ Nuevo diseño corporativo ESAP 2025 premium
  * ✅ Estilo moderno con header destacado y métricas visuales
@@ -9,13 +9,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import {
-  FileText, Scale, User, Calendar, Clock, AlertTriangle,
+  FileText, Scale, User, Users, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
   AlertCircle, TrendingUp, X, Search, Share, Plus,
   Building2, Gavel, MapPin, DollarSign, FileCheck,
-  MessageSquare, Send, Edit, Filter, ChevronDown,
+  MessageSquare, Send, Edit, Filter, ChevronDown, ChevronRight,
   Briefcase, Phone, Mail, Hash, Activity, Bell,
-  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check, Link as LinkIcon, Unlink
+  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check, Link as LinkIcon, Unlink, CornerUpLeft, History
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -39,6 +39,8 @@ import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { ModalAnexarProceso } from './ModalAnexarProceso';
 import { ModalProvisionContable } from './ModalProvisionContable';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { ModalDevolverActuacion } from './ModalDevolverActuacion';
+import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
@@ -47,12 +49,21 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { isViewableInBrowser } from '../../../../utils/fileUtils';
 import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
+import { calcularProgreso } from '../core/expedienteShared';
 import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
 import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
 import { TabTrazabilidadExpediente } from '../core/TabTrazabilidadExpediente';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
+
+const normalizeString = (str: string) => {
+  return str
+    ?.toLowerCase()
+    ?.normalize('NFD')
+    ?.replace(/[\u0300-\u036f]/g, '')
+    ?.trim() || '';
+};
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -81,15 +92,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
+  const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
+  const [emailInitialData, setEmailInitialData] = useState<Partial<NuevaComunicacionData> | undefined>(undefined);
 
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
-  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string; descripcion?: string; id?: string } | null>(null);
   const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
   const [showReasignarModal, setShowReasignarModal] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false); // Modal de confirmación archivar
+  const [modalDevolverAbierto, setModalDevolverAbierto] = useState(false);
+  const [devolviendo, setDevolviendo] = useState(false);
   const [motivoArchivo, setMotivoArchivo] = useState(''); // Motivo de archivo
   const [showEliminarModal, setShowEliminarModal] = useState(false); // Modal de confirmación eliminar
   const [motivoEliminar, setMotivoEliminar] = useState(''); // Motivo de eliminación
@@ -98,6 +113,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [selectedAbogado, setSelectedAbogado] = useState('');
   const [reasignando, setReasignando] = useState(false);
   const [audienciaIdPendienteEliminar, setAudienciaIdPendienteEliminar] = useState<string | null>(null);
+  const [actuacionIdPendienteEliminar, setActuacionIdPendienteEliminar] = useState<string | null>(null);
 
   // Estados de datos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -109,6 +125,29 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [actuaciones, setActuaciones] = useState<any[]>([]);
   const [loadingActuaciones, setLoadingActuaciones] = useState(false);
   const [audienciasProgramadas, setAudienciasProgramadas] = useState<any[]>([]);
+
+  const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo(expediente?.modulo || 'defensa-judicial');
+
+  const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+
+  const procesoSeleccionado = (tiposProcesosActivos || []).find((t: any) => {
+    const normId = normalize(t.id);
+    const normName = normalize(t.nombre || t.name);
+    const expTipo = normalize(expediente?.tipo);
+    const expTipoProceso = normalize(expediente?.tipoProceso);
+    const expTipoAccion = normalize(expediente?.tipoAccion);
+
+    return normId === expTipo ||
+           normId === expTipoProceso ||
+           normId === expTipoAccion ||
+           normName === expTipo ||
+           normName === expTipoProceso ||
+           normName === expTipoAccion;
+  });
+
+  const columnasTablero = (procesoSeleccionado?.estados && procesoSeleccionado.estados.length > 0)
+    ? procesoSeleccionado.estados
+    : estadosActivos;
 
   // Estados de edición AUX
   const [audienciaAReasignar, setAudienciaAReasignar] = useState<any>(null);
@@ -399,18 +438,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const isPrevisuable = (doc: any): boolean => {
     const nombre = (doc.nombre || '').toLowerCase();
+    // Limpiar el sufijo (firmado) si existe para detectar correctamente la extensión
+    const cleanNombre = nombre.replace(/\s*\(firmado\)\s*/g, '').trim();
+
     // Excel NO previsuable (aún)
-    if (nombre.endsWith('.xls') || nombre.endsWith('.xlsx')) {
+    if (cleanNombre.endsWith('.xls') || cleanNombre.endsWith('.xlsx')) {
       return false;
     }
     // PDF, imágenes y Word (.doc/.docx) SÍ previsuables — Word se renderiza con mammoth.js en el visor
     if (
-      nombre.endsWith('.pdf') ||
-      nombre.endsWith('.jpg') ||
-      nombre.endsWith('.png') ||
-      nombre.endsWith('.jpeg') ||
-      nombre.endsWith('.doc') ||
-      nombre.endsWith('.docx')
+      cleanNombre.endsWith('.pdf') ||
+      cleanNombre.endsWith('.jpg') ||
+      cleanNombre.endsWith('.png') ||
+      cleanNombre.endsWith('.jpeg') ||
+      cleanNombre.endsWith('.doc') ||
+      cleanNombre.endsWith('.docx')
     ) {
       return true;
     }
@@ -522,7 +564,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
     const fullUrl = getFullUrl(doc.url);
     // Abrir el documento en el visor inline
-    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || 'Documento', asunto: doc.tipo || '' });
+    setDocParaVisor({ 
+      url: fullUrl, 
+      nombre: doc.nombre || 'Documento', 
+      asunto: doc.tipo || '', 
+      descripcion: doc.descripcion || '',
+      id: doc.id 
+    });
     setVisorAbierto(true);
   };
 
@@ -730,11 +778,42 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     });
   };
 
-  const handleCambiarEtapa = (nuevaEtapa: string) => {
-    toast.success('✅ Etapa actualizada', {
-      description: `El expediente pasó a etapa: ${nuevaEtapa}`,
-      duration: 3000
-    });
+  const handleCambiarEtapa = async (nuevaEtapa: string) => {
+    try {
+      const id = expediente.uuid || expediente.id;
+
+      // Validar si la nueva etapa requiere aprobación
+      const colDestino = (columnasTablero || []).find((e: any) => 
+        normalizeString(e.id) === normalizeString(nuevaEtapa) || 
+        normalizeString(e.nombre) === normalizeString(nuevaEtapa)
+      );
+      const destinoRequiereAprobacion = !!(colDestino && colDestino.aprobacionTipo && colDestino.aprobacionTipo !== 'ninguno');
+
+      if (destinoRequiereAprobacion) {
+        const tieneActuacionProcesal = (actuaciones || []).some(
+          (a: any) => a.tipo !== 'NOTA_INTERNA' && a.tipo !== 'NOTA'
+        );
+        if (!tieneActuacionProcesal) {
+          toast.error('No se puede enviar a aprobación', {
+            description: 'Debe registrar al menos una actuación procesal antes de enviar a aprobación.',
+            duration: 5000
+          });
+          return;
+        }
+      }
+
+      await legalService.updateExpediente(id, {
+        etapaProcesal: nuevaEtapa
+      });
+      toast.success('✅ Etapa actualizada', {
+        description: `El expediente pasó a etapa: ${nuevaEtapa}`,
+        duration: 3000
+      });
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error al actualizar etapa:', error);
+      toast.error('Error al mover expediente');
+    }
   };
 
   const handleReasignarAbogado = () => {
@@ -893,6 +972,31 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
+  const handleDeleteDocument = async (doc: any) => {
+    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el documento "${doc.nombre}"? Esta acción no se puede deshacer.`);
+    if (!confirmacion) return;
+
+    try {
+      toast.loading('Eliminando documento...', { id: 'delete-doc' });
+      await legalService.eliminarDocumento(doc.id);
+
+      // Actualizar lista local
+      setDocumentos(prev => prev.filter(d => d.id !== doc.id));
+
+      toast.success('Documento eliminado', { id: 'delete-doc' });
+
+      // Refrescar actuaciones y expediente por si cambió algo
+      const id = expediente.uuid || expediente.id;
+      if (id) {
+        loadDocumentos(id);
+        loadActuaciones(id);
+      }
+    } catch (error) {
+      console.error('Error al eliminar documento:', error);
+      toast.error('Error al eliminar documento', { id: 'delete-doc' });
+    }
+  };
+
   const handleEliminarTarea = async (tareaId: string) => {
     try {
       await legalService.deleteTarea(tareaId);
@@ -908,29 +1012,218 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // ==================== HANDLERS DE ACTUACIONES Y AUDIENCIAS ====================
 
-  const { estadosActivos } = useConfiguracionModulo(expediente.modulo || 'defensa-judicial');
+  const etapaActual = expediente?.etapa || '';
+  const etapaActualNorm = normalizeString(etapaActual);
+  const colActual = (columnasTablero || []).find((e: any) => 
+    normalizeString(e.id) === etapaActualNorm || 
+    normalizeString(e.nombre) === etapaActualNorm
+  );
+  const requiereAprobacion = !!(colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno');
+
+  const currentIndex = (columnasTablero || []).findIndex((e: any) => 
+    normalizeString(e.id) === etapaActualNorm || 
+    normalizeString(e.nombre) === etapaActualNorm
+  );
+  const hasNextStage = currentIndex !== -1 && currentIndex < (columnasTablero || []).length - 1;
+  const colSiguiente = hasNextStage ? columnasTablero[currentIndex + 1] : null;
+  const proximaRequiereAprobacion = !!(colSiguiente && colSiguiente.aprobacionTipo && colSiguiente.aprobacionTipo !== 'ninguno');
 
   const handleAprobarEtapaKanban = () => {
-    // Validar que no haya actuaciones en estado PENDIENTE de autorizacion
-    const actuacionesPendientes = actuaciones.filter(a => a.metadata?.estadoAutorizacion === 'PENDIENTE');
-    
-    if (actuacionesPendientes.length > 0) {
-      toast.error('No se puede avanzar la etapa. Existen actuaciones pendientes de aprobación.', {
-        description: `Falta aprobar ${actuacionesPendientes.length} actuación(es).`
+    // Validar que todas las actuaciones con firma pendiente tengan sus documentos firmados
+    const isDocSigned = (d: any) => {
+      if (!d) return false;
+      if (d.descripcion) {
+        try {
+          const data = JSON.parse(d.descripcion);
+          return !!(data && data.firmado);
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    };
+
+    const checkActuacionDocsSigned = (act: any) => {
+      const associatedDocIds = act.metadata?.documentosAsociados || [];
+      if (associatedDocIds.length === 0) return true;
+      
+      const resolvedDocs = documentos.filter(doc => {
+        const docIdStr = String(doc.id);
+        return associatedDocIds.some((id: any) => String(id) === docIdStr);
+      });
+      
+      return resolvedDocs.every(doc => isDocSigned(doc));
+    };
+
+    const actuacionesConDocsSinFirmar = actuaciones.filter(a => {
+      return !checkActuacionDocsSigned(a);
+    });
+
+    if (actuacionesConDocsSinFirmar.length > 0) {
+      toast.error('No se puede avanzar la etapa. Existen actuaciones con documentos sin firmar.', {
+        description: `Las siguientes actuaciones tienen documentos pendientes de firma: ${actuacionesConDocsSinFirmar.map(a => a.descripcion).join(', ')}`
       });
       return;
     }
 
     // Avanzar etapa
-    const etapaActual = expediente.etapa || '';
-    const currentIndex = estadosActivos.findIndex(e => e.id === etapaActual || e.nombre === etapaActual);
+    const currentIndex = columnasTablero.findIndex(e => 
+      normalizeString(e.id) === etapaActualNorm || 
+      normalizeString(e.nombre) === etapaActualNorm
+    );
     
-    if (currentIndex !== -1 && currentIndex < estadosActivos.length - 1) {
-      const nuevaEtapa = estadosActivos[currentIndex + 1].id;
+    if (currentIndex !== -1 && currentIndex < columnasTablero.length - 1) {
+      const colDestino = columnasTablero[currentIndex + 1];
+      const nuevaEtapa = colDestino.id;
+
+      // Validar reglas de aprobación de la etapa ACTUAL (para poder continuar/salir de ella)
+      if (colActual) {
+        const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+        if (aprobacionTipo === 'rol' && aprobacionRol) {
+          const hasRol = authService.hasRole(aprobacionRol) || authService.isSuperAdmin();
+          if (!hasRol) {
+            toast.error('No autorizado para aprobar esta etapa', {
+              description: `Se requiere el rol "${aprobacionRol}" para aprobar la etapa "${colActual.nombre}" y continuar.`
+            });
+            return;
+          }
+        } else if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+          const currentUser = authService.getCurrentUser() as any;
+          const currentUserId = currentUser?.id || currentUser?.id_user || currentUser?.user?.id || currentUser?.user?.id_user || currentUser?.person?.id;
+          const isAuthorizedUser = String(currentUserId) === String(aprobacionUsuario) || authService.isSuperAdmin();
+          if (!isAuthorizedUser) {
+            toast.error('No autorizado para aprobar esta etapa', {
+              description: `Solo el usuario configurado como aprobador puede aprobar la etapa "${colActual.nombre}" y continuar.`
+            });
+            return;
+          }
+        }
+      }
+
       handleCambiarEtapa(nuevaEtapa);
-      toast.success('✅ Etapa aprobada. Avanzando al siguiente paso del proceso.');
     } else {
       toast.info('El expediente ya se encuentra en la última etapa del proceso.');
+    }
+  };
+
+  const handleAutoAdvanceStage = async () => {
+    const id = expediente.uuid || expediente.id;
+    if (id) {
+      await Promise.all([
+        loadActuaciones(id),
+        loadDocumentos(id)
+      ]);
+    }
+
+    const currentIndex = columnasTablero.findIndex(e => 
+      normalizeString(e.id) === etapaActualNorm || 
+      normalizeString(e.nombre) === etapaActualNorm
+    );
+    
+    if (currentIndex !== -1 && currentIndex < columnasTablero.length - 1) {
+      const colDestino = columnasTablero[currentIndex + 1];
+      const nuevaEtapa = colDestino.id;
+
+      if (colActual) {
+        const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+        if (aprobacionTipo === 'rol' && aprobacionRol) {
+          const hasRol = authService.hasRole(aprobacionRol) || authService.isSuperAdmin();
+          if (!hasRol) {
+            toast.error('No autorizado para avanzar la etapa automáticamente', {
+              description: `Se requiere el rol "${aprobacionRol}" para avanzar de la etapa "${colActual.nombre}".`
+            });
+            return;
+          }
+        } else if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+          const currentUser = authService.getCurrentUser() as any;
+          const currentUserId = currentUser?.id || currentUser?.id_user || currentUser?.user?.id || currentUser?.user?.id_user || currentUser?.person?.id;
+          const isAuthorizedUser = String(currentUserId) === String(aprobacionUsuario) || authService.isSuperAdmin();
+          if (!isAuthorizedUser) {
+            toast.error('No autorizado para avanzar la etapa automáticamente', {
+              description: `Solo el aprobador configurado puede avanzar la etapa "${colActual.nombre}".`
+            });
+            return;
+          }
+        }
+      }
+
+      await handleCambiarEtapa(nuevaEtapa);
+    }
+  };
+
+  const handleDevolverEtapaKanban = () => {
+    setModalDevolverAbierto(true);
+  };
+
+  const handleConfirmarDevolucion = async (observaciones: string) => {
+    setDevolviendo(true);
+    try {
+      const id = expediente.uuid || expediente.id;
+      if (!id) return;
+
+      const currentIndex = columnasTablero.findIndex(e => 
+        normalizeString(e.id) === etapaActualNorm || 
+        normalizeString(e.nombre) === etapaActualNorm
+      );
+      
+      if (currentIndex <= 0) {
+        toast.info('No hay una etapa anterior a la cual devolver el expediente.');
+        return;
+      }
+      
+      const colDestino = columnasTablero[currentIndex - 1];
+      const etapaAnterior = colDestino.id;
+
+      const actuacionesPendientes = actuaciones.filter(a => a.metadata?.estadoAutorizacion === 'PENDIENTE');
+
+      if (actuacionesPendientes.length > 0) {
+        for (let i = 0; i < actuacionesPendientes.length; i++) {
+          const act = actuacionesPendientes[i];
+          const skipStage = i > 0;
+          await legalService.devolverActuacion(id, String(act.id), observaciones, skipStage);
+        }
+        toast.success(`↩ Expediente devuelto a la etapa: ${colDestino.nombre || etapaAnterior}`);
+      } else {
+        await legalService.updateExpediente(id, {
+          etapaProcesal: etapaAnterior
+        });
+
+        const currentUserNombre = ((): string => {
+          const u = authService.getCurrentUser() as any;
+          return (
+            u?.fullName ||
+            u?.person?.full_name ||
+            `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+            u?.username ||
+            'Sistema'
+          );
+        })();
+
+        await legalService.createActuacion({
+          expedienteId: id,
+          tipoActuacion: 'DEVOLUCION_ETAPA',
+          descripcion: `Devolución de etapa a "${colDestino.nombre || etapaAnterior}"`,
+          fechaActuacion: new Date().toISOString(),
+          responsable: currentUserNombre,
+          metadata: {
+            estado: 'Devuelto con observaciones',
+            observacionesDevolucion: observaciones,
+            devueltoPor: currentUserNombre,
+            fechaDevolucion: new Date().toISOString()
+          }
+        });
+
+        toast.success(`↩ Etapa devuelta a: ${colDestino.nombre || etapaAnterior}`);
+      }
+
+      setModalDevolverAbierto(false);
+      if (onUpdate) onUpdate();
+      loadActuaciones(id);
+    } catch (error) {
+      console.error('Error al devolver la etapa:', error);
+      toast.error('Error al procesar la devolución de etapa');
+    } finally {
+      setDevolviendo(false);
     }
   };
 
@@ -952,7 +1245,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         metadata: {
           estadoAutorizacion: 'PENDIENTE',
           aprobacionTipo: 'rol',
-          aprobacionRol: 'SUPER_ADMIN' // o APROBADOR_KANBAN
+          aprobacionRol: 'SUPER_ADMIN', // o APROBADOR_KANBAN
+          documentosAsociados: data.documentosAsociados
         }
       };
 
@@ -1062,6 +1356,27 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     } catch (error) {
       console.error('Error eliminando audiencia', error);
       toast.error('No se pudo eliminar la audiencia');
+    }
+  };
+
+  const handleDeleteActuacion = (id: string) => {
+    setActuacionIdPendienteEliminar(id);
+  };
+
+  const confirmarEliminarActuacion = async () => {
+    const id = actuacionIdPendienteEliminar;
+    if (!id) return;
+    setActuacionIdPendienteEliminar(null);
+
+    const expId = expediente.uuid || expediente.id;
+    try {
+      await legalService.deleteActuacion(String(expId), id);
+      toast.success('🗑️ Actuación eliminada');
+      loadActuaciones(String(expId));
+    } catch (error: any) {
+      console.error('Error eliminando actuación', error);
+      const errorMsg = error?.response?.data?.message || 'No se pudo eliminar la actuación';
+      toast.error(errorMsg);
     }
   };
 
@@ -1185,7 +1500,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   };
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
-  const porcentajeTiempo = Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100);
+  const { porcentajeGlobal: porcentajeTiempo } = calcularProgreso(
+    expediente.diasTotales,
+    expediente.diasRestantes,
+    expediente.etapa,
+    columnasTablero,
+    documentos,
+    actuaciones
+  );
 
   // ==================== DATOS DE ESTADO (Ya inicializados arriba) ====================
   // Las variables documentos, actuaciones y audienciasProgramadas ahora son estados reactivos.
@@ -1363,34 +1685,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   ];
 
-  const riesgosIdentificados = (() => {
-    const riesgosBackend = (expediente as any)?.riesgosIdentificados;
-    if (Array.isArray(riesgosBackend) && riesgosBackend.length > 0) {
-      return riesgosBackend;
-    }
-    return [
-      {
-        nivel: 'Alto',
-        descripcion: 'Cuantía elevada podría impactar el presupuesto institucional',
-        impacto: 'Financiero',
-        mitigacion: 'Evaluar posibilidad de conciliación'
-      },
-      {
-        nivel: 'Medio',
-        descripcion: 'Precedente jurisprudencial desfavorable en casos similares',
-        impacto: 'Jurídico',
-        mitigacion: 'Fortalecer argumentación con doctrina reciente'
-      },
-      {
-        nivel: 'Medio',
-        descripcion: 'Términos procesales ajustados para aporte de pruebas',
-        impacto: 'Procesal',
-        mitigacion: 'Calendario estricto de seguimiento'
-      }
-    ];
-  })();
-
-
   // Filtrar documentos
   const documentosFiltrados = documentos.filter(doc => {
     const matchBusqueda = doc.nombre.toLowerCase().includes(busquedaDocs.toLowerCase());
@@ -1443,9 +1737,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent 
           hideCloseButton 
-          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0"
+          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
           style={{ width: '80vw', maxWidth: '80vw' }}
         >
+          <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">
             Expediente Judicial {expediente.id} - Vista Completa
           </DialogTitle>
@@ -1482,66 +1777,73 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   {actuaciones.length} actuaciones
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                  <Target className="w-3 h-3 mr-1" />
-                  {tareas.length} tareas
+                  <History className="w-3 h-3 mr-1" />
+                  {tareas.length + notas.length + actuaciones.length} trazabilidad
                 </Badge>
               </>
             }
             actions={
-              <div className="flex gap-2">
-                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsEditModalOpen(true)}
-                    className="font-semibold text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
-                    style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
-                  >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Editar Proceso
-                  </Button>
-                )}
-                {(() => {
-                  const currentUser = authService.getCurrentUser() as any;
-                  const currentUserName = (
-                    currentUser?.fullName ||
-                    currentUser?.person?.full_name ||
-                    `${currentUser?.person?.first_name ?? ''} ${currentUser?.person?.last_name ?? ''}`.trim()
-                  )?.toLowerCase().trim();
-                  const esAbogadoResponsable =
-                    !!currentUserName && currentUserName === expediente.abogadoAsignado?.toLowerCase().trim();
-                  return (
+              <div className="flex items-center gap-4">
+                <BarraProgresoExpediente
+                  diasTotales={expediente.diasTotales}
+                  diasRestantes={expediente.diasRestantes}
+                  etapa={expediente.etapa}
+                  columnasTablero={columnasTablero}
+                  documentos={documentos}
+                  actuaciones={actuaciones}
+                  compact={true}
+                />
+                <div className="flex gap-2">
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
                     <Button
                       variant="outline"
-                      onClick={() => setIsProvisionModalOpen(true)}
-                      disabled={!esAbogadoResponsable}
-                      title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
-                      className="font-semibold text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setIsEditModalOpen(true);
+                      }}
+                      className="font-bold text-xs h-[38px] px-4 text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
                     >
-                      <DollarSign className="w-3 h-3 mr-1" />
-                      Provisión Contable
+                      <Edit className="w-4 h-4 mr-1.5" />
+                      Editar Proceso
                     </Button>
-                  );
-                })()}
-                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && !(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setModalAnexarAbierto(true)}
-                    className="font-semibold text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
-                    style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
-                  >
-                    <LinkIcon className="w-3 h-3 mr-1" />
-                    Asociado
-                  </Button>
-                )}
+                  )}
+                  {(() => {
+                    const currentUser = authService.getCurrentUser() as any;
+                    const currentUserName = (
+                      currentUser?.fullName ||
+                      currentUser?.person?.full_name ||
+                      `${currentUser?.person?.first_name ?? ''} ${currentUser?.person?.last_name ?? ''}`.trim()
+                    )?.toLowerCase().trim();
+                    const esAbogadoResponsable =
+                      !!currentUserName && currentUserName === expediente.abogadoAsignado?.toLowerCase().trim();
+                    return (
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsProvisionModalOpen(true)}
+                        disabled={!esAbogadoResponsable}
+                        title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
+                        className="font-bold text-xs h-[38px] px-4 text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <DollarSign className="w-4 h-4 mr-1.5" />
+                        Provisión Contable
+                      </Button>
+                    );
+                  })()}
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && !(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setModalAnexarAbierto(true)}
+                      className="font-bold text-xs h-[38px] px-4 text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                    >
+                      <LinkIcon className="w-4 h-4 mr-1.5" />
+                      Asociado
+                    </Button>
+                  )}
+                </div>
               </div>
             }
             onClose={onClose}
-          />
-
-          <BarraProgresoExpediente
-            diasTotales={expediente.diasTotales}
-            diasRestantes={expediente.diasRestantes}
           />
 
           {/* ==================== CONTENIDO CON TABS ==================== */}
@@ -1572,7 +1874,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               {/* ==================== TAB: GENERAL ==================== */}
               <TabsContent value="general" className="space-y-4">
                 {/* Resumen Ejecutivo */}
-                <Card className="p-4 bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200">
+                <Card className="p-4 bg-blue-50/30 border-2 border-blue-200">
                   <h3 className="text-sm font-black text-blue-900 mb-3 flex items-center gap-2">
                     <Briefcase className="w-4 h-4" />
                     RESUMEN EJECUTIVO
@@ -1765,7 +2067,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </Card>
 
                 {/* Última Actuación Destacada */}
-                <Card className="p-4 border-2 border-blue-300" style={{ background: 'linear-gradient(135deg, #F0F7FF 0%, #E0EDFF 100%)' }}>
+                <Card className="p-4 border-2 border-blue-300 bg-blue-50/55">
                   <h4 className="text-sm font-black mb-2 flex items-center gap-2" style={{ color: '#003DA5' }}>
                     <AlertCircle className="w-5 h-5" />
                     ÚLTIMA ACTUACIÓN PROCESAL
@@ -1792,44 +2094,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Badge className="bg-blue-600 text-white text-xs font-bold">
                       {expediente.ultimaActuacion?.tipo || 'Sin tipo'}
                     </Badge>
-                  </div>
-                </Card>
-
-                {/* Riesgos Identificados */}
-                <Card className="p-4 border-l-4 border-orange-500">
-                  <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-orange-600" />
-                    RIESGOS IDENTIFICADOS
-                  </h4>
-                  <div className="space-y-3">
-                    {riesgosIdentificados.length > 0 ? (
-                      riesgosIdentificados.map((riesgo, idx) => (
-                        <div key={idx} className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                          <div className="flex items-start justify-between mb-2">
-                            <Badge
-                              className="font-bold text-xs"
-                              style={{
-                                background: riesgo.nivel === 'Alto' ? '#DC2626' : '#F59E0B',
-                                color: '#FFFFFF'
-                              }}
-                            >
-                              Nivel {riesgo.nivel}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {riesgo.impacto}
-                            </Badge>
-                          </div>
-                          <p className="text-sm font-semibold text-gray-900 mb-1">
-                            {riesgo.descripcion}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            💡 <strong>Mitigación:</strong> {riesgo.mitigacion}
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500 italic">Sin riesgos identificados</p>
-                    )}
                   </div>
                 </Card>
 
@@ -1908,117 +2172,194 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     });
                   }
 
-                  return allPartes.map((parte, idx) => {
-                    // Determinar colores según tipo de parte
-                    const getParteColors = (tipo: string) => {
+                  const demandantes = allPartes.filter(p => p.tipo === 'Demandante');
+                  const demandados = allPartes.filter(p => p.tipo === 'Demandado');
+                  const otrosActores = allPartes.filter(p => p.tipo === 'Otro Actor');
+
+                  // Helper function to extract initials from name
+                  const getInitials = (name: string) => {
+                    if (!name) return '?';
+                    const parts = name.trim().split(/\s+/);
+                    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+                    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+                  };
+
+                  // Helper function to render empty state card
+                  const renderEmptyState = (tipo: string, message: string, color: 'amber' | 'rose' | 'slate') => {
+                    const colorClasses = {
+                      amber: 'border-amber-200 bg-amber-50/20 text-amber-400',
+                      rose: 'border-rose-200 bg-rose-50/20 text-rose-400',
+                      slate: 'border-slate-200 bg-slate-50/20 text-slate-400',
+                    };
+                    const Icon = tipo === 'Demandante' ? User : (tipo === 'Demandado' ? Building2 : Users);
+
+                    return (
+                      <div className={`flex flex-col items-center justify-center p-6 text-center border-2 border-dashed rounded-2xl min-h-[140px] ${colorClasses[color]}`}>
+                        <Icon className="w-8 h-8 opacity-40 mb-2" />
+                        <p className="text-xs font-semibold text-gray-400">{message}</p>
+                      </div>
+                    );
+                  };
+
+                  // Helper function to render each party card
+                  const todasLasPartes = [...demandantes, ...demandados, ...otrosActores];
+
+                  const renderParteCard = (parte: any, idx: number) => {
+                    const getTheme = (tipo: string) => {
                       if (tipo === 'Demandante') {
                         return {
-                          borderColor: '#F57C00',
-                          textColor: '#F57C00',
-                          bgColor: '#FFF3E0',
-                          icon: <User className="w-4 h-4" />
+                          avatarBg: 'bg-amber-500',
+                          badgeBg: 'bg-amber-50 text-amber-800 border-amber-200 shadow-sm shadow-amber-500/5',
+                          badgeLabel: 'Demandante',
+                          accentColor: 'border-orange-500',
+                          ringColor: 'ring-orange-100'
                         };
                       } else if (tipo === 'Demandado') {
                         return {
-                          borderColor: '#DC2626',
-                          textColor: '#DC2626',
-                          bgColor: '#FEE2E2',
-                          icon: <Building2 className="w-4 h-4" />
+                          avatarBg: 'bg-red-500',
+                          badgeBg: 'bg-rose-50 text-rose-800 border-rose-200 shadow-sm shadow-rose-500/5',
+                          badgeLabel: 'Demandado',
+                          accentColor: 'border-red-500',
+                          ringColor: 'ring-red-100'
                         };
                       } else {
-                        // Otro Actor
                         return {
-                          borderColor: '#6B7280',
-                          textColor: '#6B7280',
-                          bgColor: '#F3F4F6',
-                          icon: <User className="w-4 h-4" />
+                          avatarBg: 'bg-blue-600',
+                          badgeBg: 'bg-indigo-50 text-indigo-800 border-indigo-200 shadow-sm shadow-indigo-500/5',
+                          badgeLabel: parte.rol || 'Otro Actor',
+                          accentColor: 'border-indigo-500',
+                          ringColor: 'ring-indigo-100'
                         };
                       }
                     };
 
-                    const colors = getParteColors(parte.tipo);
+                    const theme = getTheme(parte.tipo);
+                    const initials = getInitials(parte.nombre);
+                    const isJuridica = parte.tipoPersona === 'juridica' || (parte.identificacion && (parte.identificacion.includes('-') || parte.identificacion.length > 9));
 
                     return (
                       <Card
                         key={idx}
-                        className="p-4 border-l-4"
-                        style={{ borderLeftColor: colors.borderColor }}
+                        className="relative p-5 bg-white rounded-2xl border border-slate-200/65 shadow-sm hover:shadow-xl hover:border-slate-350 transition-all duration-300 hover:-translate-y-1 ease-out flex flex-col justify-between overflow-hidden group"
                       >
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h4 className="text-sm font-black flex items-center gap-2" style={{ color: colors.textColor }}>
-                              {colors.icon}
-                              {parte.tipo.toUpperCase()}
-                            </h4>
-                            {parte.tipo === 'Otro Actor' && parte.rol && (
-                              <p className="text-xs text-gray-600 mt-1 ml-6">
-                                <span className="font-semibold">Rol:</span> {parte.rol}
-                              </p>
-                            )}
-                            {parte.tipo === 'Demandado' && parte.cargo && (
-                              <p className="text-xs text-gray-600 mt-1 ml-6">
-                                <span className="font-semibold">Cargo:</span> {parte.cargo}
-                              </p>
-                            )}
-                          </div>
-                          <Badge
-                            className="font-bold text-xs"
-                            style={{
-                              background: colors.bgColor,
-                              color: colors.textColor
-                            }}
-                          >
-                            {parte.tipo}
-                          </Badge>
-                        </div>
+                        {/* Acento lateral premium con color sólido */}
+                        <div className={`absolute top-0 left-0 w-1.5 h-full ${theme.avatarBg}`} />
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">Nombre / Razón Social</p>
-                            <p className="text-sm font-bold text-gray-900">{parte.nombre}</p>
+                        <div className="flex flex-col gap-4">
+                          {/* Fila Superior: Avatar + Nombre + Rol */}
+                          <div className="flex items-start gap-3">
+                            <div className={`w-11 h-11 rounded-full flex items-center justify-center font-black text-sm ${theme.avatarBg} text-white shadow-md ring-4 ${theme.ringColor} transition-transform duration-300 group-hover:scale-105 flex-shrink-0`}>
+                              {initials}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold tracking-wider uppercase border ${theme.badgeBg}`}>
+                                    {theme.badgeLabel}
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] font-black tracking-wide border ${
+                                      isJuridica 
+                                        ? 'bg-violet-50/50 text-violet-700 border-violet-200' 
+                                        : 'bg-sky-50/50 text-sky-700 border-sky-200'
+                                    }`}
+                                  >
+                                    {isJuridica ? 'Persona Jurídica' : 'Persona Natural'}
+                                  </Badge>
+                                </div>
+                                <h4 className="text-sm font-black text-slate-800 truncate" title={parte.nombre}>
+                                  {parte.nombre}
+                                </h4>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                            <p className="text-sm font-bold text-gray-900">{parte.identificacion}</p>
+
+                          {/* ID y Detalles */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-205 px-2.5 py-1 rounded-lg">
+                              <Hash className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{parte.identificacion || 'Sin identificación'}</span>
+                            </div>
                           </div>
+
+                          {/* Apoderado */}
                           {parte.apoderado && (
-                            <div className="col-span-2">
-                              <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
-                                <p className="text-xs font-bold text-indigo-700 mb-1 flex items-center gap-1">
-                                  📜 Apoderado
+                            <div className="mt-1 p-2.5 rounded-xl bg-indigo-50/30 border border-indigo-100/50 flex items-center gap-2.5 transition-all group-hover:bg-indigo-50/60 group-hover:border-indigo-200">
+                              <div className="p-1.5 rounded-lg bg-white border border-indigo-100 flex-shrink-0 shadow-sm">
+                                <Scale className="w-3.5 h-3.5 text-indigo-600" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[9px] font-black text-indigo-400 uppercase tracking-wider">Apoderado Asignado</p>
+                                <p className="text-[11px] font-extrabold text-indigo-900 truncate" title={parte.apoderado}>
+                                  {parte.apoderado}
                                 </p>
-                                <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
                               </div>
                             </div>
                           )}
-                          {/* <div>
-                          <p className="text-xs text-gray-500 mb-1">Notificaciones</p>
-                          <Badge variant="outline" className="text-xs">
-                            {parte.notificaciones}
-                          </Badge>
-                        </div> */}
                         </div>
 
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                          <h5 className="text-xs font-bold text-gray-700 mb-2">Datos de Contacto</h5>
-                          <div className="space-y-2">
-                            <p className="text-xs text-gray-600 flex items-center gap-2">
-                              <MapPin className="w-3 h-3" />
-                              {parte.direccion}
-                            </p>
-                            <p className="text-xs text-gray-600 flex items-center gap-2">
-                              <Phone className="w-3 h-3" />
-                              {parte.telefono}
-                            </p>
-                            <p className="text-xs text-gray-600 flex items-center gap-2">
-                              <Mail className="w-3 h-3" />
-                              {parte.email}
-                            </p>
+                        {/* Fila de Contacto Avanzada y Estilizada */}
+                        <div className="mt-4 flex flex-col gap-2 border-t border-slate-150/60 pt-3">
+                          <div className="grid grid-cols-1 gap-2">
+                            {parte.email && parte.email !== 'En proceso' && parte.email !== 'N/A' ? (
+                              <a 
+                                href={`mailto:${parte.email}`} 
+                                className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 hover:text-blue-600 transition-colors bg-blue-50/30 hover:bg-blue-50 border border-blue-100/50 px-2 py-1.5 rounded-lg truncate" 
+                                title={parte.email}
+                              >
+                                <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                                <span className="truncate">{parte.email}</span>
+                              </a>
+                            ) : (
+                              <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-400 bg-slate-50 border border-dashed border-slate-200 px-2 py-1.5 rounded-lg">
+                                <Mail className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                                <span>Sin correo electrónico</span>
+                              </div>
+                            )}
+
+                            {parte.telefono && parte.telefono !== 'En proceso' && parte.telefono !== 'N/A' ? (
+                              <div 
+                                className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 bg-emerald-50/30 border border-emerald-100/50 px-2 py-1.5 rounded-lg truncate" 
+                                title={parte.telefono}
+                              >
+                                <Phone className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                                <span className="truncate">{parte.telefono}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-400 bg-slate-50 border border-dashed border-slate-200 px-2 py-1.5 rounded-lg">
+                                <Phone className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                                <span>Sin número telefónico</span>
+                              </div>
+                            )}
+
+                            {parte.direccion && parte.direccion !== 'En proceso' && parte.direccion !== 'N/A' && (
+                              <div 
+                                className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 bg-amber-50/30 border border-amber-100/50 px-2 py-1.5 rounded-lg truncate" 
+                                title={parte.direccion}
+                              >
+                                <MapPin className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                <span className="truncate">{parte.direccion}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </Card>
                     );
-                  });
+                  };
+
+                  return (
+                    <div className="space-y-4">
+                      {todasLasPartes.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {todasLasPartes.map((parte, idx) => renderParteCard(parte, idx))}
+                        </div>
+                      ) : (
+                        renderEmptyState('Partes', 'No hay demandantes, demandados ni actores registrados', 'slate')
+                      )}
+                    </div>
+                  );
                 })()}</TabsContent>
 
               {/* ==================== TAB: DOCUMENTOS ==================== */}
@@ -2034,6 +2375,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   onViewDocument={handleVerDocumento}
                   onDownloadDocument={handleDescargarDocumento}
                   onDownloadAll={handleDescargarTodos}
+                  onDeleteDocument={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) ? handleDeleteDocument : undefined}
+                  allowSigning={requiereAprobacion}
                 />
               </TabsContent>
 
@@ -2049,12 +2392,28 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onClick: () => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); },
                         color: '#003DA5'
                       },
-                      {
-                        label: 'Aprobar Etapa (Kanban)',
+                      ...(requiereAprobacion ? [
+                        {
+                          label: 'Aprobar Etapa',
                           icono: <CheckCircle className="w-3 h-3 mr-1" />,
                           onClick: handleAprobarEtapaKanban,
                           color: '#10B981'
-                      }
+                        },
+                        {
+                          label: 'Devolver Etapa',
+                          icono: <CornerUpLeft className="w-3 h-3 mr-1" />,
+                          onClick: handleDevolverEtapaKanban,
+                          color: '#EF4444'
+                        }
+                      ] : []),
+                      ...(!requiereAprobacion && colSiguiente ? [
+                        {
+                          label: proximaRequiereAprobacion ? 'Enviar a Aprobación' : 'Avanzar Etapa',
+                          icono: proximaRequiereAprobacion ? <Send className="w-3 h-3 mr-1" /> : <ChevronRight className="w-3 h-3 mr-1" />,
+                          onClick: () => handleCambiarEtapa(colSiguiente.id),
+                          color: '#003DA5'
+                        }
+                      ] : [])
                     ] : []),
                     ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) ? [{
                       label: 'Programar Audiencia',
@@ -2072,8 +2431,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     setModalProgramarAudienciaAbierto(true);
                   } : undefined}
                   onEliminarAudiencia={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_DELETE) ? (id) => handleEliminarAudiencia(id.toString()) : undefined}
+                  onDeleteActuacion={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_DELETE) || authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) ? handleDeleteActuacion : undefined}
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); }}
+                  expedienteId={String(expediente.uuid || expediente.id)}
+                  onReloadExpediente={() => loadActuaciones(String(expediente.uuid || expediente.id))}
+                  onViewDocument={handleVerDocumento}
+                  onAutoAdvanceStage={handleAutoAdvanceStage}
+                  onSendEmail={(initialData) => {
+                    setEmailInitialData(initialData);
+                    setModalNuevaComunicacionOpen(true);
+                  }}
                 />
               </TabsContent>
 
@@ -2243,7 +2611,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   Expediente <strong className="font-black" style={{ color: '#003DA5' }}>{expediente.id}</strong> ·
                   <strong className="text-green-600"> {documentos.length} docs</strong> ·
                   <strong className="text-blue-600"> {actuaciones.length} actuaciones</strong> ·
-                  <strong className="text-orange-600"> {tareas.length} tareas</strong>
+                  <strong className="text-orange-600"> {tareas.length + notas.length + actuaciones.length} trazabilidad</strong>
                 </div>
               </div>
               <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
@@ -2349,6 +2717,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </DialogContent>
       </Dialog >
 
@@ -2763,6 +3132,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         icono="eliminar"
       />
 
+      <DialogoConfirmacion
+        isOpen={!!actuacionIdPendienteEliminar}
+        onClose={() => setActuacionIdPendienteEliminar(null)}
+        onConfirm={confirmarEliminarActuacion}
+        titulo="Eliminar Actuación"
+        mensaje="¿Estás seguro de eliminar esta actuación procesal? Esta acción no se puede deshacer."
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
       {/* VISOR INLINE DE DOCUMENTOS */}
       {docParaVisor && (
         <VisorDocumentoModal
@@ -2771,6 +3152,94 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={docParaVisor.asunto}
+          descripcion={docParaVisor.descripcion}
+          docId={docParaVisor.id}
+          allowSigning={requiereAprobacion}
+          onSignComplete={async (docId, signedData, pdfFile) => {
+            try {
+              const originalDocName = docParaVisor.nombre;
+              let nuevoNombre = originalDocName;
+              if (!originalDocName.toLowerCase().includes('(firmado)')) {
+                const extIndex = originalDocName.lastIndexOf('.');
+                if (extIndex !== -1) {
+                  nuevoNombre = `${originalDocName.substring(0, extIndex)} (Firmado)${originalDocName.substring(extIndex)}`;
+                } else {
+                  nuevoNombre = `${originalDocName} (Firmado)`;
+                }
+              }
+
+              // FIX: Ensure it always has .pdf extension since the signed file is a PDF
+              if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+                nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
+              }
+
+              const signatureJson = JSON.stringify({
+                firmado: true,
+                coords: signedData.coords,
+                firmaImg: signedData.firmaImg,
+                hash: signedData.hash,
+                timestamp: signedData.timestamp,
+                firmante: signedData.firmante,
+                cargo: signedData.cargo,
+                certificadoId: signedData.certificado_id,
+                scale: signedData.scale
+              });
+
+              toast.loading('✍️ Guardando firma en el documento...', { id: 'firma-documento' });
+
+              if (pdfFile) {
+                const renamedFile = new File([pdfFile], nuevoNombre, { type: pdfFile.type });
+                await legalService.actualizarDocumentoArchivo(docId, renamedFile);
+              }
+
+              await legalService.actualizarDocumento(docId, { 
+                nombre: nuevoNombre,
+                descripcion: signatureJson
+              });
+              toast.success('✅ Documento firmado exitosamente', { id: 'firma-documento' });
+
+              // Refrescar documentos
+              const expId = expediente.uuid || expediente.id;
+              if (expId) {
+                await loadDocumentos(expId);
+                await loadActuaciones(expId);
+              }
+              setVisorAbierto(false);
+              setDocParaVisor(null);
+            } catch (error) {
+              console.error('Error al firmar documento:', error);
+              toast.error('❌ Error al actualizar la firma del documento', { id: 'firma-documento' });
+            }
+          }}
+        />
+      )}
+
+      {/* MODAL DE DEVOLUCIÓN DE ETAPA KANBAN */}
+      <ModalDevolverActuacion
+        isOpen={modalDevolverAbierto}
+        onClose={() => setModalDevolverAbierto(false)}
+        onConfirm={handleConfirmarDevolucion}
+        actuacionTitulo={`Etapa Actual: ${expediente.etapa}`}
+      />
+
+      {/* Modal Nueva Comunicación */}
+      {modalNuevaComunicacionOpen && (
+        <ModalNuevaComunicacion
+          isOpen={modalNuevaComunicacionOpen}
+          onClose={() => {
+            setModalNuevaComunicacionOpen(false);
+            setEmailInitialData(undefined);
+          }}
+          initialData={emailInitialData}
+          onSubmit={async (data) => {
+            console.log('Comunicación enviada desde expediente:', data);
+            setModalNuevaComunicacionOpen(false);
+            setEmailInitialData(undefined);
+            const id = expediente.uuid || expediente.id;
+            if (id) {
+              await loadActuaciones(id);
+            }
+          }}
         />
       )}
     </>

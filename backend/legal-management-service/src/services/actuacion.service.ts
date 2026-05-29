@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Actuacion } from '../entities/actuacion.entity';
+import { Documento } from '../entities/documento.entity';
 import { ExpedienteService } from './expediente.service';
 import { TerminosService } from './terminos.service';
 import { ConfigurationsService } from './configurations.service';
@@ -358,7 +359,8 @@ export class ActuacionService {
         actuacionId: string,
         observaciones: string,
         userEmail: string,
-        userName: string
+        userName: string,
+        skipStageUpdate = false
     ): Promise<Actuacion> {
         const actuacion = await this.actuacionRepository.findOne({ where: { id: actuacionId } });
         if (!actuacion) throw new NotFoundException('Actuación no encontrada');
@@ -377,97 +379,99 @@ export class ActuacionService {
         actuacion.metadata = metadata;
         const savedActuacion = await this.actuacionRepository.save(actuacion);
 
-        const esDisciplinario =
-            expediente.jurisdiccion === 'DISCIPLINARIO' ||
-            expediente.jurisdiccion === 'Disciplinaria' ||
-            expediente.tipoProceso === 'DISCIPLINARIO' ||
-            expediente.tipoProceso === 'Disciplinario';
-        const configKey = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
-        const config = await this.configService.findByKey(configKey);
+        if (!skipStageUpdate) {
+            const esDisciplinario =
+                expediente.jurisdiccion === 'DISCIPLINARIO' ||
+                expediente.jurisdiccion === 'Disciplinaria' ||
+                expediente.tipoProceso === 'DISCIPLINARIO' ||
+                expediente.tipoProceso === 'Disciplinario';
+            const configKey = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
+            const config = await this.configService.findByKey(configKey);
 
-        let etapaAnterior = expediente.etapaProcesal;
-        let anteriorColumna: any = null;
+            let etapaAnterior = expediente.etapaProcesal;
+            let anteriorColumna: any = null;
 
-        let estadosList: any[] = [];
-        if (config && config.value) {
-            const tipoProcesoConfig = config.value.tiposProcesos?.find(
-                (tp: any) => tp.id === expediente.tipoProceso || tp.id === expediente.tipoProceso?.toLowerCase()
-            );
-            if (tipoProcesoConfig && Array.isArray(tipoProcesoConfig.estados)) {
-                estadosList = tipoProcesoConfig.estados;
-            } else if (Array.isArray(config.value.estados)) {
-                estadosList = config.value.estados;
-            }
-        }
-
-        if (estadosList.length > 0) {
-            const estadosActivos = estadosList
-                .filter((e: any) => e.activo !== false)
-                .sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0));
-
-            const currentIndex = estadosActivos.findIndex((e: any) => e.id === expediente.etapaProcesal);
-            if (currentIndex > 0) {
-                anteriorColumna = estadosActivos[currentIndex - 1];
-                etapaAnterior = anteriorColumna.id;
-            }
-        }
-
-        if (etapaAnterior !== expediente.etapaProcesal) {
-            await this.expedienteService.updateExpediente(expediente.id, {
-                etapaProcesal: etapaAnterior
-            });
-        }
-
-        if (expediente.abogadoSustanciador) {
-            await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, {
-                tipo_notificacion: 'ACTUACION_DEVUELTA',
-                titulo: `Actuación Devuelta con Observaciones`,
-                mensaje: `La actuación "${actuacion.tipoActuacion}" ha sido devuelta por ${userName}. Observaciones: "${observaciones}". El expediente regresó a la etapa ${etapaAnterior}.`,
-                descripcion_corta: `Actuación devuelta en ${expediente.radicado}`,
-                icono: 'AlertTriangle',
-                color: '#DC2626',
-                prioridad: 'Alta',
-                categoria: 'gestion-legal',
-                tiene_accion: true,
-                texto_boton_accion: 'Ver expediente',
-                url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`,
-                datos_adicionales: {
-                    actuacionId: actuacion.id,
-                    expedienteId: expediente.id,
-                    radicado: expediente.radicado
+            let estadosList: any[] = [];
+            if (config && config.value) {
+                const tipoProcesoConfig = config.value.tiposProcesos?.find(
+                    (tp: any) => tp.id === expediente.tipoProceso || tp.id === expediente.tipoProceso?.toLowerCase()
+                );
+                if (tipoProcesoConfig && Array.isArray(tipoProcesoConfig.estados)) {
+                    estadosList = tipoProcesoConfig.estados;
+                } else if (Array.isArray(config.value.estados)) {
+                    estadosList = config.value.estados;
                 }
-            });
-        }
+            }
 
-        if (anteriorColumna && anteriorColumna.aprobacionTipo && anteriorColumna.aprobacionTipo !== 'ninguno') {
-            if (anteriorColumna.aprobacionTipo === 'rol' && anteriorColumna.aprobacionRol) {
-                await this.notificationClient.notifyByRole(anteriorColumna.aprobacionRol, {
-                    tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
-                    titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
-                    mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
-                    descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
-                    icono: 'ArrowLeft',
-                    color: '#3B82F6',
-                    prioridad: 'Media',
+            if (estadosList.length > 0) {
+                const estadosActivos = estadosList
+                    .filter((e: any) => e.activo !== false)
+                    .sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0));
+
+                const currentIndex = estadosActivos.findIndex((e: any) => e.id === expediente.etapaProcesal);
+                if (currentIndex > 0) {
+                    anteriorColumna = estadosActivos[currentIndex - 1];
+                    etapaAnterior = anteriorColumna.id;
+                }
+            }
+
+            if (etapaAnterior !== expediente.etapaProcesal) {
+                await this.expedienteService.updateExpediente(expediente.id, {
+                    etapaProcesal: etapaAnterior
+                });
+            }
+
+            if (expediente.abogadoSustanciador) {
+                await this.notificationClient.notifyUserById(expediente.abogadoSustanciador, {
+                    tipo_notificacion: 'ACTUACION_DEVUELTA',
+                    titulo: `Actuación Devuelta con Observaciones`,
+                    mensaje: `La actuación "${actuacion.tipoActuacion}" ha sido devuelta por ${userName}. Observaciones: "${observaciones}". El expediente regresó a la etapa ${etapaAnterior}.`,
+                    descripcion_corta: `Actuación devuelta en ${expediente.radicado}`,
+                    icono: 'AlertTriangle',
+                    color: '#DC2626',
+                    prioridad: 'Alta',
                     categoria: 'gestion-legal',
                     tiene_accion: true,
                     texto_boton_accion: 'Ver expediente',
-                    url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`
+                    url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`,
+                    datos_adicionales: {
+                        actuacionId: actuacion.id,
+                        expedienteId: expediente.id,
+                        radicado: expediente.radicado
+                    }
                 });
-            } else if (anteriorColumna.aprobacionTipo === 'usuario' && anteriorColumna.aprobacionUsuario) {
-                await this.notificationClient.notifyUserById(anteriorColumna.aprobacionUsuario, {
-                    tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
-                    titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
-                    mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
-                    descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
-                    icono: 'ArrowLeft',
-                    color: '#3B82F6',
-                    prioridad: 'Media',
-                    categoria: 'gestion-legal',
-                    tiene_accion: true,
-                    texto_boton_accion: 'Ver expediente',
-                    url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`
-                });
+            }
+
+            if (anteriorColumna && anteriorColumna.aprobacionTipo && anteriorColumna.aprobacionTipo !== 'ninguno') {
+                if (anteriorColumna.aprobacionTipo === 'rol' && anteriorColumna.aprobacionRol) {
+                    await this.notificationClient.notifyByRole(anteriorColumna.aprobacionRol, {
+                        tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
+                        titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
+                        mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
+                        descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
+                        icono: 'ArrowLeft',
+                        color: '#3B82F6',
+                        prioridad: 'Media',
+                        categoria: 'gestion-legal',
+                        tiene_accion: true,
+                        texto_boton_accion: 'Ver expediente',
+                        url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`
+                    });
+                } else if (anteriorColumna.aprobacionTipo === 'usuario' && anteriorColumna.aprobacionUsuario) {
+                    await this.notificationClient.notifyUserById(anteriorColumna.aprobacionUsuario, {
+                        tipo_notificacion: 'EXPEDIENTE_DEVUELTO_ETAPA',
+                        titulo: `Expediente Devuelto a etapa ${anteriorColumna.nombre}`,
+                        mensaje: `El expediente ${expediente.radicado} ha regresado a la etapa ${anteriorColumna.nombre} tras la devolución de la actuación "${actuacion.tipoActuacion}".`,
+                        descripcion_corta: `Expediente en ${anteriorColumna.nombre}`,
+                        icono: 'ArrowLeft',
+                        color: '#3B82F6',
+                        prioridad: 'Media',
+                        categoria: 'gestion-legal',
+                        tiene_accion: true,
+                        texto_boton_accion: 'Ver expediente',
+                        url_accion: `/gestion-legal?modulo=${esDisciplinario ? 'juzgamiento' : 'defensa-judicial'}&radicado=${expediente.radicado}`
+                    });
+                }
             }
         }
 
@@ -498,6 +502,53 @@ export class ActuacionService {
             fechaActuacion: new Date()
         });
         return this.actuacionRepository.save(actuacion);
+    }
+
+    async eliminarActuacion(actuacionId: string): Promise<void> {
+        const cleanId = actuacionId.trim();
+        console.log('[ActuacionService] Service called with ID:', JSON.stringify(actuacionId), 'Length:', actuacionId.length, 'Cleaned:', JSON.stringify(cleanId));
+        const actuacion = await this.actuacionRepository.findOne({ where: { id: cleanId } });
+        if (!actuacion) {
+            console.log('[ActuacionService] Actuacion not found in DB with ID:', JSON.stringify(cleanId));
+            throw new NotFoundException('Actuación no encontrada');
+        }
+
+        // 1. Validar si está aprobada (estadoAutorizacion === 'AUTORIZADO')
+        if (actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO') {
+            throw new BadRequestException('No se puede eliminar una actuación aprobada / autorizada');
+        }
+
+        // 2. Validar si tiene algún documento asociado firmado
+        const associatedDocIds = actuacion.metadata?.documentosAsociados || [];
+        if (associatedDocIds.length > 0) {
+            const documentoRepository = this.dataSource.getRepository(Documento);
+            const resolvedDocs = await documentoRepository.find({
+                where: {
+                    id: In(associatedDocIds)
+                }
+            });
+
+            const isDocSigned = (d: Documento) => {
+                if (!d) return false;
+                if (d.descripcion) {
+                    try {
+                        const data = JSON.parse(d.descripcion);
+                        return !!(data && data.firmado);
+                    } catch (e) {
+                        return false;
+                    }
+                }
+                return false;
+            };
+
+            const hasSignedDocs = resolvedDocs.some(doc => isDocSigned(doc));
+            if (hasSignedDocs) {
+                throw new BadRequestException('No se puede eliminar una actuación con documentos firmados');
+            }
+        }
+
+        // Si pasa todas las validaciones, eliminar de la base de datos
+        await this.actuacionRepository.delete(actuacionId);
     }
 
     async listarPorExpediente(expedienteId: string): Promise<Actuacion[]> {

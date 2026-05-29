@@ -18,29 +18,29 @@
 
 @media (min-width: 768px) {
   .backoffice-main-shell:not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 260px;
+    padding-left: 276px;
   }
 
   .backoffice-main-shell--collapsed:not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 80px;
+    padding-left: 96px;
   }
 }
 
 @media (min-width: 1024px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 220px;
+    padding-left: 236px;
   }
 }
 
 @media (min-width: 1280px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 240px;
+    padding-left: 256px;
   }
 }
 
 @media (min-width: 1536px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 260px;
+    padding-left: 276px;
   }
 }
 

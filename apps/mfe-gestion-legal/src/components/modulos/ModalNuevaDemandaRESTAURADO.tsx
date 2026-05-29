@@ -24,7 +24,7 @@
  * 7. Detalles del Proceso
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 // @ts-ignore
 import { toast } from 'sonner';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
@@ -291,15 +291,17 @@ function calcularFechaVencimiento(
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit }: ModalNuevaDemandaRESTAURADOProps) {
+export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit, tableroSeleccionado }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
   const { mediosControlActivos, tiposProcesosActivos: allTiposProcesos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
 
   // Filtrar tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
-  const tiposProcesosActivos = (allTiposProcesos || []).filter((tp: any) => {
-    if (!tp.rolAsociado) return true;
-    return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
-  });
+  const tiposProcesosActivos = useMemo(() => {
+    return (allTiposProcesos || []).filter((tp: any) => {
+      if (!tp.rolAsociado) return true;
+      return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
+    });
+  }, [allTiposProcesos]);
 
   const [pasoActual, setPasoActual] = useState(1);
   const totalPasos = 7;
@@ -645,10 +647,24 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         setCiudadesDisponibles([]);
       } else {
         setPasoActual(1);
+
+        let defaultTipoProceso = '';
+        let defaultTipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas' = 'Dias Habiles';
+        let defaultTermino = 30;
+
+        if (tableroSeleccionado && tableroSeleccionado !== 'TODOS') {
+          const tp = allTiposProcesos?.find((t: any) => t.id === tableroSeleccionado);
+          if (tp) {
+            defaultTipoProceso = tp.nombre;
+            defaultTipoPlazo = tp.unidadTermino?.toLowerCase() === 'horas' ? 'Horas' : 'Dias Habiles';
+            defaultTermino = tp.plazo ?? 30;
+          }
+        }
+
         setFormData({
           numeroRadicado: '',
           medioControl: '',
-          tipoProcesoJudicial: '',
+          tipoProcesoJudicial: defaultTipoProceso,
           etapaProcesal: '',
           cuantia: 0,
           nivelRiesgo: '',
@@ -661,8 +677,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           juzgadoTribunal: '',
           departamento: '',
           ciudad: '',
-          tipoPlazo: 'Dias Habiles',
-          termino: 30,
+          tipoPlazo: defaultTipoPlazo,
+          termino: defaultTermino,
           fechaNotificacion: '',
           fechaVencimiento: '',
           abogadoResponsable: '',
@@ -691,12 +707,19 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         : estadosActivos;
       const firstStage = customStages.length > 0 ? customStages[0].id : 'RADICACION';
 
-      setFormData(prev => ({
-        ...prev,
-        termino: tp.plazo ?? 30,
-        tipoPlazo: tp.unidadTermino === 'horas' ? 'Horas' : 'Dias Habiles',
-        etapaProcesal: firstStage
-      }));
+      setFormData(prev => {
+        const newTermino = tp.plazo ?? 30;
+        const newTipoPlazo = tp.unidadTermino?.toLowerCase() === 'horas' ? 'Horas' : 'Dias Habiles';
+        if (prev.termino === newTermino && prev.tipoPlazo === newTipoPlazo && prev.etapaProcesal === firstStage) {
+          return prev;
+        }
+        return {
+          ...prev,
+          termino: newTermino,
+          tipoPlazo: newTipoPlazo,
+          etapaProcesal: firstStage
+        };
+      });
     }
   }, [formData.tipoProcesoJudicial, tiposProcesosActivos, estadosActivos]);
 
@@ -711,7 +734,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         activeTipo?.horaEspecial,
         formData.tipoPlazo === 'Horas' ? 'horas' : 'dias'
       );
-      setFormData(prev => ({ ...prev, fechaVencimiento: fechaVenc }));
+      setFormData(prev => {
+        if (prev.fechaVencimiento === fechaVenc) return prev;
+        return { ...prev, fechaVencimiento: fechaVenc };
+      });
     }
   }, [formData.fechaNotificacion, formData.termino, formData.tipoPlazo, formData.tipoProcesoJudicial, tiposProcesosActivos]);
 
@@ -1325,15 +1351,43 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     }
   };
 
-  const handleCancel = () => {
-    if (formData.numeroRadicado || formData.pretensiones) {
-      setShowCancelConfirm(true);
+  const handleCancel = (e?: any) => {
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+
+    if (expedienteEdit) {
+      // Check if any fields were modified from their initial loaded values
+      const hasChanges =
+        formData.numeroRadicado !== (expedienteEdit.radicado || expedienteEdit.id) ||
+        formData.medioControl !== (expedienteEdit.medioControl || '') ||
+        formData.tipoProcesoJudicial !== (expedienteEdit.tipoProceso || expedienteEdit.tipo || '') ||
+        formData.etapaProcesal !== (expedienteEdit.etapa || '') ||
+        formData.pretensiones !== (expedienteEdit.pretensiones || '') ||
+        formData.hechos !== (expedienteEdit.hechos || '') ||
+        formData.juzgadoTribunal !== (expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '');
+
+      if (hasChanges) {
+        setShowCancelConfirm(true);
+      } else {
+        onClose();
+      }
     } else {
-      onClose();
+      // Creation mode: warn if any data has been typed
+      if (formData.numeroRadicado || formData.pretensiones) {
+        setShowCancelConfirm(true);
+      } else {
+        onClose();
+      }
     }
   };
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = (e?: any) => {
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
     setShowCancelConfirm(false);
     onClose();
   };
@@ -1352,30 +1406,35 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[80vw] max-w-[80vw] h-[95vh] max-h-[95vh] flex flex-col p-0 overflow-hidden">
-        <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
-        <DialogDescription className="sr-only">
-          Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
-        </DialogDescription>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+        <DialogContent 
+          hideCloseButton 
+          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
+          style={{ width: '80vw', maxWidth: '80vw' }}
+        >
+          <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
+            <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
+          </DialogDescription>
 
-        {/* HEADER - flex-shrink-0 (siempre visible) */}
-        <ModalHeaderClean
-          icono={Scale}
-          titulo={expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}
-          subtitulo={
-            pasoActual === 1 ? 'Datos del Proceso Judicial' :
-              pasoActual === 2 ? 'Datos del/los Demandante(s)' :
-                pasoActual === 3 ? 'Datos del/los Demandado(s)' :
-                  pasoActual === 4 ? 'Datos de Otros Actores (Opcional)' :
-                    pasoActual === 5 ? 'Juzgado y Ubicación' :
-                      pasoActual === 6 ? 'Fechas y Asignación' :
-                        'Detalles del Proceso'
-          }
-          colorIcono="blue"
-          badges={getBadgesPorPaso()}
-          onClose={onClose}
-        />
+          {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
+          <ModalHeaderClean
+            icono={Scale}
+            titulo={expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}
+            subtitulo={
+              pasoActual === 1 ? 'Datos del Proceso Judicial' :
+                pasoActual === 2 ? 'Datos del/los Demandante(s)' :
+                  pasoActual === 3 ? 'Datos del/los Demandado(s)' :
+                    pasoActual === 4 ? 'Datos de Otros Actores (Opcional)' :
+                      pasoActual === 5 ? 'Juzgado y Ubicación' :
+                        pasoActual === 6 ? 'Fechas y Asignación' :
+                          'Detalles del Proceso'
+            }
+            colorIcono="blue"
+            badges={getBadgesPorPaso()}
+            onClose={handleCancel}
+          />
 
         {/* Progress Bar */}
         <div className="flex-shrink-0 px-6 pt-2">
@@ -1483,27 +1542,29 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
                       )}
 
-                      <div className="space-y-2">
-                        <Label htmlFor="tipoProcesoJudicial" className="text-sm font-bold text-gray-700">
-                          Tipo de Proceso Judicial <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                          value={formData.tipoProcesoJudicial}
-                          onValueChange={(value: string) => {
-                            const tp = tiposProcesosActivos.find(t => t.nombre === value);
-                            setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
-                          }}
-                        >
-                          <SelectTrigger id="tipoProcesoJudicial" className="bg-white">
-                            <SelectValue placeholder="Seleccione tipo de proceso..." />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {tiposProcesosActivos.map(tp => (
-                              <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {!(tableroSeleccionado && tableroSeleccionado !== 'TODOS') && (
+                        <div className="space-y-2">
+                          <Label htmlFor="tipoProcesoJudicial" className="text-sm font-bold text-gray-700">
+                            Tipo de Proceso Judicial <span className="text-red-500">*</span>
+                          </Label>
+                          <Select
+                            value={formData.tipoProcesoJudicial}
+                            onValueChange={(value: string) => {
+                              const tp = tiposProcesosActivos.find(t => t.nombre === value);
+                              setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
+                            }}
+                          >
+                            <SelectTrigger id="tipoProcesoJudicial" className="bg-white">
+                              <SelectValue placeholder="Seleccione tipo de proceso..." />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {tiposProcesosActivos.map(tp => (
+                                <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
                       {/* Campos condicionales para Proceso Penal */}
                       {formData.tipoProcesoJudicial === 'Proceso Penal' && (
@@ -2472,7 +2533,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           type="datetime-local"
                           value={formData.fechaNotificacion}
                           onChange={(e) => {
-                            const normalizada = (activeTipoProceso?.unidadTermino !== 'horas' && formData.tipoPlazo === 'Dias Habiles')
+                            const normalizada = (activeTipoProceso?.unidadTermino?.toLowerCase() !== 'horas' && formData.tipoPlazo === 'Dias Habiles')
                               ? normalizarAHorarioHabil(e.target.value)
                               : e.target.value;
                             setFormData({ ...formData, fechaNotificacion: normalizada });
@@ -2699,6 +2760,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             )}
           </div>
         </div>
+        </div> {/* Closing div for the scale transform container */}
       </DialogContent>
     </Dialog>
 

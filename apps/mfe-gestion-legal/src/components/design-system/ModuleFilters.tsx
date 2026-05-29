@@ -78,6 +78,12 @@ export interface ModuleFiltersProps {
   
   /** Clase CSS adicional */
   className?: string;
+
+  /** Render filters without a card container (borderless, bg-transparent) */
+  borderless?: boolean;
+
+  /** Elementos adicionales a renderizar en la barra (ej: dropdown de tableros) */
+  children?: React.ReactNode;
 }
 
 // ==================== COMPONENT ====================
@@ -93,7 +99,9 @@ export function ModuleFilters({
   showCounter = true,
   counterText,
   hideHeader = false,
-  className = ''
+  className = '',
+  borderless = false,
+  children
 }: ModuleFiltersProps) {
   // ✅ Hook responsive
   const { isMobile, isTablet } = useResponsive();
@@ -149,48 +157,35 @@ export function ModuleFilters({
   }, [searchValue, activeAdvancedCount]);
 
   return (
-    <Card className={`bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden ${className}`}>
-      <div className="p-1.5 sm:p-2 space-y-0">
+    <div className={borderless ? `w-full ${className}` : `bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden p-1.5 sm:p-2 ${className}`}>
+      <div className="space-y-0">
         
         {/* Barra Única (Todos los elementos alineados horizontalmente) */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 flex-wrap">
+        <div className="flex flex-row items-center justify-start gap-2 flex-nowrap w-full overflow-x-auto overflow-y-hidden pb-1" style={{ scrollbarWidth: 'none' }}>
           
           {/* Búsqueda + Filtros Avanzados */}
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
-            {/* Campo de Búsqueda */}
+          <div className="flex flex-nowrap items-center gap-2 flex-shrink-0 min-w-0">
+            {/* Campo de Búsqueda - Siempre visible e intuitivo con placeholder */}
             <div 
-              onClick={handleSearchClick}
-              className={`relative flex items-center h-9 transition-all duration-300 ease-in-out cursor-pointer ${
-                isSearchExpanded 
-                  ? 'w-full sm:w-48 md:w-56 border border-gray-300 bg-white rounded-lg shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100' 
-                  : 'w-9 border border-gray-200 bg-gray-50/50 hover:bg-gray-100 hover:border-gray-300 rounded-lg justify-center flex-shrink-0'
-              }`}
+              className="relative flex items-center h-8 flex-shrink-0 w-[130px] sm:w-[150px] border border-gray-300 bg-white rounded-lg shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100"
             >
-              <Search className={`w-4 h-4 text-gray-400 transition-all duration-300 ${
-                isSearchExpanded ? 'absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none' : 'flex-shrink-0'
-              }`} />
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none flex-shrink-0" />
               
               <input
                 ref={inputRef}
                 type="text"
-                placeholder={isSearchExpanded ? searchPlaceholder : ''}
+                placeholder={searchPlaceholder}
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}
-                onBlur={handleBlur}
-                className={`h-full text-xs bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus:border-0 transition-all duration-300 ${
-                  isSearchExpanded 
-                    ? 'w-full pl-9 pr-8 opacity-100' 
-                    : 'w-0 p-0 opacity-0 pointer-events-none'
-                }`}
+                className="h-full text-[11px] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus:border-0 w-full pl-8 pr-7 font-medium"
               />
 
-              {isSearchExpanded && searchValue && (
+              {searchValue && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onSearchChange('');
-                    setIsSearchExpanded(false);
                   }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
                 >
@@ -228,8 +223,8 @@ export function ModuleFilters({
             {/* Contenedor animado de filtros para una transición horizontal fluida y sin saltos */}
             <div className={`flex items-center gap-2.5 transition-all duration-300 ease-in-out overflow-hidden ${
               isAdvancedOpen 
-                ? 'max-w-[850px] opacity-100 pointer-events-auto' 
-                : 'max-w-0 opacity-0 pointer-events-none'
+                ? 'max-w-[850px] h-auto opacity-100 pointer-events-auto' 
+                : 'max-w-0 h-0 opacity-0 pointer-events-none'
             }`}>
               {filters.map((filter, index) => (
                 <div key={index} className="flex-shrink-0">
@@ -239,8 +234,14 @@ export function ModuleFilters({
             </div>
           </div>
 
+          {children && (
+            <div className="flex items-center flex-shrink-0">
+              {children}
+            </div>
+          )}
+
           {/* Acciones de Limpieza y Contador */}
-          <div className="flex items-center justify-between sm:justify-end gap-2.5 flex-shrink-0">
+          <div className="flex items-center justify-between sm:justify-end gap-2.5 flex-shrink-0 ml-auto">
             {showCounter && totalItems !== undefined && filteredItems !== undefined && (
               <div className="text-xs text-gray-500 bg-gray-50 border border-gray-100 px-2 py-1 rounded-md font-semibold">
                 {counterText || (
@@ -267,7 +268,7 @@ export function ModuleFilters({
         </div>
 
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -341,7 +342,7 @@ function DateRangePickerField({ filter }: { filter: FilterConfig }) {
   };
 
   return (
-    <div className="relative flex items-center gap-1.5 w-40 sm:w-44 lg:w-48 flex-shrink-0" ref={dropdownRef}>
+    <div className="relative flex items-center gap-1 w-32 sm:w-36 lg:w-40 flex-shrink-0" ref={dropdownRef}>
       {filter.label && (
         <span className="sr-only">
           {filter.label}
@@ -442,7 +443,7 @@ function FilterField({ filter, isMobile }: FilterFieldProps) {
 
   if (filter.type === 'select') {
     return (
-      <div className="flex items-center gap-1.5 w-40 sm:w-44 lg:w-48 flex-shrink-0">
+      <div className="flex items-center gap-1 w-32 sm:w-36 lg:w-40 flex-shrink-0">
         {filter.label && (
           <label className="sr-only">
             {filter.label}
@@ -472,7 +473,7 @@ function FilterField({ filter, isMobile }: FilterFieldProps) {
 
   if (filter.type === 'date') {
     return (
-      <div className="flex items-center gap-1.5 w-40 sm:w-44 lg:w-48 flex-shrink-0">
+      <div className="flex items-center gap-1 w-32 sm:w-36 lg:w-40 flex-shrink-0">
         {filter.label && (
           <label className="sr-only">
             {filter.label}

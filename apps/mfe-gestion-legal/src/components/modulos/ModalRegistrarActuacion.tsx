@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalRegistrarActuacionProps {
   isOpen: boolean;
@@ -62,6 +63,12 @@ export function ModalRegistrarActuacion({
   documentosDelExpediente = [],
   isApprovalMode = false
 }: ModalRegistrarActuacionProps) {
+  
+  const { getTiposActuacionesActivos } = useConfiguracionesSIGL();
+  const tiposActuacionesActivos = getTiposActuacionesActivos('defensa-judicial');
+  const opcionesTipoActuacion = tiposActuacionesActivos.length > 0 
+    ? tiposActuacionesActivos.map(t => t.nombre) 
+    : TIPOS_ACTUACION;
 
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [hora, setHora] = useState(new Date().toTimeString().slice(0, 5));
@@ -72,7 +79,6 @@ export function ModalRegistrarActuacion({
   const [observaciones, setObservaciones] = useState('');
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
-  const [archivo, setArchivo] = useState<File | null>(null);
   const [documentosAsociados, setDocumentosAsociados] = useState<string[]>([]);
   const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
 
@@ -123,7 +129,7 @@ export function ModalRegistrarActuacion({
         accionAprobacion
       };
 
-      await onGuardar(nuevaActuacion, archivo || undefined);
+      await onGuardar(nuevaActuacion, undefined);
 
       // Success handled by parent or here if needed, but safer to rely on parent completion
       // Cleaning up
@@ -150,7 +156,6 @@ export function ModalRegistrarActuacion({
     setEstado('Completado');
     setObservaciones('');
     setErrores({});
-    setArchivo(null);
     setDocumentosAsociados([]);
   };
 
@@ -174,7 +179,7 @@ export function ModalRegistrarActuacion({
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton size="md" className="!w-[70vw] !max-w-[70vw] !h-[85vh] !max-h-[85vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Registrar Actuación Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar actuaciones procesales en el expediente {expedienteId}
@@ -262,7 +267,7 @@ export function ModalRegistrarActuacion({
                   }`}
               >
                 <option value="">Selecciona el tipo de actuación...</option>
-                {TIPOS_ACTUACION.map((t) => (
+                {opcionesTipoActuacion.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
@@ -408,64 +413,6 @@ export function ModalRegistrarActuacion({
                 </div>
               )}
 
-              <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                O subir nuevo archivo (PDF)
-              </div>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors bg-gray-50">
-                <input
-                  type="file"
-                  id="archivo-actuacion"
-                  accept=".pdf"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      const file = e.target.files[0];
-                      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-                        toast.error('Solo se permiten archivos PDF');
-                        e.target.value = '';
-                        return;
-                      }
-                      if (file.size > 60 * 1024 * 1024) {
-                        toast.error('El archivo no puede superar los 60MB');
-                        e.target.value = '';
-                        return;
-                      }
-                      setArchivo(file);
-                    }
-                  }}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="archivo-actuacion"
-                  className="flex flex-col items-center cursor-pointer"
-                >
-                  {archivo ? (
-                    <div className="flex items-center gap-2 text-green-700">
-                      <FileText className="w-6 h-6" />
-                      <span className="text-sm font-semibold">{archivo.name}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setArchivo(null);
-                        }}
-                        className="ml-2 text-red-500 hover:text-red-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <FileText className="w-8 h-8 text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-600">
-                        Haz clic para seleccionar un archivo
-                      </span>
-                      <span className="text-xs text-gray-400 mt-1">
-                        Solo archivos PDF (máx. 60MB)
-                      </span>
-                    </>
-                  )}
-                </label>
-              </div>
             </div>
 
           </div>

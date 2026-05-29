@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
@@ -141,6 +141,117 @@ const CAMPOS_POR_PASO = [
   }
 ];
 
+// ============ COMPONENTE AUXILIAR: SELECTOR DE USUARIO BUSCABLE ============
+
+interface SearchableUserSelectProps {
+  usuarios: any[];
+  selectedValue: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+export function SearchableUserSelect({
+  usuarios,
+  selectedValue,
+  onChange,
+  disabled
+}: SearchableUserSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Encontrar el usuario seleccionado
+  const usuarioSeleccionado = usuarios.find(u => String(u.id) === String(selectedValue));
+
+  // Filtrar usuarios por término de búsqueda (nombre, email)
+  const usuariosFiltrados = usuarios.filter(u => {
+    const term = searchTerm.toLowerCase();
+    const nombre = (u.nombreCompleto || u.nombre || '').toLowerCase();
+    const email = (u.email || '').toLowerCase();
+    return nombre.includes(term) || email.includes(term);
+  });
+
+  // Cerrar el dropdown al hacer click afuera
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.searchable-select-container')) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [isOpen]);
+
+  return (
+    <div className="relative searchable-select-container w-full">
+      {/* Botón selector principal */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-2.5 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed select-none text-left"
+        style={{ height: '32px' }}
+      >
+        <span className="truncate">
+          {usuarioSeleccionado 
+            ? `${usuarioSeleccionado.nombre} (${usuarioSeleccionado.email})` 
+            : 'Seleccione un Usuario...'}
+        </span>
+        <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0 ml-1" />
+      </button>
+
+      {/* Panel desplegable con buscador */}
+      {isOpen && (
+        <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] p-2 space-y-1.5 min-w-[200px]">
+          {/* Input de búsqueda */}
+          <div className="relative">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Buscar usuario..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ height: '28px' }}
+            />
+          </div>
+
+          {/* Listado de resultados */}
+          <div className="max-h-40 overflow-y-auto divide-y divide-gray-100">
+            {usuariosFiltrados.length === 0 ? (
+              <div className="py-2 px-2 text-center text-xs text-gray-400">
+                Sin resultados
+              </div>
+            ) : (
+              usuariosFiltrados.map((u) => {
+                const isSelected = String(u.id) === String(selectedValue);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(u.id);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-blue-50 transition-colors flex flex-col gap-0.5 ${
+                      isSelected ? 'bg-blue-50/70 font-semibold text-blue-700' : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="truncate">{u.nombre}</span>
+                    <span className="text-[10px] text-gray-400 font-normal truncate">{u.email}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ COMPONENTE PRINCIPAL ============
 
 export function ConfiguracionesSIGL() {
@@ -180,6 +291,25 @@ export function ConfiguracionesSIGL() {
 
   // Estado para tabs de configuración
   const [tabActivo, setTabActivo] = useState<'estados' | 'procesos' | 'autos' | 'tiempos' | 'ejes'>('estados');
+
+  // Estado para expandir/colapsar secciones de configuración
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    procesos: true,
+    actuaciones: false,
+    kanban: false,
+    mediosControl: false,
+    autos: false,
+    actuacionesDisciplinarias: false,
+    excepcionesProcesales: false,
+    causalesEspecificas: false,
+  });
+
+  const toggleSection = (sectionKey: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
 
   // Estado para expandir/colapsar configuraciones avanzadas de procesos
   const [expandedAvanzados, setExpandedAvanzados] = useState<Record<string, boolean>>({});
@@ -245,7 +375,7 @@ export function ConfiguracionesSIGL() {
   const [showModalEliminarCausal, setShowModalEliminarCausal] = useState(false);
   const [causalAEliminar, setCausalAEliminar] = useState<CausalEspecifica | null>(null);
   const [roles, setRoles] = useState<any[]>([]);
-  const [abogados, setAbogados] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchRoles = async () => {
@@ -262,15 +392,15 @@ export function ConfiguracionesSIGL() {
   }, []);
 
   useEffect(() => {
-    const fetchAbogados = async () => {
+    const fetchUsuarios = async () => {
       try {
-        const response = await authService.getAbogadosRolResuelve();
-        setAbogados(response || []);
+        const response = await authService.getTodosLosUsuariosActivos();
+        setUsuarios(response || []);
       } catch (error) {
-        console.error('Error fetching lawyers in ConfiguracionesSIGL:', error);
+        console.error('Error fetching active users in ConfiguracionesSIGL:', error);
       }
     };
-    fetchAbogados();
+    fetchUsuarios();
   }, []);  const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
   // ✅ Estado para conteo dinámico de expedientes por estado (reemplaza casosPorEstado mock)
@@ -2000,8 +2130,11 @@ export function ConfiguracionesSIGL() {
               {moduloActual.tiposProcesos && moduloActual.tiposProcesos.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                      <div>
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('procesos')}
+                    >
+                      <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                           Tipos de Procesos Judiciales
@@ -2010,22 +2143,38 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de procesos que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
-                      {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
-                        <button
-                          onClick={agregarTipoProceso}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                          style={{
-                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                          }}
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Agregar Tipo</span>
+                      <div className="flex items-center gap-3">
+                        {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              agregarTipoProceso();
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                            style={{
+                              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                            }}
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Agregar Tipo</span>
+                          </button>
+                        )}
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.procesos ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                         </button>
-                      )}
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.procesos && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposProcesos.map((tipo) => (
                         <div
                           key={tipo.id}
@@ -2330,7 +2479,7 @@ export function ConfiguracionesSIGL() {
                                                     ...item,
                                                     aprobacionTipo: val,
                                                     aprobacionRol: val === 'rol' ? (roles[0]?.code || roles[0]?.name || '') : undefined,
-                                                    aprobacionUsuario: val === 'usuario' ? (abogados[0]?.id || '') : undefined
+                                                    aprobacionUsuario: val === 'usuario' ? (usuarios[0]?.id || '') : undefined
                                                   };
                                                 }
                                                 return item;
@@ -2374,24 +2523,16 @@ export function ConfiguracionesSIGL() {
                                         {est.aprobacionTipo === 'usuario' && (
                                           <div className="flex flex-col gap-1" style={{ flex: '1.5 1 180px', minWidth: '150px' }}>
                                             <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Usuario Requerido</label>
-                                            <select
+                                            <SearchableUserSelect
                                               disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
-                                              value={est.aprobacionUsuario || ''}
-                                              onChange={(e) => {
+                                              selectedValue={est.aprobacionUsuario || ''}
+                                              onChange={(val) => {
                                                 const currentEstados = tipo.estados ? [...tipo.estados] : [];
-                                                const updated = currentEstados.map(item => item.id === est.id ? { ...item, aprobacionUsuario: e.target.value } : item);
+                                                const updated = currentEstados.map(item => item.id === est.id ? { ...item, aprobacionUsuario: val } : item);
                                                 actualizarTipoProceso(tipo.id, { estados: updated });
                                               }}
-                                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
-                                              style={{ height: '32px' }}
-                                            >
-                                              <option value="">Seleccione un Abogado...</option>
-                                              {abogados.map((a: any) => (
-                                                <option key={a.id} value={a.id}>
-                                                  {a.nombre} {a.apellido || ''} ({a.email})
-                                                </option>
-                                              ))}
-                                            </select>
+                                              usuarios={usuarios}
+                                            />
                                           </div>
                                         )}
 
@@ -2818,7 +2959,131 @@ export function ConfiguracionesSIGL() {
                         )}
                       </div>
                     ))}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Tipos de Actuaciones Procesales */}
+              {moduloActual.tiposActuaciones && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('actuaciones')}
+                    >
+                      <div className="flex-1">
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Activity className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Tipos de Actuaciones Procesales
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los tipos de actuaciones procesales disponibles al registrar una actuación en un expediente.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              agregarTipoActuacion();
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                            style={{
+                              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                            }}
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Agregar Tipo</span>
+                          </button>
+                        )}
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.actuaciones ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
+
+                    {expandedSections.actuaciones && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
+                      {moduloActual.tiposActuaciones.sort((a,b) => (a.orden || 0) - (b.orden || 0)).map((tipo) => (
+                        <div
+                          key={tipo.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                        >
+                          {/* Fila 1: Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                              type="text"
+                              value={tipo.nombre}
+                              onChange={(e) => actualizarTipoActuacion(tipo.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Nombre de la actuación"
+                            />
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
+                              <button
+                                onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
+                                className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                              value={tipo.descripcion || ''}
+                              onChange={(e) => actualizarTipoActuacion(tipo.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              placeholder="Descripción de la actuación..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Orden + Activo */}
+                          <div className="flex items-center justify-between flex-wrap gap-4">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium">Orden:</label>
+                              <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                type="number"
+                                value={tipo.orden || 0}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { orden: parseInt(e.target.value) || 0 })}
+                                className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
                   </div>
                 </div>
               )}
@@ -2826,8 +3091,11 @@ export function ConfiguracionesSIGL() {
               {/* Configuración de Estados/Columnas Kanban */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-3 sm:p-4 lg:p-6">
-                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                    <div>
+                  <div 
+                    className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                    onClick={() => toggleSection('kanban')}
+                  >
+                    <div className="flex-1">
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                         <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                         {moduloActivo === 'asesoria-juridica' 
@@ -2846,22 +3114,38 @@ export function ConfiguracionesSIGL() {
                         }
                       </p>
                     </div>
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
-                      <button
-                        onClick={agregarEstado}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar</span>
+                    <div className="flex items-center gap-3">
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarEstado();
+                          }}
+                          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar</span>
+                        </button>
+                      )}
+                      <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                        {expandedSections.kanban ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                       </button>
-                    )}
+                    </div>
                   </div>
 
-                  <DndContext
+                  {expandedSections.kanban && (
+                    <AnimatePresence>
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
@@ -2883,6 +3167,9 @@ export function ConfiguracionesSIGL() {
                       </div>
                     </SortableContext>
                   </DndContext>
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
                 </div>
               </div>
 
@@ -2890,8 +3177,11 @@ export function ConfiguracionesSIGL() {
               {moduloActual.mediosControl && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                      <div>
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('mediosControl')}
+                    >
+                      <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                           Medios de Control
@@ -2900,20 +3190,36 @@ export function ConfiguracionesSIGL() {
                           Define los medios de control que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
-                      <button
-                        onClick={agregarMedioControl}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Medio</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarMedioControl();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Medio</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.mediosControl ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.mediosControl && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.mediosControl.map((medio) => (
                         <div
                           key={medio.id}
@@ -2963,7 +3269,10 @@ export function ConfiguracionesSIGL() {
                           </div>
                         </div>
                       ))}
-                    </div>
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
                   </div>
                 </div>
               )}
@@ -2972,8 +3281,11 @@ export function ConfiguracionesSIGL() {
               {moduloActual.tiposAutos && moduloActual.tiposAutos.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                      <div>
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('autos')}
+                    >
+                      <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                           Tipos de Autos Procesales
@@ -2982,20 +3294,36 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de autos que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
-                      <button
-                        onClick={agregarTipoAuto}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarTipoAuto();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.autos ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.autos && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposAutos.map((tipo) => (
                         <div
                           key={tipo.id}
@@ -3046,7 +3374,10 @@ export function ConfiguracionesSIGL() {
                           </div>
                         </div>
                       ))}
-                    </div>
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
                   </div>
                 </div>
               )}

@@ -38,7 +38,7 @@ export function ModalDevolverActuacion({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-md border-0 p-0 overflow-hidden shadow-2xl rounded-xl">
-        <DialogHeader className="bg-gradient-to-r from-red-600 to-rose-600 px-6 py-5">
+        <DialogHeader className="bg-red-600 px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2 rounded-lg">
               <AlertTriangle className="w-6 h-6 text-white" />

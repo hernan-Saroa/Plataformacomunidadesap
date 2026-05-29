@@ -8,6 +8,7 @@ import {
   RotateCcw, Home, Copy, Check,
   MessageSquare, AlertTriangle, Clock, Zap, ListOrdered
 } from 'lucide-react';
+import { apiClient } from '../../services/api/apiClient';
 
 interface Question {
   id: number;
@@ -25,7 +26,7 @@ interface LeaderboardEntry {
   date: string;
 }
 
-const questions: Question[] = [
+const questionsPool: Question[] = [
   {
     id: 1,
     question: "¿Qué significa ESAP?",
@@ -135,8 +136,198 @@ const questions: Question[] = [
     correctAnswer: 1,
     category: 'esap',
     difficulty: 'medium'
+  },
+  {
+    id: 11,
+    question: "¿Cuál de las siguientes opciones describe el régimen laboral principal de los servidores públicos en la ESAP?",
+    options: [
+      "Trabajadores oficiales",
+      "Empleados públicos de carrera o libre nombramiento y remoción",
+      "Contratistas de prestación de servicios",
+      "Auxiliares de la administración"
+    ],
+    correctAnswer: 1,
+    category: 'esap',
+    difficulty: 'medium'
+  },
+  {
+    id: 12,
+    question: "¿Qué es la \"Conciliación Prejudicial\" en un proceso laboral en Colombia?",
+    options: [
+      "Un acuerdo voluntario antes de iniciar una demanda formal",
+      "Una sentencia ejecutoriada por un juez de la República",
+      "Un recurso extraordinario de casación",
+      "Una sanción disciplinaria al empleador"
+    ],
+    correctAnswer: 0,
+    category: 'general',
+    difficulty: 'medium'
+  },
+  {
+    id: 13,
+    question: "En defensa judicial laboral de la ESAP, el término ordinario para contestar una demanda de nulidad y restablecimiento es de:",
+    options: ["10 días", "15 días", "30 días", "5 días"],
+    correctAnswer: 2,
+    category: 'esap',
+    difficulty: 'hard'
+  },
+  {
+    id: 14,
+    question: "¿Cuál es la norma vigente que regula el Código General Disciplinario en Colombia?",
+    options: [
+      "Ley 734 de 2002",
+      "Ley 1952 de 2019 (modificada por la Ley 2094 de 2021)",
+      "Ley 1437 de 2011",
+      "Ley 909 de 2004"
+    ],
+    correctAnswer: 1,
+    category: 'colombia',
+    difficulty: 'medium'
+  },
+  {
+    id: 15,
+    question: "¿Quién ejerce el control disciplinario preferente sobre los servidores de la ESAP?",
+    options: [
+      "La Fiscalía General de la Nación",
+      "La Procuraduría General de la Nación",
+      "La Contraloría General de la República",
+      "El Defensor del Pueblo"
+    ],
+    correctAnswer: 1,
+    category: 'esap',
+    difficulty: 'medium'
+  },
+  {
+    id: 16,
+    question: "En el proceso disciplinario, la etapa en la que se investigan los hechos para determinar si constituyen falta es:",
+    options: [
+      "Juzgamiento",
+      "Indagación previa o investigación disciplinaria",
+      "Archivo definitivo",
+      "Audiencia pública"
+    ],
+    correctAnswer: 1,
+    category: 'general',
+    difficulty: 'medium'
+  },
+  {
+    id: 17,
+    question: "¿Qué sigla identifica al Modelo Estándar de Control Interno para el Estado colombiano aplicable en la ESAP?",
+    options: ["MECI", "MIPG", "SIGUD", "RSE"],
+    correctAnswer: 0,
+    category: 'esap',
+    difficulty: 'easy'
+  },
+  {
+    id: 18,
+    question: "¿Cuál es la finalidad de la Oficina de Control Interno de Gestión en la ESAP?",
+    options: [
+      "Sancionar penalmente a los funcionarios",
+      "Evaluar de forma independiente la eficiencia del sistema de control interno",
+      "Ejecutar el presupuesto de la entidad",
+      "Representar judicialmente a la Escuela"
+    ],
+    correctAnswer: 1,
+    category: 'esap',
+    difficulty: 'medium'
+  },
+  {
+    id: 19,
+    question: "¿Qué componente evalúa los riesgos institucionales dentro del marco de Control Interno?",
+    options: [
+      "El plan estratégico de compras",
+      "La administración de riesgos (identificación, análisis y valoración)",
+      "La nómina de la entidad",
+      "La cantidad de quejas recibidas en ventanilla"
+    ],
+    correctAnswer: 1,
+    category: 'general',
+    difficulty: 'medium'
+  },
+  {
+    id: 20,
+    question: "¿Qué es el \"Retén Social\" en el ámbito laboral público colombiano?",
+    options: [
+      "Un límite al salario máximo de los congresistas",
+      "Una protección de estabilidad laboral reforzada para ciertos grupos vulnerables",
+      "Un impuesto para la seguridad social",
+      "Una retención en la fuente aplicada a contratistas"
+    ],
+    correctAnswer: 1,
+    category: 'colombia',
+    difficulty: 'medium'
+  },
+  {
+    id: 21,
+    question: "¿Cuál de las siguientes es una sanción aplicable por faltas gravísimas cometidas con dolo en derecho disciplinario?",
+    options: [
+      "Amonestación escrita",
+      "Destitución e inhabilidad general",
+      "Suspensión provisional por 15 días",
+      "Traslado de puesto de trabajo"
+    ],
+    correctAnswer: 1,
+    category: 'general',
+    difficulty: 'hard'
+  },
+  {
+    id: 22,
+    question: "En el marco de MIPG, el Control Interno se ubica en cuál dimensión de gestión y desempeño:",
+    options: [
+      "Dimensión de Talento Humano",
+      "Dimensión de Dirección y Planeación",
+      "Dimensión de Control Interno",
+      "Dimensión de Información y Comunicación"
+    ],
+    correctAnswer: 2,
+    category: 'colombia',
+    difficulty: 'hard'
+  },
+  {
+    id: 23,
+    question: "La figura mediante la cual el Estado recupera lo pagado por condenas debido al actuar doloso de sus servidores se llama:",
+    options: [
+      "Acción de tutela",
+      "Acción de repetición",
+      "Acción popular",
+      "Conciliación extrajudicial"
+    ],
+    correctAnswer: 1,
+    category: 'colombia',
+    difficulty: 'hard'
+  },
+  {
+    id: 24,
+    question: "Las auditorías internas de gestión en la ESAP se programan anualmente a través del documento:",
+    options: [
+      "Plan Anual de Auditorías (PAA)",
+      "Presupuesto general de inversión",
+      "Manual de funciones y competencias",
+      "Plan Estratégico Institucional"
+    ],
+    correctAnswer: 0,
+    category: 'esap',
+    difficulty: 'medium'
+  },
+  {
+    id: 25,
+    question: "¿Qué principio garantiza que nadie sea juzgado dos veces por el mismo hecho en materia disciplinaria?",
+    options: [
+      "Presunción de inocencia",
+      "Non bis in idem",
+      "Debido proceso",
+      "Contradicción"
+    ],
+    correctAnswer: 1,
+    category: 'general',
+    difficulty: 'easy'
   }
 ];
+
+const getRandomQuestions = (pool: Question[], count: number = 10): Question[] => {
+  const shuffled = [...pool].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+};
 
 interface ErrorGamePageProps {
   onRetry?: () => void;
@@ -149,6 +340,7 @@ interface ErrorGamePageProps {
 }
 
 export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) {
+  const [selectedQuestions, setSelectedQuestions] = useState<Question[]>(() => getRandomQuestions(questionsPool));
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -169,8 +361,8 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
   const [playerName, setPlayerName] = useState('');
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
 
-  const currentQuestion = questions[currentQuestionIndex];
-  const totalQuestions = questions.length;
+  const currentQuestion = selectedQuestions[currentQuestionIndex] || questionsPool[0];
+  const totalQuestions = selectedQuestions.length || 10;
 
   useEffect(() => {
     if (debug) {
@@ -182,16 +374,35 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
     }
   }, [debug]);
 
-  // Load leaderboard from localStorage on mount
-  useEffect(() => {
+  // Load leaderboard from API with localStorage fallback
+  const fetchLeaderboard = async () => {
+    try {
+      const response = await apiClient.get<any>('/legal/api/v1/configurations/error_game_leaderboard');
+      if (response && response.value) {
+        setLeaderboard(response.value);
+        localStorage.setItem('esap_error_game_leaderboard', JSON.stringify(response.value));
+      } else {
+        loadLocalLeaderboard();
+      }
+    } catch (e) {
+      console.error('Error fetching leaderboard from API, falling back to localStorage:', e);
+      loadLocalLeaderboard();
+    }
+  };
+
+  const loadLocalLeaderboard = () => {
     try {
       const saved = localStorage.getItem('esap_error_game_leaderboard');
       if (saved) {
         setLeaderboard(JSON.parse(saved));
       }
     } catch (e) {
-      console.error('Error loading leaderboard', e);
+      console.error('Error loading local leaderboard', e);
     }
+  };
+
+  useEffect(() => {
+    fetchLeaderboard();
   }, []);
 
   // Track start time
@@ -255,7 +466,7 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
     }, 2000);
   };
 
-  const handleScoreSubmit = (e: React.FormEvent) => {
+  const handleScoreSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playerName.trim()) return;
 
@@ -273,9 +484,20 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
     setLeaderboard(newLeaderboard);
     localStorage.setItem('esap_error_game_leaderboard', JSON.stringify(newLeaderboard));
     setScoreSubmitted(true);
+
+    try {
+      await apiClient.put('/legal/api/v1/configurations/error_game_leaderboard', {
+        value: newLeaderboard,
+        module: 'general',
+        description: 'Error Boundary Mini-Game Leaderboard'
+      });
+    } catch (err) {
+      console.error('Error saving leaderboard to database:', err);
+    }
   };
 
   const resetGame = () => {
+    setSelectedQuestions(getRandomQuestions(questionsPool));
     setCurrentQuestionIndex(0);
     setScore(0);
     setBaseScore(0);

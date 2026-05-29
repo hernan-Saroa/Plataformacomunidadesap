@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react';
 import {
   FolderOpen, Download, Eye, X, FileText, ChevronDown,
   Filter, User, File, BookOpen, Library, ArrowRight, Loader2, Search,
-  Shield, Mail, Stamp, Share2, Bell
+  Shield, Mail, Stamp, Share2, Bell, Trash2, FileSignature
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -73,7 +73,9 @@ interface TabDocumentosExpedienteProps {
   onViewDocument?: (doc: DocumentoExpediente) => void;
   onDownloadDocument?: (doc: DocumentoExpediente) => void;
   onDownloadAll?: () => Promise<void> | void;
+  onDeleteDocument?: (doc: DocumentoExpediente) => Promise<void> | void;
   moduloContexto?: 'defensa-judicial' | 'juzgamiento';
+  allowSigning?: boolean;
 }
 
 // Categorías que usan el flujo de plantillas (Word → PDF diligenciado)
@@ -101,7 +103,9 @@ export function TabDocumentosExpediente({
   onViewDocument,
   onDownloadDocument,
   onDownloadAll,
-  moduloContexto = 'defensa-judicial'
+  onDeleteDocument,
+  moduloContexto = 'defensa-judicial',
+  allowSigning = false
 }: TabDocumentosExpedienteProps) {
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('todos');
@@ -378,7 +382,7 @@ export function TabDocumentosExpediente({
         >
           
           {/* 1. Menú Desplegable (Categorías) */}
-          <div className="relative w-full sm:w-auto min-w-[240px] bg-slate-50 hover:bg-slate-100 transition-colors group cursor-pointer border-b sm:border-b-0 sm:border-r border-gray-200">
+          <div dir="ltr" className="relative w-full sm:w-auto min-w-[240px] bg-slate-50 hover:bg-slate-100 transition-colors group cursor-pointer border-b sm:border-b-0 sm:border-r border-gray-200">
             <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none transition-transform group-hover:scale-110 duration-300">
               {(() => {
                 const activeCat = categoriasSeguras.find(c => c.id === filtroDocTipo) || categoriasSeguras[0];
@@ -388,10 +392,14 @@ export function TabDocumentosExpediente({
             </div>
             
             <select
+              dir="ltr"
               value={filtroDocTipo}
               onChange={(e) => setFiltroDocTipo(e.target.value)}
-              className="w-full h-14 pl-12 pr-10 bg-transparent text-[15px] font-bold cursor-pointer outline-none appearance-none"
+              className="w-full h-14 pl-12 pr-10 bg-transparent text-[15px] font-bold cursor-pointer outline-none appearance-none [&::-ms-expand]:hidden"
               style={{
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                appearance: 'none',
                 color: categoriasSeguras.find(c => c.id === filtroDocTipo)?.color || '#334155'
               }}
             >
@@ -463,6 +471,19 @@ export function TabDocumentosExpediente({
             {documentosFiltrados.map((doc) => {
               const catInfo = categoriasSeguras.find(c => c.id === doc.categoria);
               const CatIcon = ICON_MAP[catInfo?.icono as string] || File;
+              
+              const isSigned = (() => {
+                if (doc.descripcion) {
+                  try {
+                    const data = JSON.parse(doc.descripcion);
+                    return !!(data && data.firmado);
+                  } catch (e) {
+                    return false;
+                  }
+                }
+                return false;
+              })();
+
               return (
                 <Card key={doc.id} className="p-3 hover:shadow-md transition-all border border-gray-200 hover:border-blue-200">
                   <div className="flex items-center gap-3">
@@ -471,13 +492,22 @@ export function TabDocumentosExpediente({
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm truncate">{doc.nombre}</h4>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: catInfo?.color || '#6B7280' }}>
                           {catInfo?.nombre || 'General'}
                         </span>
                         {doc.etapa && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#0D9488' }}>
                             {doc.etapa}
+                          </span>
+                        )}
+                        {isSigned && (
+                          <span 
+                            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border border-emerald-300" 
+                            style={{ background: '#D1FAE5', color: '#065F46' }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Firmado
                           </span>
                         )}
                         <span className="text-xs text-gray-500">{doc.tamaño}</span>
@@ -495,12 +525,41 @@ export function TabDocumentosExpediente({
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={() => handleVerDocumento(doc)} title="Ver documento">
+                      <button 
+                        className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors" 
+                        onClick={() => handleVerDocumento(doc)} 
+                        title="Ver documento"
+                      >
                         <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50" onClick={() => handleDescargarDocumento(doc)} title="Descargar documento">
+                      </button>
+                      {(() => {
+                        const isPdf = doc.nombre.toLowerCase().endsWith('.pdf') || doc.url?.toLowerCase().includes('.pdf');
+                        return allowSigning && isPdf && !isSigned && (
+                          <button 
+                            className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors" 
+                            onClick={() => handleVerDocumento(doc)} 
+                            title="Firmar documento"
+                          >
+                            <FileSignature className="w-4 h-4" />
+                          </button>
+                        );
+                      })()}
+                      <button 
+                        className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-orange-600 hover:bg-orange-50 hover:text-orange-700 transition-colors" 
+                        onClick={() => handleDescargarDocumento(doc)} 
+                        title="Descargar documento"
+                      >
                         <Download className="w-4 h-4" />
-                      </Button>
+                      </button>
+                      {onDeleteDocument && !isSigned && (
+                        <button 
+                          className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors" 
+                          onClick={() => onDeleteDocument(doc)} 
+                          title="Eliminar documento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </Card>

@@ -211,6 +211,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       return (
         <AnimatePresence mode="wait">
           <motion.div
+            key={`header-collapsed-${sectionId}`}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
@@ -228,6 +229,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
     return (
       <motion.button
+        key={`header-expanded-${sectionId}`}
         onClick={() => toggleSectionExpansion(sectionId)}
         className={`w-full flex items-center gap-2 px-2 py-2.5 mb-2 transition-colors group relative rounded-lg ${isExpanded ? 'text-white bg-white/8' : 'text-white/80 hover:text-white hover:bg-white/5'
           }`}
@@ -236,15 +238,18 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
         transition={springTransition}
       >
         {/* Indicador visual de expansión (borde izquierdo MÁS GRUESO) */}
-        {isExpanded && (
-          <motion.div
-            initial={{ scaleY: 0, opacity: 0 }}
-            animate={{ scaleY: 1, opacity: 1 }}
-            exit={{ scaleY: 0, opacity: 0 }}
-            className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-300 to-blue-500 rounded-r-full"
-            style={{ boxShadow: '0 0 8px rgba(96, 165, 250, 0.5)' }}
-          />
-        )}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              key={`indicator-${sectionId}`}
+              initial={{ scaleY: 0, opacity: 0 }}
+              animate={{ scaleY: 1, opacity: 1 }}
+              exit={{ scaleY: 0, opacity: 0 }}
+              className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-300 to-blue-500 rounded-r-full"
+              style={{ boxShadow: '0 0 8px rgba(96, 165, 250, 0.5)' }}
+            />
+          )}
+        </AnimatePresence>
 
         <div className="flex-shrink-0">
           {icon}
@@ -800,13 +805,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 
                 <AnimatePresence>
                   {(effectiveCollapsed || expandedSections['estructura-org']) && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                      className="overflow-hidden"
-                    >
+                <motion.div
+                  key="estructura-org-content"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
                       {/* Gestión de usuarios */}
                       {renderMenuItem(
                         'users-management',
@@ -1066,6 +1072,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             <AnimatePresence>
               {(effectiveCollapsed || expandedSections['estructura-org']) && (
                 <motion.div
+                  key="estructura-org-content-2"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
@@ -1146,6 +1153,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             <AnimatePresence>
               {(effectiveCollapsed || expandedSections['gestion-usuarios']) && (
                 <motion.div
+                  key="gestion-usuarios-content"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}

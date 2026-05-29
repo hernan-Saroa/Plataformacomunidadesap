@@ -369,6 +369,20 @@ class AuthService {
       email: u.email ?? u.person?.email ?? '',
     }));
   }
+
+  async getTodosLosUsuariosActivos(): Promise<AbogadoResuelve[]> {
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    return users.map((u: any) => ({
+      id: u.user?.id_user ?? u.id_user ?? u.id ?? u.person?.id,
+      nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      email: u.email ?? u.person?.email ?? '',
+    }));
+  }
 }
 
 // Tipo para profesionales/usuarios en asignación de procesos disciplinarios

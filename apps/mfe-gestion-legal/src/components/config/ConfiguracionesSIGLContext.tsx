@@ -240,6 +240,22 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Auto que resuelve incidentes o cuestiones de trámite', activo: true },
       { id: 'auto-sustanciacion', nombre: 'Auto de Sustanciación', descripcion: 'Auto que impulsa el proceso y ordena trámites', activo: true },
     ],
+    tiposActuaciones: [
+      { id: 'aporte-pruebas', nombre: 'Aporte de Pruebas', descripcion: 'Presentación de pruebas documentales o testimoniales.', activo: true, orden: 1 },
+      { id: 'contestacion', nombre: 'Contestación', descripcion: 'Contestación a requerimientos o demandas.', activo: true, orden: 2 },
+      { id: 'asignacion', nombre: 'Asignación', descripcion: 'Asignación de roles o expedientes.', activo: true, orden: 3 },
+      { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Decisión sobre cuestiones de trámite.', activo: true, orden: 4 },
+      { id: 'sentencia', nombre: 'Sentencia', descripcion: 'Decisión final del proceso.', activo: true, orden: 5 },
+      { id: 'traslado', nombre: 'Traslado', descripcion: 'Comunicación de documentos a otra parte.', activo: true, orden: 6 },
+      { id: 'notificacion', nombre: 'Notificación', descripcion: 'Comunicación formal de un acto.', activo: true, orden: 7 },
+      { id: 'recurso', nombre: 'Recurso', descripcion: 'Interposición de recurso legal.', activo: true, orden: 8 },
+      { id: 'memorial', nombre: 'Memorial', descripcion: 'Escrito presentado por las partes.', activo: true, orden: 9 },
+      { id: 'audiencia', nombre: 'Audiencia', descripcion: 'Diligencia oral y pública.', activo: true, orden: 10 },
+      { id: 'inspeccion-judicial', nombre: 'Inspección Judicial', descripcion: 'Revisión directa por parte del juez.', activo: true, orden: 11 },
+      { id: 'prueba-testimonial', nombre: 'Prueba Testimonial', descripcion: 'Declaración de testigos.', activo: true, orden: 12 },
+      { id: 'diligencia', nombre: 'Diligencia', descripcion: 'Actuación procedimental diversa.', activo: true, orden: 13 },
+      { id: 'otro', nombre: 'Otro', descripcion: 'Otras actuaciones no categorizadas.', activo: true, orden: 14 }
+    ],
     mediosControl: [
       { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización por daño antijurídico', activo: true, orden: 1 },
       { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento', descripcion: 'Acción contra actos administrativos', activo: true, orden: 2 },

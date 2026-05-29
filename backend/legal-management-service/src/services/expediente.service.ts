@@ -382,6 +382,29 @@ export class ExpedienteService {
                 fechaActuacion: new Date(),
                 usuarioResponsable: 'Sistema' // O idealmente el usuario del request si se pasa
             });
+
+            // Auto-autorizar actuaciones pendientes
+            try {
+                const pendingActuaciones = await this.actuacionRepository.find({
+                    where: [
+                        { expedienteId: currentExpediente.id },
+                        { expedienteId: currentExpediente.radicado }
+                    ]
+                });
+                for (const act of pendingActuaciones) {
+                    if (act.metadata && act.metadata.estadoAutorizacion === 'PENDIENTE') {
+                        act.metadata.estadoAutorizacion = 'AUTORIZADO';
+                        act.metadata.estado = 'Completado';
+                        act.metadata.firmadoPor = 'Aprobación General';
+                        act.metadata.fechaFirma = new Date().toISOString();
+                        delete act.metadata.otp;
+                        delete act.metadata.otpExpiry;
+                        await this.actuacionRepository.save(act);
+                    }
+                }
+            } catch (err) {
+                Logger.error(`Error auto-autorizando actuaciones en cambio de etapa: ${err?.message || err}`);
+            }
         }
 
         if (data.estado && data.estado !== currentExpediente.estado) {
