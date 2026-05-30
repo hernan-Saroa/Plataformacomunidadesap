@@ -194,15 +194,18 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
 
   // Vista Desktop/Tablet - Tabla profesional
   return (
-    <Card className="border border-gray-200 bg-white overflow-hidden">
+    <Card className="border border-gray-200 bg-white overflow-hidden shadow-sm rounded-xl relative">
+      {/* Barra de acento */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-[#003DA5]" />
+      
       {/* Header de la tabla */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 border-b border-blue-700">
-        <div className="flex items-center justify-between">
-          <h3 className="font-black text-white flex items-center gap-2">
+      <div className="bg-white px-4 py-4 border-b border-gray-100 flex items-center justify-between mt-1">
+        <div className="flex items-center justify-between w-full">
+          <h3 className="font-black text-[#003DA5] flex items-center gap-2 text-base">
             <List className="w-5 h-5" />
             Vista de Lista - Expedientes Judiciales
           </h3>
-          <Badge className="bg-white text-blue-700 font-bold">
+          <Badge className="bg-[#E0EDFF] text-[#003DA5] border border-blue-200 font-bold px-2.5 py-1">
             {expedientesOrdenados.length} expedientes
           </Badge>
         </div>
@@ -278,7 +281,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
               </th>
 
               {/* Cuantía */}
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left hidden lg:table-cell">
                 <div className="flex items-center gap-1.5 text-xs font-black text-gray-700">
                   <DollarSign className="w-3.5 h-3.5" />
                   Cuantía
@@ -286,7 +289,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
               </th>
 
               {/* Última Actualización */}
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left hidden xl:table-cell">
                 <button
                   onClick={() => handleOrdenar('fecha')}
                   className="flex items-center gap-1.5 text-xs font-black text-gray-700 hover:text-blue-600 transition-colors"
@@ -498,44 +501,56 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
 
         {/* Demandante */}
         <td className="px-4 py-3">
-          <div className="max-w-xs space-y-1">
+          <div className="max-w-xs space-y-1.5">
             {/* Demandantes */}
-            {expediente.demandantes && expediente.demandantes.length > 0 ? (
-              <>
-                <p className="text-[10px] font-semibold text-orange-700 uppercase">Demandante(s):</p>
-                {expediente.demandantes.map((demandante, idx) => (
-                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
-                    • {demandante.nombre}
+            <div className="flex items-start gap-1.5">
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-[#003DA5] uppercase shrink-0">
+                DTE
+              </span>
+              <div className="min-w-0 flex-1">
+                {expediente.demandantes && expediente.demandantes.length > 0 ? (
+                  expediente.demandantes.map((demandante, idx) => (
+                    <p key={idx} className="font-bold text-xs text-gray-900 truncate" title={demandante.nombre}>
+                      {demandante.nombre}
+                    </p>
+                  ))
+                ) : (
+                  <p className="font-bold text-xs text-gray-900 truncate" title={expediente.demandante}>
+                    {expediente.demandante}
                   </p>
-                ))}
-              </>
-            ) : (
-              <p className="font-bold text-sm text-gray-900 line-clamp-2">
-                {expediente.demandante}
-              </p>
-            )}
+                )}
+              </div>
+            </div>
 
             {/* Demandados */}
             {expediente.demandados && expediente.demandados.length > 0 && (
-              <div className="mt-1 pt-1 border-t border-gray-200">
-                <p className="text-[10px] font-semibold text-red-700 uppercase">Demandado(s):</p>
-                {expediente.demandados.map((demandado, idx) => (
-                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
-                    • {demandado.nombre}
-                  </p>
-                ))}
+              <div className="flex items-start gap-1.5 pt-1.5 border-t border-gray-100">
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 text-gray-600 uppercase shrink-0">
+                  DDO
+                </span>
+                <div className="min-w-0 flex-1">
+                  {expediente.demandados.map((demandado, idx) => (
+                    <p key={idx} className="font-bold text-xs text-gray-900 truncate" title={demandado.nombre}>
+                      {demandado.nombre}
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* Otros Actores */}
             {expediente.otrosActores && expediente.otrosActores.length > 0 && (
-              <div className="mt-1 pt-1 border-t border-gray-200">
-                <p className="text-[10px] font-semibold text-blue-700 uppercase">Otros Actores:</p>
-                {expediente.otrosActores.map((actor, idx) => (
-                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
-                    • {actor.nombre} <span className="text-[9px] text-gray-600">({actor.rol})</span>
-                  </p>
-                ))}
+              <div className="flex items-start gap-1.5 pt-1.5 border-t border-gray-100">
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 uppercase shrink-0">
+                  OTRO
+                </span>
+                <div className="min-w-0 flex-1">
+                  {expediente.otrosActores.map((actor, idx) => (
+                    <p key={idx} className="font-bold text-xs text-gray-900 truncate" title={`${actor.nombre} (${actor.rol})`}>
+                      {actor.nombre} <span className="text-[9px] text-gray-500 font-normal">({actor.rol})</span>
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -631,14 +646,14 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
         </td>
 
         {/* Cuantía */}
-        <td className="px-4 py-3">
+        <td className="px-4 py-3 hidden lg:table-cell">
           <p className="font-bold text-sm text-gray-900">
             {formatCuantia(Number(expediente.cuantia) || undefined)}
           </p>
         </td>
 
         {/* Última Actualización */}
-        <td className="px-4 py-3">
+        <td className="px-4 py-3 hidden xl:table-cell">
           <div className="space-y-1.5 max-w-[220px]">
             <div className="flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-gray-400" />

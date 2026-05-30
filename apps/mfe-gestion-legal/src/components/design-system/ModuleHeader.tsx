@@ -66,7 +66,7 @@ export function ModuleHeader({
 }: ModuleHeaderProps) {
   
   // ✅ Hook responsive reactivo
-  const { isMobile, isTablet } = useResponsive();
+  const { isMobile } = useResponsive();
 
   // Icono por defecto: Balanza blanca
   const activeIcon = icon || <Scale className="w-5 h-5 text-white" />;
@@ -75,14 +75,14 @@ export function ModuleHeader({
     <div className="space-y-3" data-tour="module-header">
       {/* Fila 1: Título + Info Tooltip + Botones principales (Diseño Premium OCI - White Card con borde inferior de color) */}
       <div 
-        className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+        className="module-header-container rounded-xl border border-gray-200 overflow-hidden bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
         style={{
           borderBottom: `3px solid ${color}`
         }}
       >
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-4 py-3">
+        <div className="module-header-row1 px-4 py-3">
           {/* Lado izquierdo: Ícono con fondo de color + Título y Subtítulo */}
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div 
               className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{ background: color }}
@@ -106,7 +106,7 @@ export function ModuleHeader({
           </div>
 
           {/* Lado derecho: Acciones principales (Info + Botones) */}
-          <div className="flex items-center flex-wrap justify-start sm:justify-end gap-2 flex-shrink-0 w-full md:w-auto mt-1 md:mt-0">
+          <div className="module-header-actions-container">
             {topCustomActions && (
               <div className="flex items-center">
                 {topCustomActions}
@@ -148,10 +148,10 @@ export function ModuleHeader({
 
       {/* Fila 2: Toggle de Vista y Acciones Personalizadas (Filtros, Tableros) */}
       {(toggleView || customActions) && (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 w-full pt-1 border-t border-slate-100 flex-wrap">
+        <div className="module-header-row2 pt-1 border-t border-slate-100">
           
           {/* Lado izquierdo: Segmented Tab Control */}
-          <div className="w-full md:w-auto flex-shrink-0">
+          <div className="module-header-toggle-container">
             {toggleView && (
               <div className="flex items-center gap-1 p-0.5 rounded-lg w-full sm:w-auto sm:inline-flex border border-slate-250 shadow-inner bg-slate-50">
                 {toggleView.options.map((option, idx) => {
@@ -182,7 +182,7 @@ export function ModuleHeader({
 
           {/* Lado derecho: customActions (Tableros, selectores, filtros) */}
           {customActions && (
-            <div className="w-full md:w-auto flex-shrink-0 flex justify-start md:justify-end">
+            <div className="module-header-custom-actions">
               {customActions}
             </div>
           )}

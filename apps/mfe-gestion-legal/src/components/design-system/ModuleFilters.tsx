@@ -157,17 +157,17 @@ export function ModuleFilters({
   }, [searchValue, activeAdvancedCount]);
 
   return (
-    <div className={borderless ? `w-full ${className}` : `bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden p-1.5 sm:p-2 ${className}`}>
+    <div className={borderless ? `module-filters-container w-full ${className}` : `module-filters-container bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden p-1.5 sm:p-2 ${className}`}>
       <div className="space-y-0">
         
-        {/* Barra Única (elementos alineados que saltan a nueva línea si no caben) */}
-        <div className="flex flex-row items-start justify-start gap-2 flex-wrap w-full pb-1">
+        {/* Barra Única (elementos alineados que se adaptan con container queries) */}
+        <div className="module-filters-row">
           
           {/* Búsqueda + Filtros Avanzados */}
-          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          <div className="module-filters-left-group">
             {/* Campo de Búsqueda - Siempre visible e intuitivo con placeholder */}
             <div 
-              className="relative flex items-center h-8 flex-shrink-0 w-[130px] sm:w-[150px] border border-gray-300 bg-white rounded-lg shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100"
+              className="module-filters-search-input-container relative flex items-center h-9 border border-gray-300 bg-white rounded-lg shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100"
             >
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none flex-shrink-0" />
               
@@ -199,7 +199,7 @@ export function ModuleFilters({
               <button
                 type="button"
                 onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all h-9 shadow-sm flex-shrink-0 ${
+                className={`module-filters-toggle-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all h-9 shadow-sm flex-shrink-0 ${
                   isAdvancedOpen 
                     ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' 
                     : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
@@ -221,13 +221,13 @@ export function ModuleFilters({
             )}
 
             {/* Contenedor animado de filtros para transición fluida */}
-            <div className={`flex flex-wrap items-center gap-2.5 transition-all duration-300 ease-in-out ${
+            <div className={`module-filters-advanced transition-all duration-300 ease-in-out ${
               isAdvancedOpen 
                 ? 'opacity-100 pointer-events-auto' 
                 : 'hidden opacity-0 pointer-events-none'
             }`}>
               {filters.map((filter, index) => (
-                <div key={index} className="flex-shrink-0">
+                <div key={index} className="module-filters-advanced-item">
                   <FilterField filter={filter} isMobile={isMobile} />
                 </div>
               ))}
@@ -235,13 +235,13 @@ export function ModuleFilters({
           </div>
 
           {children && (
-            <div className="flex items-center flex-shrink-0">
+            <div className="module-filters-custom-children flex items-center flex-shrink-0">
               {children}
             </div>
           )}
 
           {/* Acciones de Limpieza y Contador */}
-          <div className="flex items-center justify-between sm:justify-end gap-2.5 flex-shrink-0 ml-auto">
+          <div className="module-filters-actions-wrapper">
             {showCounter && totalItems !== undefined && filteredItems !== undefined && (
               <div className="text-xs text-gray-500 bg-gray-50 border border-gray-100 px-2 py-1 rounded-md font-semibold">
                 {counterText || (

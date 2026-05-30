@@ -1197,39 +1197,96 @@ export function ModuloDefensaJudicialV3() {
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
           <div className="relative">
-            {!useFluidKanban && (
-              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                  Desliza
-                </p>
-              </div>
-            )}
+            {isMobile ? (
+              /* Vista Adaptativa Mobile - Acordeón de Etapas */
+              <div className="space-y-3 px-1">
+                {etapas.map((etapa: any) => {
+                  const estaAbierto = !columnasColapsadas[etapa.valor];
+                  return (
+                    <Card key={etapa.nombre} className="border border-gray-200 overflow-hidden bg-white shadow-sm rounded-xl">
+                      <button
+                        onClick={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 hover:bg-gray-100/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 flex-shrink-0">
+                            {etapa.icono}
+                          </div>
+                          <span className="font-black text-sm text-gray-800 truncate text-left">
+                            {etapa.nombre}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="font-bold text-xs px-2 py-0.5 bg-[#E0EDFF] text-[#003DA5] border border-blue-200">
+                            {etapa.expedientes.length}
+                          </Badge>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${estaAbierto ? '' : 'rotate-[-90deg]'}`} />
+                        </div>
+                      </button>
 
-            <div
-              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#CBD5E0 #F7FAFC',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
-              {etapas.map((etapa: any) => (
-                <ColumnaKanban
-                  key={etapa.nombre}
-                  etapa={etapa}
-                  isMobile={isMobile}
-                  isTablet={isTablet}
-                  isSmallDesktop={isSmallDesktop}
-                  columnWidth={kanbanColumnWidth}
-                  useFluid={useFluidKanban}
-                  onRefresh={loadExpedientes}
-                  onMoverExpediente={handleMoverExpediente}
-                  isCollapsed={!!columnasColapsadas[etapa.valor]}
-                  onToggleCollapse={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
-                />
-              ))}
-            </div>
+                      {estaAbierto && (
+                        <div className="p-3 space-y-3 bg-gray-50/50">
+                          {etapa.expedientes.map((expediente: any) => (
+                            <TarjetaExpediente
+                              key={expediente.id}
+                              expediente={expediente}
+                              isMobile={isMobile}
+                              isCompact={false}
+                              onRefresh={loadExpedientes}
+                              onMoverExpediente={handleMoverExpediente}
+                              etapaActual={etapa.valor}
+                            />
+                          ))}
+                          {etapa.expedientes.length === 0 && (
+                            <div className="text-center py-8 text-gray-400">
+                              <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                              <p className="text-xs font-semibold">Sin expedientes en esta etapa</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Vista Desktop - Kanban tradicional */
+              <>
+                {!useFluidKanban && (
+                  <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                    <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                      <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                      Desliza
+                    </p>
+                  </div>
+                )}
+
+                <div
+                  className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 kanban-board-scroll ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth snap-x snap-mandatory`}
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#CBD5E0 #F7FAFC',
+                    WebkitOverflowScrolling: 'touch'
+                  }}
+                >
+                  {etapas.map((etapa: any) => (
+                    <ColumnaKanban
+                      key={etapa.nombre}
+                      etapa={etapa}
+                      isMobile={isMobile}
+                      isTablet={isTablet}
+                      isSmallDesktop={isSmallDesktop}
+                      columnWidth={kanbanColumnWidth}
+                      useFluid={useFluidKanban}
+                      onRefresh={loadExpedientes}
+                      onMoverExpediente={handleMoverExpediente}
+                      isCollapsed={!!columnasColapsadas[etapa.valor]}
+                      onToggleCollapse={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </DndProvider>
       )}
@@ -1342,8 +1399,8 @@ function ColumnaKanban({
   if (isCollapsed && !isMobile) {
     return (
       <div
-        className="flex-shrink-0 w-[64px] min-w-[64px] transition-all duration-300 relative flex flex-col"
-        style={{ height: 'calc(100vh - 230px)' }}
+        className="flex-shrink-0 w-[40px] min-w-[40px] transition-all duration-300 relative flex flex-col snap-center"
+        style={{ height: 'calc(100vh - 180px)' }}
       >
         <Card
           ref={drop}
@@ -1355,14 +1412,14 @@ function ColumnaKanban({
           <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
 
           {/* Badge de cantidad */}
-          <Badge className="font-bold text-xs px-2 py-0.5 bg-white border border-gray-200 text-gray-700 shadow-sm flex-shrink-0 mb-6">
+          <Badge className="font-bold text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 shadow-sm flex-shrink-0 mb-6">
             {etapa.expedientes.length}
           </Badge>
 
           {/* Nombre vertical */}
           <div className="flex-1 flex items-center justify-center">
             <span
-              className="font-black text-xs text-gray-600 uppercase tracking-wider whitespace-nowrap rotate-90 select-none pointer-events-none"
+              className="font-black text-[10px] text-gray-600 uppercase tracking-wider whitespace-nowrap rotate-90 select-none pointer-events-none"
               style={{ transformOrigin: 'center center' }}
             >
               {etapa.nombre}
@@ -1371,7 +1428,7 @@ function ColumnaKanban({
 
           {/* Icono de expandir */}
           <div className="mt-6 p-1 rounded-md bg-white border border-gray-200 text-gray-400 hover:text-[#003DA5] hover:border-[#003DA5]/30 shadow-sm">
-            <ChevronsDown className="w-4 h-4 rotate-[-90deg]" />
+            <ChevronsDown className="w-3.5 h-3.5 rotate-[-90deg]" />
           </div>
         </Card>
       </div>
@@ -1380,8 +1437,8 @@ function ColumnaKanban({
 
   return (
     <div
-      className="flex-shrink-0 w-[260px] sm:w-[280px] md:w-[320px] flex flex-col transition-all duration-300"
-      style={{ height: isMobile ? 'auto' : 'calc(100vh - 230px)' }}
+      className="flex-shrink-0 w-[260px] min-w-[260px] sm:w-[280px] sm:min-w-[280px] md:w-[320px] md:min-w-[320px] flex flex-col transition-all duration-300 snap-center"
+      style={{ height: isMobile ? 'auto' : 'calc(100vh - 180px)' }}
     >
       <Card className="h-full border border-gray-200 bg-white flex flex-col overflow-hidden relative">
         {/* Acento de color arriba */}

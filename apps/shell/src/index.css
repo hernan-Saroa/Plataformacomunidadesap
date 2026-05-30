@@ -16,7 +16,18 @@
   padding-left: 0;
 }
 
-@media (min-width: 768px) {
+/* Tablet adaptive sidebar offsets to prevent content overlap */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .backoffice-main-shell--sidebar-open:not(.backoffice-main-shell--no-sidebar) {
+    padding-left: 260px;
+  }
+
+  .backoffice-main-shell--sidebar-open.backoffice-main-shell--collapsed:not(.backoffice-main-shell--no-sidebar) {
+    padding-left: 80px;
+  }
+}
+
+@media (min-width: 1024px) {
   .backoffice-main-shell:not(.backoffice-main-shell--no-sidebar) {
     padding-left: 276px;
   }
@@ -25,6 +36,7 @@
     padding-left: 96px;
   }
 }
+
 
 @media (min-width: 1024px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {

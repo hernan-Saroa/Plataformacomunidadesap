@@ -689,7 +689,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       {/* Backdrop para móviles */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-[998] md:hidden transition-opacity duration-300"
+          className="fixed inset-0 bg-black/50 z-[998] lg:hidden transition-opacity duration-300"
           onClick={onClose}
         />
       )}
@@ -699,7 +699,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
         id="sidebar-navigation"
         className={`fixed left-0 top-0 h-screen transition-all duration-300 flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 ${
+        } lg:translate-x-0 ${
           effectiveCollapsed ? 'w-[80px]' : 'w-[280px] md:w-[260px]'
         }`}
         style={{
@@ -716,7 +716,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {onClose && (
             <button
               onClick={onClose}
-              className="absolute right-3 top-3 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 md:hidden z-20"
+              className="absolute right-3 top-3 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 lg:hidden z-20"
               aria-label="Cerrar menú"
             >
               <X className="w-5 h-5" />
@@ -746,7 +746,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     {/* Isotipo oficial ESAP */}
                     <ESAPLogo 
                       variant="icon"
-                      className="w-10 h-10 object-contain drop-shadow-lg filter brightness-0"
+                      className="w-10 h-10 object-contain drop-shadow-lg"
                     />
                   </motion.div>
                 ) : (
@@ -770,7 +770,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {/* Botón Toggle Premium */}
           <motion.button
             onClick={onToggleCollapse}
-            className="hidden md:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
+            className="hidden lg:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
             style={{ top: '50%', transform: 'translateY(-50%)', color: '#1e5da8' }}
             whileHover={{ 
               scale: 1.15,
