@@ -1092,8 +1092,10 @@ export function ModuloDefensaJudicialV3() {
   return (
     <div className="space-y-3 md:space-y-4">
       <ModuleHeader
-        title="Tablero Kanban Operativo"
-        subtitle="Gestión visual de demandas judiciales contra ESAP"
+        title="Defensa Judicial"
+        subtitle="Gestión visual de demandas judiciales y actuaciones procesales contra la ESAP"
+        icon={<Gavel className="w-5 h-5 text-white" />}
+        color="#003DA5"
         buttons={addBtnsPermission()}
         topCustomActions={
           <div className="relative flex items-center w-[200px] sm:w-[260px] mr-1 shrink-0">
