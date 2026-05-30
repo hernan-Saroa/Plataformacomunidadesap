@@ -69,7 +69,6 @@ import { copyToClipboard } from '@/utils/browser';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import graduadosService, {
   CertificadoGraduado,
-  DescargaCertificado,
   GraduationCertificateTemplateConfig,
   GraduationCertificateTemplateTexts,
   SolicitudCertificadoGraduado,
@@ -121,7 +120,6 @@ interface CertificateRequest {
   requestCount: number; // Numero de solicitudes asociadas al certificado
   qrScanCount: number; // Número de veces que se ha escaneado el QR
   viewCount: number;
-  downloadCount: number;
   lastActivity: string;
   requestHistory: Array<{
     id: string;
@@ -422,17 +420,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     isLoadingCertificatesRef.current = true;
     setIsLoading(true);
     try {
-      const [certificatesResponse, requestsResponse, validationsResponse, downloadsResponse] = await Promise.all([
+      const [certificatesResponse, requestsResponse, validationsResponse] = await Promise.all([
         graduadosService.certificados.listar(),
         graduadosService.solicitudes.listar(),
         graduadosService.validaciones.listar(),
-        graduadosService.descargas.listar(),
       ]);
 
       const certificatesData = ensureArray<CertificadoGraduado>(certificatesResponse);
       const requestsData = ensureArray<SolicitudCertificadoGraduado>(requestsResponse);
       const validationsData = ensureArray<ValidacionCertificado>(validationsResponse);
-      const downloadsData = ensureArray<DescargaCertificado>(downloadsResponse);
 
       const requestsById = new Map<string, SolicitudCertificadoGraduado>();
       requestsData.forEach((request) => {
@@ -445,14 +441,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           validationsByCertificate.set(validation.certificateId, []);
         }
         validationsByCertificate.get(validation.certificateId)!.push(validation);
-      });
-
-      const downloadsByCertificate = new Map<string, DescargaCertificado[]>();
-      downloadsData.forEach((download) => {
-        if (!downloadsByCertificate.has(download.certificateId)) {
-          downloadsByCertificate.set(download.certificateId, []);
-        }
-        downloadsByCertificate.get(download.certificateId)!.push(download);
       });
 
       const mappedCertificates = certificatesData.map((certificate) => {
@@ -482,7 +470,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const scanHistory = mapScanHistory(
             validationsByCertificate.get(certificate.id) || []
           );
-          const downloadCount = (downloadsByCertificate.get(certificate.id) || []).length;
 
           const lastScan = scanHistory.length
             ? scanHistory[0].scannedAt
@@ -557,7 +544,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             requestCount: 1,
             qrScanCount: 0,
             viewCount: 1,
-            downloadCount,
             lastActivity,
             requestHistory: mainRequest
               ? [
@@ -1790,17 +1776,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         document.body.removeChild(link);
         URL.revokeObjectURL(downloadUrl);
 
-        setQrPreviewCertificate((prev) =>
-          prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev
-        );
-        setCertificates((prev) =>
-          prev.map((item) =>
-            item.id === qrPreviewCertificate.id
-              ? { ...item, downloadCount: item.downloadCount + 1 }
-              : item
-          )
-        );
-
         toast.success('QR descargado exitosamente', {
           description: `El codigo QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
         });
@@ -2556,7 +2531,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <TrendingUp className="w-4 h-4 text-green-600" />
                             Estadísticas de Uso
                           </h4>
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="bg-white border border-amber-200 rounded-lg p-3 text-center">
                               <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mx-auto mb-2">
                                 <QrCode className="w-5 h-5 text-amber-600" />
@@ -2570,13 +2545,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               </div>
                               <p className="text-2xl font-bold text-gray-900">{cert.viewCount}</p>
                               <p className="text-xs text-gray-600">Visualizaciones</p>
-                            </div>
-                            <div className="bg-white border border-green-200 rounded-lg p-3 text-center">
-                              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mx-auto mb-2">
-                                <Download className="w-5 h-5 text-green-600" />
-                              </div>
-                              <p className="text-2xl font-bold text-gray-900">{cert.downloadCount}</p>
-                              <p className="text-xs text-gray-600">Descargas</p>
                             </div>
                           </div>
                         </div>

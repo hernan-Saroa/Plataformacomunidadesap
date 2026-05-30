@@ -189,10 +189,10 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
     </div></div>
   );
 
-  const r = stats.resumen;
-  const ef = stats.eficiencia;
-  const comp = stats.comparativa30d;
-  const hs = stats.saludGlobal;
+  const r = stats.resumen || {};
+  const ef = stats.eficiencia || {};
+  const comp = stats.comparativa30d || { personasNuevas: { actual: 0, anterior: 0, delta: 0 } };
+  const hs = stats.saludGlobal || { score: 0, estado: 'critico', factores: [] };
   const alertas = stats.alertas || [];
   const timeline = stats.timelineData || [];
   const topTerr = (stats.distribucionTerritorial || []).slice(0,10);

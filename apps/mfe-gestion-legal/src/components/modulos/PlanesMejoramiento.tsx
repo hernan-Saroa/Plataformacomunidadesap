@@ -497,7 +497,6 @@ function ColumnaKanban({ etapa, isMobile, onVer, onEvidencias, onSeguimiento, on
             <div className="p-2 bg-white rounded-lg border border-gray-200">{etapa.icono}</div>
             <div className="flex-1 min-w-0">
               <h3 className="font-black text-sm text-gray-800">{etapa.nombre}</h3>
-              <p className="text-[10px] text-gray-500">Estimado: {etapa.diasEstimados} días</p>
             </div>
           </div>
           <Badge className="bg-white border border-gray-200 text-gray-700">{etapa.items.length}</Badge>

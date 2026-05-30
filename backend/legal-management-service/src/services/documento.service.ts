@@ -29,6 +29,9 @@ export class UpdateDocumentoDto {
     tipo?: string;
     descripcion?: string;
     archivoUrl?: string;
+    archivoNombreOriginal?: string;
+    archivoTamano?: number;
+    archivoMimeType?: string;
     fechaDocumento?: string;
     numeroFolios?: number;
     confidencial?: boolean;
@@ -119,6 +122,9 @@ export class DocumentoService {
         if (dto.tipo !== undefined) documento.tipo = dto.tipo;
         if (dto.descripcion !== undefined) documento.descripcion = dto.descripcion;
         if (dto.archivoUrl !== undefined) documento.archivoUrl = dto.archivoUrl;
+        if (dto.archivoNombreOriginal !== undefined) documento.archivoNombreOriginal = dto.archivoNombreOriginal;
+        if (dto.archivoTamano !== undefined) documento.archivoTamano = dto.archivoTamano;
+        if (dto.archivoMimeType !== undefined) documento.archivoMimeType = dto.archivoMimeType;
         if (dto.fechaDocumento !== undefined) documento.fechaDocumento = new Date(dto.fechaDocumento);
         if (dto.numeroFolios !== undefined) documento.numeroFolios = dto.numeroFolios;
         if (dto.confidencial !== undefined) documento.confidencial = dto.confidencial;

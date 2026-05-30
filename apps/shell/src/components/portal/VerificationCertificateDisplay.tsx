@@ -252,17 +252,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
-      // Registrar la descarga (no bloquea la descarga si falla)
-      if (certificate?.id) {
-        try {
-          await graduadosService.descargas.registrar(certificate.id, {
-            skipErrorToast: true,
-          });
-        } catch (error) {
-          console.warn('No se pudo registrar la descarga:', error);
-        }
-      }
-
       let pdfBlob: Blob;
 
       try {

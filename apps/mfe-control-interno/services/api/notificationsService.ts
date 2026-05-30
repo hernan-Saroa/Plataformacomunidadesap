@@ -2,7 +2,7 @@ import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
-const SERVICE_PREFIX = '/auth/api/v1';
+const SERVICE_PREFIX = '/notificaciones/api/v1';
 
 // Types
 export interface Notification {

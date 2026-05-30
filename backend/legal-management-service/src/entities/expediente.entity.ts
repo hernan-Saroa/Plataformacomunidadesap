@@ -200,6 +200,9 @@ export class Expediente {
     @Column({ type: 'text', nullable: true })
     hechos: string;
 
+    @Column({ name: 'campos_adicionales', type: 'jsonb', nullable: true })
+    camposAdicionales: Record<string, any>;
+
     @Column({ name: 'fecha_limite_etapa', type: 'timestamp', nullable: true })
     fechaLimiteEtapa: Date;
 

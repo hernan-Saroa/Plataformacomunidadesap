@@ -107,7 +107,8 @@ export const loadAuditLogs = async (params: LoadLogsParams): Promise<LoadLogsRes
       total: typeof response.total === 'number' ? response.total : 0,
     };
   } catch (error) {
-    console.error('Error in loadAuditLogs:', error);
+    // Silenciar error en consola si falla el fetch por CORS o backend no disponible
+    // console.error('Error in loadAuditLogs:', error);
     return { logs: [], total: 0 };
   }
 };
@@ -116,7 +117,7 @@ export const loadAvailableModules = async (): Promise<string[]> => {
   try {
     return await auditService.getModules();
   } catch (error) {
-    console.error('Error loading modules:', error);
+    // console.error('Error loading modules:', error);
     return [];
   }
 };

@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS internal_disciplinary_control.disciplinary_behaviors 
 -- Add primary key constraint (idempotent)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'disciplinary_behaviors_pkey') THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conrelid = 'internal_disciplinary_control.disciplinary_behaviors'::regclass 
+          AND contype = 'p'
+    ) THEN
         ALTER TABLE ONLY internal_disciplinary_control.disciplinary_behaviors
             ADD CONSTRAINT disciplinary_behaviors_pkey PRIMARY KEY (id);
     END IF;
@@ -27,7 +31,13 @@ END $$;
 -- Add unique constraint on codigo (idempotent)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'disciplinary_behaviors_codigo_unique') THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE i.indrelid = 'internal_disciplinary_control.disciplinary_behaviors'::regclass
+          AND i.indisunique = true
+          AND a.attname = 'codigo'
+    ) THEN
         ALTER TABLE ONLY internal_disciplinary_control.disciplinary_behaviors
             ADD CONSTRAINT disciplinary_behaviors_codigo_unique UNIQUE (codigo);
     END IF;
@@ -36,7 +46,13 @@ END $$;
 -- Add unique constraint on nombre (idempotent)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'disciplinary_behaviors_nombre_unique') THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE i.indrelid = 'internal_disciplinary_control.disciplinary_behaviors'::regclass
+          AND i.indisunique = true
+          AND a.attname = 'nombre'
+    ) THEN
         ALTER TABLE ONLY internal_disciplinary_control.disciplinary_behaviors
             ADD CONSTRAINT disciplinary_behaviors_nombre_unique UNIQUE (nombre);
     END IF;
@@ -45,7 +61,12 @@ END $$;
 -- Add check constraint for orden >= 0 (idempotent)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'disciplinary_behaviors_orden_check') THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conrelid = 'internal_disciplinary_control.disciplinary_behaviors'::regclass 
+          AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%orden%'
+    ) THEN
         ALTER TABLE ONLY internal_disciplinary_control.disciplinary_behaviors
             ADD CONSTRAINT disciplinary_behaviors_orden_check CHECK (orden >= 0);
     END IF;

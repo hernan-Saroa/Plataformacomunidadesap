@@ -13,7 +13,7 @@ export class TareaExpediente {
     @JoinColumn({ name: 'expediente_id' })
     expediente: Expediente;
 
-    @Column()
+    @Column({ nullable: true })
     titulo: string;
 
     @Column({ type: 'text', nullable: true })

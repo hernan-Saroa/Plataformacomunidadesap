@@ -6,14 +6,6 @@ import type { Request } from 'express';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  private readonly methodScopedPublicPatterns = [
-    {
-      method: 'POST',
-      pattern:
-        /^\/registro-academico\/api\/v\d+\/certificates\/descargas(?:\?.*)?$/i,
-    },
-  ];
-
   private readonly defaultPublicPatterns = [
     /^\/auth\/api\/v\d+\/login/i,
     /^\/auth\/api\/v\d+\/new-person/i,
@@ -80,6 +72,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
+  handleRequest(err, user, info) {
+    if (err || !user) {
+      const fs = require('fs');
+      const msg = `API Gateway Error: ${err ? err.message : 'no err'}\nInfo: ${info ? (info.message || info) : 'no info'}\nUser: ${JSON.stringify(user)}\n`;
+      try { fs.appendFileSync('C:\\\\Users\\\\Hernan_Buitrago\\\\.gemini\\\\antigravity-ide\\\\brain\\\\883b3a72-b726-4e69-988f-a5e16cb54cd3\\\\scratch\\\\gateway-jwt-error.log', msg); } catch(e) {}
+      throw err || new (require('@nestjs/common').UnauthorizedException)();
+    }
+    return user;
+  }
+
   private isPublic(context: ExecutionContext) {
     console.log('DEBUG [JwtAuthGuard] isPublic called');
 console.log('Handler:', context.getHandler());
@@ -92,17 +94,7 @@ console.log('Class:', context.getClass());
   }
 
   private matchesPublicPath(req: Request): boolean {
-    const method = (req.method || '').toUpperCase();
     const requestPath = this.normalizePath(req.originalUrl);
-    const methodScopedMatch = this.methodScopedPublicPatterns.some(
-      ({ method: allowedMethod, pattern }) =>
-        method === allowedMethod && pattern.test(requestPath),
-    );
-
-    if (methodScopedMatch) {
-      return true;
-    }
-
     const configured = (process.env.JWT_PUBLIC_PATHS || '')
       .split(',')
       .map((p) => p.trim())

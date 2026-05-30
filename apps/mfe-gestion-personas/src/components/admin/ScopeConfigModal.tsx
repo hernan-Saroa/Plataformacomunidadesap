@@ -303,10 +303,10 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
 
                 <div
                   onClick={() => setTipoAlcance('Filtrado')}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all ${tipoAlcance === 'Filtrado' ? 'border-[#003DA5] bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}
+                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all ${tipoAlcance === 'Filtrado' ? 'border-esap-blue bg-esap-blue-light' : 'border-gray-200 hover:border-gray-300'}`}
                 >
                   <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border-2 ${tipoAlcance === 'Filtrado' ? 'border-[#003DA5] bg-[#003DA5]' : 'border-gray-300'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border-2 ${tipoAlcance === 'Filtrado' ? 'border-esap-blue bg-esap-blue' : 'border-gray-300'}`}>
                       {tipoAlcance === 'Filtrado' && <Check size={12} className="text-white" />}
                     </div>
                     <span className="font-bold text-gray-900">Filtrado</span>
@@ -464,10 +464,10 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
               )}
 
               {tipoAlcance === 'Global' && (
-                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex-1 bg-[#4ADE80]/5 rounded-2xl border border-[#4ADE80]/20 p-6 flex flex-col items-center justify-center text-center">
-                  <Globe size={40} className="text-[#4ADE80] mb-4 opacity-50" />
-                  <h4 className="font-bold text-[#166534] mb-2">Alcance Irrestricto</h4>
-                  <p className="text-sm text-[#15803D] max-w-sm">
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex-1 bg-green-50 rounded-2xl border border-green-200 p-6 flex flex-col items-center justify-center text-center">
+                  <Globe size={40} className="text-green-500 mb-4 opacity-50" />
+                  <h4 className="font-bold text-green-800 mb-2">Alcance Irrestricto</h4>
+                  <p className="text-sm text-green-600 max-w-sm">
                     Este rol tendrá la capacidad de consultar y gestionar registros de todas las sedes nacionales de manera predeterminada.
                   </p>
                 </motion.div>

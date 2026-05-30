@@ -173,8 +173,14 @@ export function ModalHeaderClean({
             </div>
           )}
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+            }}
             className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Cerrar modal"
           >
             <X className="w-7 h-7" />
           </button>

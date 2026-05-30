@@ -5,10 +5,10 @@ Generado el 2026-05-07 desde las entidades TypeORM `*.entity.ts` y fuentes SQL e
 ## Alcance
 
 - Microservicios revisados: 12
-- Tablas derivadas de entidades TypeORM: 174
+- Tablas derivadas de entidades TypeORM: 173
 - Tablas adicionales derivadas de SQL: 42
-- Tablas documentadas en total: 216
-- Columnas documentadas: 3280
+- Tablas documentadas en total: 215
+- Columnas documentadas: 3274
 - Esquemas detectados: academic_registration, academic_work_plan, audit, auth, control_interno, default, esap, internal_disciplinary_control, legal_management, notifications, requerimientos_oc
 - Diagramas MER asociados: 8
 
@@ -16,7 +16,7 @@ Generado el 2026-05-07 desde las entidades TypeORM `*.entity.ts` y fuentes SQL e
 
 ## Índice por microservicio
 
-- [academic-registration-service](#academic-registration-service): 10 tablas; esquemas academic_registration; MER [academic_registration](<mer/06-may-2026/esap_db - academic_registration.png>)
+- [academic-registration-service](#academic-registration-service): 9 tablas; esquemas academic_registration; MER [academic_registration](<mer/06-may-2026/esap_db - academic_registration.png>)
 - [academic-work-plan-service](#academic-work-plan-service): 15 tablas; esquemas academic_work_plan; MER [academic_work_plan](<mer/06-may-2026/esap_db - academic_work_plan.png>)
 - [api-gateway](#api-gateway): 0 tablas
 - [audit-service](#audit-service): 1 tabla; esquemas audit; MER [audit](<mer/06-may-2026/esap_db - audit.png>)
@@ -37,24 +37,6 @@ Diagramas MER relacionados:
 ### Esquema `academic_registration`
 
 MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_registration.png>)
-
-#### Tabla `academic_registration.certificate_downloads`
-
-- Entidad/definición: `CertificateDownload`
-- Fuente: `TypeORM`
-- Archivo: `backend/academic-registration-service/src/graduation-certificates/certificate-download.entity.ts`
-- Relaciones declaradas:
-  - `certificate`: ManyToOne -> `GraduationCertificate` por `certificate_id`
-
-| Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
-|---|---|---|---|---|---|---|---|---|
-| `id` | `id` | uuid generated | Sí |  | No | No |  |  |
-| `certificate_id` | `certificateId` | uuid | No | ManyToOne -> GraduationCertificate | No | No |  |  |
-| `download_date` | `downloadDate` | timestamp | No |  | No | No |  | Fecha de creación automática |
-| `ip_address` | `ipAddress` | varchar (length 50) | No |  | Sí | No |  |  |
-| `user_agent` | `userAgent` | text | No |  | Sí | No |  |  |
-| `created_at` | `createdAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
-
 #### Tabla `academic_registration.certificate_template_config`
 
 - Entidad/definición: `TemplateConfig`
@@ -242,7 +224,6 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
   - `request`: ManyToOne -> `GraduationCertificateRequest` por `request_id`
   - `graduate`: ManyToOne -> `Graduate` por `graduate_id`
   - `validations`: OneToMany -> `CertificateValidation`
-  - `downloads`: OneToMany -> `CertificateDownload`
 
 | Columna | Propiedad | Tipo | PK | FK/Relación | Nulo | Única | Default | Nota |
 |---|---|---|---|---|---|---|---|---|

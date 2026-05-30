@@ -4,6 +4,8 @@
  * @version 1.0.1 - Fixed: Removed process.env, using import.meta.env instead
  */
 
+import { buildApiUrl } from '../../config/environment';
+
 // Tipos
 export interface CertificadoValidacionRequest {
   qrCode: string;
@@ -124,7 +126,7 @@ export interface Certificado {
 }
 
 // Configuración de la API
-const API_BASE_URL = 'https://api.esap.edu.co/v1';
+const API_BASE_URL = buildApiUrl('certificados', '/api/v1');
 const API_TIMEOUT = 30000; // 30 segundos
 
 // Función helper para hacer fetch con timeout

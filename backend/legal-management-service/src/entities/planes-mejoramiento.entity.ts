@@ -7,16 +7,16 @@ export class PlanMejoramiento {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   codigo: string;
 
-  @Column()
+  @Column({ nullable: true })
   titulo: string;
 
   @Column('text', { nullable: true })
   descripcion: string;
 
-  @Column()
+  @Column({ nullable: true })
   origen: string; // 'RIESGO', 'HALLAZGO_AUDITORIA', 'AUTOEVALUACION'
 
   @Column({ name: 'origen_id', nullable: true })
@@ -28,10 +28,10 @@ export class PlanMejoramiento {
   @Column({ name: 'responsable_nombre', nullable: true })
   responsableNombre: string; // Text name when no abogado is linked
 
-  @Column({ name: 'fecha_inicio' })
+  @Column({ name: 'fecha_inicio', nullable: true })
   fechaInicio: Date; // Keep as Date object for TypeORM
 
-  @Column({ name: 'fecha_fin_estimada' })
+  @Column({ name: 'fecha_fin_estimada', nullable: true })
   fechaFinEstimada: Date;
 
   @Column({ name: 'fecha_cierre_real', nullable: true })
@@ -103,10 +103,10 @@ export class PlanEvidencia {
   @JoinColumn({ name: 'plan_id' })
   plan: PlanMejoramiento;
 
-  @Column()
+  @Column({ nullable: true })
   titulo: string;
 
-  @Column({ name: 'url_archivo' })
+  @Column({ name: 'url_archivo', nullable: true })
   urlArchivo: string;
 
   @Column({ name: 'tipo_archivo', nullable: true })
@@ -132,7 +132,7 @@ export class PlanSeguimiento {
   @JoinColumn({ name: 'plan_id' })
   plan: PlanMejoramiento;
 
-  @Column('text', { name: 'descripcion_avance' })
+  @Column('text', { name: 'descripcion_avance', nullable: true })
   descripcionAvance: string;
 
   @Column('decimal', { name: 'porcentaje_reportado', precision: 5, scale: 2, nullable: true })
@@ -158,7 +158,7 @@ export class PlanComentario {
   @JoinColumn({ name: 'plan_id' })
   plan: PlanMejoramiento;
 
-  @Column('text')
+  @Column('text', { nullable: true })
   mensaje: string;
 
   @Column({ name: 'usuario_id', nullable: true })

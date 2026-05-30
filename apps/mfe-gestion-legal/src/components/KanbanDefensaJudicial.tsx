@@ -883,6 +883,52 @@ export function KanbanDefensaJudicial() {
     // Guard to prevent unnecessary updates
     if (item.etapa === nuevaEtapa) return;
 
+    // Validar que todas las actuaciones tengan los documentos firmados antes de cambiar etapa
+    try {
+      const [actuacionesList, documentosList] = await Promise.all([
+        legalService.getActuaciones(item.id),
+        legalService.getDocumentos(item.id)
+      ]);
+
+      const isDocSigned = (d: any) => {
+        if (!d) return false;
+        if (d.descripcion) {
+          try {
+            const data = JSON.parse(d.descripcion);
+            return !!(data && data.firmado);
+          } catch (e) {
+            return false;
+          }
+        }
+        return false;
+      };
+
+      const checkActuacionDocsSigned = (act: any) => {
+        const associatedDocIds = act.metadata?.documentosAsociados || [];
+        if (associatedDocIds.length === 0) return true;
+        
+        const resolvedDocs = documentosList.filter((doc: any) => {
+          const docIdStr = String(doc.id);
+          return associatedDocIds.some((id: any) => String(id) === docIdStr);
+        });
+        
+        return resolvedDocs.every((doc: any) => isDocSigned(doc));
+      };
+
+      const actuacionesConDocsSinFirmar = actuacionesList.filter((a: any) => {
+        return !checkActuacionDocsSigned(a);
+      });
+
+      if (actuacionesConDocsSinFirmar.length > 0) {
+        toast.error('No se puede cambiar de etapa. Existen actuaciones con documentos sin firmar.', {
+          description: `Las siguientes actuaciones tienen documentos pendientes de firma: ${actuacionesConDocsSinFirmar.map((a: any) => a.descripcion).join(', ')}`
+        });
+        return;
+      }
+    } catch (error) {
+      console.warn('No se pudieron verificar las firmas de los documentos de las actuaciones:', error);
+    }
+
     // Validar tareas pendientes antes de cambiar etapa
     try {
       const tareas = await legalService.getTareasByExpediente(item.id);

@@ -148,6 +148,42 @@ export class DocumentoController {
         }
     }
 
+    @Put(':id/upload')
+    @UseInterceptors(FileInterceptor('archivo', {
+        storage: multer.diskStorage({
+            destination: './uploads',
+            filename: (req, file, cb) => {
+                const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+                return cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        }),
+        limits: {
+            fileSize: 50 * 1024 * 1024, // 50MB
+        }
+    }))
+    async actualizarArchivo(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
+        try {
+            if (!file) {
+                throw new HttpException('Archivo requerido', HttpStatus.BAD_REQUEST);
+            }
+            const doc = await this.documentoService.obtenerPorId(id);
+            if (!doc) {
+                throw new HttpException('Documento no encontrado', HttpStatus.NOT_FOUND);
+            }
+            const updated = await this.documentoService.actualizar(id, {
+                archivoUrl: `files/${file.filename}`,
+                archivoNombreOriginal: file.originalname,
+                archivoMimeType: file.mimetype,
+                archivoTamano: file.size
+            });
+            return updated;
+        } catch (error) {
+            console.error('Error actualizando archivo del documento:', error);
+            if (error instanceof HttpException) throw error;
+            throw new HttpException('Error al actualizar archivo del documento', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     @Delete(':id')
     async eliminar(@Param('id') id: string) {
         try {

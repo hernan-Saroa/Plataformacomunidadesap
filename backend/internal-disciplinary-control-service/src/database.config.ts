@@ -63,11 +63,11 @@ import { DisciplinaryBehavior } from './entities/disciplinary-behavior.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
-  host: process.env.DATABASE_HOST ?? process.env.DB_HOST,
-  port: parseInt(process.env.DATABASE_PORT ?? process.env.DB_PORT ?? '5432', 10),
-  username: process.env.DATABASE_USER ?? process.env.DB_USER,
+  host: process.env.DB_HOST ?? process.env.DATABASE_HOST ?? 'localhost',
+  port: parseInt(process.env.DB_PORT ?? process.env.DATABASE_PORT ?? '5432', 10),
+  username: process.env.DB_USER ?? process.env.DATABASE_USER ?? 'postgres',
   password: dbPassword !== undefined ? String(dbPassword) : '',
-  database: process.env.DATABASE_NAME ?? process.env.DB_NAME,
+  database: process.env.DB_NAME ?? process.env.DATABASE_NAME ?? 'esap_db',
   schema: process.env.DB_SCHEMA,
   entities: [
     DisciplinaryNews,
@@ -97,6 +97,6 @@ export const databaseConfig: TypeOrmModuleOptions = {
     DisciplinaryProcessReassignmentRequest,
     DisciplinaryBehavior,
   ],
-  synchronize: false,
+  synchronize: process.env.TYPEORM_SYNC === 'true',
   logging: false,
 };

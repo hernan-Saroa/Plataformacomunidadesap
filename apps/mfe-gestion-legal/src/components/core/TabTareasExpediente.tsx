@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Plus, Target, Calendar, User, CheckCircle, Edit } from 'lucide-react';
+import { Plus, Target, Calendar, User, CheckCircle, Edit, Check, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -60,24 +60,7 @@ export function TabTareasExpediente({
 
   return (
     <div className="space-y-3">
-      <Card className="p-4 bg-gradient-to-r from-orange-50 to-white border-orange-200">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-            <Target className="w-4 h-4 text-orange-600" />
-            Tareas y Pendientes del Expediente
-          </h4>
-          {onCrearTarea && (
-            <Button
-              size="sm"
-              className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-              onClick={onCrearTarea}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              Nueva Tarea
-            </Button>
-          )}
-        </div>
-      </Card>
+      {/* Header removido porque ahora la acción principal está en las pestañas principales */}
 
       {tareas.length === 0 ? (
         <Card className="p-8 text-center border-2 border-dashed border-gray-300">
@@ -88,106 +71,93 @@ export function TabTareasExpediente({
           </p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {tareas.map((tarea) => {
-            const semaforoTarea = getSemaforoColor(tarea.diasRestantes);
+        <div className="relative mt-4">
+          {/* Línea vertical eliminada */}
+          <div className="space-y-0">
+            {tareas.map((tarea) => {
+              const semaforoTarea = getSemaforoColor(tarea.diasRestantes);
 
-            return (
-              <Card
-                key={tarea.id}
-                className="p-4 border-l-4 hover:shadow-md transition-shadow"
-                style={{ borderLeftColor: semaforoTarea.color }}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h5 className="text-sm font-bold text-gray-900 mb-1">{tarea.titulo}</h5>
-                    <p className="text-xs text-gray-600">{tarea.descripcion}</p>
+              return (
+                <div 
+                  key={tarea.id}
+                  className="group flex items-start gap-3 w-full p-3 mb-2 bg-white border border-gray-100 rounded-xl hover:border-indigo-100 hover:shadow-sm transition-all"
+                >
+                  {/* Left: Checkbox (Complete action) */}
+                  <div className="pt-0.5 shrink-0">
+                    <button
+                      onClick={() => onMarcarCompletada && onMarcarCompletada(tarea.id)}
+                      disabled={tarea.estado === 'Completado' || !onMarcarCompletada}
+                      className={`w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center transition-colors ${
+                        tarea.estado === 'Completado' 
+                          ? 'bg-emerald-500 border-emerald-500 text-white cursor-default' 
+                          : 'border-gray-300 hover:border-emerald-500 hover:bg-emerald-50 text-transparent hover:text-emerald-500 cursor-pointer'
+                      }`}
+                      title={tarea.estado === 'Completado' ? 'Tarea completada' : 'Marcar como completada'}
+                    >
+                      <Check className="w-3.5 h-3.5" strokeWidth={3} />
+                    </button>
                   </div>
-                  <Badge
-                    className="ml-3 font-bold text-xs"
-                    style={{
-                      background: tarea.prioridad === 'Alta' ? '#FEE2E2' : '#FEF3C7',
-                      color: tarea.prioridad === 'Alta' ? '#DC2626' : '#F59E0B',
-                      border: `1px solid ${tarea.prioridad === 'Alta' ? '#DC2626' : '#F59E0B'}`
-                    }}
-                  >
-                    {tarea.prioridad}
-                  </Badge>
-                </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Vencimiento</p>
-                    <p className="text-xs font-bold text-gray-900 flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {tarea.vencimiento}
-                    </p>
+                  {/* Middle: Content */}
+                  <div className="flex-1 min-w-0 flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className={`text-sm font-semibold truncate ${tarea.estado === 'Completado' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        {tarea.titulo}
+                      </h4>
+                      {tarea.prioridad === 'Alta' && (
+                        <Badge className="text-[9px] uppercase px-1.5 py-0 h-4 bg-red-50 text-red-600 border-red-100 font-bold shadow-none">
+                          Urgente
+                        </Badge>
+                      )}
+                    </div>
+                    {tarea.descripcion && (
+                      <p className={`text-xs line-clamp-1 ${tarea.estado === 'Completado' ? 'text-gray-400' : 'text-gray-500'}`} title={tarea.descripcion}>
+                        {tarea.descripcion}
+                      </p>
+                    )}
+                    
+                    {/* Metadata Footer */}
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                        <span className={tarea.diasRestantes < 0 && tarea.estado !== 'Completado' ? 'text-red-600 font-bold' : ''}>
+                          {tarea.vencimiento}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                        <User className="w-3 h-3 text-gray-400" />
+                        {tarea.responsable}
+                      </div>
+                      <Badge
+                          className="text-[9px] px-1.5 py-0 h-4 border-transparent font-medium shadow-none"
+                          style={{
+                            background: tarea.estado === 'Completado' ? '#D1FAE5' : (tarea.estado === 'En proceso' ? '#DBEAFE' : '#F3F4F6'),
+                            color: tarea.estado === 'Completado' ? '#065F46' : (tarea.estado === 'En proceso' ? '#1E40AF' : '#4B5563')
+                          }}
+                      >
+                        {tarea.estado}
+                      </Badge>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Días restantes</p>
-                    <Badge
-                      className="text-xs font-bold"
-                      style={{
-                        background: semaforoTarea.bg,
-                        color: semaforoTarea.color,
-                        border: `1px solid ${semaforoTarea.color}`
-                      }}
-                    >
-                      {tarea.diasRestantes} días
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Responsable</p>
-                    <p className="text-xs font-bold text-gray-900 truncate flex items-center gap-1">
-                      <User className="w-3 h-3" />
-                      {tarea.responsable}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-0.5">Estado</p>
-                    <Badge
-                      className="text-xs font-semibold"
-                      style={{
-                        background: tarea.estado === 'Completado' ? '#D1FAE5' : (tarea.estado === 'En proceso' ? '#DBEAFE' : '#FEF3C7'),
-                        color: tarea.estado === 'Completado' ? '#065F46' : (tarea.estado === 'En proceso' ? '#1E40AF' : '#92400E')
-                      }}
-                    >
-                      {tarea.estado}
-                    </Badge>
+                  
+                  {/* Right: Actions (Visible on hover) */}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 pt-0.5">
+                    {onEditarTarea && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full"
+                        onClick={() => onEditarTarea(tarea)}
+                        title="Editar tarea"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {onMarcarCompletada && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs flex-1 font-bold"
-                      onClick={() => handleMarcarCompletada(tarea.id)}
-                      disabled={tarea.estado === 'Completado'}
-                      style={{
-                        opacity: tarea.estado === 'Completado' ? 0.5 : 1,
-                        cursor: tarea.estado === 'Completado' ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      {tarea.estado === 'Completado' ? 'Completada' : 'Marcar Completada'}
-                    </Button>
-                  )}
-                  {onEditarTarea && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs font-bold"
-                      onClick={() => onEditarTarea(tarea)}
-                    >
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
