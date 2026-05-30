@@ -15,7 +15,7 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, DollarSign, Filter, Search,
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2, Gavel
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -1094,54 +1094,32 @@ export function ModuloDefensaJudicialV3() {
         title="Tablero Kanban Operativo"
         subtitle="Gestión visual de demandas judiciales contra ESAP"
         buttons={addBtnsPermission()}
-        infoTooltip={
-          <ModuleInfoTooltip
-            title="Guía de Defensa Judicial"
-            variant="icon"
-            sections={[
-              {
-                label: "📍 Punto de Inicio del Sistema",
-                content: "La Defensa Judicial es donde INICIA todo el flujo cuando ESAP es demandada. Aquí llegan las notificaciones de demandas desde juzgados y se registran en el sistema.",
-                type: "info"
-              },
-              {
-                label: "⚖️ Propósito del Módulo",
-                content: "Gestión centralizada de procesos judiciales activos contra ESAP: demandas laborales, nulidades y restablecimiento del derecho, acciones populares, tutelas y otros medios de control.",
-                type: "default"
-              },
-              {
-                label: "🔄 Flujo de Trabajo (4 Etapas)",
-                content: "1️⃣ NOTIFICADA: Demanda recibida del juzgado → 2️⃣ CONTESTACIÓN: Redactar y presentar respuesta (30 días) → 3️⃣ PROBATORIA: Recolectar y aportar pruebas (60 días) → 4️⃣ ALEGATOS: Argumentos finales antes del fallo (20 días).",
-                type: "premium"
-              },
-              {
-                label: "🚦 Semáforo de Términos",
-                content: "🟢 Verde (>15 días): En término | 🟡 Amarillo (5-15 días): Próximo a vencer | 🔴 Rojo (≤5 días): CRÍTICO - Acción inmediata requerida. El sistema alerta automáticamente.",
-                type: "warning"
-              },
-              {
-                label: "📋 Última Actuación (Bloque Azul)",
-                content: "El bloque azul destacado en cada tarjeta muestra la actuación procesal más reciente del juzgado, facilitando seguimiento rápido sin abrir el expediente completo.",
-                type: "default"
-              },
-              {
-                label: "🔗 Integración con Otros Módulos",
-                content: "Este módulo se conecta con: • Centro Comunicaciones (notificaciones del juzgado) • Términos e Informes (control de plazos) • Asesoría Jurídica (conceptos técnicos necesarios).",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Click 'Nueva Demanda' cuando llega notificación → 2️⃣ Arrastra tarjetas entre columnas al cambiar etapa → 3️⃣ Click 'Expediente' para ver documentos completos → 4️⃣ Usa botones rápidos (Autos, Evidencias, Oficios) para gestión documental.",
-                type: "default"
-              },
-              {
-                label: "⏭️ Siguiente Paso",
-                content: "Cuando el proceso judicial relaciona funcionarios internos, se deriva al módulo 'Juzgamiento Disciplinario' (MOD-02) para investigación interna paralela.",
-                type: "info"
-              }
-            ]}
-          />
+        topCustomActions={
+          <div className="relative flex items-center w-[200px] sm:w-[260px] mr-1 shrink-0">
+            <div className="absolute left-0 top-0 bottom-0 flex items-center pl-3 pointer-events-none rounded-l-lg border-r-0">
+              <Gavel className="w-4 h-4 text-[#003DA5]" />
+            </div>
+            <select
+              value={tableroSeleccionado}
+              onChange={(e) => handleCambiarTablero(e.target.value)}
+              className="w-full pl-10 pr-9 py-1.5 bg-white border border-slate-300 hover:border-[#003DA5] text-[#003DA5] font-black rounded-lg text-[13px] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm appearance-none cursor-pointer truncate"
+              style={{ 
+                backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '1.25rem',
+                backgroundRepeat: 'no-repeat'
+              }}
+            >
+              <option value="TODOS">Todos los procesos</option>
+              {tiposProcesosActivos.map((tp: any) => (
+                <option key={tp.id} value={tp.id}>
+                  {tp.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
         }
+
         toggleView={{
           current: tipoVista,
           onChange: (v: string) => setTipoVista(v as VistaModulo),
@@ -1208,30 +1186,7 @@ export function ModuloDefensaJudicialV3() {
               setFiltroAbogado('TODOS');
               setFiltroFecha('');
             }}
-          >
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <select
-                  value={tableroSeleccionado}
-                  onChange={(e) => handleCambiarTablero(e.target.value)}
-                  className="pl-2.5 pr-7 py-1 bg-white hover:bg-slate-50 border border-slate-200 hover:border-blue-500 text-blue-800 font-bold rounded-lg text-xs transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 shadow-sm cursor-pointer appearance-none"
-                  style={{ 
-                    minHeight: isMobile ? '34px' : '36px',
-                    backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
-                    backgroundPosition: 'right 0.4rem center',
-                    backgroundSize: '1rem',
-                    backgroundRepeat: 'no-repeat'
-                  }}
-                >
-                  {tiposProcesosActivos.map((tp: any) => (
-                    <option key={tp.id} value={tp.id} className="pl-3 py-1.5" style={{ paddingLeft: '8px' }}>
-                      {'\u00A0\u00A0' + tp.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </ModuleFilters>
+          />
         }
       />
 

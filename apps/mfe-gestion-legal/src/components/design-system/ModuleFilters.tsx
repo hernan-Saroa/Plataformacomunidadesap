@@ -160,11 +160,11 @@ export function ModuleFilters({
     <div className={borderless ? `w-full ${className}` : `bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden p-1.5 sm:p-2 ${className}`}>
       <div className="space-y-0">
         
-        {/* Barra Única (Todos los elementos alineados horizontalmente) */}
-        <div className="flex flex-row items-center justify-start gap-2 flex-nowrap w-full overflow-x-auto overflow-y-hidden pb-1" style={{ scrollbarWidth: 'none' }}>
+        {/* Barra Única (elementos alineados que saltan a nueva línea si no caben) */}
+        <div className="flex flex-row items-start justify-start gap-2 flex-wrap w-full pb-1">
           
           {/* Búsqueda + Filtros Avanzados */}
-          <div className="flex flex-nowrap items-center gap-2 flex-shrink-0 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
             {/* Campo de Búsqueda - Siempre visible e intuitivo con placeholder */}
             <div 
               className="relative flex items-center h-8 flex-shrink-0 w-[130px] sm:w-[150px] border border-gray-300 bg-white rounded-lg shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100"
@@ -220,11 +220,11 @@ export function ModuleFilters({
               </button>
             )}
 
-            {/* Contenedor animado de filtros para una transición horizontal fluida y sin saltos */}
-            <div className={`flex items-center gap-2.5 transition-all duration-300 ease-in-out overflow-hidden ${
+            {/* Contenedor animado de filtros para transición fluida */}
+            <div className={`flex flex-wrap items-center gap-2.5 transition-all duration-300 ease-in-out ${
               isAdvancedOpen 
-                ? 'max-w-[850px] h-auto opacity-100 pointer-events-auto' 
-                : 'max-w-0 h-0 opacity-0 pointer-events-none'
+                ? 'opacity-100 pointer-events-auto' 
+                : 'hidden opacity-0 pointer-events-none'
             }`}>
               {filters.map((filter, index) => (
                 <div key={index} className="flex-shrink-0">

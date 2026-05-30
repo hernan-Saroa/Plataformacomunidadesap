@@ -126,10 +126,10 @@ export function ModuleHeader({
 
       {/* Fila 2: Toggle de Vista y Acciones Personalizadas (Filtros, Tableros) */}
       {(toggleView || customActions) && (
-        <div className="flex flex-row items-center justify-between gap-3 w-full pt-1 border-t border-slate-100 flex-nowrap overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 w-full pt-1 border-t border-slate-100 flex-wrap">
           
           {/* Lado izquierdo: Segmented Tab Control */}
-          <div className="flex-shrink-0">
+          <div className="w-full md:w-auto flex-shrink-0">
             {toggleView && (
               <div className="flex items-center gap-1 p-0.5 rounded-lg w-full sm:w-auto sm:inline-flex border border-slate-250 shadow-inner bg-slate-50">
                 {toggleView.options.map((option, idx) => {
@@ -160,7 +160,7 @@ export function ModuleHeader({
 
           {/* Lado derecho: customActions (Tableros, selectores, filtros) */}
           {customActions && (
-            <div className="flex-shrink-0 min-w-0 flex justify-start sm:justify-end">
+            <div className="w-full md:w-auto flex-shrink-0 flex justify-start md:justify-end">
               {customActions}
             </div>
           )}
