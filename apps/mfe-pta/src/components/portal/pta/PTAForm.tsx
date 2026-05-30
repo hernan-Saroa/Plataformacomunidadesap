@@ -13,7 +13,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ChevronLeft, Save, Send, AlertCircle, Plus, Trash2, Calculator,
+  ChevronLeft, ChevronRight, Save, Send, AlertCircle, Plus, Trash2, Calculator,
   BookOpen, FlaskConical, Globe, Briefcase, CheckCircle2, Info,
   ChevronDown, RotateCcw, AlertTriangle, Search, Shield, Clock, MessageSquare
 } from 'lucide-react';
@@ -349,6 +349,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(120);
   const autoSaveCountdownRef = useRef(120);
   const [loadingPta, setLoadingPta] = useState(!!ptaId);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { addNotification } = useNotifications();
   const [slotNode, setSlotNode] = useState<HTMLElement | null>(null);
 
@@ -1186,6 +1187,21 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
+    // Validación: si se seleccionó rol en investigación, los campos del proyecto son obligatorios
+    if (enviar && invProyecto.rol) {
+      const faltantes: string[] = [];
+      if (!invProyecto.nombre?.trim()) faltantes.push('nombre del proyecto');
+      if (!invProyecto.codigo?.trim()) faltantes.push('código del proyecto');
+      if (!invProyecto.grupo?.trim()) faltantes.push('grupo de investigación');
+      if (!invProyecto.linea?.trim()) faltantes.push('línea de investigación');
+      if (faltantes.length > 0) {
+        toast.error(`Completa la sección Investigación: ${faltantes.join(', ')}.`);
+        setActiveSection('investigacion');
+        setSaving(false);
+        return;
+      }
+    }
+
     // Validación de reglas de negocio para Investigación
     if (enviar && invWarnings && invWarnings.length > 0) {
       toast.error('Existen errores en la configuración de Investigación. Revisa las advertencias en la sección y corrígelas antes de enviar.');
@@ -1508,14 +1524,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   };
 
   return (
-    <div className={`max-w-7xl mx-auto w-full${isAdminEdit ? ' px-6 pt-2' : ''}`}>
-      {/* Header */}
+    <div className={`max-w-7xl mx-auto w-full pb-32 animate-in fade-in duration-500${isAdminEdit ? ' px-6 pt-2' : ''}`}>
+      {/* Header — solo título, sin botones de acción (movidos al sticky footer) */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
         <div>
           <button onClick={onBack} className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-[13px] text-gray-500 font-medium p-0 mb-1 hover:text-gray-700">
             <ChevronLeft className="w-4 h-4" /> Volver a mis PTAs
           </button>
-          <h1 className="text-[1.15rem] font-bold text-gray-900 m-0 leading-tight">
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900 m-0 leading-tight tracking-tight">
             {ptaId
               ? isEnRevisionDocente
                 ? 'Revisar PTA — Aprobado con modificaciones'
@@ -1524,85 +1540,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   : 'Editar PTA'
               : 'Crear Nuevo PTA'}
           </h1>
-          <p className="text-[12px] text-gray-500 mt-1">Periodo {periodo} - {dedicacion} - {horasAProgramar}h programables</p>
+          <p className="text-[13px] text-gray-500 mt-2 font-medium">Periodo {periodo} • {dedicacion}</p>
         </div>
-
-        {isEditable && (
-          <div className="flex flex-col sm:flex-row items-end gap-2 w-full md:w-auto">
-            {/* Indicador de auto-guardado */}
-            {!isAdminEdit && (
-              <div className="flex items-center gap-1.5 text-[11px] font-medium self-end mb-0.5"
-                style={{ color: autoSaveStatus === 'saving' ? '#D97706' : autoSaveStatus === 'saved' ? '#059669' : '#9CA3AF' }}>
-                {autoSaveStatus === 'saving' && (
-                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                )}
-                {autoSaveStatus === 'saved' && <CheckCircle2 className="w-3 h-3" />}
-                {autoSaveStatus === 'saving' && 'Guardando...'}
-                {autoSaveStatus === 'saved' && `Guardado automáticamente ${lastAutoSaveTime ? `a las ${lastAutoSaveTime.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : ''}`}
-                {autoSaveStatus === 'idle' && lastAutoSaveTime && `Guardado a las ${lastAutoSaveTime.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`}
-              </div>
-            )}
-            {/* Caso: admin editando PTA en cualquier estado */}
-            {isAdminEdit ? (
-              <button onClick={() => handleSave(false)} disabled={saving}
-                className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
-                style={{ background: '#003DA5' }}>
-                <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-            ) : isEnRevisionDocente ? (
-              <>
-                {/* Avanzar sin modificar — requiere firma antes de pasar a la siguiente fase */}
-                <button
-                  onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')}
-                  disabled={saving || requestingFirmaCode}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:shadow hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50"
-                >
-                  <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
-                </button>
-                {/* Guardar cambios y re-enviar — requiere firma */}
-                <button
-                  onClick={() => solicitarFirmaDocente('via_save')}
-                  disabled={saving || requestingFirmaCode || totalHoras < minHoras}
-                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: (saving || requestingFirmaCode || totalHoras < minHoras) ? '#9CA3AF' : '#7C3AED' }}
-                  title={totalHoras < minHoras ? `Faltan ${minHoras - totalHoras}h por programar` : "Firma y re-envía a la misma fase para nueva aprobación"}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
-                </button>
-              </>
-            ) : (
-              <>
-                <span className={`flex items-center gap-0.5 text-[10px] font-medium ${autoSaveCountdown <= 30 ? 'text-amber-500' : 'text-gray-400'}`}>
-                  <Clock className="w-2.5 h-2.5" />
-                  Auto en {Math.floor(autoSaveCountdown / 60)}:{String(autoSaveCountdown % 60).padStart(2, '0')}
-                </span>
-                <button onClick={() => handleSave(false)} disabled={saving}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:shadow hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
-                  <Save className="w-3.5 h-3.5" /> Guardar Borrador
-                </button>
-                <button
-                  onClick={() => {
-                    if (!validateEnvioDocente()) return;
-                    solicitarFirmaDocente('via_save');
-                  }}
-                  disabled={saving || requestingFirmaCode || totalHoras < minHoras || totalHoras > horasAProgramar}
-                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.23)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                  style={{ background: (saving || requestingFirmaCode || totalHoras < minHoras || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}
-                  title={totalHoras < minHoras ? `Faltan horas por programar` : (totalHoras > horasAProgramar ? `Sobrecarga de horas` : "")}
-                >
-                  {requestingFirmaCode
-                    ? <><Clock className="w-3.5 h-3.5" /> Enviando código...</>
-                    : originalEstado === 'Devuelto'
-                    ? <><RotateCcw className="w-3.5 h-3.5" /> Re-enviar</>
-                    : <><Send className="w-3.5 h-3.5" /> Enviar a Aprobación</>}
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Firma digital del docente — requerida antes de cada envío y enviar código de aprobación por email */}
@@ -1727,47 +1666,77 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             </div>
           </div>
 
-          {/* Status de progreso (encima de tabs) */}
-          <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800'
-              : totalHoras >= minHoras ? 'bg-green-50 border-green-200 text-green-800'
-                : 'bg-blue-50 border-blue-200 text-blue-800'
-            }`}>
-            {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              : totalHoras >= minHoras ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
-              <span className="font-bold">
-                {totalHoras > horasAProgramar
-                  ? `Excede por ${totalHoras - horasAProgramar}h. Verifica tu Plan.`
-                  : totalHoras >= minHoras
-                    ? 'Carga completa o dentro del mínimo. Listo para enviar.'
-                    : `Faltan ${minHoras - totalHoras}h por programar para el mínimo requerido (${minHoras}h).`}
-              </span>
-              <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
-            </div>
-          </div>
+          {/* Layout dos columnas: sidebar vertical izq + contenido der */}
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
 
-          {/* Tabs */}
-          <div className="flex flex-wrap gap-2 bg-gray-50/50 backdrop-blur-2xl rounded-[1.25rem] p-1.5 border border-gray-200/50 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-            {sections.map(s => (
-              <button key={s.key} onClick={() => setActiveSection(s.key)}
-                className={`flex items-center justify-center gap-2.5 px-3 py-3 rounded-xl border-none text-[13px] transition-all whitespace-nowrap cursor-pointer flex-auto ${activeSection === s.key
-                    ? 'text-gray-900 font-black bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)] scale-[1.01]'
-                    : s.bloqueada
-                      ? 'text-gray-300 font-bold bg-transparent cursor-default opacity-60'
-                      : 'text-gray-500 font-bold hover:bg-white/60 hover:text-gray-800 bg-transparent'
-                  }`}>
-                <s.icon className={`w-4 h-4 ${activeSection === s.key ? '' : 'opacity-70'}`} style={{ color: activeSection === s.key ? s.color : undefined }} />
-                <span>{s.label}</span>
-                {(s as any).bloqueada && s.key !== 'academico_admin' && <AlertTriangle className="w-3.5 h-3.5 text-amber-400 ml-0.5" />}
-                {s.excede && <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse ml-0.5" />}
-                {s.modificada && <span title="Modificado por el revisor" className="w-2 h-2 rounded-full bg-violet-500 animate-pulse ml-0.5 inline-block" />}
-                <span className={`text-[0.65rem] tracking-wider font-extrabold px-2 py-0.5 ml-1 rounded-full ${activeSection === s.key ? 'bg-gray-100 text-gray-800' : 'bg-gray-200/50 text-gray-400'}`}>
-                  {s.count}
-                </span>
-              </button>
-            ))}
-          </div>
+            {/* ─── SIDEBAR VERTICAL (Módulos del PTA) ─── */}
+            <div className={`shrink-0 lg:sticky lg:top-6 flex flex-col gap-2 transition-all duration-300 ${isSidebarCollapsed ? 'w-full lg:w-16 items-center' : 'w-full lg:w-64 xl:w-72'}`}>
+              <div className={`flex items-center w-full mb-1 ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-between px-1'}`}>
+                {!isSidebarCollapsed && (
+                  <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider m-0">Módulos del PTA</h3>
+                )}
+                <button type="button" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  title={isSidebarCollapsed ? 'Expandir panel' : 'Colapsar panel'}
+                  className="p-1.5 rounded-lg bg-gray-50 border border-gray-200 cursor-pointer hover:bg-gray-100 text-gray-500 transition-colors hidden lg:block">
+                  {isSidebarCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {/* Mobile: horizontal chips */}
+              <div className="flex lg:hidden flex-wrap gap-2">
+                {sections.map(s => (
+                  <button key={s.key} onClick={() => setActiveSection(s.key)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border-none text-[12px] transition-all cursor-pointer ${activeSection === s.key ? 'bg-white shadow-md font-bold text-gray-900 border border-gray-100' : s.bloqueada ? 'text-gray-300 bg-transparent cursor-default opacity-60' : 'text-gray-600 font-medium bg-gray-100 hover:bg-white'}`}>
+                    <s.icon className="w-3.5 h-3.5" style={{ color: activeSection === s.key ? s.color : undefined }} />
+                    <span>{s.label}</span>
+                    {s.excede && <AlertTriangle className="w-3 h-3 text-amber-500" />}
+                  </button>
+                ))}
+              </div>
+
+              {/* Desktop: pills verticales */}
+              <div className="hidden lg:flex flex-col gap-1.5 w-full">
+                {sections.map(s => (
+                  <button key={s.key} onClick={() => setActiveSection(s.key)}
+                    title={isSidebarCollapsed ? s.label : undefined}
+                    className={`flex items-center text-left gap-3 rounded-2xl border-none text-[13px] transition-all cursor-pointer ${isSidebarCollapsed ? 'px-2 py-3 justify-center' : 'px-4 py-3.5'} ${activeSection === s.key ? 'bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] scale-[1.02] border border-gray-100 font-bold' : s.bloqueada ? 'text-gray-400 bg-transparent cursor-default opacity-60' : 'text-gray-600 font-medium hover:bg-white/70 hover:text-gray-900 bg-transparent'}`}>
+                    <div className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center relative" style={{ backgroundColor: activeSection === s.key ? `${s.color}20` : '#F3F4F6' }}>
+                      <s.icon className="w-4 h-4" style={{ color: activeSection === s.key ? s.color : '#9CA3AF' }} />
+                      {isSidebarCollapsed && s.excede && <AlertTriangle className="absolute -top-1 -right-1 w-3 h-3 text-amber-500 animate-pulse bg-white rounded-full" />}
+                      {isSidebarCollapsed && s.modificada && <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-violet-500 border border-white animate-pulse" />}
+                    </div>
+                    {!isSidebarCollapsed && (
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate">{s.label}</span>
+                          {(s as any).bloqueada && s.key !== 'academico_admin' && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />}
+                          {s.excede && <AlertTriangle className="w-3 h-3 text-red-500 animate-pulse shrink-0" />}
+                          {s.modificada && <span title="Modificado por el revisor" className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse shrink-0" />}
+                        </div>
+                        <div className="text-[11px] text-gray-400 font-normal mt-0.5 flex items-center gap-2">
+                          <span>{s.count} {s.count === 1 ? 'item' : 'items'}</span>
+                          <span className="w-1 h-1 rounded-full bg-gray-300" />
+                          <span className={s.excede ? 'text-red-500 font-bold' : ''}>{s.hours}h</span>
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ─── CONTENIDO PRINCIPAL ─── */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              {/* Status banner */}
+              <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800' : totalHoras >= minHoras ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= minHoras ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
+                  <span className="font-bold">
+                    {totalHoras > horasAProgramar ? `Excede por ${totalHoras - horasAProgramar}h. Verifica tu Plan.` : totalHoras >= minHoras ? 'Carga completa o dentro del mínimo. Listo para enviar.' : `Faltan ${minHoras - totalHoras}h por programar para el mínimo requerido (${minHoras}h).`}
+                  </span>
+                  <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+                </div>
+              </div>
 
           {/* Active section */}
           <div className="bg-white rounded-3xl border border-gray-200/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8">
@@ -2588,15 +2557,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   {/* Circular progress */}
                   <div className="text-center mb-4">
                     <div className="relative w-[104px] h-[104px] mx-auto flex items-center justify-center">
-                      <svg width="104" height="104" viewBox="0 0 104 104" className="absolute inset-0 drop-shadow-sm">
-                        <circle cx="52" cy="52" r="44" fill="none" stroke="#F8FAFC" strokeWidth="8" />
-                        <circle cx="52" cy="52" r="44" fill="none"
-                          stroke={porcentaje > 100 ? '#EF4444' : porcentaje >= 80 ? '#10B981' : '#2563EB'}
-                          strokeWidth="8" strokeLinecap="round"
-                          strokeDasharray={`${Math.min(100, porcentaje) * 2.76} 276`}
-                          transform="rotate(-90 52 52)"
-                          style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
-                      </svg>
+                      {(() => {
+                        const r = 44;
+                        const circ = 2 * Math.PI * r;
+                        const fill = (Math.min(porcentaje, 100) / 100) * circ;
+                        return (
+                          <svg width="104" height="104" viewBox="0 0 104 104" style={{ display: 'block' }} className="absolute inset-0 drop-shadow-sm">
+                            <circle cx="52" cy="52" r={r} fill="none" stroke="#F8FAFC" strokeWidth="8" />
+                            <circle cx="52" cy="52" r={r} fill="none"
+                              stroke={porcentaje > 100 ? '#EF4444' : porcentaje >= 80 ? '#10B981' : '#2563EB'}
+                              strokeWidth="8" strokeLinecap="round"
+                              strokeDasharray={`${fill} ${circ}`}
+                              transform="rotate(-90 52 52)"
+                              style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                          </svg>
+                        );
+                      })()}
                       <div className="relative z-10 flex flex-col items-center justify-center mt-1">
                         <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-[#003DA5] to-blue-400 tracking-tighter" style={{ WebkitTextStroke: '0.5px rgba(0,0,0,0.05)' }}>
                           {porcentaje}%
@@ -2689,6 +2665,88 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             </>
           );
         })()}
+      </div>{/* cierra Active section bg-white */}
+            </div>{/* cierra columna derecha flex-1 */}
+          </div>{/* cierra wrapper dos columnas flex-row */}
+
+      {/* ─── STICKY FOOTER ─── */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-2xl border-t border-gray-200/50 p-4 px-6 md:px-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto w-full">
+          {/* Status compacto */}
+          <div className={`hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${totalHoras > horasAProgramar ? 'bg-red-50/80 border-red-200 text-red-800' : totalHoras >= minHoras ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-blue-50/80 border-blue-200 text-blue-800'}`}>
+            {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0" /> : totalHoras >= minHoras ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
+            <div className="flex flex-col">
+              <span className="text-[12px] font-bold leading-tight">
+                {totalHoras > horasAProgramar ? `Excede por ${totalHoras - horasAProgramar}h` : totalHoras >= minHoras ? 'Horas completas' : `Faltan ${minHoras - totalHoras}h`}
+              </span>
+              <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+            </div>
+          </div>
+
+          <div className="flex-1" />
+
+          {isEditable && (
+            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+              {/* Auto-guardado */}
+              {!isAdminEdit && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium"
+                  style={{ color: autoSaveStatus === 'saving' ? '#D97706' : autoSaveStatus === 'saved' ? '#059669' : '#9CA3AF' }}>
+                  {autoSaveStatus === 'saving' && (
+                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  )}
+                  {autoSaveStatus === 'saved' && <CheckCircle2 className="w-3 h-3" />}
+                  {autoSaveStatus === 'saving' && 'Guardando...'}
+                  {autoSaveStatus === 'saved' && `Guardado a las ${lastAutoSaveTime?.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) ?? ''}`}
+                  {autoSaveStatus === 'idle' && lastAutoSaveTime && `Guardado a las ${lastAutoSaveTime.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`}
+                </div>
+              )}
+
+              {isAdminEdit ? (
+                <button onClick={() => handleSave(false)} disabled={saving}
+                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
+                  style={{ background: '#003DA5' }}>
+                  <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              ) : isEnRevisionDocente ? (
+                <>
+                  <button onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')} disabled={saving || requestingFirmaCode}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
+                    <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
+                  </button>
+                  <button onClick={() => solicitarFirmaDocente('via_save')}
+                    disabled={saving || requestingFirmaCode || totalHoras < minHoras}
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: (saving || requestingFirmaCode || totalHoras < minHoras) ? '#9CA3AF' : '#7C3AED' }}>
+                    <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className={`hidden sm:flex items-center gap-0.5 text-[10px] font-medium ${autoSaveCountdown <= 30 ? 'text-amber-500' : 'text-gray-400'}`}>
+                    <Clock className="w-2.5 h-2.5" />
+                    Auto en {Math.floor(autoSaveCountdown / 60)}:{String(autoSaveCountdown % 60).padStart(2, '0')}
+                  </span>
+                  <button onClick={() => handleSave(false)} disabled={saving}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
+                    <Save className="w-3.5 h-3.5" /> Guardar Borrador
+                  </button>
+                  <button
+                    onClick={() => { if (!validateEnvioDocente()) return; solicitarFirmaDocente('via_save'); }}
+                    disabled={saving || requestingFirmaCode || totalHoras < minHoras || totalHoras > horasAProgramar}
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                    style={{ background: (saving || requestingFirmaCode || totalHoras < minHoras || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}>
+                    {requestingFirmaCode ? <><Clock className="w-3.5 h-3.5" /> Enviando...</>
+                      : originalEstado === 'Devuelto' ? <><RotateCcw className="w-3.5 h-3.5" /> Re-enviar</>
+                      : <><Send className="w-3.5 h-3.5" /> Enviar a Aprobación</>}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

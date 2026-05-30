@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Building2, Plus, Search, Download, Upload, MapPin,
   ChevronRight, GitBranch, Network, Users, Loader2, ChevronDown, Pencil, Trash2,
@@ -496,8 +497,16 @@ function VistaArbolSeccionalesSedes({
                 </div>
               </div>
             )}
+            <AnimatePresence>
             {expandidosSedeCentral && (
-              <div key="territoriales-sede-central" className="ml-6 space-y-2">
+              <motion.div
+                key="territoriales-sede-central"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="ml-6 space-y-2 overflow-hidden"
+              >
                 {territorialesFiltradas.map((item, index) => {
                   if (!item) return null;
                   const { seccional, sedes: sedesSeccional } = item;
@@ -569,8 +578,15 @@ function VistaArbolSeccionalesSedes({
                   </div>
 
                       {/* Sedes de esta seccional */}
+                      <AnimatePresence>
                       {isExpandida && sedesSeccional.length > 0 && (
-                        <div className="mt-2 ml-6 space-y-1">
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="mt-2 ml-6 space-y-1 overflow-hidden"
+                        >
                           {sedesSeccional.map((sede, sedeIndex) => (
                             <div
                               key={sede.idSede ?? `sede-${sedeIndex}`}
@@ -633,13 +649,15 @@ function VistaArbolSeccionalesSedes({
                           </div>
                             </div>
                           ))}
-                        </div>
+                        </motion.div>
                       )}
+                      </AnimatePresence>
                     </div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -1043,8 +1061,15 @@ function VistaListaTerritorialesCetap({
                       </div>
 
                       {/* NIVEL 3: CETAP (expandible) - Diseño Mejorado */}
+                      <AnimatePresence>
                       {isExpanded && sedesTerritorial.length > 0 && (
-                        <div className="border-t-2 border-white/30 bg-gradient-to-b from-white/15 to-white/5 backdrop-blur-xl p-4">
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="border-t-2 border-white/30 bg-gradient-to-b from-white/15 to-white/5 backdrop-blur-xl p-4 overflow-hidden"
+                        >
                             <div className="flex items-center gap-2 mb-3 pb-3 border-b border-white/20">
                               <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                                 <Network className="w-4 h-4 text-white" />
@@ -1087,8 +1112,9 @@ function VistaListaTerritorialesCetap({
                                 </div>
                               ))}
                             </div>
-                        </div>
+                        </motion.div>
                       )}
+                      </AnimatePresence>
                     </div>
                   </div>
                 );
