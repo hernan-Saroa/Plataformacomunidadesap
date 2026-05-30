@@ -150,6 +150,7 @@ export function ModuloDefensaJudicialV3() {
   const { isMobile, isTablet, isLg, isXl, width: screenWidth } = useResponsive();
   const isSmallDesktop = isLg || (isXl && screenWidth < 1440);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
+  const [columnasColapsadas, setColumnasColapsadas] = useState<Record<string, boolean>>({});
   const [modalNuevaDemandaOpen, setModalNuevaDemandaOpen] = useState(false);
   const [modalFiltrosReporteOpen, setModalFiltrosReporteOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -1222,6 +1223,8 @@ export function ModuloDefensaJudicialV3() {
                   useFluid={useFluidKanban}
                   onRefresh={loadExpedientes}
                   onMoverExpediente={handleMoverExpediente}
+                  isCollapsed={!!columnasColapsadas[etapa.valor]}
+                  onToggleCollapse={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
                 />
               ))}
             </div>
@@ -1236,6 +1239,7 @@ export function ModuloDefensaJudicialV3() {
           isMobile={isMobile}
           isTablet={isTablet}
           onMoverExpediente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) ? handleMoverExpediente : undefined}
+          onRefresh={loadExpedientes}
         />
       )}
 
@@ -1307,6 +1311,8 @@ interface ColumnaKanbanProps {
   useFluid: boolean;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
   onRefresh?: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function ColumnaKanban({
@@ -1316,7 +1322,9 @@ function ColumnaKanban({
   columnWidth,
   useFluid,
   onMoverExpediente,
-  onRefresh
+  onRefresh,
+  isCollapsed,
+  onToggleCollapse
 }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.EXPEDIENTE,
@@ -1329,12 +1337,55 @@ function ColumnaKanban({
   const backgroundColor = isOver ? ESAP_TOKENS.colors.primaryLight : ESAP_TOKENS.colors.surfaceAlt;
   const borderColor = isOver ? ESAP_TOKENS.colors.primary : 'transparent';
 
+  if (isCollapsed && !isMobile) {
+    return (
+      <div
+        className="flex-shrink-0 w-[64px] min-w-[64px] transition-all duration-300 relative flex flex-col"
+        style={{ height: 'calc(100vh - 230px)' }}
+      >
+        <Card
+          ref={drop}
+          className="h-full border border-gray-200 bg-gray-50/50 hover:bg-gray-100/50 transition-all flex flex-col items-center py-4 cursor-pointer select-none rounded-xl overflow-hidden relative"
+          onClick={onToggleCollapse}
+          title={`Expandir etapa ${etapa.nombre}`}
+        >
+          {/* Acento de color arriba */}
+          <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
+
+          {/* Badge de cantidad */}
+          <Badge className="font-bold text-xs px-2 py-0.5 bg-white border border-gray-200 text-gray-700 shadow-sm flex-shrink-0 mb-6">
+            {etapa.expedientes.length}
+          </Badge>
+
+          {/* Nombre vertical */}
+          <div className="flex-1 flex items-center justify-center">
+            <span
+              className="font-black text-xs text-gray-600 uppercase tracking-wider whitespace-nowrap rotate-90 select-none pointer-events-none"
+              style={{ transformOrigin: 'center center' }}
+            >
+              {etapa.nombre}
+            </span>
+          </div>
+
+          {/* Icono de expandir */}
+          <div className="mt-6 p-1 rounded-md bg-white border border-gray-200 text-gray-400 hover:text-[#003DA5] hover:border-[#003DA5]/30 shadow-sm">
+            <ChevronsDown className="w-4 h-4 rotate-[-90deg]" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="flex-shrink-0 w-[260px] sm:w-[280px] md:w-[320px]"
+      className="flex-shrink-0 w-[260px] sm:w-[280px] md:w-[320px] flex flex-col transition-all duration-300"
+      style={{ height: isMobile ? 'auto' : 'calc(100vh - 230px)' }}
     >
-      <Card className="h-full border border-gray-200 bg-white">
-        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
+      <Card className="h-full border border-gray-200 bg-white flex flex-col overflow-hidden relative">
+        {/* Acento de color arriba */}
+        <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
+
+        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50 flex-shrink-0 pt-3.5`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <div className="p-1.5 rounded-lg bg-white border border-gray-200 flex-shrink-0">
@@ -1346,22 +1397,33 @@ function ColumnaKanban({
                 </h3>
               </div>
             </div>
-            <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0 ml-1">
-              {etapa.expedientes.length}
-            </Badge>
+            {/* Collapse action and badge */}
+            <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+              <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0">
+                {etapa.expedientes.length}
+              </Badge>
+              {!isMobile && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+                  className="p-1 rounded bg-white hover:bg-gray-100 border border-gray-200 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                  title={`Colapsar etapa ${etapa.nombre}`}
+                >
+                  <ChevronsDown className="w-3.5 h-3.5 rotate-[90deg]" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         <div
           ref={drop}
-          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto`}
+          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto flex-1`}
           style={{
-            minHeight: isMobile ? '350px' : '400px',
-            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 340px)',
             backgroundColor: backgroundColor,
             borderLeft: `3px solid ${borderColor}`,
             borderRight: `3px solid ${borderColor}`,
-            transition: 'all 0.2s ease'
+            transition: 'all 0.2s ease',
+            minHeight: isMobile ? '350px' : 'auto'
           }}
         >
           {etapa.expedientes.map((expediente) => (
@@ -1381,6 +1443,19 @@ function ColumnaKanban({
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-xs font-semibold">
                 {isOver ? '✅ Suelte aquí' : `Sin expedientes en ${etapa.nombre}`}
+              </p>
+            </div>
+          )}
+
+          {/* Dotted Drop Target Placeholder when dragging over */}
+          {isOver && (
+            <div
+              className="border-2 border-dashed border-[#003DA5]/30 bg-[#003DA5]/[0.02] rounded-xl flex items-center justify-center p-6 transition-all duration-200"
+              style={{ height: '100px' }}
+            >
+              <p className="text-xs font-bold text-[#003DA5]/50 flex items-center gap-1.5">
+                <Plus className="w-4 h-4" />
+                Soltar expediente aquí
               </p>
             </div>
           )}
@@ -1464,7 +1539,11 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: canDrag ? 'move' : 'default' }} className="h-[380px]">
+    <div
+      ref={drag}
+      style={{ opacity, cursor: canDrag ? 'move' : 'default' }}
+      className="h-fit transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rounded-xl"
+    >
       <KanbanCard
         accentColor={ESAP_TOKENS.colors.primary}
         isDragging={isDragging}
