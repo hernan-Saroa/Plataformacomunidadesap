@@ -1243,23 +1243,41 @@ function ServiceCard({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
-  const [{ isDragging }, drag] = useDrag(() => ({
+  const [{ isDragging }, drag] = useDrag({
     type: DND_ITEM_TYPE,
-    item: { index },
+    item: () => ({ index }),
     collect: (monitor) => ({ isDragging: monitor.isDragging() }),
-  }));
+  });
 
-  const [, drop] = useDrop(() => ({
+  const [{ isOver }, drop] = useDrop({
     accept: DND_ITEM_TYPE,
-    hover(item: any) {
+    collect: (monitor) => ({ isOver: monitor.isOver() }),
+    hover(item: any, monitor) {
       if (!ref.current) return;
       const dragIndex = item.index;
       const hoverIndex = index;
       if (dragIndex === hoverIndex) return;
+
+      // Get the bounding rect of the hover target
+      const hoverBoundingRect = ref.current.getBoundingClientRect();
+      // Get the vertical middle point
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+      // Get mouse position
+      const clientOffset = monitor.getClientOffset();
+      if (!clientOffset) return;
+      // Get pixels to the top
+      const hoverClientY = clientOffset.y - hoverBoundingRect.top;
+
+      // Only perform the move when the mouse has crossed half of the item's height
+      // Dragging downwards: only move when cursor is below 50%
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return;
+      // Dragging upwards: only move when cursor is above 50%
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return;
+
       onMove(dragIndex, hoverIndex);
       item.index = hoverIndex;
     },
-  }));
+  });
 
   drag(drop(ref));
 
@@ -1272,16 +1290,17 @@ function ServiceCard({
 
   const containerClass =
     view === 'grid'
-      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3.5' : 'p-4 sm:p-5'} relative`
-      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3' : 'p-3.5 sm:p-4'} relative`;
+      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3.5' : 'p-4 sm:p-5'} relative ${isDragging ? '' : 'hover:-translate-y-0.5'}`
+      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3' : 'p-3.5 sm:p-4'} relative ${isDragging ? '' : 'hover:-translate-y-0.5'}`;
 
   return (
     <div
       ref={ref}
       className={containerClass}
       style={{
-        opacity: isDragging ? 0.35 : 1,
-        transform: isDragging ? 'scale(0.98)' : 'scale(1)',
+        opacity: isDragging ? 0.4 : isOver ? 0.85 : 1,
+        transform: isDragging ? 'scale(0.96)' : 'scale(1)',
+        boxShadow: isOver && !isDragging ? '0 0 0 2px #003DA5' : undefined,
       }}
       onClick={onClick}
     >
