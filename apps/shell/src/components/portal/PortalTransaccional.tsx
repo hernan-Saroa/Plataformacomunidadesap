@@ -623,7 +623,7 @@ export function PortalTransaccional({
     </div>
   );
 
-  const renderLeftPanelDesktop = (contactItems: { icon: any; value: string }[]) => (
+  const renderLeftPanelDesktop = (contactItems: { icon: any; value: string }[], extraContent?: React.ReactNode) => (
     <div className="flex flex-col shrink-0 gap-5 sticky top-24" style={{ width: isXLDesktop ? 300 : 260 }}>
       <div className="relative bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-32 bg-[#003DA5]/5 pointer-events-none" />
@@ -700,8 +700,8 @@ export function PortalTransaccional({
         </AnimatePresence>
       </div>
 
-      {/* Acceso Rápido debajo de contacto */}
-      {renderQuickApps()}
+      {/* Contenido extra (ej: Acceso Rápido) */}
+      {extraContent}
 
       {/* Slot para componentes del contenido (ej: Progreso PTA) */}
       <div id="portal-left-sidebar-slot" className="space-y-5" />
@@ -1018,7 +1018,7 @@ export function PortalTransaccional({
       /* ▸ Desktop (1024–1279px): 2 columnas, sin right panel, Quick Apps debajo */
       return (
         <div className="flex items-stretch gap-6" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
-          {renderLeftPanelDesktop(contactItems)}
+          {renderLeftPanelDesktop(contactItems, renderQuickApps())}
           <div className="flex-1 min-w-0 flex flex-col gap-5">
             {renderGreeting()}
             {renderServices()}
@@ -1113,7 +1113,7 @@ export function PortalTransaccional({
     /* ▸ Large Desktop (1280px+): 3 columnas completas */
     return (
       <div className="flex items-stretch gap-6" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
-        {renderLeftPanelDesktop(contactItems)}
+        {renderLeftPanelDesktop(contactItems, renderQuickApps())}
         <div className="flex-1 min-w-0 flex flex-col gap-5">
           {renderGreeting()}
           {renderServices()}
