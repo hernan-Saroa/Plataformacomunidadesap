@@ -66,7 +66,13 @@ export class PtaService {
     return rest;
   }
 
+  private readonly columnCache = new Map<string, boolean>();
+
   private async hasColumn(schema: string, table: string, column: string): Promise<boolean> {
+    const cacheKey = `${schema}.${table}.${column}`;
+    const cached = this.columnCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     const rows = await this.ptaRepo.query(
       `SELECT 1
        FROM information_schema.columns
@@ -76,17 +82,21 @@ export class PtaService {
        LIMIT 1`,
       [schema, table, column],
     );
-    return Array.isArray(rows) && rows.length > 0;
+    const exists = Array.isArray(rows) && rows.length > 0;
+    this.columnCache.set(cacheKey, exists);
+    return exists;
   }
 
   private async fetchAuthDocenteInfo(docenteKey: string, options?: { adminEdit?: boolean }): Promise<{ personId: string, email: string | null, fullName: string }> {
     const key = coalesceString(docenteKey);
     if (!key) throw new BadRequestException('docente_id es requerido');
 
-    const personasHasIdPerson = await this.hasColumn('auth', 'personas', 'id_person');
-    const personasHasIdTercero = await this.hasColumn('auth', 'personas', 'id_tercero');
-    const userHasIdPerson = await this.hasColumn('auth', 'user', 'id_person');
-    const userHasIdTercero = await this.hasColumn('auth', 'user', 'id_tercero');
+    const [personasHasIdPerson, personasHasIdTercero, userHasIdPerson, userHasIdTercero] = await Promise.all([
+      this.hasColumn('auth', 'personas', 'id_person'),
+      this.hasColumn('auth', 'personas', 'id_tercero'),
+      this.hasColumn('auth', 'user', 'id_person'),
+      this.hasColumn('auth', 'user', 'id_tercero'),
+    ]);
 
     let joinUserPersonas: string;
     if (personasHasIdPerson && userHasIdPerson) {
@@ -250,8 +260,21 @@ export class PtaService {
     return { personId, email, fullName };
   }
 
+  // Cache de resolución de docente (TTL 30s) para evitar queries repetidas en la misma sesión
+  private readonly docenteCache = new Map<string, { result: { personId: string; email: string | null; fullName: string }; expiresAt: number }>();
+
+  private async resolveDocenteIdCached(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string; email: string | null; fullName: string }> {
+    const cacheKey = `${docenteKey}:${options?.adminEdit ? 'admin' : 'normal'}`;
+    const cached = this.docenteCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.result;
+
+    const result = await this.resolveDocenteCompleto(docenteKey, options);
+    this.docenteCache.set(cacheKey, { result, expiresAt: Date.now() + 30_000 });
+    return result;
+  }
+
   private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<string> {
-    const res = await this.resolveDocenteCompleto(docenteKey, options);
+    const res = await this.resolveDocenteIdCached(docenteKey, options);
     return res.personId;
   }
 
@@ -455,7 +478,7 @@ export class PtaService {
     );
     const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
     const isAdminEdit = Boolean(input?._adminEdit);
-    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteCompleto(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
+    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
 
     // Enrich identity if missing
     if (!input.docente_nombre) {
