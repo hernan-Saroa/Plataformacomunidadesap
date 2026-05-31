@@ -990,7 +990,7 @@ export function PortalTransaccional({
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {statsCards.map((sc) => (
-                <div key={sc.label} className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-3.5 flex items-center gap-3 hover:shadow-md hover:scale-[1.02] transition-all duration-200">
+                <div key={sc.label} className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:scale-[1.02] transition-all duration-200">
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: sc.bg }}>{sc.icon}</div>
                   <div className="min-w-0">
                     <div className="text-[16px] font-black text-gray-900">{typeof sc.value === 'number' ? formatNumber(sc.value) : sc.value}</div>
@@ -1290,8 +1290,8 @@ function ServiceCard({
 
   const containerClass =
     view === 'grid'
-      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3.5' : 'p-4 sm:p-5'} relative ${isDragging ? '' : 'hover:-translate-y-0.5'}`
-      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3' : 'p-3.5 sm:p-4'} relative ${isDragging ? '' : 'hover:-translate-y-0.5'}`;
+      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-4' : 'p-5 sm:p-6'} relative overflow-hidden ${isDragging ? '' : 'hover:-translate-y-0.5'}`
+      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-4' : 'p-4 sm:p-5'} relative overflow-hidden ${isDragging ? '' : 'hover:-translate-y-0.5'}`;
 
   return (
     <div
@@ -1325,26 +1325,24 @@ function ServiceCard({
               {service.codigo}
             </span>
           </div>
-          <div className="text-[11px] sm:text-[12px] text-gray-500 mt-1 line-clamp-2">{service.descripcion}</div>
+          <div className="text-[11px] sm:text-[12px] text-gray-500 mt-1.5 line-clamp-2">{service.descripcion}</div>
 
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <div className="flex flex-wrap gap-2">
-              {service.badges.map((b) => (
-                <span
-                  key={b.label}
-                  className="text-[10px] sm:text-[11px] font-black px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg sm:rounded-xl"
-                  style={{ color: b.color, background: b.bgColor }}
-                >
-                  {b.label}
-                </span>
-              ))}
-            </div>
+          <div className="mt-3.5 sm:mt-4 flex flex-wrap items-center gap-2">
+            {service.badges.map((b) => (
+              <span
+                key={b.label}
+                className="text-[10px] sm:text-[11px] font-black px-2.5 sm:px-3 py-1 rounded-lg sm:rounded-xl"
+                style={{ color: b.color, background: b.bgColor }}
+              >
+                {b.label}
+              </span>
+            ))}
 
             {service.prioridad && (
-              <div className="flex items-center gap-1.5 text-[11px] sm:text-[12px] font-black text-gray-500 shrink-0 ml-auto">
+              <span className="flex items-center gap-1.5 text-[11px] sm:text-[12px] font-black text-gray-500 ml-auto">
                 <span className="w-2 h-2 rounded-full" style={{ background: priorityDot }} />
                 {service.prioridad}
-              </div>
+              </span>
             )}
           </div>
         </div>
