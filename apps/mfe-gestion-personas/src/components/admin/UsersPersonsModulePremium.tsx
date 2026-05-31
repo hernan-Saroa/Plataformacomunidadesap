@@ -1520,8 +1520,8 @@ export function UsersPersonsModulePremium() {
               </thead>
               <tbody style={{ background: "#FFFFFF" }}>
                 <AnimatePresence mode="popLayout">
-                  {displayUsers.map((user, index) => (
-                    <React.Fragment key={user.id || `frag-${index}`}>
+                  {displayUsers.flatMap((user, index) => {
+                    const items = [
                       <motion.tr
                         key={user.id ? `row-${user.id}` : `row-${index}`}
                         initial={{ opacity: 0, y: 10 }}
@@ -1946,8 +1946,9 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
-                      {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
-                      {expandedUserId === user.id && (
+                    ];
+                    if (expandedUserId === user.id) {
+                      items.push(
                         <motion.tr
                           key={user.id ? `${user.id}-expanded` : `expanded-${index}`}
                           initial={{ opacity: 0 }}
@@ -1966,9 +1967,10 @@ export function UsersPersonsModulePremium() {
                             />
                           </td>
                         </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
+                      );
+                    }
+                    return items;
+                  })}
                 </AnimatePresence>
               </tbody>
             </table>
