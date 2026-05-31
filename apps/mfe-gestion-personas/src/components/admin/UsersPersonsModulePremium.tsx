@@ -1220,13 +1220,13 @@ export function UsersPersonsModulePremium() {
         transition={{ duration: 0.3, delay: 0.18 }}
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4"
       >
-        {quickFiltersData.map((filter) => {
+        {quickFiltersData.map((filter, filterIdx) => {
           const Icon = filter.icon;
           const isActive = roleFilter === filter.id;
           
           return (
             <motion.button
-              key={filter.code}
+              key={filter.code || `filter-${filterIdx}`}
               onClick={() => {
                 if (isActive) {
                   setRoleFilter("all");
@@ -1984,7 +1984,7 @@ export function UsersPersonsModulePremium() {
             <AnimatePresence mode="popLayout">
               {displayUsers.map((user, index) => (
                 <motion.div
-                  key={user.id}
+                  key={user.id || `mobile-user-${index}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
