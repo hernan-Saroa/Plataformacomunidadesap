@@ -1060,7 +1060,7 @@ export function ModuloDefensaJudicialV3() {
         labelMobile: 'Demanda',
         icon: <Plus className="w-4 h-4 mr-1" />,
         onClick: () => setModalNuevaDemandaOpen(true),
-        className: 'bg-gradient-to-r from-[#003DA5] to-[#1E40AF] hover:from-[#1E3A8A] hover:to-[#1D4ED8] text-white font-bold transition-all duration-200 shadow-sm hover:shadow active:scale-95 rounded-lg border-0'
+        className: 'bg-[#003DA5] hover:bg-[#002e7d] text-white font-bold transition-all duration-200 shadow-sm hover:shadow active:scale-95 rounded-lg border-0'
       });
     }
     btns.push({
@@ -1437,8 +1437,14 @@ function ColumnaKanban({
 
   return (
     <div
-      className="flex-shrink-0 w-[231px] min-w-[231px] flex flex-col transition-all duration-300 snap-center"
-      style={{ height: isMobile ? 'auto' : 'calc(100vh - 180px)' }}
+      className="flex flex-col transition-all duration-300 snap-center"
+      style={{
+        width: etapa.expedientes.length > 0 ? 319 : 194,
+        minWidth: etapa.expedientes.length > 0 ? 319 : 194,
+        maxWidth: etapa.expedientes.length > 0 ? 319 : 194,
+        flex: 'none',
+        height: isMobile ? 'auto' : 'calc(100vh - 180px)'
+      }}
     >
       <Card className="h-full border border-gray-200 bg-white flex flex-col overflow-hidden relative">
         {/* Acento de color arriba */}

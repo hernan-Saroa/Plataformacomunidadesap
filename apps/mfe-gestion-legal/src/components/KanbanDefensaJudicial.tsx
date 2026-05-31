@@ -705,7 +705,7 @@ function ColumnaKanban({ etapa, expedientes, onDrop, onVerDetalle, onVerComentar
   });
 
   return (
-    <div ref={drop} className={`flex flex-col h-full transition-all ${isOver ? 'bg-blue-50' : 'bg-gray-50'}`} style={{ minWidth: '231px', maxWidth: '231px' }}>
+    <div ref={drop} className={`flex flex-col h-full transition-all ${isOver ? 'bg-blue-50' : 'bg-gray-50'}`} style={{ width: expedientes.length > 0 ? 319 : 194, minWidth: expedientes.length > 0 ? 319 : 194, maxWidth: expedientes.length > 0 ? 319 : 194, flex: 'none' }}>
       <div className="p-3 border-b border-gray-200 bg-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

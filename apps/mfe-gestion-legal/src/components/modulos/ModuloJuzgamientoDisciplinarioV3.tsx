@@ -543,30 +543,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         }
       />
 
-      {/* Métricas - IGUAL A DEFENSA JUDICIAL */}
-      <ModuleMetrics
-        metrics={[
-          {
-            value: totalProcesos,
-            label: 'Procesos',
-            icon: <FileText className="w-5 h-5" />,
-            color: 'orange'
-          },
-          {
-            value: procesosCriticos,
-            label: 'Críticos',
-            icon: <AlertCircle className="w-5 h-5" />,
-            color: 'red'
-          },
-          {
-            value: procesosEnTermino,
-            label: 'En Término',
-            labelMobile: 'En término',
-            icon: <CheckCircle className="w-5 h-5" />,
-            color: 'green'
-          }
-        ]}
-      />
+
 
       {/* Filtros */}
       <ModuleFilters
@@ -893,8 +870,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove,
   return (
     <motion.div
       className="flex-shrink-0"
-      initial={{ width: 231 }}
-      animate={{ width: 231 }}
+      initial={{ width: etapa.procesos.length > 0 ? 319 : 194 }}
+      animate={{ width: etapa.procesos.length > 0 ? 319 : 194 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
       <Card className="h-full border border-gray-200 bg-white">
