@@ -227,7 +227,7 @@ export function AuthenticatedPortalNavbar({
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm transition-colors duration-300">
-      <div className="w-full max-w-[1360px] mx-auto px-4 md:px-6 lg:px-8 xl:px-4">
+      <div className="w-full max-w-[1280px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4" style={{ minHeight: 64, height: 64 }}>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -287,10 +287,27 @@ export function AuthenticatedPortalNavbar({
 
             <PortalNotificationBell onNavigate={handleNotificationNavigate} />
 
+            {/* Search icon — solo en mobile/tablet (search bar está en desktop) */}
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              className="lg:hidden relative flex items-center justify-center transition-all duration-200"
+              style={{
+                minWidth: 40, minHeight: 40, width: 40, height: 40,
+                borderRadius: 10, background: '#F3F4F6', border: 'none', cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#E5E7EB'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#F3F4F6'; }}
+              aria-label="Buscar"
+            >
+              <Search style={{ width: 20, height: 20, color: '#374151', strokeWidth: 2 }} />
+            </button>
+
+            {/* Settings — oculto en mobile (ya está en hamburger menu) */}
             <button
               type="button"
               onClick={() => onNavigate?.('configuracion')}
-              className="relative flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="hidden md:flex relative items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               style={{
                 minWidth: 40,
                 minHeight: 40,

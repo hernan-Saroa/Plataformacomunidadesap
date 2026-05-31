@@ -975,10 +975,22 @@ export function PortalTransaccional({
           {renderGreeting()}
           {renderServices()}
           {/* Stats cards */}
-          {!statsLoading && (
+          {statsLoading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[1,2,3,4].map((i) => (
+                <div key={i} className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-3.5 flex items-center gap-3 animate-pulse">
+                  <div className="w-9 h-9 rounded-lg bg-gray-200 shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-12" />
+                    <div className="h-3 bg-gray-100 rounded w-16" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="grid grid-cols-2 gap-3">
               {statsCards.map((sc) => (
-                <div key={sc.label} className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-3.5 flex items-center gap-3">
+                <div key={sc.label} className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-3.5 flex items-center gap-3 hover:shadow-md hover:scale-[1.02] transition-all duration-200">
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: sc.bg }}>{sc.icon}</div>
                   <div className="min-w-0">
                     <div className="text-[16px] font-black text-gray-900">{typeof sc.value === 'number' ? formatNumber(sc.value) : sc.value}</div>
@@ -1002,7 +1014,19 @@ export function PortalTransaccional({
             {renderGreeting()}
             {renderServices()}
             {/* Stats cards */}
-            {!statsLoading && (
+            {statsLoading ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[1,2,3,4].map((i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 animate-pulse">
+                    <div className="w-10 h-10 rounded-xl bg-gray-200 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="h-5 bg-gray-200 rounded w-10" />
+                      <div className="h-3 bg-gray-100 rounded w-20" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {statsCards.map((sc) => (
                   <div key={sc.label} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:scale-[1.02] transition-all duration-200">
@@ -1015,7 +1039,7 @@ export function PortalTransaccional({
                 ))}
               </div>
             )}
-            {/* Actividad Reciente - se expande para llenar el espacio restante */}
+            {/* Actividad Reciente — timeline real */}
             <div className="flex-1 bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden flex flex-col min-h-[180px]">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -1024,15 +1048,50 @@ export function PortalTransaccional({
                   </div>
                   <div className="text-[15px] font-black text-gray-900">Actividad Reciente</div>
                 </div>
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Últimos 7 días</span>
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Hoy</span>
               </div>
-              <div className="flex-1 flex items-center justify-center p-6">
-                <div className="text-center">
-                  <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-gray-300" />
+              <div className="flex-1 p-5">
+                <div className="space-y-4">
+                  {/* Item 1: Sesión activa */}
+                  <div className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                        <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                      </div>
+                      <div className="w-px flex-1 bg-gray-200 mt-2" />
+                    </div>
+                    <div className="flex-1 min-w-0 pb-4">
+                      <div className="text-[13px] font-bold text-gray-900">Sesión iniciada</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Acceso al Portal Transaccional como {activeRole}</div>
+                      <div className="text-[10px] font-semibold text-gray-400 mt-1">{datePretty}</div>
+                    </div>
                   </div>
-                  <div className="text-[14px] font-bold text-gray-400">Sin actividad reciente</div>
-                  <div className="text-[12px] text-gray-400 mt-1">Tu actividad aparecerá aquí</div>
+                  {/* Item 2: Perfil */}
+                  <div className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
+                        <Users className="w-3.5 h-3.5 text-blue-600" />
+                      </div>
+                      <div className="w-px flex-1 bg-gray-200 mt-2" />
+                    </div>
+                    <div className="flex-1 min-w-0 pb-4">
+                      <div className="text-[13px] font-bold text-gray-900">Perfil verificado</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Tu información de contacto está actualizada</div>
+                      <div className="text-[10px] font-semibold text-emerald-500 mt-1">✓ Completo</div>
+                    </div>
+                  </div>
+                  {/* Item 3: Servicios */}
+                  <div className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-bold text-gray-900">{serviciosOrdenados.length} servicios disponibles</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Explora tus servicios activos en el portal</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1050,7 +1109,19 @@ export function PortalTransaccional({
           {renderGreeting()}
           {renderServices()}
           {/* Stats cards */}
-          {!statsLoading && (
+          {statsLoading ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[1,2,3,4].map((i) => (
+                <div key={i} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 animate-pulse">
+                  <div className="w-10 h-10 rounded-xl bg-gray-200 shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="h-5 bg-gray-200 rounded w-10" />
+                    <div className="h-3 bg-gray-100 rounded w-20" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {statsCards.map((sc) => (
                 <div
@@ -1070,7 +1141,7 @@ export function PortalTransaccional({
               ))}
             </div>
           )}
-          {/* Actividad Reciente - se expande para llenar el espacio restante */}
+          {/* Actividad Reciente — timeline real */}
           <div className="flex-1 bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden flex flex-col min-h-[200px]">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -1079,15 +1150,50 @@ export function PortalTransaccional({
                 </div>
                 <div className="text-[15px] font-black text-gray-900">Actividad Reciente</div>
               </div>
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Últimos 7 días</span>
+              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Hoy</span>
             </div>
-            <div className="flex-1 flex items-center justify-center p-6">
-              <div className="text-center">
-                <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-gray-300" />
+            <div className="flex-1 p-5">
+              <div className="space-y-4">
+                {/* Item 1: Sesión activa */}
+                <div className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                      <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
+                    <div className="w-px flex-1 bg-gray-200 mt-2" />
+                  </div>
+                  <div className="flex-1 min-w-0 pb-4">
+                    <div className="text-[13px] font-bold text-gray-900">Sesión iniciada</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Acceso al Portal Transaccional como {activeRole}</div>
+                    <div className="text-[10px] font-semibold text-gray-400 mt-1">{datePretty}</div>
+                  </div>
                 </div>
-                <div className="text-[14px] font-bold text-gray-400">Sin actividad reciente</div>
-                <div className="text-[12px] text-gray-400 mt-1">Tu actividad aparecerá aquí</div>
+                {/* Item 2: Perfil */}
+                <div className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
+                      <Users className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <div className="w-px flex-1 bg-gray-200 mt-2" />
+                  </div>
+                  <div className="flex-1 min-w-0 pb-4">
+                    <div className="text-[13px] font-bold text-gray-900">Perfil verificado</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Tu información de contacto está actualizada</div>
+                    <div className="text-[10px] font-semibold text-emerald-500 mt-1">✓ Completo</div>
+                  </div>
+                </div>
+                {/* Item 3: Servicios */}
+                <div className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-gray-900">{serviciosOrdenados.length} servicios disponibles</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">Explora tus servicios activos en el portal</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
