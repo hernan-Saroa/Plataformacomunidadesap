@@ -12,6 +12,12 @@ export interface UseResponsiveReturn {
   isTouchDevice: boolean;
   width: number;
   height: number;
+  // Tailwind CSS standard breakpoints
+  isSm: boolean;
+  isMd: boolean;
+  isLg: boolean;
+  isXl: boolean;
+  is2Xl: boolean;
 }
 
 function getDimensions() {
@@ -57,9 +63,15 @@ export function useResponsive(): UseResponsiveReturn {
     isTouchDevice: breakpoint === 'mobile' || breakpoint === 'tablet',
     width: dimensions.width,
     height: dimensions.height,
+    isSm: dimensions.width >= 640,
+    isMd: dimensions.width >= 768,
+    isLg: dimensions.width >= 1024,
+    isXl: dimensions.width >= 1280,
+    is2Xl: dimensions.width >= 1536,
   };
 }
 
 export function useBreakpoint(): Breakpoint {
   return useResponsive().breakpoint;
 }
+

@@ -880,14 +880,14 @@ export function TabActuacionesExpediente({
                           </Badge>
                         )}
 
-                        {onSendEmail && !hasUnsignedDocs && (!actuacion.metadata?.aprobacionTipo || actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO') && (
+                        {onSendEmail && actuacion.tipo !== 'CAMBIO_ETAPA' && !hasUnsignedDocs && (!actuacion.metadata?.aprobacionTipo || actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO') && (
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSendEmail(actuacion);
                             }}
                             variant="outline"
-                            className="h-8 px-3 text-xs font-bold text-violet-750 border border-violet-200 bg-violet-50/30 hover:bg-violet-50 hover:border-violet-300 hover:shadow-xs rounded-lg transition-all flex items-center gap-1.5"
+                            className="h-8 px-3 text-xs font-bold text-violet-700 border border-violet-200 bg-violet-50/30 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-800 hover:shadow-xs rounded-lg transition-all flex items-center gap-1.5"
                             title="Enviar Correo con Actuación y Adjuntos"
                           >
                             <Mail className="w-3.5 h-3.5 text-violet-600" />

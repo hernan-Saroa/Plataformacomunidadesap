@@ -1,7 +1,6 @@
 /* ErrorGamePage - Página de Error Interactiva con Mini-Juego para ESAP */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import esapLogo from './assets/esap-logo.png';
 import { 
   Trophy, Star, CheckCircle, XCircle, 
   Lightbulb, Brain, Award, Sparkles,
@@ -273,13 +272,42 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
           transition={{ duration: 0.5 }}
           className="text-center mb-8"
         >
-          <div className="flex justify-center mb-8">
-            <img 
-              src={esapLogo} 
-              alt="Logo ESAP" 
-              className="h-20 md:h-24 w-auto object-contain drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
-            />
-          </div>
+            <svg
+              width={220}
+              height={70}
+              viewBox="0 0 250 80"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-20 md:h-24 w-auto drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105"
+              aria-label="ESAP - Escuela Superior de Administración Pública"
+            >
+              <defs>
+                <mask id="esap-letters-mask-legal">
+                  <rect x="0" y="0" width="250" height="80" fill="white" />
+                  <text x="11" y="61.5" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="9" fill="black" text-anchor="middle" dominant-baseline="central">E</text>
+                  <text x="27" y="61.5" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="9" fill="black" text-anchor="middle" dominant-baseline="central">S</text>
+                  <text x="43" y="61.5" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="9" fill="black" text-anchor="middle" dominant-baseline="central">A</text>
+                  <text x="59" y="61.5" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="9" fill="black" text-anchor="middle" dominant-baseline="central">P</text>
+                </mask>
+              </defs>
+
+              <circle cx="35" cy="19" r="6" fill="#FFFFFF" />
+              <circle cx="27" cy="33" r="6" fill="#FFFFFF" />
+              <circle cx="43" cy="33" r="6" fill="#FFFFFF" />
+              <circle cx="19" cy="47" r="6" fill="#FFFFFF" />
+              <circle cx="35" cy="47" r="6" fill="#FFFFFF" />
+              <circle cx="51" cy="47" r="6" fill="#FFFFFF" />
+              <g mask="url(#esap-letters-mask-legal)">
+                <circle cx="11" cy="61" r="6" fill="#FFFFFF" />
+                <circle cx="27" cy="61" r="6" fill="#FFFFFF" />
+                <circle cx="43" cy="61" r="6" fill="#FFFFFF" />
+                <circle cx="59" cy="61" r="6" fill="#FFFFFF" />
+              </g>
+
+              <text x="76" y="31" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="14.5" fill="#FFFFFF" letterSpacing="0.2">ESCUELA SUPERIOR</text>
+              <text x="76" y="49" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="14.5" fill="#FFFFFF" letterSpacing="0.2">DE ADMINISTRACIÓN</text>
+              <text x="76" y="67" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="14.5" fill="#FFFFFF" letterSpacing="0.2">PÚBLICA</text>
+            </svg>
 
           <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-700 px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase mb-4 shadow-sm border border-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-600" />

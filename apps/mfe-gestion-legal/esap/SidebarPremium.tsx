@@ -719,7 +719,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     {/* Isotipo oficial ESAP */}
                     <ESAPLogo 
                       variant="icon"
-                      className="w-10 h-10 object-contain drop-shadow-lg filter brightness-0"
+                      className="w-10 h-10 object-contain drop-shadow-lg"
                     />
                   </motion.div>
                 ) : (

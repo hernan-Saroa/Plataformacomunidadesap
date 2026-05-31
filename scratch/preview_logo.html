@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Vista Previa - Logotipo Oficial ESAP</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 900px;
+      width: 100%;
+      background-color: #1e293b;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      border: 1px border #334155;
+    }
+    h1 {
+      font-size: 24px;
+      margin-top: 0;
+      margin-bottom: 10px;
+      text-align: center;
+      color: #38bdf8;
+    }
+    p.desc {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 30px;
+    }
+    .comparison-section {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .card {
+      background-color: #0f172a;
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid #1e293b;
+    }
+    .card-title {
+      font-weight: 700;
+      font-size: 14px;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 15px;
+      letter-spacing: 0.05em;
+    }
+    .preview-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      border-radius: 8px;
+      background-color: #1e5da8; /* Color azul de la cabecera original */
+    }
+    .preview-box.light {
+      background-color: #ffffff;
+      color: #003da5;
+    }
+    .preview-box img {
+      max-height: 80px;
+      width: auto;
+    }
+    .svg-container {
+      display: inline-block;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      font-size: 12px;
+      color: #64748b;
+    }
+    code {
+      background-color: #1e293b;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #f472b6;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Logotipo ESAP - Comparación y Validación</h1>
+  <p class="desc">Esta página compara el logotipo SVG corregido en el código con la imagen de referencia oficial adjunta.</p>
+
+  <div class="comparison-section">
+    <!-- Logotipo SVG Corregido -->
+    <div class="card">
+      <div class="card-title">1. Logotipo SVG Vectorial Generado en Código (Correcto)</div>
+      
+      <p style="font-size: 13px; color: #94a3b8; margin-top: -10px; margin-bottom: 15px;">
+        Este es el SVG exacto implementado en <code>ESAPLogoSVG.tsx</code>. Soporta tema claro (azul) y tema oscuro (blanco).
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 15px;">
+        <!-- Fondo azul (navbar) -->
+        <div>
+          <span style="font-size: 12px; color: #64748b; display: block; margin-bottom: 5px;">Variante Blanca (sobre fondo azul):</span>
+          <div class="preview-box">
+            <div class="svg-container">
+              <!-- Copia exacta del SVG de ESAPLogoSVG -->
+              <svg width="270" height="80" viewBox="0 0 270 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <mask id="mask_white">
+                    <rect x="0" y="0" width="270" height="80" fill="white" />
+                    <text x="11" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">e</text>
+                    <text x="27" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">s</text>
+                    <text x="43" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">a</text>
+                    <text x="59" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">p</text>
+                  </mask>
+                </defs>
+                <circle cx="35" cy="19" r="6" fill="#FFFFFF" />
+                <circle cx="27" cy="33" r="6" fill="#FFFFFF" />
+                <circle cx="43" cy="33" r="6" fill="#FFFFFF" />
+                <circle cx="19" cy="47" r="6" fill="#FFFFFF" />
+                <circle cx="35" cy="47" r="6" fill="#FFFFFF" />
+                <circle cx="51" cy="47" r="6" fill="#FFFFFF" />
+                <g mask="url(#mask_white)">
+                  <circle cx="11" cy="61" r="6" fill="#FFFFFF" />
+                  <circle cx="27" cy="61" r="6" fill="#FFFFFF" />
+                  <circle cx="43" cy="61" r="6" fill="#FFFFFF" />
+                  <circle cx="59" cy="61" r="6" fill="#FFFFFF" />
+                </g>
+                <line x1="72" y1="16" x2="72" y2="64" stroke="#FFFFFF" strokeWidth="1.5" />
+                <text x="80" y="36" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="15.5" fill="#FFFFFF">Escuela Superior de</text>
+                <text x="80" y="58" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="15.5" fill="#FFFFFF">Administración Pública</text>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fondo blanco -->
+        <div>
+          <span style="font-size: 12px; color: #64748b; display: block; margin-bottom: 5px;">Variante Azul (sobre fondo blanco/claro):</span>
+          <div class="preview-box light">
+            <div class="svg-container">
+              <svg width="270" height="80" viewBox="0 0 270 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <mask id="mask_blue">
+                    <rect x="0" y="0" width="270" height="80" fill="white" />
+                    <text x="11" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">e</text>
+                    <text x="27" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">s</text>
+                    <text x="43" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">a</text>
+                    <text x="59" y="63" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="9.5" fill="black" textAnchor="middle">p</text>
+                  </mask>
+                </defs>
+                <circle cx="35" cy="19" r="6" fill="#003DA5" />
+                <circle cx="27" cy="33" r="6" fill="#003DA5" />
+                <circle cx="43" cy="33" r="6" fill="#003DA5" />
+                <circle cx="19" cy="47" r="6" fill="#003DA5" />
+                <circle cx="35" cy="47" r="6" fill="#003DA5" />
+                <circle cx="51" cy="47" r="6" fill="#003DA5" />
+                <g mask="url(#mask_blue)">
+                  <circle cx="11" cy="61" r="6" fill="#003DA5" />
+                  <circle cx="27" cy="61" r="6" fill="#003DA5" />
+                  <circle cx="43" cy="61" r="6" fill="#003DA5" />
+                  <circle cx="59" cy="61" r="6" fill="#003DA5" />
+                </g>
+                <line x1="72" y1="16" x2="72" y2="64" stroke="#003DA5" strokeWidth="1.5" />
+                <text x="80" y="36" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="15.5" fill="#003DA5">Escuela Superior de</text>
+                <text x="80" y="58" fontFamily="Georgia, 'Times New Roman', Times, serif" fontWeight="bold" fontSize="15.5" fill="#003DA5">Administración Pública</text>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Imagen de Referencia de Usuario -->
+    <div class="card">
+      <div class="card-title">2. Imagen de Referencia Adjunta por el Usuario</div>
+      <p style="font-size: 13px; color: #94a3b8; margin-top: -10px; margin-bottom: 15px;">
+        Esta es la imagen oficial que usted adjuntó como referencia.
+      </p>
+      <div class="preview-box" style="background-color: #0f172a; border: 1px solid #1e293b;">
+        <img src="decoded_logo.png" alt="Imagen oficial ESAP adjunta">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Plataforma ComUNIdad ESAP — Vista Previa de Logotipo
+</div>
+
+</body>
+</html>

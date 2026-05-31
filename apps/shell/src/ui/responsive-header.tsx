@@ -122,7 +122,7 @@ export function ResponsiveHeader({
     const baseClasses = 'inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap';
     
     const variants = {
-      primary: 'bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white hover:shadow-lg hover:-translate-y-0.5',
+      primary: 'bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5',
       secondary: 'bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white',
       ghost: 'text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300'
     };
@@ -174,7 +174,7 @@ export function ResponsiveHeader({
             <div 
               className="w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
+                background: '#003DA5',
                 boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
               }}
             >
@@ -315,7 +315,7 @@ export function ResponsiveHeader({
                           className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
                         >
                           {/* Header del menú */}
-                          <div className="bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-4 py-2.5">
+                          <div className="bg-[#003DA5] px-4 py-2.5">
                             <p className="text-xs font-bold text-white">Más Opciones</p>
                           </div>
 

@@ -35,11 +35,11 @@ const CIRCLES = [
   { cx: 26, cy: 57, r: 10, row: 2, letter: null },
   { cx: 50, cy: 57, r: 10, row: 2, letter: null },
   { cx: 74, cy: 57, r: 10, row: 2, letter: null },
-  // Row 3 — bottom (E S A P)
-  { cx: 14, cy: 78, r: 10, row: 3, letter: 'E' },
-  { cx: 38, cy: 78, r: 10, row: 3, letter: 'S' },
-  { cx: 62, cy: 78, r: 10, row: 3, letter: 'A' },
-  { cx: 86, cy: 78, r: 10, row: 3, letter: 'P' },
+  // Row 3 — bottom (e s a p)
+  { cx: 14, cy: 78, r: 10, row: 3, letter: 'e' },
+  { cx: 38, cy: 78, r: 10, row: 3, letter: 's' },
+  { cx: 62, cy: 78, r: 10, row: 3, letter: 'a' },
+  { cx: 86, cy: 78, r: 10, row: 3, letter: 'p' },
 ];
 
 // Total animation cycle duration in seconds
@@ -114,13 +114,13 @@ export function ESAPLogoLoader({
             <motion.text
               key={`letter-${i}`}
               x={c.cx}
-              y={c.cy + 4}
+              y={c.cy + 3.5}
               textAnchor="middle"
               dominantBaseline="middle"
               fill="white"
-              fontWeight={800}
-              fontSize={10.5}
-              fontFamily="'Inter', 'Segoe UI', system-ui, sans-serif"
+              fontWeight="bold"
+              fontSize={11.5}
+              fontFamily="Georgia, 'Times New Roman', Times, serif"
               initial={{ opacity: 0 }}
               animate={{
                 opacity: [0, 1, 1, 0],

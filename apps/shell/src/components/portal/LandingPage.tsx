@@ -246,7 +246,8 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       </motion.nav>
 
       {/* Hero Section - World Class */}
-      <section id="hero" className="relative min-h-[85vh] sm:min-h-[80vh] lg:min-h-screen flex items-center justify-center overflow-hidden pt-20 sm:pt-24 lg:pt-16">
+      <section id="hero" className="relative min-h-[85vh] sm:min-h-[80vh] lg:min-h-screen flex items-center justify-center overflow-hidden pt-32 xs:pt-36 sm:pt-40 lg:pt-32">
+
         {/* Animated Background - OPTIMIZADO */}
         <div className="absolute inset-0 z-0" style={{ willChange: 'transform' }}>
           {/* Gradient Base */}
@@ -316,7 +317,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
         {/* Hero Content - OPTIMIZADO */}
         <motion.div
-          className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 xl:py-16 max-w-7xl"
+          className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 xl:py-16 max-w-7xl mt-12 sm:mt-16 lg:mt-20"
           style={{
             opacity: heroOpacity,
             scale: heroScale,
