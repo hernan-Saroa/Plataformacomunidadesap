@@ -624,7 +624,7 @@ export function PortalTransaccional({
   );
 
   const renderLeftPanelDesktop = (contactItems: { icon: any; value: string }[]) => (
-    <div className="flex flex-col shrink-0 gap-5 sticky top-24 h-fit" style={{ width: isXLDesktop ? 300 : 260 }}>
+    <div className="flex flex-col shrink-0 gap-5 sticky top-24" style={{ width: isXLDesktop ? 300 : 260 }}>
       <div className="relative bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-32 bg-[#003DA5]/5 pointer-events-none" />
         <div className="relative -mt-12 px-5 pb-5">
@@ -989,9 +989,9 @@ export function PortalTransaccional({
     if (!isLargeDesktop) {
       /* ▸ Desktop (1024–1279px): 2 columnas, sin right panel, Quick Apps debajo */
       return (
-        <div className="flex items-start gap-6">
+        <div className="flex items-stretch gap-6" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
           {renderLeftPanelDesktop(contactItems)}
-          <div className="flex-1 min-w-0 space-y-5">
+          <div className="flex-1 min-w-0 flex flex-col gap-5">
             {renderGreeting()}
             {renderServices()}
             {/* Stats cards */}
@@ -1008,6 +1008,27 @@ export function PortalTransaccional({
                 ))}
               </div>
             )}
+            {/* Actividad Reciente - se expande para llenar el espacio restante */}
+            <div className="flex-1 bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden flex flex-col min-h-[180px]">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <div className="text-[15px] font-black text-gray-900">Actividad Reciente</div>
+                </div>
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Últimos 7 días</span>
+              </div>
+              <div className="flex-1 flex items-center justify-center p-6">
+                <div className="text-center">
+                  <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-gray-300" />
+                  </div>
+                  <div className="text-[14px] font-bold text-gray-400">Sin actividad reciente</div>
+                  <div className="text-[12px] text-gray-400 mt-1">Tu actividad aparecerá aquí</div>
+                </div>
+              </div>
+            </div>
             {renderQuickApps()}
           </div>
         </div>
@@ -1016,12 +1037,12 @@ export function PortalTransaccional({
 
     /* ▸ Large Desktop (1280px+): 3 columnas completas */
     return (
-      <div className="flex items-start gap-6">
+      <div className="flex items-stretch gap-6" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
         {renderLeftPanelDesktop(contactItems)}
-        <div className="flex-1 min-w-0 space-y-5">
+        <div className="flex-1 min-w-0 flex flex-col gap-5">
           {renderGreeting()}
           {renderServices()}
-          {/* Stats cards - resumen de actividad */}
+          {/* Stats cards */}
           {!statsLoading && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {statsCards.map((sc) => (
@@ -1042,6 +1063,27 @@ export function PortalTransaccional({
               ))}
             </div>
           )}
+          {/* Actividad Reciente - se expande para llenar el espacio restante */}
+          <div className="flex-1 bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden flex flex-col min-h-[200px]">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center">
+                  <Activity className="w-4 h-4 text-purple-600" />
+                </div>
+                <div className="text-[15px] font-black text-gray-900">Actividad Reciente</div>
+              </div>
+              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Últimos 7 días</span>
+            </div>
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className="text-center">
+                <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-gray-300" />
+                </div>
+                <div className="text-[14px] font-bold text-gray-400">Sin actividad reciente</div>
+                <div className="text-[12px] text-gray-400 mt-1">Tu actividad aparecerá aquí</div>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="shrink-0" style={{ width: isXLDesktop ? 260 : 240 }}>
           {renderQuickApps()}
