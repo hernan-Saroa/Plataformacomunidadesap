@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 import { PortalCommandPalette } from './PortalCommandPalette';
 import { Button } from '../ui/button';
 import {
@@ -169,6 +170,7 @@ export function AuthenticatedPortalNavbar({
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -229,7 +231,19 @@ export function AuthenticatedPortalNavbar({
         <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4" style={{ minHeight: 64, height: 64 }}>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <ESAPLogo variant="color" className="h-8 sm:h-9 md:h-10 w-auto" />
+              {isMobile ? (
+                <ESAPLogo 
+                  variant="icon-color" 
+                  className="shrink-0" 
+                  style={{ width: '38px', height: '44px' }} 
+                />
+              ) : (
+                <ESAPLogo 
+                  variant="color" 
+                  className="shrink-0" 
+                  style={{ width: '189px', height: '56px' }} 
+                />
+              )}
             </div>
           </div>
 

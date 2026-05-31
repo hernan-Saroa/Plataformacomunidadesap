@@ -9,10 +9,27 @@
 import React, { useId } from 'react';
 
 export interface ESAPLogoSVGProps {
-  variant?: 'color' | 'white' | 'dark' | 'icon';
+  variant?: 'color' | 'white' | 'dark' | 'icon' | 'icon-color';
   className?: string;
   width?: number;
   height?: number;
+  style?: React.CSSProperties;
+}
+
+/**
+ * Creates a ref callback that forces width/height with !important on an SVG element.
+ * This is NOT a hook — it's a plain function, so it can be called anywhere
+ * without violating React's rules of hooks.
+ */
+function createForceSizeRef(style?: React.CSSProperties, width?: number, height?: number) {
+  const finalW = style?.width ?? (width ? `${width}px` : undefined);
+  const finalH = style?.height ?? (height ? `${height}px` : undefined);
+
+  return (el: SVGSVGElement | null) => {
+    if (!el) return;
+    if (finalW) el.style.setProperty('width', String(finalW), 'important');
+    if (finalH) el.style.setProperty('height', String(finalH), 'important');
+  };
 }
 
 /**
@@ -21,22 +38,35 @@ export interface ESAPLogoSVGProps {
  */
 export function IsotipoESAP({
   variant = 'color',
-  width = 48,
-  height = 48,
-  className = ''
+  width,
+  height,
+  className = '',
+  style
 }: ESAPLogoSVGProps) {
-  const maskId = useId();
-  const isColor = variant === 'color' || variant === 'dark';
+  const maskId = useId().replace(/:/g, '_');
+  const isColor = variant === 'color' || variant === 'dark' || variant === 'icon-color';
   const color = isColor ? '#003DA5' : '#FFFFFF';
+  const svgRef = createForceSizeRef(style, width, height);
+
+  const styleWithDimensions = {
+    aspectRatio: '70/80',
+    display: 'block',
+    flexShrink: 0,
+    ...(width ? { width: typeof width === 'number' ? `${width}px` : width } : {}),
+    ...(height ? { height: typeof height === 'number' ? `${height}px` : height } : {}),
+    ...style
+  };
 
   return (
     <svg
-      width={width}
-      height={height}
+      ref={svgRef}
+      width="100%"
+      height="100%"
       viewBox="0 0 70 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={className}
+      className={`esap-logo size-auto ${className}`}
+      style={styleWithDimensions}
       aria-label="ESAP Isotipo"
     >
       <defs>
@@ -120,31 +150,39 @@ export function ESAPLogoSVG({
   variant = 'white',
   className = '',
   width,
-  height
+  height,
+  style
 }: ESAPLogoSVGProps) {
-  const maskId = useId();
-  const isColor = variant === 'color' || variant === 'dark';
+  const maskId = useId().replace(/:/g, '_');
+  const isColor = variant === 'color' || variant === 'dark' || variant === 'icon-color';
   const color = isColor ? '#003DA5' : '#FFFFFF';
 
   // Si es variante icono, devolvemos el isotipo limpio
-  if (variant === 'icon') {
-    return <IsotipoESAP variant={variant} width={width} height={height} className={className} />;
+  if (variant === 'icon' || variant === 'icon-color') {
+    return <IsotipoESAP variant={variant} width={width} height={height} className={className} style={style} />;
   }
 
-  // Dimensiones por defecto para el logotipo completo
-  const defaultWidth = 270;
-  const defaultHeight = 80;
-  const finalWidth = width || defaultWidth;
-  const finalHeight = height || defaultHeight;
+  const svgRef = createForceSizeRef(style, width, height);
+
+  const styleWithDimensions = {
+    aspectRatio: '270/80',
+    display: 'block',
+    flexShrink: 0,
+    ...(width ? { width: typeof width === 'number' ? `${width}px` : width } : {}),
+    ...(height ? { height: typeof height === 'number' ? `${height}px` : height } : {}),
+    ...style
+  };
 
   return (
     <svg
-      width={finalWidth}
-      height={finalHeight}
+      ref={svgRef}
+      width="100%"
+      height="100%"
       viewBox="0 0 270 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={className}
+      className={`esap-logo size-auto ${className}`}
+      style={styleWithDimensions}
       aria-label="ESAP - Escuela Superior de Administración Pública"
     >
       <defs>

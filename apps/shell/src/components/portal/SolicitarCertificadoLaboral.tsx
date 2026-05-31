@@ -2129,7 +2129,16 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             {/* Logo y Descripción */}
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              <ESAPLogo variant="white" className="h-14" />
+              <ESAPLogo 
+                variant="white" 
+                className="hidden sm:block shrink-0" 
+                style={{ width: '189px', height: '56px' }} 
+              />
+              <ESAPLogo 
+                variant="icon" 
+                className="block sm:hidden shrink-0" 
+                style={{ width: '38px', height: '44px' }} 
+              />
               <div>
                 <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>

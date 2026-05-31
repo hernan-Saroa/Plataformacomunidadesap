@@ -64,19 +64,17 @@ export function ModuleLayout({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const isMobile = windowWidth < 768;
-  const isSmallTablet = windowWidth >= 768 && windowWidth < 1024;
+  // Alinear con el shell: sidebar del shell se oculta <1024px,
+  // por lo tanto el sub-sidebar del módulo también debe ocultarse <1024px.
+  const isMobile = windowWidth < 1024;
   
-  // Auto-colapsar en pantallas pequeñas (tablets)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    initialSidebarCollapsed || isSmallTablet
-  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Sincronizar el estado colapsado cuando cambia la propiedad inicial o el tamaño de pantalla
+  // Sincronizar el estado colapsado cuando cambia la propiedad inicial
   useEffect(() => {
-    setSidebarCollapsed(initialSidebarCollapsed || isSmallTablet);
-  }, [initialSidebarCollapsed, isSmallTablet]);
+    setSidebarCollapsed(initialSidebarCollapsed);
+  }, [initialSidebarCollapsed]);
 
   // Cerrar menú mobile al cambiar de sección
   const handleSectionChange = (section: string) => {
@@ -219,10 +217,10 @@ export function ModuleLayout({
       <motion.aside
         initial={false}
         animate={{ 
-          width: sidebarCollapsed ? 64 : (isSmallTablet ? 200 : 280)
+          width: sidebarCollapsed ? 64 : 280
         }}
         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-        className="hidden md:flex flex-shrink-0 border-r-2 flex-col relative h-screen"
+        className="hidden lg:flex flex-shrink-0 border-r-2 flex-col relative h-screen"
         style={{ 
           background: '#FFFFFF',
           borderColor: '#E5E7EB'

@@ -38,8 +38,8 @@ LOCAL_DB_PASSWORD=postgres
 LOCAL_DB_NAME=esap_db
 
 # ================= LOCAL URLS =====================
-LOCAL_CORS_ORIGIN=http://localhost
-FRONTEND_VITE_API_URL=http://localhost/services
+LOCAL_CORS_ORIGIN=http://localhost:3000
+FRONTEND_VITE_API_URL=http://localhost:3000/services
 FRONTEND_VITE_ONLYOFFICE_URL=http://localhost:9000
 EOF
   echo -e "${YELLOW}Revisa ${ENV_FILE_LOCAL} antes de continuar.${NC}"
@@ -48,7 +48,7 @@ fi
 compose_local() {
   FRONTEND_NETWORK_KEY="superapp-net" \
   FRONTEND_CONTAINER_SUFFIX="-local" \
-  FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-http://localhost/services}" \
+  FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-http://localhost:3000/services}" \
   FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-http://localhost:9000}" \
   docker compose -f "$COMPOSE_FILE_LOCAL" --env-file "$ENV_FILE_LOCAL" "$@"
 }
@@ -139,8 +139,8 @@ cmd_up() {
   compose_local up -d --build
   echo ""
   echo -e "${YELLOW}URLs locales:${NC}"
-  echo "  Frontend:    http://localhost"
-  echo "  API Gateway: http://localhost/services"
+  echo "  Frontend:    http://localhost:3000"
+  echo "  API Gateway: http://localhost:3000/services"
   echo "  OnlyOffice:  http://localhost:9000"
 }
 
@@ -184,8 +184,8 @@ cmd_health() {
   echo ""
 
   echo -e "${YELLOW}Validando puertos publicados:${NC}"
-  check_tcp_port "localhost" "80" "Frontend gateway" || failed=1
-  check_tcp_port "localhost" "3000" "API Gateway" || failed=1
+  check_tcp_port "localhost" "3000" "Frontend gateway" || failed=1
+  check_tcp_port "localhost" "3300" "API Gateway" || failed=1
   check_tcp_port "localhost" "9000" "OnlyOffice" || failed=1
   check_tcp_port "localhost" "3001" "Auth Service" || failed=1
   check_tcp_port "localhost" "3002" "Academic Registration Service" || failed=1
@@ -201,8 +201,8 @@ cmd_health() {
   echo ""
 
   echo -e "${YELLOW}Validando respuestas HTTP básicas:${NC}"
-  check_http_url "http://localhost/" "Frontend" || failed=1
-  check_http_url "http://localhost/services/" "API Gateway" || failed=1
+  check_http_url "http://localhost:3000/" "Frontend" || failed=1
+  check_http_url "http://localhost:3000/services/" "API Gateway" || failed=1
   check_http_url "http://localhost:3005/health" "Disciplinary Health" || failed=1
   check_http_url "http://localhost:3011/health" "Audit Health" || failed=1
   check_http_url "http://localhost:9000/" "OnlyOffice" || failed=1
