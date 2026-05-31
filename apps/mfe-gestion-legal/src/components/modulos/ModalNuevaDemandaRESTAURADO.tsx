@@ -24,7 +24,7 @@
  * 7. Detalles del Proceso
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 // @ts-ignore
 import { toast } from 'sonner';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
@@ -305,6 +305,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   const [pasoActual, setPasoActual] = useState(1);
   const totalPasos = 7;
+  const lastTipoProcesoRef = useRef<string>('');
 
   const [formData, setFormData] = useState<NuevaDemandaData>({
     numeroRadicado: '',
@@ -388,7 +389,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
             return (
               <div key={fieldId} className="space-y-2">
-                <Label htmlFor={fieldId} className="text-sm font-bold text-gray-700 flex items-center">
+                <Label htmlFor={fieldId} className={`text-sm font-bold flex items-center ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>
                   {c.nombre}
                   {c.obligatorio && <span className="text-red-500 ml-1">*</span>}
                 </Label>
@@ -400,51 +401,117 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       type="text"
                       placeholder={`Ingrese ${c.nombre.toLowerCase()}...`}
                       value={currentVal}
-                      onChange={(e) => handleValueChange(e.target.value)}
-                      className="bg-white"
+                      onChange={(e) => {
+                        handleValueChange(e.target.value);
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(prev => {
+                            const copy = { ...prev };
+                            delete copy[fieldId];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={`bg-white ${erroresCampos[fieldId] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                     />
-                    {c.tipo === 'alfanumerico' && (
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                    {c.tipo === 'alfanumerico' && !erroresCampos[fieldId] && (
                       <p className="text-[10px] text-gray-400 font-medium ml-1">Solo se permiten letras y números.</p>
                     )}
-                    {c.tipo === 'unico' && (
+                    {c.tipo === 'unico' && !erroresCampos[fieldId] && (
                       <p className="text-[10px] text-gray-400 font-medium ml-1">Este valor debe ser único en el sistema.</p>
                     )}
                   </div>
                 )}
 
                 {c.tipo === 'numero' && (
-                  <Input
-                    id={fieldId}
-                    type="number"
-                    placeholder="0"
-                    value={currentVal}
-                    onChange={(e) => handleValueChange(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="bg-white"
-                  />
+                  <div className="space-y-1 w-full">
+                    <Input
+                      id={fieldId}
+                      type="number"
+                      placeholder="0"
+                      value={currentVal}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value === '' ? '' : Number(e.target.value));
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(prev => {
+                            const copy = { ...prev };
+                            delete copy[fieldId];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={`bg-white ${erroresCampos[fieldId] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {c.tipo === 'fecha' && (
-                  <Input
-                    id={fieldId}
-                    type="date"
-                    value={currentVal}
-                    onChange={(e) => handleValueChange(e.target.value)}
-                    className="bg-white"
-                  />
+                  <div className="space-y-1 w-full">
+                    <Input
+                      id={fieldId}
+                      type="date"
+                      value={currentVal}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value);
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(prev => {
+                            const copy = { ...prev };
+                            delete copy[fieldId];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={`bg-white ${erroresCampos[fieldId] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
                 )}
 
                 {c.tipo === 'booleano' && (
-                  <div className="flex items-center gap-2 pt-2 h-[38px]">
-                    <input
-                      id={fieldId}
-                      type="checkbox"
-                      checked={!!currentVal}
-                      onChange={(e) => handleValueChange(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <label htmlFor={fieldId} className="text-xs text-gray-600 font-medium cursor-pointer select-none">
-                      {c.nombre}
-                    </label>
+                  <div className="space-y-1 w-full">
+                    <div className="flex items-center gap-2 pt-2 h-[38px]">
+                      <input
+                        id={fieldId}
+                        type="checkbox"
+                        checked={!!currentVal}
+                        onChange={(e) => {
+                          handleValueChange(e.target.checked);
+                          if (erroresCampos[fieldId]) {
+                            setErroresCampos(prev => {
+                              const copy = { ...prev };
+                              delete copy[fieldId];
+                              return copy;
+                            });
+                          }
+                        }}
+                        className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer ${erroresCampos[fieldId] ? 'border-red-500' : ''}`}
+                      />
+                      <label htmlFor={fieldId} className={`text-xs font-medium cursor-pointer select-none ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-600'}`}>
+                        {c.nombre}
+                      </label>
+                    </div>
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -478,7 +545,16 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           )}
                           <button
                             type="button"
-                            onClick={() => handleValueChange(null)}
+                            onClick={() => {
+                              handleValueChange(null);
+                              if (erroresCampos[fieldId]) {
+                                setErroresCampos(prev => {
+                                  const copy = { ...prev };
+                                  delete copy[fieldId];
+                                  return copy;
+                                });
+                              }
+                            }}
                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100/50 rounded transition-colors"
                             title="Eliminar documento"
                           >
@@ -488,10 +564,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       </div>
                     ) : (
                       <div className="w-full">
-                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl bg-white hover:bg-blue-50/10 hover:border-blue-300 transition-all cursor-pointer group">
+                        <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl bg-white hover:bg-blue-50/10 hover:border-blue-300 transition-all cursor-pointer group ${erroresCampos[fieldId] ? 'border-red-500 bg-red-50/10' : 'border-gray-300'}`}>
                           <div className="flex flex-col items-center justify-center pt-5 pb-6 px-4 text-center">
-                            <Upload className="w-8 h-8 text-gray-400 group-hover:text-blue-500 transition-colors mb-2" />
-                            <p className="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">
+                            <Upload className={`w-8 h-8 group-hover:text-blue-500 transition-colors mb-2 ${erroresCampos[fieldId] ? 'text-red-500' : 'text-gray-400'}`} />
+                            <p className={`text-xs font-bold group-hover:text-blue-600 transition-colors ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>
                               Haga clic para cargar documento
                             </p>
                             <p className="text-[10px] text-gray-400 mt-1 font-medium">
@@ -528,6 +604,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                                   tipoMime: file.type,
                                   esNuevo: true
                                 });
+                                if (erroresCampos[fieldId]) {
+                                  setErroresCampos(prev => {
+                                    const copy = { ...prev };
+                                    delete copy[fieldId];
+                                    return copy;
+                                  });
+                                }
                               };
                               reader.onerror = () => {
                                 toast.error('Error al leer el archivo');
@@ -537,6 +620,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           />
                         </label>
                       </div>
+                    )}
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
                     )}
                   </div>
                 )}
@@ -555,13 +644,16 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [enviando, setEnviando] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
+  const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
 
   // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
     if (isOpen) {
+      setErroresCampos({});
       // Cargar expedientes para validación de campos únicos
       legalService.getExpedientes()
         .then(res => {
+          console.log('🔍 [DEBUG] todosLosExpedientes cargados para validación única:', res ? res.length : 0, res);
           setTodosLosExpedientes(res || []);
         })
         .catch(err => {
@@ -647,6 +739,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         setCiudadesDisponibles([]);
       } else {
         setPasoActual(1);
+        lastTipoProcesoRef.current = '';
 
         let defaultTipoProceso = '';
         let defaultTipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas' = 'Dias Habiles';
@@ -656,7 +749,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           const tp = allTiposProcesos?.find((t: any) => t.id === tableroSeleccionado);
           if (tp) {
             defaultTipoProceso = tp.nombre;
-            defaultTipoPlazo = tp.unidadTermino?.toLowerCase() === 'horas' ? 'Horas' : 'Dias Habiles';
+            defaultTipoPlazo = 'Dias Habiles';
+            if (tp.unidadTermino === 'Horas' || tp.unidadTermino === 'horas') defaultTipoPlazo = 'Horas';
+            else if (tp.unidadTermino === 'Dias Calendario') defaultTipoPlazo = 'Dias Calendario';
             defaultTermino = tp.plazo ?? 30;
           }
         }
@@ -699,7 +794,17 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   // Auto-poblar termino y etapa inicial desde el plazo configurado al seleccionar tipo de proceso (solo en creación)
   useEffect(() => {
     if (expedienteEdit) return;
-    if (!formData.tipoProcesoJudicial) return;
+    if (!formData.tipoProcesoJudicial) {
+      lastTipoProcesoRef.current = '';
+      return;
+    }
+
+    // Solo auto-poblar si el tipo de proceso realmente cambió
+    if (formData.tipoProcesoJudicial === lastTipoProcesoRef.current) {
+      return;
+    }
+    lastTipoProcesoRef.current = formData.tipoProcesoJudicial;
+
     const tp = tiposProcesosActivos.find(t => t.nombre === formData.tipoProcesoJudicial);
     if (tp) {
       const customStages = (tp.estados && tp.estados.length > 0)
@@ -709,19 +814,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
       setFormData(prev => {
         const newTermino = tp.plazo ?? 30;
-        const newTipoPlazo = tp.unidadTermino?.toLowerCase() === 'horas' ? 'Horas' : 'Dias Habiles';
-        if (prev.termino === newTermino && prev.tipoPlazo === newTipoPlazo && prev.etapaProcesal === firstStage) {
-          return prev;
-        }
+        let newTipoPlazo = 'Dias Habiles';
+        if (tp.unidadTermino === 'Horas' || tp.unidadTermino === 'horas') newTipoPlazo = 'Horas';
+        else if (tp.unidadTermino === 'Dias Calendario') newTipoPlazo = 'Dias Calendario';
         return {
           ...prev,
           termino: newTermino,
-          tipoPlazo: newTipoPlazo,
+          tipoPlazo: newTipoPlazo as any,
           etapaProcesal: firstStage
         };
       });
     }
-  }, [formData.tipoProcesoJudicial, tiposProcesosActivos, estadosActivos]);
+  }, [formData.tipoProcesoJudicial, tiposProcesosActivos, estadosActivos, expedienteEdit]);
 
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
@@ -909,32 +1013,41 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     // Validar campos adicionales dinámicos para el paso actual
     if (activeTipoProceso?.camposAdicionalesConfig) {
       const camposDelPaso = activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === pasoActual);
+      
+      // Clear previous custom errors for this step
+      setErroresCampos(prev => {
+        const copy = { ...prev };
+        camposDelPaso.forEach(c => {
+          delete copy[c.id];
+        });
+        return copy;
+      });
+
+      let hasCustomError = false;
+      const newCustomErrors: Record<string, string> = {};
+
       for (const campo of camposDelPaso) {
         const val = formData.camposAdicionales?.[campo.id];
         
         // 1. Validar obligatoriedad
         if (campo.obligatorio) {
           if (val === undefined || val === null || val === '' || val === false) {
-            toast.error('⚠️ Campo obligatorio incompleto', {
-              description: `El campo "${campo.nombre}" es obligatorio.`
-            });
-            return false;
+            newCustomErrors[campo.id] = `El campo "${campo.nombre}" es obligatorio.`;
+            hasCustomError = true;
           }
         }
 
         // 2. Validar formato alfanumérico (solo si hay un valor ingresado)
-        if (campo.tipo === 'alfanumerico' && val) {
+        if (campo.tipo === 'alfanumerico' && val && !newCustomErrors[campo.id]) {
           const alphanumericRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s]*$/;
           if (!alphanumericRegex.test(String(val))) {
-            toast.error('⚠️ Formato inválido', {
-              description: `El campo "${campo.nombre}" debe ser alfanumérico (solo letras y números).`
-            });
-            return false;
+            newCustomErrors[campo.id] = `El campo "${campo.nombre}" debe ser alfanumérico (solo letras y números).`;
+            hasCustomError = true;
           }
         }
 
         // 3. Validar valor único (solo si hay un valor ingresado)
-        if (campo.tipo === 'unico' && val) {
+        if (campo.tipo === 'unico' && val && !newCustomErrors[campo.id]) {
           const isEdit = !!expedienteEdit;
           const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
           const duplicado = todosLosExpedientes.some(exp => {
@@ -945,12 +1058,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             return String(expCampos[campo.id]).trim().toLowerCase() === String(val).trim().toLowerCase();
           });
           if (duplicado) {
-            toast.error('⚠️ Valor duplicado', {
-              description: `El valor "${val}" ya existe para el campo único "${campo.nombre}".`
-            });
-            return false;
+            newCustomErrors[campo.id] = `El valor "${val}" ya existe para el campo único "${campo.nombre}".`;
+            hasCustomError = true;
           }
         }
+      }
+
+      if (hasCustomError) {
+        setErroresCampos(prev => ({ ...prev, ...newCustomErrors }));
+        toast.error('⚠️ Campos obligatorios o incorrectos', {
+          description: 'Por favor complete y verifique los campos dinámicos marcados en rojo.'
+        });
+        return false;
       }
     }
 
@@ -959,23 +1078,79 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         const medioControlReq = isFieldRequired('medioControl', true);
         const cuantiaReq = isFieldRequired('cuantia', false);
 
-        if (!formData.numeroRadicado || (medioControlReq && !formData.medioControl) || !formData.tipoProcesoJudicial || !formData.etapaProcesal) {
-          toast.error('⚠️ Campos incompletos', {
-            description: 'Complete todos los campos obligatorios del proceso judicial'
-          });
-          return false;
+        // Reset anterior de errores para este paso
+        setErroresCampos(prev => {
+          const copy = { ...prev };
+          delete copy.numeroRadicado;
+          delete copy.medioControl;
+          delete copy.tipoProcesoJudicial;
+          delete copy.etapaProcesal;
+          delete copy.cuantia;
+          return copy;
+        });
+
+        let hasError = false;
+        const newErrors: Record<string, string> = {};
+
+        if (!formData.numeroRadicado) {
+          newErrors.numeroRadicado = 'El número de radicado es obligatorio';
+          hasError = true;
+        } else if (formData.numeroRadicado.length !== 23) {
+          newErrors.numeroRadicado = 'El radicado debe tener exactamente 23 dígitos';
+          hasError = true;
         }
 
-        if (formData.numeroRadicado.length !== 23) {
-          toast.error('⚠️ Radicado inválido', {
-            description: 'El número de radicado debe tener exactamente 23 dígitos'
-          });
-          return false;
+        if (medioControlReq && !formData.medioControl) {
+          newErrors.medioControl = 'El medio de control es obligatorio';
+          hasError = true;
+        }
+
+        if (!formData.tipoProcesoJudicial) {
+          newErrors.tipoProcesoJudicial = 'El tipo de proceso es obligatorio';
+          hasError = true;
+        }
+
+        if (!formData.etapaProcesal) {
+          newErrors.etapaProcesal = 'La etapa procesal es obligatoria';
+          hasError = true;
         }
 
         if (cuantiaReq && (formData.cuantia === undefined || formData.cuantia === null || formData.cuantia === 0)) {
-          toast.error('⚠️ Cuantía requerida', {
-            description: 'El campo Cuantía es obligatorio y debe ser mayor a 0.'
+          newErrors.cuantia = 'La cuantía es obligatoria y debe ser mayor a 0';
+          hasError = true;
+        }
+
+        if (hasError) {
+          setErroresCampos(prev => ({ ...prev, ...newErrors }));
+          toast.error('⚠️ Campos obligatorios incompletos', {
+            description: 'Por favor complete y verifique los campos marcados en rojo.'
+          });
+          return false;
+        }
+
+        // Validar si el radicado ya existe en la plataforma (evitar duplicados antes de avanzar en el wizard)
+        const isEdit = !!expedienteEdit;
+        const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
+        const radicadoDuplicado = todosLosExpedientes.some(exp => {
+          const expId = exp.uuid || exp.id;
+          if (isEdit && expId === currentId) return false;
+          
+          const expRadicado = exp.radicado || exp.numeroRadicado || exp.id;
+          return expRadicado && String(expRadicado).trim().toLowerCase() === String(formData.numeroRadicado).trim().toLowerCase();
+        });
+
+        console.log('🔍 [DEBUG] validarPasoActual Case 1:', {
+          numeroRadicado: formData.numeroRadicado,
+          totalExpedientes: todosLosExpedientes.length,
+          isEdit,
+          currentId,
+          radicadoDuplicado
+        });
+
+        if (radicadoDuplicado) {
+          setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
+          toast.error('⚠️ Radicado duplicado', {
+            description: `El número de radicado "${formData.numeroRadicado}" ya está registrado en la plataforma. Use un número único.`
           });
           return false;
         }
@@ -1275,6 +1450,26 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const handleSubmit = async () => {
     if (!validarPasoActual()) return;
 
+    // Validación transversal: El número de radicado debe ser único
+    const isEdit = !!expedienteEdit;
+    const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
+    const radicadoDuplicado = todosLosExpedientes.some(exp => {
+      const expId = exp.uuid || exp.id;
+      if (isEdit && expId === currentId) return false;
+      
+      const expRadicado = exp.radicado || exp.numeroRadicado || exp.id;
+      return expRadicado && String(expRadicado).trim().toLowerCase() === String(formData.numeroRadicado).trim().toLowerCase();
+    });
+
+    if (radicadoDuplicado) {
+      setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
+      setPasoActual(1);
+      toast.error('⚠️ Radicado duplicado', {
+        description: `El número de radicado "${formData.numeroRadicado}" ya está registrado en la plataforma. Use un número único.`
+      });
+      return;
+    }
+
     // Validación transversal: La fecha de estimación contable no puede ser anterior a la notificación
     if (formData.fechaEstimacionProvision && formData.fechaNotificacion) {
       if (new Date(formData.fechaEstimacionProvision) < new Date(formData.fechaNotificacion)) {
@@ -1342,9 +1537,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       });
 
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       toast.error(expedienteEdit ? '❌ Error al actualizar demanda' : '❌ Error al registrar demanda', {
-        description: 'Por favor intente nuevamente'
+        description: error.message || 'Por favor intente nuevamente'
       });
     } finally {
       setEnviando(false);
@@ -1491,7 +1686,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="numeroRadicado" className="text-sm font-bold text-gray-700">
+                      <Label htmlFor="numeroRadicado" className={`text-sm font-bold ${erroresCampos.numeroRadicado ? 'text-red-600' : 'text-gray-700'}`}>
                         Número de Radicado <span className="text-red-500">*</span>
                         <span className="text-xs font-normal text-gray-400 ml-1">(23 dígitos)</span>
                       </Label>
@@ -1500,19 +1695,33 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         placeholder="Ej: 66001233300020260012300"
                         value={formData.numeroRadicado}
                         maxLength={23}
+                        className={erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}
                         onChange={(e) => {
                           // Solo permitir dígitos, máximo 23
                           const valor = e.target.value.replace(/[^0-9]/g, '').slice(0, 23);
                           setFormData({ ...formData, numeroRadicado: valor });
+                          if (erroresCampos.numeroRadicado) {
+                            setErroresCampos(prev => {
+                              const copy = { ...prev };
+                              delete copy.numeroRadicado;
+                              return copy;
+                            });
+                          }
                         }}
                       />
-                      {formData.numeroRadicado && formData.numeroRadicado.length !== 23 && (
+                      {erroresCampos.numeroRadicado && (
+                        <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {erroresCampos.numeroRadicado}
+                        </p>
+                      )}
+                      {!erroresCampos.numeroRadicado && formData.numeroRadicado && formData.numeroRadicado.length !== 23 && (
                         <p className="text-xs text-amber-600 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
                           {formData.numeroRadicado.length}/23 dígitos
                         </p>
                       )}
-                      {formData.numeroRadicado && formData.numeroRadicado.length === 23 && (
+                      {!erroresCampos.numeroRadicado && formData.numeroRadicado && formData.numeroRadicado.length === 23 && (
                         <p className="text-xs text-green-600 flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" />
                           Radicado completo
@@ -1523,14 +1732,23 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {isFieldVisible('medioControl', true) && (
                         <div className="space-y-2">
-                          <Label htmlFor="medioControl" className="text-sm font-bold text-gray-700">
+                          <Label htmlFor="medioControl" className={`text-sm font-bold ${erroresCampos.medioControl ? 'text-red-600' : 'text-gray-700'}`}>
                             Medio de Control {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
                           </Label>
                           <Select
                             value={formData.medioControl}
-                            onValueChange={(value: string) => setFormData({ ...formData, medioControl: value })}
+                            onValueChange={(value: string) => {
+                              setFormData({ ...formData, medioControl: value });
+                              if (erroresCampos.medioControl) {
+                                setErroresCampos(prev => {
+                                  const copy = { ...prev };
+                                  delete copy.medioControl;
+                                  return copy;
+                                });
+                              }
+                            }}
                           >
-                            <SelectTrigger id="medioControl" className="bg-white">
+                            <SelectTrigger id="medioControl" className={`bg-white ${erroresCampos.medioControl ? 'border-red-500 focus:ring-red-500' : ''}`}>
                               <SelectValue placeholder="Seleccione medio de control..." />
                             </SelectTrigger>
                             <SelectContent className="z-[100000]">
@@ -1539,12 +1757,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                               ))}
                             </SelectContent>
                           </Select>
+                          {erroresCampos.medioControl && (
+                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {erroresCampos.medioControl}
+                            </p>
+                          )}
                         </div>
                       )}
 
                       {!(tableroSeleccionado && tableroSeleccionado !== 'TODOS') && (
                         <div className="space-y-2">
-                          <Label htmlFor="tipoProcesoJudicial" className="text-sm font-bold text-gray-700">
+                          <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
                             Tipo de Proceso Judicial <span className="text-red-500">*</span>
                           </Label>
                           <Select
@@ -1552,9 +1776,16 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             onValueChange={(value: string) => {
                               const tp = tiposProcesosActivos.find(t => t.nombre === value);
                               setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
+                              if (erroresCampos.tipoProcesoJudicial) {
+                                setErroresCampos(prev => {
+                                  const copy = { ...prev };
+                                  delete copy.tipoProcesoJudicial;
+                                  return copy;
+                                });
+                              }
                             }}
                           >
-                            <SelectTrigger id="tipoProcesoJudicial" className="bg-white">
+                            <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
                               <SelectValue placeholder="Seleccione tipo de proceso..." />
                             </SelectTrigger>
                             <SelectContent className="z-[100000]">
@@ -1563,6 +1794,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                               ))}
                             </SelectContent>
                           </Select>
+                          {erroresCampos.tipoProcesoJudicial && (
+                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {erroresCampos.tipoProcesoJudicial}
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -1631,14 +1868,23 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       )}
 
                       <div className="space-y-2">
-                        <Label htmlFor="etapaProcesal" className="text-sm font-bold text-gray-700">
+                        <Label htmlFor="etapaProcesal" className={`text-sm font-bold ${erroresCampos.etapaProcesal ? 'text-red-600' : 'text-gray-700'}`}>
                           Etapa Procesal <span className="text-red-500">*</span>
                         </Label>
                         <Select
                           value={formData.etapaProcesal}
-                          onValueChange={(value: string) => setFormData({ ...formData, etapaProcesal: value })}
+                          onValueChange={(value: string) => {
+                            setFormData({ ...formData, etapaProcesal: value });
+                            if (erroresCampos.etapaProcesal) {
+                              setErroresCampos(prev => {
+                                const copy = { ...prev };
+                                delete copy.etapaProcesal;
+                                return copy;
+                              });
+                            }
+                          }}
                         >
-                          <SelectTrigger id="etapaProcesal" className="bg-white">
+                          <SelectTrigger id="etapaProcesal" className={`bg-white ${erroresCampos.etapaProcesal ? 'border-red-500 focus:ring-red-500' : ''}`}>
                             <SelectValue placeholder="Seleccione etapa procesal..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
@@ -1647,11 +1893,17 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             ))}
                           </SelectContent>
                         </Select>
+                        {erroresCampos.etapaProcesal && (
+                          <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {erroresCampos.etapaProcesal}
+                          </p>
+                        )}
                       </div>
 
                       {isFieldVisible('cuantia', true) && (
                         <div className="space-y-2">
-                          <Label htmlFor="cuantia" className="text-sm font-bold text-gray-700">
+                          <Label htmlFor="cuantia" className={`text-sm font-bold ${erroresCampos.cuantia ? 'text-red-600' : 'text-gray-700'}`}>
                             Cuantía (COP) {isFieldRequired('cuantia', false) && <span className="text-red-500">*</span>}
                             <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
                           </Label>
@@ -1661,6 +1913,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             inputMode="numeric"
                             placeholder="0"
                             value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
+                            className={erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}
                             onChange={(e) => {
                               const raw = e.target.value.replace(/[^0-9]/g, '');
                               // Si está vacío, poner 0
@@ -1676,8 +1929,21 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                               // Máximo 12 dígitos
                               const limitado = raw.slice(0, 12);
                               setFormData({ ...formData, cuantia: parseInt(limitado, 10) });
+                              if (erroresCampos.cuantia) {
+                                setErroresCampos(prev => {
+                                  const copy = { ...prev };
+                                  delete copy.cuantia;
+                                  return copy;
+                                });
+                              }
                             }}
                           />
+                          {erroresCampos.cuantia && (
+                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {erroresCampos.cuantia}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2502,9 +2768,15 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            <SelectItem value="Dias Habiles">Días Hábiles</SelectItem>
-                            <SelectItem value="Dias Calendario">Días Calendario</SelectItem>
-                            <SelectItem value="Horas">Horas</SelectItem>
+                            {(!activeTipoProceso?.unidadTermino || activeTipoProceso.unidadTermino === 'dias' || activeTipoProceso.unidadTermino === 'Dias Habiles' || activeTipoProceso.unidadTermino === 'Ambos') && (
+                                <SelectItem value="Dias Habiles">Días Hábiles</SelectItem>
+                            )}
+                            {(!activeTipoProceso?.unidadTermino || activeTipoProceso.unidadTermino === 'dias' || activeTipoProceso.unidadTermino === 'Dias Calendario' || activeTipoProceso.unidadTermino === 'Ambos') && (
+                                <SelectItem value="Dias Calendario">Días Calendario</SelectItem>
+                            )}
+                            {(activeTipoProceso?.unidadTermino === 'horas' || activeTipoProceso?.unidadTermino === 'Horas' || activeTipoProceso?.unidadTermino === 'Ambos') && (
+                              <SelectItem value="Horas">Horas</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>

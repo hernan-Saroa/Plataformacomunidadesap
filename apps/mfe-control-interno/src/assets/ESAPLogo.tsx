@@ -1,1 +1,1 @@
-export { ESAPLogo, default } from '../components/assets/ESAPLogo';
+export { ESAPLogo, default } from '../../../shell/src/components/assets/ESAPLogo';

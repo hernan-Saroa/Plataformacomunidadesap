@@ -67,7 +67,7 @@ export function ModalButtonPrimary({
     <button
       className={`
         ${baseButtonClasses}
-        bg-gradient-to-r from-[#2962FF] to-[#003DA5]
+        bg-[#003DA5] hover:bg-[#002D7A]
         text-white
         hover:shadow-lg hover:shadow-blue-500/30
         active:scale-[0.98]
@@ -105,7 +105,7 @@ export function ModalButtonSecondary({
     <button
       className={`
         ${baseButtonClasses}
-        bg-gradient-to-r from-[#F57C00] to-[#E65100]
+        bg-[#F57C00] hover:bg-[#E65100]
         text-white
         hover:shadow-lg hover:shadow-orange-500/30
         active:scale-[0.98]
@@ -176,7 +176,7 @@ export function ModalButtonDanger({
     <button
       className={`
         ${baseButtonClasses}
-        bg-gradient-to-r from-red-600 to-red-700
+        bg-red-600 hover:bg-red-700
         text-white
         hover:shadow-lg hover:shadow-red-500/30
         active:scale-[0.98]
@@ -245,7 +245,7 @@ export function ModalButtonSuccess({
     <button
       className={`
         ${baseButtonClasses}
-        bg-gradient-to-r from-green-600 to-green-700
+        bg-green-600 hover:bg-green-700
         text-white
         hover:shadow-lg hover:shadow-green-500/30
         active:scale-[0.98]

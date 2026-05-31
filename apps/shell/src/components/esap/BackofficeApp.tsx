@@ -779,14 +779,17 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           <div
             className={`backoffice-main-shell flex flex-col h-screen bg-gray-50 overflow-hidden ${
               sidebarCollapsed ? 'backoffice-main-shell--collapsed' : ''
+            } ${
+              sidebarOpen ? 'backoffice-main-shell--sidebar-open' : ''
             } ${userData?.module === 'procesos' ? 'backoffice-main-shell--no-sidebar' : ''}`}
           >
+
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar
                 onToggleSidebar={() => {
                   // En mobile abre el sidebar, en desktop colapsa/expande
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) {
                     setSidebarOpen(!sidebarOpen);
                   } else {
                     setSidebarCollapsed(!sidebarCollapsed);

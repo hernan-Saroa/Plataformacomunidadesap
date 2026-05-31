@@ -15,7 +15,7 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, DollarSign, Filter, Search,
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2, Gavel
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -150,6 +150,7 @@ export function ModuloDefensaJudicialV3() {
   const { isMobile, isTablet, isLg, isXl, width: screenWidth } = useResponsive();
   const isSmallDesktop = isLg || (isXl && screenWidth < 1440);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
+  const [columnasColapsadas, setColumnasColapsadas] = useState<Record<string, boolean>>({});
   const [modalNuevaDemandaOpen, setModalNuevaDemandaOpen] = useState(false);
   const [modalFiltrosReporteOpen, setModalFiltrosReporteOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -1091,57 +1092,37 @@ export function ModuloDefensaJudicialV3() {
   return (
     <div className="space-y-3 md:space-y-4">
       <ModuleHeader
-        title="Tablero Kanban Operativo"
-        subtitle="Gestión visual de demandas judiciales contra ESAP"
+        title="Defensa Judicial"
+        subtitle="Gestión visual de demandas judiciales y actuaciones procesales contra la ESAP"
+        icon={<Gavel className="w-5 h-5 text-white" />}
+        color="#003DA5"
         buttons={addBtnsPermission()}
-        infoTooltip={
-          <ModuleInfoTooltip
-            title="Guía de Defensa Judicial"
-            variant="icon"
-            sections={[
-              {
-                label: "📍 Punto de Inicio del Sistema",
-                content: "La Defensa Judicial es donde INICIA todo el flujo cuando ESAP es demandada. Aquí llegan las notificaciones de demandas desde juzgados y se registran en el sistema.",
-                type: "info"
-              },
-              {
-                label: "⚖️ Propósito del Módulo",
-                content: "Gestión centralizada de procesos judiciales activos contra ESAP: demandas laborales, nulidades y restablecimiento del derecho, acciones populares, tutelas y otros medios de control.",
-                type: "default"
-              },
-              {
-                label: "🔄 Flujo de Trabajo (4 Etapas)",
-                content: "1️⃣ NOTIFICADA: Demanda recibida del juzgado → 2️⃣ CONTESTACIÓN: Redactar y presentar respuesta (30 días) → 3️⃣ PROBATORIA: Recolectar y aportar pruebas (60 días) → 4️⃣ ALEGATOS: Argumentos finales antes del fallo (20 días).",
-                type: "premium"
-              },
-              {
-                label: "🚦 Semáforo de Términos",
-                content: "🟢 Verde (>15 días): En término | 🟡 Amarillo (5-15 días): Próximo a vencer | 🔴 Rojo (≤5 días): CRÍTICO - Acción inmediata requerida. El sistema alerta automáticamente.",
-                type: "warning"
-              },
-              {
-                label: "📋 Última Actuación (Bloque Azul)",
-                content: "El bloque azul destacado en cada tarjeta muestra la actuación procesal más reciente del juzgado, facilitando seguimiento rápido sin abrir el expediente completo.",
-                type: "default"
-              },
-              {
-                label: "🔗 Integración con Otros Módulos",
-                content: "Este módulo se conecta con: • Centro Comunicaciones (notificaciones del juzgado) • Términos e Informes (control de plazos) • Asesoría Jurídica (conceptos técnicos necesarios).",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Click 'Nueva Demanda' cuando llega notificación → 2️⃣ Arrastra tarjetas entre columnas al cambiar etapa → 3️⃣ Click 'Expediente' para ver documentos completos → 4️⃣ Usa botones rápidos (Autos, Evidencias, Oficios) para gestión documental.",
-                type: "default"
-              },
-              {
-                label: "⏭️ Siguiente Paso",
-                content: "Cuando el proceso judicial relaciona funcionarios internos, se deriva al módulo 'Juzgamiento Disciplinario' (MOD-02) para investigación interna paralela.",
-                type: "info"
-              }
-            ]}
-          />
+        topCustomActions={
+          <div className="relative flex items-center w-[200px] sm:w-[260px] mr-1 shrink-0">
+            <div className="absolute left-0 top-0 bottom-0 flex items-center pl-3 pointer-events-none rounded-l-lg border-r-0">
+              <Gavel className="w-4 h-4 text-[#003DA5]" />
+            </div>
+            <select
+              value={tableroSeleccionado}
+              onChange={(e) => handleCambiarTablero(e.target.value)}
+              className="w-full pl-10 pr-9 py-1.5 bg-white border border-slate-300 hover:border-[#003DA5] text-[#003DA5] font-black rounded-lg text-[13px] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm appearance-none cursor-pointer truncate"
+              style={{ 
+                backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '1.25rem',
+                backgroundRepeat: 'no-repeat'
+              }}
+            >
+              <option value="TODOS">Todos los procesos</option>
+              {tiposProcesosActivos.map((tp: any) => (
+                <option key={tp.id} value={tp.id}>
+                  {tp.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
         }
+
         toggleView={{
           current: tipoVista,
           onChange: (v: string) => setTipoVista(v as VistaModulo),
@@ -1208,30 +1189,7 @@ export function ModuloDefensaJudicialV3() {
               setFiltroAbogado('TODOS');
               setFiltroFecha('');
             }}
-          >
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <select
-                  value={tableroSeleccionado}
-                  onChange={(e) => handleCambiarTablero(e.target.value)}
-                  className="pl-2.5 pr-7 py-1 bg-white hover:bg-slate-50 border border-slate-200 hover:border-blue-500 text-blue-800 font-bold rounded-lg text-xs transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 shadow-sm cursor-pointer appearance-none"
-                  style={{ 
-                    minHeight: isMobile ? '34px' : '36px',
-                    backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
-                    backgroundPosition: 'right 0.4rem center',
-                    backgroundSize: '1rem',
-                    backgroundRepeat: 'no-repeat'
-                  }}
-                >
-                  {tiposProcesosActivos.map((tp: any) => (
-                    <option key={tp.id} value={tp.id} className="pl-3 py-1.5" style={{ paddingLeft: '8px' }}>
-                      {'\u00A0\u00A0' + tp.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </ModuleFilters>
+          />
         }
       />
 
@@ -1239,37 +1197,96 @@ export function ModuloDefensaJudicialV3() {
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
           <div className="relative">
-            {!useFluidKanban && (
-              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                  Desliza
-                </p>
-              </div>
-            )}
+            {isMobile ? (
+              /* Vista Adaptativa Mobile - Acordeón de Etapas */
+              <div className="space-y-3 px-1">
+                {etapas.map((etapa: any) => {
+                  const estaAbierto = !columnasColapsadas[etapa.valor];
+                  return (
+                    <Card key={etapa.nombre} className="border border-gray-200 overflow-hidden bg-white shadow-sm rounded-xl">
+                      <button
+                        onClick={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 hover:bg-gray-100/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 flex-shrink-0">
+                            {etapa.icono}
+                          </div>
+                          <span className="font-black text-sm text-gray-800 truncate text-left">
+                            {etapa.nombre}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="font-bold text-xs px-2 py-0.5 bg-[#E0EDFF] text-[#003DA5] border border-blue-200">
+                            {etapa.expedientes.length}
+                          </Badge>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${estaAbierto ? '' : 'rotate-[-90deg]'}`} />
+                        </div>
+                      </button>
 
-            <div
-              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#CBD5E0 #F7FAFC',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
-              {etapas.map((etapa: any) => (
-                <ColumnaKanban
-                  key={etapa.nombre}
-                  etapa={etapa}
-                  isMobile={isMobile}
-                  isTablet={isTablet}
-                  isSmallDesktop={isSmallDesktop}
-                  columnWidth={kanbanColumnWidth}
-                  useFluid={useFluidKanban}
-                  onRefresh={loadExpedientes}
-                  onMoverExpediente={handleMoverExpediente}
-                />
-              ))}
-            </div>
+                      {estaAbierto && (
+                        <div className="p-3 space-y-3 bg-gray-50/50">
+                          {etapa.expedientes.map((expediente: any) => (
+                            <TarjetaExpediente
+                              key={expediente.id}
+                              expediente={expediente}
+                              isMobile={isMobile}
+                              isCompact={false}
+                              onRefresh={loadExpedientes}
+                              onMoverExpediente={handleMoverExpediente}
+                              etapaActual={etapa.valor}
+                            />
+                          ))}
+                          {etapa.expedientes.length === 0 && (
+                            <div className="text-center py-8 text-gray-400">
+                              <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                              <p className="text-xs font-semibold">Sin expedientes en esta etapa</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Vista Desktop - Kanban tradicional */
+              <>
+                {!useFluidKanban && (
+                  <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                    <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                      <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                      Desliza
+                    </p>
+                  </div>
+                )}
+
+                <div
+                  className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 kanban-board-scroll ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth snap-x snap-mandatory`}
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#CBD5E0 #F7FAFC',
+                    WebkitOverflowScrolling: 'touch'
+                  }}
+                >
+                  {etapas.map((etapa: any) => (
+                    <ColumnaKanban
+                      key={etapa.nombre}
+                      etapa={etapa}
+                      isMobile={isMobile}
+                      isTablet={isTablet}
+                      isSmallDesktop={isSmallDesktop}
+                      columnWidth={kanbanColumnWidth}
+                      useFluid={useFluidKanban}
+                      onRefresh={loadExpedientes}
+                      onMoverExpediente={handleMoverExpediente}
+                      isCollapsed={!!columnasColapsadas[etapa.valor]}
+                      onToggleCollapse={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </DndProvider>
       )}
@@ -1281,6 +1298,7 @@ export function ModuloDefensaJudicialV3() {
           isMobile={isMobile}
           isTablet={isTablet}
           onMoverExpediente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) ? handleMoverExpediente : undefined}
+          onRefresh={loadExpedientes}
         />
       )}
 
@@ -1352,6 +1370,8 @@ interface ColumnaKanbanProps {
   useFluid: boolean;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
   onRefresh?: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function ColumnaKanban({
@@ -1361,7 +1381,9 @@ function ColumnaKanban({
   columnWidth,
   useFluid,
   onMoverExpediente,
-  onRefresh
+  onRefresh,
+  isCollapsed,
+  onToggleCollapse
 }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.EXPEDIENTE,
@@ -1374,12 +1396,55 @@ function ColumnaKanban({
   const backgroundColor = isOver ? ESAP_TOKENS.colors.primaryLight : ESAP_TOKENS.colors.surfaceAlt;
   const borderColor = isOver ? ESAP_TOKENS.colors.primary : 'transparent';
 
+  if (isCollapsed && !isMobile) {
+    return (
+      <div
+        className="flex-shrink-0 w-[40px] min-w-[40px] transition-all duration-300 relative flex flex-col snap-center"
+        style={{ height: 'calc(100vh - 180px)' }}
+      >
+        <Card
+          ref={drop}
+          className="h-full border border-gray-200 bg-gray-50/50 hover:bg-gray-100/50 transition-all flex flex-col items-center py-4 cursor-pointer select-none rounded-xl overflow-hidden relative"
+          onClick={onToggleCollapse}
+          title={`Expandir etapa ${etapa.nombre}`}
+        >
+          {/* Acento de color arriba */}
+          <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
+
+          {/* Badge de cantidad */}
+          <Badge className="font-bold text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 shadow-sm flex-shrink-0 mb-6">
+            {etapa.expedientes.length}
+          </Badge>
+
+          {/* Nombre vertical */}
+          <div className="flex-1 flex items-center justify-center">
+            <span
+              className="font-black text-[10px] text-gray-600 uppercase tracking-wider whitespace-nowrap rotate-90 select-none pointer-events-none"
+              style={{ transformOrigin: 'center center' }}
+            >
+              {etapa.nombre}
+            </span>
+          </div>
+
+          {/* Icono de expandir */}
+          <div className="mt-6 p-1 rounded-md bg-white border border-gray-200 text-gray-400 hover:text-[#003DA5] hover:border-[#003DA5]/30 shadow-sm">
+            <ChevronsDown className="w-3.5 h-3.5 rotate-[-90deg]" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="flex-shrink-0 w-[260px] sm:w-[280px] md:w-[320px]"
+      className="flex-shrink-0 w-[260px] min-w-[260px] sm:w-[280px] sm:min-w-[280px] md:w-[320px] md:min-w-[320px] flex flex-col transition-all duration-300 snap-center"
+      style={{ height: isMobile ? 'auto' : 'calc(100vh - 180px)' }}
     >
-      <Card className="h-full border border-gray-200 bg-white">
-        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
+      <Card className="h-full border border-gray-200 bg-white flex flex-col overflow-hidden relative">
+        {/* Acento de color arriba */}
+        <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
+
+        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50 flex-shrink-0 pt-3.5`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <div className="p-1.5 rounded-lg bg-white border border-gray-200 flex-shrink-0">
@@ -1391,22 +1456,33 @@ function ColumnaKanban({
                 </h3>
               </div>
             </div>
-            <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0 ml-1">
-              {etapa.expedientes.length}
-            </Badge>
+            {/* Collapse action and badge */}
+            <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+              <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0">
+                {etapa.expedientes.length}
+              </Badge>
+              {!isMobile && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+                  className="p-1 rounded bg-white hover:bg-gray-100 border border-gray-200 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                  title={`Colapsar etapa ${etapa.nombre}`}
+                >
+                  <ChevronsDown className="w-3.5 h-3.5 rotate-[90deg]" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         <div
           ref={drop}
-          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto`}
+          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto flex-1`}
           style={{
-            minHeight: isMobile ? '350px' : '400px',
-            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 340px)',
             backgroundColor: backgroundColor,
             borderLeft: `3px solid ${borderColor}`,
             borderRight: `3px solid ${borderColor}`,
-            transition: 'all 0.2s ease'
+            transition: 'all 0.2s ease',
+            minHeight: isMobile ? '350px' : 'auto'
           }}
         >
           {etapa.expedientes.map((expediente) => (
@@ -1426,6 +1502,19 @@ function ColumnaKanban({
               <FolderOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-xs font-semibold">
                 {isOver ? '✅ Suelte aquí' : `Sin expedientes en ${etapa.nombre}`}
+              </p>
+            </div>
+          )}
+
+          {/* Dotted Drop Target Placeholder when dragging over */}
+          {isOver && (
+            <div
+              className="border-2 border-dashed border-[#003DA5]/30 bg-[#003DA5]/[0.02] rounded-xl flex items-center justify-center p-6 transition-all duration-200"
+              style={{ height: '100px' }}
+            >
+              <p className="text-xs font-bold text-[#003DA5]/50 flex items-center gap-1.5">
+                <Plus className="w-4 h-4" />
+                Soltar expediente aquí
               </p>
             </div>
           )}
@@ -1509,7 +1598,11 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: canDrag ? 'move' : 'default' }} className="h-[380px]">
+    <div
+      ref={drag}
+      style={{ opacity, cursor: canDrag ? 'move' : 'default' }}
+      className="h-fit transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rounded-xl"
+    >
       <KanbanCard
         accentColor={ESAP_TOKENS.colors.primary}
         isDragging={isDragging}

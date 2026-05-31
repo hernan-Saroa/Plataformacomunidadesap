@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
@@ -2227,7 +2227,10 @@ export function ConfiguracionesSIGL() {
                                 className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 min="1"
                               />
-                              <span className="text-xs sm:text-sm text-gray-600">{tipo.unidadTermino === 'horas' ? 'horas' : 'días'}</span>
+                              <span className="text-xs sm:text-sm text-gray-600">
+                                {tipo.unidadTermino === 'horas' || tipo.unidadTermino === 'Horas' ? 'horas' : 
+                                 tipo.unidadTermino === 'Ambos' ? 'días/hrs' : 'días'}
+                              </span>
                             </div>
 
                             {/* Unidad de Medida */}
@@ -2242,8 +2245,12 @@ export function ConfiguracionesSIGL() {
                                 className="px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
                                 style={{ height: '38px' }}
                               >
-                                <option value="dias">Días</option>
-                                <option value="horas">Horas</option>
+                                <option value="Dias Habiles">Días Hábiles</option>
+                                <option value="Dias Calendario">Días Calendario</option>
+                                <option value="Horas">Horas</option>
+                                <option value="Ambos">Ambos (Días y Horas)</option>
+                                <option value="dias" className="hidden">Días</option>
+                                <option value="horas" className="hidden">Horas</option>
                               </select>
                             </div>
 
@@ -2260,8 +2267,13 @@ export function ConfiguracionesSIGL() {
                                 className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 min="1"
                               />
-                              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">{tipo.unidadTermino === 'horas' ? 'horas antes' : 'días antes'}</span>
-                              <span className="text-xs text-gray-600 sm:hidden">{tipo.unidadTermino === 'horas' ? 'h.a.' : 'd.a.'}</span>
+                              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">
+                                {tipo.unidadTermino === 'horas' || tipo.unidadTermino === 'Horas' ? 'horas antes' : 
+                                 tipo.unidadTermino === 'Ambos' ? 'días/hrs antes' : 'días antes'}
+                              </span>
+                              <span className="text-xs text-gray-600 sm:hidden">
+                                {tipo.unidadTermino === 'horas' || tipo.unidadTermino === 'Horas' ? 'h.a.' : 'd.a.'}
+                              </span>
                             </div>
 
                             {/* Rol Autorizado */}
@@ -3097,20 +3109,18 @@ export function ConfiguracionesSIGL() {
                   >
                     <div className="flex-1">
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                        <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                        <Columns className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                         {moduloActivo === 'asesoria-juridica' 
                           ? 'Etapas del Proceso' 
-                          : moduloActual.tiposProcesos && moduloActual.tiposProcesos.length > 0
-                            ? 'Estados / Columnas Kanban por Defecto'
-                            : 'Estados / Columnas Kanban'
+                          : 'Etapas Procesales / Columnas Kanban'
                         }
                       </h2>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
                         {moduloActivo === 'asesoria-juridica'
                           ? `Define las etapas del proceso de ${moduloActual.nombre}`
                           : moduloActual.tiposProcesos && moduloActual.tiposProcesos.length > 0
-                            ? `Define las columnas que aparecerán por defecto en el tablero de ${moduloActual.nombre}. Cada tipo de proceso judicial heredará estas columnas a menos que se configure una estructura de columnas personalizada.`
-                            : `Define las columnas que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
+                            ? `Define las etapas procesales que aparecerán en el formulario y como columnas por defecto en el tablero de ${moduloActual.nombre}.`
+                            : `Define las etapas procesales que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
                         }
                       </p>
                     </div>
@@ -3386,7 +3396,10 @@ export function ConfiguracionesSIGL() {
               {moduloActual.tiposActuaciones && moduloActual.tiposActuaciones.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('actuacionesDisciplinarias')}
+                    >
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Gavel className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
@@ -3396,20 +3409,36 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de actuaciones que estarán disponibles en el formulario de Agregar Actuación
                         </p>
                       </div>
-                      <button
-                        onClick={agregarTipoActuacion}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarTipoActuacion();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.actuacionesDisciplinarias ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.actuacionesDisciplinarias && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposActuaciones
                         .sort((a, b) => a.orden - b.orden)
                         .map((tipo) => (
@@ -3474,16 +3503,22 @@ export function ConfiguracionesSIGL() {
                             </div>
                           </div>
                         ))}
-                    </div>
-                  </div>
-                </div>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+              </div>
+            </div>
               )}
 
               {/* Configuración de Tipos de Excepciones Procesales - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
               {moduloActual.tiposExcepcionesProcesal && moduloActual.tiposExcepcionesProcesal.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('excepcionesProcesales')}
+                    >
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
@@ -3493,20 +3528,36 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de excepciones procesales disponibles en el formulario de Nueva Excepción
                         </p>
                       </div>
-                      <button
-                        onClick={agregarTipoExcepcion}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
-                          boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarTipoExcepcion();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                            boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.excepcionesProcesales ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.excepcionesProcesales && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposExcepcionesProcesal
                         .sort((a, b) => a.orden - b.orden)
                         .map((tipo) => (
@@ -3579,15 +3630,21 @@ export function ConfiguracionesSIGL() {
                           </div>
                         ))}
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          </div>
               )}
 
               {/* Configuración de Causales Específicas - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
               {moduloActual.causalesEspecificas && moduloActual.causalesEspecificas.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('causalesEspecificas')}
+                    >
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Target className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
@@ -3597,20 +3654,36 @@ export function ConfiguracionesSIGL() {
                           Define las causales específicas disponibles en el formulario de Nueva Excepción
                         </p>
                       </div>
-                      <button
-                        onClick={agregarCausalEspecifica}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
-                          boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Causal</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarCausalEspecifica();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                            boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Causal</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.causalesEspecificas ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.causalesEspecificas && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.causalesEspecificas
                         .sort((a, b) => a.orden - b.orden)
                         .map((causal) => (
@@ -3683,8 +3756,11 @@ export function ConfiguracionesSIGL() {
                           </div>
                         ))}
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          </div>
               )}
 
               {/* Configuración de Prescripción Disciplinaria - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}

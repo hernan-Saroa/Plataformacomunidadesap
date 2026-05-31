@@ -402,16 +402,17 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           </motion.button>
         </div>
 
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-start px-6 sm:px-10 py-8 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="w-full max-w-[420px]"
+            className="w-full max-w-[420px] my-auto"
           >
-            <div className="lg:hidden flex justify-center mb-10">
-              <ESAPLogo variant="color" className="h-14 w-auto" />
+            <div className="flex justify-center mb-8 sm:mb-10">
+              <ESAPLogo variant="color" className="h-12 sm:h-14 w-auto" />
             </div>
+
 
             <div style={{ marginBottom: '32px' }}>
               <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
