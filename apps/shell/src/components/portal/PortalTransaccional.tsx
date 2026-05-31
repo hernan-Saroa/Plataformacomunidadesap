@@ -846,16 +846,19 @@ export function PortalTransaccional({
 
     /* ── Greeting header ── */
     const renderGreeting = () => (
-      <div className="bg-white rounded-2xl lg:rounded-3xl border border-gray-200/80 shadow-sm px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl lg:rounded-3xl border border-gray-200/80 shadow-sm px-4 sm:px-6 py-3.5 sm:py-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#003DA5] text-white flex items-center justify-center font-black text-sm shrink-0">
-            {iniciales}
-          </div>
+          {/* Avatar solo en desktop — en mobile ya está en el perfil card */}
+          {isDesktop && (
+            <div className="w-11 h-11 rounded-full bg-[#003DA5] text-white flex items-center justify-center font-black text-sm shrink-0">
+              {iniciales}
+            </div>
+          )}
           <div className="min-w-0">
             <div className="text-[14px] sm:text-[15px] font-black text-gray-900">
               {getGreeting()}, {userName?.split(' ')[0] || userName}
             </div>
-            <div className="text-[11px] sm:text-[12px] text-gray-500 hidden sm:block">{datePretty}</div>
+            <div className="text-[11px] sm:text-[12px] text-gray-500">{datePretty}</div>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -871,7 +874,7 @@ export function PortalTransaccional({
             <Camera className="w-4 h-4 text-gray-600" />
           </button>
           <div className="h-8 sm:h-9 px-3 sm:px-4 rounded-lg sm:rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm font-bold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="hidden sm:inline">Sesión activa</span>
             <span className="sm:hidden">Activa</span>
           </div>
@@ -914,8 +917,8 @@ export function PortalTransaccional({
             </div>
           </div>
 
-          {/* Categorías — scroll horizontal en mobile, wrap en desktop */}
-          <div className="px-4 sm:px-6 pb-4 sm:pb-5">
+          {/* Categorías — scroll horizontal con fade indicator */}
+          <div className="px-4 sm:px-6 pb-4 sm:pb-5 relative">
             <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch', scrollSnapType: 'x mandatory' }}>
               {CATEGORIAS.filter(cat => cat === 'Todos' || serviciosOrdenados.some(s => s.categoria === cat)).map((cat) => (
                 <button
@@ -932,6 +935,10 @@ export function PortalTransaccional({
                 </button>
               ))}
             </div>
+            {/* Fade indicator — solo visible en mobile */}
+            {!isDesktop && (
+              <div className="absolute top-0 right-4 bottom-1 w-8 pointer-events-none" style={{ background: 'linear-gradient(to right, transparent, white)' }} />
+            )}
           </div>
         </div>
 
@@ -998,7 +1005,7 @@ export function PortalTransaccional({
             {!statsLoading && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {statsCards.map((sc) => (
-                  <div key={sc.label} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
+                  <div key={sc.label} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:scale-[1.02] transition-all duration-200">
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: sc.bg }}>{sc.icon}</div>
                     <div className="min-w-0">
                       <div className="text-[18px] font-black text-gray-900">{typeof sc.value === 'number' ? formatNumber(sc.value) : sc.value}</div>
@@ -1048,7 +1055,7 @@ export function PortalTransaccional({
               {statsCards.map((sc) => (
                 <div
                   key={sc.label}
-                  className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow"
+                  className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:scale-[1.02] transition-all duration-200"
                 >
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: sc.bg }}>
                     {sc.icon}
@@ -1159,8 +1166,8 @@ function ServiceCard({
 
   const containerClass =
     view === 'grid'
-      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer ${compact ? 'p-3.5' : 'p-4 sm:p-5'} relative`
-      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer ${compact ? 'p-3' : 'p-3.5 sm:p-4'} relative`;
+      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3.5' : 'p-4 sm:p-5'} relative`
+      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-[#003DA5]/20 transition-all duration-200 cursor-pointer ${compact ? 'p-3' : 'p-3.5 sm:p-4'} relative`;
 
   return (
     <div
@@ -1188,7 +1195,7 @@ function ServiceCard({
 
         <div className="flex-1 min-w-0">
           <div className={`flex items-center gap-2 ${compact ? 'pr-2' : 'pr-10'}`}>
-            <div className="text-[13px] sm:text-[14px] font-black text-gray-900 truncate">{service.nombre}</div>
+            <div className="text-[13px] sm:text-[14px] font-black text-gray-900">{service.nombre}</div>
             <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg bg-gray-50 border border-gray-200 text-gray-500 shrink-0">
               {service.codigo}
             </span>
