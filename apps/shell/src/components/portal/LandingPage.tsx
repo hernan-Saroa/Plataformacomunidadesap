@@ -546,23 +546,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
           </div>
         </motion.div>
 
-        {/* Scroll Indicator */}
-        <motion.div
-          className="absolute bottom-4 sm:bottom-8 lg:bottom-10 left-1/2 transform -translate-x-1/2 z-20 hidden sm:flex"
-          animate={{ y: [0, 10, 0] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <span className="text-white/60 text-xs font-medium">Descubre más</span>
-            <div className="w-6 h-10 border-2 border-white/30 rounded-full flex items-start justify-center p-1">
-              <motion.div
-                className="w-1.5 h-1.5 bg-white rounded-full"
-                animate={{ y: [0, 20, 0] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              />
-            </div>
-          </div>
-        </motion.div>
+
       </section>
 
       {/* Stats Section - Glassmorphism */}
