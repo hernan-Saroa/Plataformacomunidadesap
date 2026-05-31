@@ -852,7 +852,7 @@ export function PortalTransaccional({
             {iniciales}
           </div>
           <div className="min-w-0">
-            <div className="text-[14px] sm:text-[15px] font-black text-gray-900 truncate">
+            <div className="text-[14px] sm:text-[15px] font-black text-gray-900">
               {getGreeting()}, {userName?.split(' ')[0] || userName}
             </div>
             <div className="text-[11px] sm:text-[12px] text-gray-500 hidden sm:block">{datePretty}</div>
@@ -938,7 +938,7 @@ export function PortalTransaccional({
         <DndProvider backend={HTML5Backend}>
           <div className={
             vistaGrid === 'grid'
-              ? `grid gap-3 sm:gap-4 ${isTablet || isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`
+              ? `grid gap-3 sm:gap-4 ${isDesktop ? 'grid-cols-2' : windowWidth >= 640 ? 'grid-cols-2' : 'grid-cols-1'}`
               : 'flex flex-col gap-3'
           }>
             {serviciosOrdenados
@@ -963,7 +963,7 @@ export function PortalTransaccional({
     if (!isDesktop) {
       /* ▸ Mobile & Tablet: vertical stack */
       return (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {renderLeftPanelMobile(contactItems)}
           {renderGreeting()}
           {renderServices()}
@@ -1085,7 +1085,7 @@ export function PortalTransaccional({
             </div>
           </div>
         </div>
-        <div className="shrink-0" style={{ width: isXLDesktop ? 260 : 240 }}>
+        <div className="shrink-0" style={{ width: isXLDesktop ? 280 : 260 }}>
           {renderQuickApps()}
         </div>
       </div>
@@ -1195,12 +1195,12 @@ function ServiceCard({
           </div>
           <div className="text-[11px] sm:text-[12px] text-gray-500 mt-1 line-clamp-2">{service.descripcion}</div>
 
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
             <div className="flex flex-wrap gap-2">
               {service.badges.map((b) => (
                 <span
                   key={b.label}
-                  className="text-[11px] font-black px-3 py-1 rounded-xl"
+                  className="text-[10px] sm:text-[11px] font-black px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg sm:rounded-xl"
                   style={{ color: b.color, background: b.bgColor }}
                 >
                   {b.label}
@@ -1209,7 +1209,7 @@ function ServiceCard({
             </div>
 
             {service.prioridad && (
-              <div className="flex items-center gap-2 text-[12px] font-black text-gray-500">
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-[12px] font-black text-gray-500 shrink-0 ml-auto">
                 <span className="w-2 h-2 rounded-full" style={{ background: priorityDot }} />
                 {service.prioridad}
               </div>
