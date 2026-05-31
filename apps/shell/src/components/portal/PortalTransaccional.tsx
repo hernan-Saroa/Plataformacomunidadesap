@@ -552,10 +552,10 @@ export function PortalTransaccional({
   ];
 
   const buildContactItems = () => [
-    { icon: <Mail className="w-4 h-4 text-gray-400" />, value: userEmail || '' },
-    { icon: <Phone className="w-4 h-4 text-gray-400" />, value: 'Ext. 1234' },
-    { icon: <MapPin className="w-4 h-4 text-gray-400" />, value: 'Sede Central - Bogotá' },
-    ...(adminData?.area ? [{ icon: <Briefcase className="w-4 h-4 text-gray-400" />, value: adminData.area }] : []),
+    { icon: <Mail className="w-4 h-4 text-blue-500" />, value: userEmail || '', color: 'bg-blue-50 border-blue-100' },
+    { icon: <Phone className="w-4 h-4 text-emerald-500" />, value: 'Ext. 1234', color: 'bg-emerald-50 border-emerald-100' },
+    { icon: <MapPin className="w-4 h-4 text-red-500" />, value: 'Sede Central - Bogotá', color: 'bg-red-50 border-red-100' },
+    ...(adminData?.area ? [{ icon: <Briefcase className="w-4 h-4 text-purple-500" />, value: adminData.area, color: 'bg-purple-50 border-purple-100' }] : []),
   ];
 
   const renderLeftPanelMobile = (contactItems: { icon: any; value: string }[]) => (
@@ -686,9 +686,9 @@ export function PortalTransaccional({
               className="px-5 pb-4 overflow-hidden"
             >
               <div className="space-y-2">
-                {contactItems.map((it) => (
+                {contactItems.map((it: any) => (
                   <div key={it.value} className="flex items-center gap-3 text-[13px] font-semibold text-gray-600 rounded-xl p-2 hover:bg-gray-50 transition-colors">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${it.color || 'bg-gray-50 border-gray-100'}`}>
                       {it.icon}
                     </div>
                     <div className="min-w-0 truncate">{it.value}</div>
@@ -804,10 +804,10 @@ export function PortalTransaccional({
     ];
 
     const contactItems = [
-      { icon: <Mail className="w-4 h-4 text-gray-400" />, value: userEmail || '' },
-      { icon: <Phone className="w-4 h-4 text-gray-400" />, value: 'Ext. 1234' },
-      { icon: <MapPin className="w-4 h-4 text-gray-400" />, value: 'Sede Central - Bogotá' },
-      ...(adminData?.area ? [{ icon: <Briefcase className="w-4 h-4 text-gray-400" />, value: adminData.area }] : []),
+      { icon: <Mail className="w-4 h-4 text-blue-500" />, value: userEmail || '', color: 'bg-blue-50 border-blue-100' },
+      { icon: <Phone className="w-4 h-4 text-emerald-500" />, value: 'Ext. 1234', color: 'bg-emerald-50 border-emerald-100' },
+      { icon: <MapPin className="w-4 h-4 text-red-500" />, value: 'Sede Central - Bogotá', color: 'bg-red-50 border-red-100' },
+      ...(adminData?.area ? [{ icon: <Briefcase className="w-4 h-4 text-purple-500" />, value: adminData.area, color: 'bg-purple-50 border-purple-100' }] : []),
     ];
 
     /* ── Quick Apps panel (reutilizable) ── */
