@@ -410,9 +410,9 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
               {/* Main Heading */}
               <h1 className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-black text-white mb-3 sm:mb-4 lg:mb-6 tracking-tight leading-tight break-words">
-                La Escuela
+                Tu Comunidad Académica,
                 <span className="block bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent mt-1 sm:mt-2">
-                  del Futuro, Hoy
+                  en un Solo Lugar
                 </span>
               </h1>
 
