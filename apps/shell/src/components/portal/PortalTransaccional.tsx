@@ -700,6 +700,9 @@ export function PortalTransaccional({
         </AnimatePresence>
       </div>
 
+      {/* Acceso Rápido debajo de contacto */}
+      {renderQuickApps()}
+
       {/* Slot para componentes del contenido (ej: Progreso PTA) */}
       <div id="portal-left-sidebar-slot" className="space-y-5" />
     </div>
@@ -795,9 +798,9 @@ export function PortalTransaccional({
     })();
 
     const quickApps = [
-      { label: 'Correo Electrónico', desc: 'Acceso al correo institucional', icon: <Mail className="w-4 h-4 text-gray-500" />, external: true },
-      { label: 'HumanoSoft', desc: 'Sistema de gestión de recurso humano', icon: <Users className="w-4 h-4 text-gray-500" />, external: false },
-      { label: 'ARCA', desc: 'Sistema académico y de gestión estudiantil', icon: <Building2 className="w-4 h-4 text-gray-500" />, external: false },
+      { label: 'Correo Electrónico', desc: 'Acceso al correo institucional', icon: <Mail className="w-4 h-4 text-gray-500" />, external: true, activo: true },
+      { label: 'HumanoSoft', desc: 'Sistema de gestión de recurso humano', icon: <Users className="w-4 h-4 text-gray-500" />, external: false, activo: true },
+      { label: 'ARCA', desc: 'Sistema académico y de gestión estudiantil', icon: <Building2 className="w-4 h-4 text-gray-500" />, external: false, activo: false },
     ];
 
     const contactItems = [
@@ -819,7 +822,8 @@ export function PortalTransaccional({
             <button
               key={app.label}
               onClick={() => toast.info(app.label, { description: app.desc })}
-              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left"
+              className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left ${!app.activo ? 'opacity-50' : ''}`}
+              disabled={!app.activo}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
@@ -833,13 +837,18 @@ export function PortalTransaccional({
                   <div className="text-[12px] text-gray-500 truncate">{app.desc}</div>
                 </div>
               </div>
-              <ArrowUpRight className="w-4 h-4 text-gray-300 shrink-0" />
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`w-2 h-2 rounded-full ${app.activo ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                <span className={`text-[10px] font-bold ${app.activo ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  {app.activo ? 'Activo' : 'Inactivo'}
+                </span>
+              </div>
             </button>
           ))}
         </div>
         <div className="px-5 py-2.5 border-t border-gray-100 text-[12px] text-gray-500 flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-          {quickApps.length} aplicativos disponibles
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          {quickApps.filter(a => a.activo).length} de {quickApps.length} activos
         </div>
       </div>
     );
@@ -1000,7 +1009,7 @@ export function PortalTransaccional({
               ))}
             </div>
           )}
-          {renderQuickApps()}
+
         </div>
       );
     }
@@ -1095,7 +1104,7 @@ export function PortalTransaccional({
                 </div>
               </div>
             </div>
-            {renderQuickApps()}
+
           </div>
         </div>
       );
@@ -1197,9 +1206,6 @@ export function PortalTransaccional({
               </div>
             </div>
           </div>
-        </div>
-        <div className="shrink-0" style={{ width: isXLDesktop ? 280 : 260 }}>
-          {renderQuickApps()}
         </div>
       </div>
     );
