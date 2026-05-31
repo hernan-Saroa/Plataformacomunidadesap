@@ -938,9 +938,7 @@ export function PortalTransaccional({
         <DndProvider backend={HTML5Backend}>
           <div className={
             vistaGrid === 'grid'
-              ? `grid gap-3 sm:gap-4 ${
-                  isXLDesktop ? 'grid-cols-3' : isDesktop ? 'grid-cols-2' : isTablet ? 'grid-cols-2' : 'grid-cols-1'
-                }`
+              ? `grid gap-3 sm:gap-4 ${isTablet || isDesktop ? 'grid-cols-2' : 'grid-cols-1'}`
               : 'flex flex-col gap-3'
           }>
             {serviciosOrdenados
@@ -969,6 +967,20 @@ export function PortalTransaccional({
           {renderLeftPanelMobile(contactItems)}
           {renderGreeting()}
           {renderServices()}
+          {/* Stats cards */}
+          {!statsLoading && (
+            <div className="grid grid-cols-2 gap-3">
+              {statsCards.map((sc) => (
+                <div key={sc.label} className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-3.5 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: sc.bg }}>{sc.icon}</div>
+                  <div className="min-w-0">
+                    <div className="text-[16px] font-black text-gray-900">{typeof sc.value === 'number' ? formatNumber(sc.value) : sc.value}</div>
+                    <div className="text-[10px] font-semibold text-gray-500 truncate">{sc.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {renderQuickApps()}
         </div>
       );
@@ -982,6 +994,20 @@ export function PortalTransaccional({
           <div className="flex-1 min-w-0 space-y-5">
             {renderGreeting()}
             {renderServices()}
+            {/* Stats cards */}
+            {!statsLoading && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {statsCards.map((sc) => (
+                  <div key={sc.label} className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: sc.bg }}>{sc.icon}</div>
+                    <div className="min-w-0">
+                      <div className="text-[18px] font-black text-gray-900">{typeof sc.value === 'number' ? formatNumber(sc.value) : sc.value}</div>
+                      <div className="text-[11px] font-semibold text-gray-500 truncate">{sc.label}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {renderQuickApps()}
           </div>
         </div>
@@ -995,8 +1021,29 @@ export function PortalTransaccional({
         <div className="flex-1 min-w-0 space-y-5">
           {renderGreeting()}
           {renderServices()}
+          {/* Stats cards - resumen de actividad */}
+          {!statsLoading && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {statsCards.map((sc) => (
+                <div
+                  key={sc.label}
+                  className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow"
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: sc.bg }}>
+                    {sc.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[18px] font-black text-gray-900">
+                      {typeof sc.value === 'number' ? formatNumber(sc.value) : sc.value}
+                    </div>
+                    <div className="text-[11px] font-semibold text-gray-500 truncate">{sc.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="shrink-0" style={{ width: isXLDesktop ? 300 : 280 }}>
+        <div className="shrink-0" style={{ width: isXLDesktop ? 260 : 240 }}>
           {renderQuickApps()}
         </div>
       </div>
@@ -1005,7 +1052,7 @@ export function PortalTransaccional({
 
   return (
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
-        <div className="w-full max-w-[1600px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
+        <div className="w-full max-w-[1280px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
           <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
           <AnimatePresence mode="wait">
             <motion.div
