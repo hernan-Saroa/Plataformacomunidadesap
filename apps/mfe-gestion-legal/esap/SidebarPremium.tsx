@@ -714,12 +714,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={springTransition}
-                    className="w-14 h-14 flex items-center justify-center"
+                    className="w-14 h-14 flex items-center justify-center shrink-0"
                   >
                     {/* Isotipo oficial ESAP */}
                     <ESAPLogo 
                       variant="icon"
-                      className="w-10 h-10 object-contain drop-shadow-lg"
+                      className="shrink-0 object-contain drop-shadow-lg"
+                      style={{ width: '35px', height: '40px' }}
                     />
                   </motion.div>
                 ) : (
@@ -729,10 +730,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={springTransition}
+                    className="w-full flex justify-center shrink-0 px-2"
                   >
                     <ESAPLogo 
                       variant="white"
-                      className="h-10 w-auto mx-auto object-contain drop-shadow-lg"
+                      className="shrink-0 object-contain drop-shadow-lg"
+                      style={{ width: '135px', height: '40px' }}
                     />
                   </motion.div>
                 )}
@@ -1251,8 +1254,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               transition={contentTransition}
               className="p-2 flex items-center justify-center"
             >
-              <div className="w-8 h-8" title="@Esap 2026 - Todos los derechos reservados">
-                <ESAPLogo variant="white" className="w-full h-full object-contain drop-shadow-lg" />
+              <div className="w-8 h-8 flex items-center justify-center" title="@Esap 2026 - Todos los derechos reservados">
+                <ESAPLogo 
+                  variant="icon" 
+                  className="drop-shadow-lg" 
+                  style={{ width: '28px', height: '32px' }} 
+                />
               </div>
             </motion.div>
           )}

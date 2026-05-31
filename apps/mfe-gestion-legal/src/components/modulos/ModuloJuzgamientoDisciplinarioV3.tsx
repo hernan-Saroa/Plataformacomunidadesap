@@ -893,8 +893,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove,
   return (
     <motion.div
       className="flex-shrink-0"
-      initial={{ width: 320 }}
-      animate={{ width: 320 }}
+      initial={{ width: 231 }}
+      animate={{ width: 231 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
       <Card className="h-full border border-gray-200 bg-white">

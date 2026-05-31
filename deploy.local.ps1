@@ -99,7 +99,7 @@ Load-EnvFile $ENV_FILE_LOCAL
 # Configurar variables locales fijas requeridas por Docker Compose local
 $env:FRONTEND_NETWORK_KEY = "superapp-net"
 $env:FRONTEND_CONTAINER_SUFFIX = "-local"
-if (-not $env:FRONTEND_VITE_API_URL) { $env:FRONTEND_VITE_API_URL = "http://localhost/services" }
+if (-not $env:FRONTEND_VITE_API_URL) { $env:FRONTEND_VITE_API_URL = "http://localhost:3000/services" }
 if (-not $env:FRONTEND_VITE_ONLYOFFICE_URL) { $env:FRONTEND_VITE_ONLYOFFICE_URL = "http://localhost:9000" }
 
 # Wrapper para docker compose local
@@ -255,8 +255,8 @@ switch ($Command) {
         Invoke-ComposeLocal @("up", "-d", "--build")
         Show-Success "`nAplicación local levantada con éxito."
         Write-Host "`nURLs locales:" -ForegroundColor Yellow
-        Write-Host "  Frontend:    http://localhost"
-        Write-Host "  API Gateway: http://localhost/services"
+        Write-Host "  Frontend:    http://localhost:3000"
+        Write-Host "  API Gateway: http://localhost:3000/services"
         Write-Host "  OnlyOffice:  http://localhost:9000"
     }
 
@@ -310,16 +310,16 @@ switch ($Command) {
         
         Write-Host "`nValidando puertos publicados:" -ForegroundColor Yellow
         $hasErrors = $false
-        if (-not (Test-TcpPort "localhost" 80 "Frontend gateway")) { $hasErrors = $true }
-        if (-not (Test-TcpPort "localhost" 3000 "API Gateway")) { $hasErrors = $true }
+        if (-not (Test-TcpPort "localhost" 3000 "Frontend gateway")) { $hasErrors = $true }
+        if (-not (Test-TcpPort "localhost" 3300 "API Gateway")) { $hasErrors = $true }
         if (-not (Test-TcpPort "localhost" 9000 "OnlyOffice")) { $hasErrors = $true }
         if (-not (Test-TcpPort "localhost" 3001 "Auth Service")) { $hasErrors = $true }
         if (-not (Test-TcpPort "localhost" 3005 "Disciplinary Control Service")) { $hasErrors = $true }
         if (-not (Test-TcpPort "localhost" 3011 "Audit Service")) { $hasErrors = $true }
 
         Write-Host "`nValidando respuestas HTTP básicas:" -ForegroundColor Yellow
-        if (-not (Test-HttpUrl "http://localhost/" "Frontend")) { $hasErrors = $true }
-        if (-not (Test-HttpUrl "http://localhost/services/" "API Gateway")) { $hasErrors = $true }
+        if (-not (Test-HttpUrl "http://localhost:3000/" "Frontend")) { $hasErrors = $true }
+        if (-not (Test-HttpUrl "http://localhost:3000/services/" "API Gateway")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:3005/health" "Disciplinary Health")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:3011/health" "Audit Health")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:9000/" "OnlyOffice")) { $hasErrors = $true }

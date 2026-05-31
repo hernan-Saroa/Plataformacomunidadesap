@@ -290,7 +290,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           >
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
-              <ESAPLogo variant="color" className="h-10 w-auto" />
+              <ESAPLogo variant="color" className="shrink-0" style={{ width: '135px', height: '40px' }} />
             </div>
 
             {/* Back to Home Button */}
@@ -652,7 +652,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              <ESAPLogo variant="white" className="h-12 lg:h-14 xl:h-16 2xl:h-20 w-auto" />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '250px', height: '74px' }} />
             </motion.div>
 
             {/* Main Content */}

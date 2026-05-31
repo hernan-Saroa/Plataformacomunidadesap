@@ -2,10 +2,11 @@ import React from 'react';
 import { ESAPLogoSVG } from './ESAPLogoSVG';
 
 export interface ESAPLogoProps {
-  variant?: 'color' | 'white' | 'dark' | 'icon';
+  variant?: 'color' | 'white' | 'dark' | 'icon' | 'icon-color';
   className?: string;
   width?: number;
   height?: number;
+  style?: React.CSSProperties;
 }
 
 /**
@@ -16,7 +17,8 @@ export function ESAPLogo({
   variant = 'white', 
   className = '', 
   width,
-  height 
+  height,
+  style
 }: ESAPLogoProps) {
   return (
     <ESAPLogoSVG
@@ -24,6 +26,7 @@ export function ESAPLogo({
       className={className}
       width={width}
       height={height}
+      style={style}
     />
   );
 }

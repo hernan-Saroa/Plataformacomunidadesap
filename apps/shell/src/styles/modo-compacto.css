@@ -91,7 +91,7 @@
   }
   
   /* ✅ Iconos más pequeños */
-  svg,
+  svg:not(.esap-logo),
   .icon,
   [class*="icon"] {
     width: 16px !important;
@@ -203,7 +203,7 @@
   .gap-8 { gap: 0.8rem !important; }
   
   /* ✅ Iconos pequeños */
-  svg,
+  svg:not(.esap-logo),
   .icon {
     width: 14px !important;
     height: 14px !important;

@@ -3,7 +3,7 @@
  * ✅ OPTIMIZADO: Lazy Loading para mejorar performance
  */
 
-import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense, type ComponentType } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
 import { PortalDashboard } from '../portal/PortalDashboard';
@@ -399,24 +399,49 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     }
   }, [currentSidebarModule]);
 
-  // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
-  const getInitialCollapsedState = () => {
-    // Verificar si hay un estado guardado en localStorage
+  // 🚀 RESPONSIVE: Reactive viewport breakpoints via matchMedia
+  type ViewportSize = 'mobile' | 'tablet' | 'desktop';
+  const getViewportSize = useCallback((): ViewportSize => {
+    if (typeof window === 'undefined') return 'desktop';
+    const w = window.innerWidth;
+    return w < 768 ? 'mobile' : w < 1024 ? 'tablet' : 'desktop';
+  }, []);
+
+  const [viewportSize, setViewportSize] = useState<ViewportSize>(getViewportSize);
+
+  useEffect(() => {
+    const mql768 = window.matchMedia('(min-width: 768px)');
+    const mql1024 = window.matchMedia('(min-width: 1024px)');
+    const update = () => setViewportSize(getViewportSize());
+    mql768.addEventListener('change', update);
+    mql1024.addEventListener('change', update);
+    return () => {
+      mql768.removeEventListener('change', update);
+      mql1024.removeEventListener('change', update);
+    };
+  }, [getViewportSize]);
+
+  // Sidebar collapse: mobile/tablet = forced collapse, desktop = user preference
+  const forceCollapseSidebar = viewportSize !== 'desktop';
+
+  const [userSidebarCollapsed, setUserSidebarCollapsed] = useState(() => {
     const savedState = localStorage.getItem('esap-sidebar-collapsed');
-    if (savedState !== null) {
-      return savedState === 'true';
-    }
+    if (savedState !== null) return savedState === 'true';
+    return typeof window !== 'undefined' ? window.innerWidth < 1440 : false;
+  });
 
-    // Si no hay estado guardado, auto-colapsar en pantallas < 1440px
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 1440;
-    }
-
-    return false;
+  // Effective collapsed state: forced on mobile/tablet, user choice on desktop
+  const sidebarCollapsed = forceCollapseSidebar || userSidebarCollapsed;
+  const setSidebarCollapsed = (value: boolean | ((prev: boolean) => boolean)) => {
+    setUserSidebarCollapsed(value);
   };
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialCollapsedState);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Auto-close sidebar drawer when switching from mobile to desktop
+  useEffect(() => {
+    if (viewportSize === 'desktop') setSidebarOpen(false);
+  }, [viewportSize]);
 
   useEffect(() => {
     const handleSidebarCollapse = (event: Event) => {
@@ -747,7 +772,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
               isCollapsed={sidebarCollapsed}
-              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+              onToggleCollapse={() => setSidebarCollapsed(!userSidebarCollapsed)}
+              forceCollapse={forceCollapseSidebar}
               currentModule={currentModule}
               currentSidebarModule={currentSidebarModule}
               onModuleChange={(sidebarModule) => {
@@ -788,11 +814,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             {userData?.module !== 'procesos' && (
               <TopBar
                 onToggleSidebar={() => {
-                  // En mobile abre el sidebar, en desktop colapsa/expande
-                  if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                  // Mobile: toggle drawer open/close. Tablet/Desktop: toggle collapse.
+                  if (viewportSize === 'mobile') {
                     setSidebarOpen(!sidebarOpen);
+                  } else if (viewportSize === 'desktop') {
+                    setSidebarCollapsed(!userSidebarCollapsed);
                   } else {
-                    setSidebarCollapsed(!sidebarCollapsed);
+                    // Tablet: open drawer (since sidebar is auto-collapsed to icons)
+                    setSidebarOpen(!sidebarOpen);
                   }
                 }}
                 density={density}
@@ -814,7 +843,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               <div className={`min-h-full ${
                 userData?.module === 'procesos' || ['gestion-legal', 'control-interno', 'control-disciplinario'].includes(currentModule)
                   ? ''
-                  : 'p-4 sm:p-5 md:p-6 lg:p-8 lg:pl-10'
+                  : 'p-3 sm:p-4 md:p-5 lg:p-6 xl:p-8'
               }`}>
                 {renderModule()}
               </div>

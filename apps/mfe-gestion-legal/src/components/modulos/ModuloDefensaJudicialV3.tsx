@@ -1437,7 +1437,7 @@ function ColumnaKanban({
 
   return (
     <div
-      className="flex-shrink-0 w-[260px] min-w-[260px] sm:w-[280px] sm:min-w-[280px] md:w-[320px] md:min-w-[320px] flex flex-col transition-all duration-300 snap-center"
+      className="flex-shrink-0 w-[231px] min-w-[231px] flex flex-col transition-all duration-300 snap-center"
       style={{ height: isMobile ? 'auto' : 'calc(100vh - 180px)' }}
     >
       <Card className="h-full border border-gray-200 bg-white flex flex-col overflow-hidden relative">

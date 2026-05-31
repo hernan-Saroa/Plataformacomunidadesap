@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useIsMobile } from '../ui/use-mobile';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import studentsHeroImage from '../../assets/b908880c14a3cc806d23bc03bf323801e9003c27.png';
 import {
@@ -20,9 +21,11 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
+  const isMobile = useIsMobile();
   const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados' | 'validador-certificados'>('landing');
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLoginClick = () => {
     if (onIrALogin) {
@@ -88,7 +91,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       value: '+17 mil',
       label: 'Estudiantes',
       icon: <Users className="w-6 h-6" />,
-      trend: 'Comunidad universitaria'
+      trend: 'Comunidad'
     },
     {
       value: '66',
@@ -100,13 +103,13 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       value: '84%',
       label: 'Cobertura Nacional',
       icon: <Globe className="w-6 h-6" />,
-      trend: 'Todo el país'
+      trend: 'Nacional'
     },
     {
       value: '348',
       label: 'Entidades Aliadas',
       icon: <Star className="w-6 h-6" />,
-      trend: 'Red institucional'
+      trend: 'Aliados'
     }
   ];
 
@@ -190,14 +193,20 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         >
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <div className="flex items-center gap-3">
-              <ESAPLogo
-                variant="white"
-                className="h-8 sm:h-10 w-auto"
-              />
-              <div className="hidden sm:block">
-
-              </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {isMobile ? (
+                <ESAPLogo
+                  variant="icon"
+                  className="shrink-0"
+                  style={{ width: '38px', height: '44px' }}
+                />
+              ) : (
+                <ESAPLogo
+                  variant="white"
+                  className="shrink-0"
+                  style={{ width: '189px', height: '56px' }}
+                />
+              )}
             </div>
 
             {/* Menú Desktop */}
@@ -232,21 +241,70 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               </button>
             </div>
 
-            {/* Botón Login */}
-            <Button
-              onClick={handleLoginClick}
-              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg"
-            >
-              <span className="hidden sm:inline">Iniciar Sesión</span>
-              <span className="sm:hidden">Entrar</span>
-              <ArrowRight className="w-4 h-4" />
-            </Button>
+            {/* Acciones del Navbar (Login + Menú Móvil) */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Botón Login */}
+              <Button
+                onClick={handleLoginClick}
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg shrink-0"
+              >
+                <span className="hidden sm:inline">Iniciar Sesión</span>
+                <span className="sm:hidden">Entrar</span>
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+
+              {/* Botón Menú Móvil */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 rounded-lg text-white hover:bg-white/10 transition-colors shrink-0"
+                aria-label="Toggle menú"
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
+
+          {/* Menú Móvil Desplegable */}
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="md:hidden mt-4 pt-4 border-t border-white/20 flex flex-col gap-4"
+            >
+              <a 
+                href="#hero" 
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-sm font-semibold text-white/95 hover:text-white transition-colors py-2 px-1 rounded-lg hover:bg-white/5"
+              >
+                Inicio
+              </a>
+              <a 
+                href="#servicios" 
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-sm font-semibold text-white/95 hover:text-white transition-colors py-2 px-1 rounded-lg hover:bg-white/5"
+              >
+                Servicios
+              </a>
+
+              {/* Botón Validar Certificados en Móvil */}
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setVistaActual('validador-certificados');
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 shadow-lg"
+              >
+                <ShieldCheck className="w-5 h-5" />
+                <span>Validar Certificados</span>
+              </button>
+            </motion.div>
+          )}
         </div>
       </motion.nav>
 
       {/* Hero Section - World Class */}
-      <section id="hero" className="relative min-h-[85vh] sm:min-h-[80vh] lg:min-h-screen flex items-center justify-center overflow-hidden pt-32 xs:pt-36 sm:pt-40 lg:pt-32">
+      <section id="hero" className="relative min-h-[85vh] sm:min-h-[80vh] lg:min-h-screen flex items-center justify-center overflow-hidden pt-24 sm:pt-32 lg:pt-28">
 
         {/* Animated Background - OPTIMIZADO */}
         <div className="absolute inset-0 z-0" style={{ willChange: 'transform' }}>
@@ -317,7 +375,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
         {/* Hero Content - OPTIMIZADO */}
         <motion.div
-          className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 xl:py-16 max-w-7xl mt-12 sm:mt-16 lg:mt-20"
+          className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 lg:py-12 xl:py-16 max-w-7xl mt-4 sm:mt-8 lg:mt-12"
           style={{
             opacity: heroOpacity,
             scale: heroScale,
@@ -342,7 +400,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                 className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full mb-3 sm:mb-6"
               >
                 <Sparkles className="w-4 h-4 text-yellow-400" />
-                <span className="text-white text-sm font-semibold">Portal Institucional</span>
+                <span className="text-white text-xs sm:text-sm font-semibold">Portal Institucional</span>
                 <motion.div
                   className="w-2 h-2 bg-green-400 rounded-full"
                   animate={{ scale: [1, 1.2, 1], opacity: [1, 0.8, 1] }}
@@ -351,7 +409,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               </motion.div>
 
               {/* Main Heading */}
-              <h1 className="text-4xl xs:text-5xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-black text-white mb-3 sm:mb-4 lg:mb-6 tracking-tight leading-tight break-words">
+              <h1 className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-black text-white mb-3 sm:mb-4 lg:mb-6 tracking-tight leading-tight break-words">
                 La Escuela
                 <span className="block bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent mt-1 sm:mt-2">
                   del Futuro, Hoy
@@ -359,34 +417,34 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               </h1>
 
               {/* Subtitle */}
-              <p className="text-sm xs:text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
+              <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
                 En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia.
                 Todos tus trámites, servicios académicos y comunidad <span className="font-semibold text-white">en un solo lugar</span>.
               </p>
 
               {/* Stats Pills */}
-              <div className="flex flex-wrap gap-2 sm:gap-3 justify-center lg:justify-start mb-4 sm:mb-6 lg:mb-8">
+              <div className="flex flex-wrap gap-2 sm:gap-3 justify-center lg:justify-start mb-4 sm:mb-6 lg:mb-8 text-xs xs:text-sm">
                 <div className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full">
-                  <span className="text-white font-bold text-sm sm:text-base">66 años</span>
-                  <span className="text-blue-200 text-xs sm:text-sm ml-1 sm:ml-2">de Historia</span>
+                  <span className="text-white font-bold">66 años</span>
+                  <span className="text-blue-200 ml-1">de Historia</span>
                 </div>
                 <div className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full">
-                  <span className="text-white font-bold text-sm sm:text-base">84%</span>
-                  <span className="text-blue-200 text-xs sm:text-sm ml-1 sm:ml-2">Cobertura</span>
+                  <span className="text-white font-bold">84%</span>
+                  <span className="text-blue-200 ml-1">Cobertura</span>
                 </div>
                 <div className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-full">
-                  <span className="text-white font-bold text-sm sm:text-base">+17 mil</span>
-                  <span className="text-blue-200 text-xs sm:text-sm ml-1 sm:ml-2">Estudiantes</span>
+                  <span className="text-white font-bold">+17 mil</span>
+                  <span className="text-blue-200 ml-1">Estudiantes</span>
                 </div>
               </div>
 
               {/* CTA Buttons */}
               <div className="flex flex-col xs:flex-row gap-3 justify-center lg:justify-start">
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="w-full xs:w-auto">
                   <Button
                     onClick={handleActivateNowClick}
                     size="lg"
-                    className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 group relative overflow-hidden"
+                    className="w-full xs:w-auto px-6 py-3.5 sm:px-8 sm:py-6 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-xl group relative overflow-hidden"
                   >
                     <span className="relative z-10 flex items-center justify-center gap-2 font-bold text-sm xs:text-base sm:text-lg">
                       Actívate Ahora
@@ -402,22 +460,22 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
               {/* Trust Indicators */}
               <div className="mt-4 sm:mt-8 lg:mt-12 pt-4 sm:pt-6 lg:pt-8 border-t border-white/10">
-                <p className="text-blue-200 text-xs sm:text-sm mb-3 sm:mb-4">Respaldado por:</p>
-                <div className="flex flex-wrap items-center gap-3 sm:gap-4 lg:gap-6 justify-center lg:justify-start opacity-80">
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+                <p className="text-blue-200 text-xs sm:text-sm mb-3 sm:mb-4 text-center lg:text-left">Respaldado por:</p>
+                <div className="grid grid-cols-2 gap-y-3 gap-x-4 sm:flex sm:flex-wrap sm:items-center sm:gap-4 lg:gap-6 justify-center lg:justify-start opacity-80 justify-items-center sm:justify-items-start">
+                  <div className="flex items-center gap-1.5 sm:gap-2 justify-center sm:justify-start w-full sm:w-auto">
+                    <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 shrink-0" />
                     <span className="text-white text-xs sm:text-sm font-semibold">ESAP</span>
                   </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
+                  <div className="flex items-center gap-1.5 sm:gap-2 justify-center sm:justify-start w-full sm:w-auto">
+                    <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 shrink-0" />
                     <span className="text-white text-xs sm:text-sm font-semibold">100% Digital</span>
                   </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+                  <div className="flex items-center gap-1.5 sm:gap-2 justify-center sm:justify-start w-full sm:w-auto">
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0" />
                     <span className="text-white text-xs sm:text-sm font-semibold">Certificados digitales</span>
                   </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+                  <div className="flex items-center gap-1.5 sm:gap-2 justify-center sm:justify-start w-full sm:w-auto">
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 shrink-0" />
                     <span className="text-white text-xs sm:text-sm font-semibold">24/7</span>
                   </div>
                 </div>
@@ -437,14 +495,14 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                 animate={{ y: [0, -20, 0] }}
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               >
-                <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white/20">
+                <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white/20 w-full h-[220px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] bg-slate-900">
                   {/* Skeleton Placeholder mientras carga la imagen */}
                   {!imageLoaded && (
-                    <div className="absolute inset-0 bg-gradient-to-br from-gray-200 via-gray-300 to-gray-200 animate-pulse">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#1e293b] via-[#1e5da8]/30 to-[#0f172a] animate-pulse">
                       <div className="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-blue-900/20 to-transparent" />
-                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-                        <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4" />
-                        <p className="text-white/80 text-sm font-semibold">Cargando imagen...</p>
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-full px-4">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-3" />
+                        <p className="text-white/60 text-xs sm:text-sm font-semibold tracking-wider uppercase">Cargando portal...</p>
                       </div>
                     </div>
                   )}
@@ -452,7 +510,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                   <img
                     src={studentsHeroImage}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
-                    className={`w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    className={`w-full h-full object-cover transition-opacity duration-700 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                     loading="lazy"
                     decoding="async"
                     onLoad={() => setImageLoaded(true)}
@@ -538,9 +596,9 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                     {stat.value}
                   </h3>
                   <p className="text-gray-600 font-medium mb-1.5 sm:mb-2 text-xs sm:text-sm lg:text-base">{stat.label}</p>
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-3 sm:py-1 bg-green-100 text-green-700 rounded-full text-[10px] sm:text-xs font-semibold">
-                    <TrendingUp className="w-3 h-3" />
-                    {stat.trend}
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-3 sm:py-1 bg-green-100 text-green-700 rounded-full text-[10px] sm:text-xs font-semibold max-w-full">
+                    <TrendingUp className="w-3 h-3 shrink-0" />
+                    <span className="truncate whitespace-nowrap">{stat.trend}</span>
                   </div>
                 </motion.div>
               ))}
@@ -842,12 +900,12 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
           {/* Header */}
           <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8 pb-6 border-b border-white/20">
-            <div className="flex items-start gap-3">
-              <ESAPLogo variant="white" className="h-12 w-auto mx-auto mb-4" />
-              <div>
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left w-full lg:w-auto">
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '162px', height: '48px' }} />
+              <div className="flex-1">
                 <h3 className="text-[15px] font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-[13px] text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado desde 1958.</p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
                   <span className="inline-flex items-center h-5 px-2 bg-white/10 rounded-[6px] text-[11px] text-blue-100">Educación Pública</span>
                   <span className="inline-flex items-center h-5 px-2 bg-white/10 rounded-[6px] text-[11px] text-blue-100">Acreditación de Alta Calidad</span>
                   <span className="hidden sm:inline-flex items-center h-5 px-2 bg-white/10 rounded-[6px] text-[11px] text-blue-100">Investigación</span>

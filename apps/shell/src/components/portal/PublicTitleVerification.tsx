@@ -859,7 +859,7 @@ export function PublicTitleVerification({
             <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
               {/* Logo y Descripción */}
               <div className="mb-6 md:mb-0 flex items-start gap-4">
-                <ESAPLogo variant="white" className="h-14" />
+                <ESAPLogo variant="white" className="shrink-0" style={{ width: '189px', height: '56px' }} />
                 <div>
                   <h3 className="text-xl font-bold mb-1">
                     Escuela Superior de Administración Pública
@@ -1957,7 +1957,7 @@ export function PublicTitleVerification({
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             {/* Logo y Descripción */}
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              <ESAPLogo variant="white" className="h-14" />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '189px', height: '56px' }} />
               <div>
                 <h3 className="text-xl font-bold mb-1">
                   Escuela Superior de Administración Pública

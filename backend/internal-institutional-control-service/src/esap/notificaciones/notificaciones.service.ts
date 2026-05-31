@@ -166,6 +166,7 @@ export class NotificacionesService {
   async dispararEvento(eventoCode: string, context: { 
     auditoriaId?: string;
     auditoriaCodigo?: string;
+    auditoriaNombre?: string;
     planId?: string;
     usuarioId?: string; // Destinatario explícito si aplica
     responsableAreaEmail?: string; // Email del responsable del área auditada (para AUDITADO)
