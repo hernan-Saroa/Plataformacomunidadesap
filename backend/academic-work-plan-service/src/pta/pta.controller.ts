@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Logger,
   Param,
   Patch,
   Post,
@@ -53,6 +54,8 @@ const buildDiskStorage = (folder: string, prefix: string) =>
 @Public()
 @Controller()
 export class PtaController {
+  private readonly logger = new Logger(PtaController.name);
+
   constructor(private readonly ptaService: PtaService) {}
 
   // ─────────────────────────────
@@ -169,8 +172,13 @@ export class PtaController {
 
   @Get('mis-ptas/:docenteId')
   async getMis(@Param('docenteId') docenteId: string, @Query('periodo') periodo?: string) {
-    const data = await this.ptaService.getPTAsByDocente(docenteId, periodo);
-    return { success: true, data };
+    try {
+      const data = await this.ptaService.getPTAsByDocente(docenteId, periodo);
+      return { success: true, data };
+    } catch (error: any) {
+      this.logger.warn(`getPTAsByDocente failed for docente ${docenteId}: ${error.message}`);
+      return { success: true, data: [] };
+    }
   }
 
   @Get('id/:id')
@@ -395,8 +403,13 @@ export class PtaController {
 
   @Get('solicitudes/docente/:docenteId')
   async getSolicitudesDocente(@Param('docenteId') docenteId: string) {
-    const data = await this.ptaService.getMisSolicitudesPTA(docenteId);
-    return { success: true, data };
+    try {
+      const data = await this.ptaService.getMisSolicitudesPTA(docenteId);
+      return { success: true, data };
+    } catch (error: any) {
+      this.logger.warn(`getMisSolicitudesPTA failed for docente ${docenteId}: ${error.message}`);
+      return { success: true, data: [] };
+    }
   }
 
   @Patch('solicitudes/:solicitudId/resolver')
