@@ -2139,7 +2139,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             <div className="px-6 flex overflow-x-auto hide-scrollbar gap-1 bg-slate-50/50 pt-2 border-t border-slate-100">
               {NAV_GROUPS.map((group, gi) => {
                 if (group.type === 'direct') {
-                  return group.items.filter((item: any) => tieneVista(item.key)).map((tab: any) => (
+                  return <React.Fragment key={`nav-group-${gi}`}>{group.items.filter((item: any) => tieneVista(item.key)).map((tab: any) => (
                     <button
                       key={tab.key}
                       onClick={() => { setModuleView(tab.key as ModuleView); setOpenDropdown(null); }}
@@ -2152,7 +2152,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       <tab.icon style={{ width: 16, height: 16 }} />
                       {tab.label}
                     </button>
-                  ));
+                  ))}</React.Fragment>;
                 }
 
                 if (group.type === 'button') {
