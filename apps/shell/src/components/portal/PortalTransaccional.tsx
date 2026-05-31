@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useIsMobile } from '../ui/use-mobile';
 import {
   Search,
   Mail,
@@ -198,6 +199,19 @@ export function PortalTransaccional({
   const [vistaGrid, setVistaGrid] = useState<'grid' | 'list'>('grid');
   const [currentView, setCurrentView] = useState<InternalView>({ type: 'dashboard' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  const [windowWidth, setWindowWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1280));
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isTablet = windowWidth >= 640 && windowWidth < 1024;
+  const isDesktop = windowWidth >= 1024;
+  const isLargeDesktop = windowWidth >= 1280;
+  const isXLDesktop = windowWidth >= 1536;
 
   useEffect(() => {
     if (!document.getElementById(shimmerStyleId)) {
@@ -544,52 +558,109 @@ export function PortalTransaccional({
     ...(adminData?.area ? [{ icon: <Briefcase className="w-4 h-4 text-gray-400" />, value: adminData.area }] : []),
   ];
 
-  const renderLeftPanel = (contactItems: { icon: any; value: string }[]) => (
-    <div className="lg:flex flex-col w-[280px] xl:w-[300px] shrink-0 gap-6 sticky top-24 h-fit">
-      <div className="relative bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-32 bg-[#003DA5]/5 pointer-events-none" style={{backgroundColor: ''}} />
-        <div className="relative -mt-12 px-6 pb-6">
-          <div className="relative flex items-center justify-center mx-auto group mb-4 mt-6">
-          <button
-            type="button"
-            onClick={triggerFotoPicker}
-            className="group relative w-24 h-24 rounded-full border-3 border-white shadow-sm bg-[#003DA5]/5"
-            title="Cambiar foto"
-          >
-            {fotoUrl ? (
-              <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-xl font-black">
-                {iniciales}
-              </div>
-            )}
-            <div
-              className="absolute inset-0"
-              style={{
-                background: 'rgba(255, 255, 255, 0)',
-                transition: 'background 150ms ease',
-              }}
-            >
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full w-full h-full flex items-center justify-center" style={{background: '#637aa3'}}>
-                <Camera className="w-5 h-5 text-gray-700 text-white" />
-              </div>
+  const renderLeftPanelMobile = (contactItems: { icon: any; value: string }[]) => (
+    <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-4">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={triggerFotoPicker}
+          className="group relative w-14 h-14 rounded-full border-2 border-white shadow-sm bg-[#003DA5]/5 shrink-0 overflow-hidden"
+          title="Cambiar foto"
+        >
+          {fotoUrl ? (
+            <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-base font-black">
+              {iniciales}
             </div>
-            <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white" />
-          </button>
+          )}
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="text-[16px] font-black text-[#003DA5] tracking-tight truncate">{userName}</div>
+          <div className="text-[12px] font-semibold text-gray-500 flex items-center gap-1.5 mt-0.5">
+            <Briefcase className="w-3 h-3 text-gray-400 shrink-0" />
+            <span className="truncate">{activeRole}</span>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setCurrentView({ type: 'mi-perfil' })}
+          className="h-9 px-4 rounded-xl bg-[#003DA5] hover:bg-[#002868] text-white font-bold text-xs flex items-center gap-1.5 transition-colors shrink-0"
+        >
+          <Users className="w-3.5 h-3.5" />
+          Perfil
+        </button>
+      </div>
+      {/* Contacto colapsable en mobile */}
+      <AnimatePresence initial={false}>
+        {isContactInfoOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+              {contactItems.map((it) => (
+                <div key={it.value} className="flex items-center gap-2 text-[12px] text-gray-500 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                  {it.icon}
+                  <span className="truncate max-w-[180px]">{it.value}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <button
+        type="button"
+        onClick={() => setIsContactInfoOpen((p) => !p)}
+        className="mt-2 text-[11px] font-bold text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+      >
+        <ChevronDown className={`w-3 h-3 transition-transform ${isContactInfoOpen ? 'rotate-180' : ''}`} />
+        {isContactInfoOpen ? 'Menos info' : 'Ver contacto'}
+      </button>
+    </div>
+  );
 
-          <div className="mt-3 text-center">
-            <div className="text-[20px] font-black text-[#003DA5] tracking-tight">{userName}</div>
-            <div className="mt-1 text-[14px] font-semibold text-gray-500 flex items-center justify-center gap-1.5">
+  const renderLeftPanelDesktop = (contactItems: { icon: any; value: string }[]) => (
+    <div className="flex flex-col shrink-0 gap-5 sticky top-24 h-fit" style={{ width: isXLDesktop ? 300 : 260 }}>
+      <div className="relative bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-32 bg-[#003DA5]/5 pointer-events-none" />
+        <div className="relative -mt-12 px-5 pb-5">
+          <div className="relative flex items-center justify-center mx-auto group mb-3 mt-6">
+            <button
+              type="button"
+              onClick={triggerFotoPicker}
+              className="group relative w-20 h-20 rounded-full border-3 border-white shadow-sm bg-[#003DA5]/5 overflow-hidden"
+              title="Cambiar foto"
+            >
+              {fotoUrl ? (
+                <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-lg font-black">
+                  {iniciales}
+                </div>
+              )}
+              <div className="absolute inset-0" style={{ background: 'rgba(255, 255, 255, 0)', transition: 'background 150ms ease' }}>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full w-full h-full flex items-center justify-center" style={{ background: '#637aa3' }}>
+                  <Camera className="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <div className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
+            </button>
+          </div>
+          <div className="mt-2 text-center">
+            <div className="text-[18px] font-black text-[#003DA5] tracking-tight leading-tight">{userName}</div>
+            <div className="mt-1 text-[13px] font-semibold text-gray-500 flex items-center justify-center gap-1.5">
               <Briefcase className="w-3.5 h-3.5 text-gray-400" />
               {activeRole}
             </div>
           </div>
-
           <button
             type="button"
             onClick={() => setCurrentView({ type: 'mi-perfil' })}
-            className="mt-4 w-full h-11 rounded-2xl bg-[#003DA5] hover:bg-[#002868] text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            className="mt-3 w-full h-10 rounded-2xl bg-[#003DA5] hover:bg-[#002868] text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             <Users className="w-4 h-4" />
             Gestionar Perfil
@@ -601,7 +672,7 @@ export function PortalTransaccional({
         <button
           type="button"
           onClick={() => setIsContactInfoOpen((p) => !p)}
-          className="w-full px-6 py-4 flex items-center justify-between"
+          className="w-full px-5 py-3.5 flex items-center justify-between"
         >
           <div className="text-[11px] font-black tracking-widest text-gray-400">INFORMACIÓN DE CONTACTO</div>
           <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isContactInfoOpen ? 'rotate-180' : ''}`} />
@@ -612,15 +683,12 @@ export function PortalTransaccional({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="px-6 pb-5 overflow-hidden"
+              className="px-5 pb-4 overflow-hidden"
             >
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {contactItems.map((it) => (
-                  <div
-                    key={it.value}
-                    className="flex items-center gap-3 text-[13px] font-semibold text-gray-600 rounded-2xl p-2 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
+                  <div key={it.value} className="flex items-center gap-3 text-[13px] font-semibold text-gray-600 rounded-xl p-2 hover:bg-gray-50 transition-colors">
+                    <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
                       {it.icon}
                     </div>
                     <div className="min-w-0 truncate">{it.value}</div>
@@ -637,20 +705,24 @@ export function PortalTransaccional({
     </div>
   );
 
-  const renderWithLeftLayout = (center: React.ReactNode, centerStyle: React.CSSProperties = { flex: '1 1 720px', minWidth: 380 }) => {
+  const renderLeftPanel = (contactItems: { icon: any; value: string }[]) => (
+    isDesktop ? renderLeftPanelDesktop(contactItems) : renderLeftPanelMobile(contactItems)
+  );
+
+  const renderWithLeftLayout = (center: React.ReactNode) => {
     const contactItems = buildContactItems();
+    if (!isDesktop) {
+      return (
+        <div className="space-y-4">
+          {renderLeftPanelMobile(contactItems)}
+          <div className="min-w-0">{center}</div>
+        </div>
+      );
+    }
     return (
-      <div
-        id="id-render-with-left-layout"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-          gap: 24,
-        }}
-      >
-        {renderLeftPanel(contactItems)}
-        <div style={centerStyle}>{center}</div>
+      <div id="id-render-with-left-layout" className="flex items-start gap-6">
+        {renderLeftPanelDesktop(contactItems)}
+        <div className="flex-1 min-w-0">{center}</div>
       </div>
     );
   };
@@ -735,158 +807,197 @@ export function PortalTransaccional({
       ...(adminData?.area ? [{ icon: <Briefcase className="w-4 h-4 text-gray-400" />, value: adminData.area }] : []),
     ];
 
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-          gap: 24,
-        }}
-      >
-        {/* Left */}
-        {renderLeftPanel(contactItems)}
-
-        {/* Center */}
-        <div className="space-y-5" style={{ flex: '1 1 520px', minWidth: 380 }}>
-          <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm px-6 py-5 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 rounded-full bg-[#003DA5] text-white flex items-center justify-center font-black">
-                {iniciales}
-              </div>
-              <div className="min-w-0">
-                <div className="text-[15px] font-black text-gray-900 truncate">
-                  {getGreeting()}, {userName?.split(' ')[0] || userName}
+    /* ── Quick Apps panel (reutilizable) ── */
+    const renderQuickApps = () => (
+      <div className="bg-white rounded-2xl lg:rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100">
+          <div className="text-[14px] font-black text-gray-900">Acceso Rápido</div>
+          <div className="text-[12px] text-gray-500">Aplicativos Institucionales</div>
+        </div>
+        <div className="px-2 py-1.5">
+          {quickApps.map((app) => (
+            <button
+              key={app.label}
+              onClick={() => toast.info(app.label, { description: app.desc })}
+              className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                  {app.icon}
                 </div>
-                <div className="text-[12px] text-gray-500">{datePretty}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={triggerFotoPicker}
-                disabled={uploadingFoto}
-                className={`hidden sm:inline-flex w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 items-center justify-center ${
-                  uploadingFoto ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-100'
-                }`}
-                title="Cambiar foto"
-              >
-                <Camera className="w-4 h-4 text-gray-600" />
-              </button>
-              <div className="h-10 px-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-bold flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Sesión activa
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
-              <div className="px-6 pt-5 pb-4 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-blue-600" />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-black text-gray-900 truncate flex items-center gap-2">
+                    {app.label}
+                    {app.external && <ExternalLink className="w-3.5 h-3.5 text-gray-400" />}
                   </div>
-                  <div className="text-[16px] font-black text-gray-900">Mis Servicios</div>
-                </div>
-
-                <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl p-1">
-                  <button
-                    type="button"
-                    onClick={() => setVistaGrid('list')}
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                      vistaGrid === 'list' ? 'bg-white shadow-sm' : 'hover:bg-white/60'
-                    }`}
-                    title="Lista"
-                  >
-                    <List className="w-4 h-4 text-gray-600" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setVistaGrid('grid')}
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                      vistaGrid === 'grid' ? 'bg-white shadow-sm' : 'hover:bg-white/60'
-                    }`}
-                    title="Grid"
-                  >
-                    <Grid3X3 className="w-4 h-4 text-gray-600" />
-                  </button>
+                  <div className="text-[12px] text-gray-500 truncate">{app.desc}</div>
                 </div>
               </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-300 shrink-0" />
+            </button>
+          ))}
+        </div>
+        <div className="px-5 py-2.5 border-t border-gray-100 text-[12px] text-gray-500 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+          {quickApps.length} aplicativos disponibles
+        </div>
+      </div>
+    );
 
-              <div className="px-6 pb-5">
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIAS.filter(cat => cat === 'Todos' || serviciosOrdenados.some(s => s.categoria === cat)).map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setCategoriaActiva(cat)}
-                      className={`h-9 px-4 rounded-xl text-xs font-black transition-colors border ${
-                        categoriaActiva === cat
-                          ? 'bg-[#003DA5] text-white border-[#003DA5]'
-                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
+    /* ── Greeting header ── */
+    const renderGreeting = () => (
+      <div className="bg-white rounded-2xl lg:rounded-3xl border border-gray-200/80 shadow-sm px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#003DA5] text-white flex items-center justify-center font-black text-sm shrink-0">
+            {iniciales}
+          </div>
+          <div className="min-w-0">
+            <div className="text-[14px] sm:text-[15px] font-black text-gray-900 truncate">
+              {getGreeting()}, {userName?.split(' ')[0] || userName}
             </div>
-
-            <DndProvider backend={HTML5Backend}>
-              <div className={vistaGrid === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'flex flex-col gap-3'}>
-                {serviciosOrdenados
-                  .filter((s) => (categoriaActiva === 'Todos' ? true : s.categoria === categoriaActiva))
-                  .map((s, idx) => (
-                    <ServiceCard
-                      key={s.id}
-                      service={s}
-                      index={idx}
-                      view={vistaGrid}
-                      onMove={handleMoveService}
-                      onClick={() => handleServiceClick(s.id)}
-                    />
-                  ))}
-              </div>
-            </DndProvider>
+            <div className="text-[11px] sm:text-[12px] text-gray-500 hidden sm:block">{datePretty}</div>
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={triggerFotoPicker}
+            disabled={uploadingFoto}
+            className={`hidden sm:inline-flex w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 items-center justify-center ${
+              uploadingFoto ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-100'
+            }`}
+            title="Cambiar foto"
+          >
+            <Camera className="w-4 h-4 text-gray-600" />
+          </button>
+          <div className="h-8 sm:h-9 px-3 sm:px-4 rounded-lg sm:rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm font-bold flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="hidden sm:inline">Sesión activa</span>
+            <span className="sm:hidden">Activa</span>
+          </div>
+        </div>
+      </div>
+    );
 
-        {/* Right */}
-        <div style={{ flex: '0 0 320px', minWidth: 300 }}>
-          <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 text-center">
-              <div className="text-[14px] font-black text-gray-900">Acceso Rápido</div>
-              <div className="text-[12px] text-gray-500">Aplicativos Institucionales</div>
+    /* ── Services section ── */
+    const renderServices = () => (
+      <div className="space-y-4">
+        <div className="bg-white rounded-2xl lg:rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
+          <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+              </div>
+              <div className="text-[15px] sm:text-[16px] font-black text-gray-900">Mis Servicios</div>
             </div>
-            <div className="px-2 py-2">
-              {quickApps.map((app) => (
+            <div className="flex items-center bg-gray-50 border border-gray-200 rounded-lg sm:rounded-xl p-0.5 sm:p-1">
+              <button
+                type="button"
+                onClick={() => setVistaGrid('list')}
+                className={`w-8 h-8 sm:w-9 sm:h-9 rounded-md sm:rounded-lg flex items-center justify-center transition-colors ${
+                  vistaGrid === 'list' ? 'bg-white shadow-sm' : 'hover:bg-white/60'
+                }`}
+                title="Lista"
+              >
+                <List className="w-4 h-4 text-gray-600" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setVistaGrid('grid')}
+                className={`w-8 h-8 sm:w-9 sm:h-9 rounded-md sm:rounded-lg flex items-center justify-center transition-colors ${
+                  vistaGrid === 'grid' ? 'bg-white shadow-sm' : 'hover:bg-white/60'
+                }`}
+                title="Grid"
+              >
+                <Grid3X3 className="w-4 h-4 text-gray-600" />
+              </button>
+            </div>
+          </div>
+
+          {/* Categorías — scroll horizontal en mobile, wrap en desktop */}
+          <div className="px-4 sm:px-6 pb-4 sm:pb-5">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch', scrollSnapType: 'x mandatory' }}>
+              {CATEGORIAS.filter(cat => cat === 'Todos' || serviciosOrdenados.some(s => s.categoria === cat)).map((cat) => (
                 <button
-                  key={app.label}
-                  onClick={() => toast.info(app.label, { description: app.desc })}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl hover:bg-gray-50 transition-colors text-left"
+                  key={cat}
+                  onClick={() => setCategoriaActiva(cat)}
+                  className={`h-8 sm:h-9 px-3 sm:px-4 rounded-lg sm:rounded-xl text-xs font-black transition-colors border whitespace-nowrap shrink-0 ${
+                    categoriaActiva === cat
+                      ? 'bg-[#003DA5] text-white border-[#003DA5]'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                  style={{ scrollSnapAlign: 'start' }}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-                      {app.icon}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-black text-gray-900 truncate flex items-center gap-2">
-                        {app.label}
-                        {app.external && <ExternalLink className="w-3.5 h-3.5 text-gray-400" />}
-                      </div>
-                      <div className="text-[12px] text-gray-500 truncate">{app.desc}</div>
-                    </div>
-                  </div>
-                  <ArrowUpRight className="w-4 h-4 text-gray-300" />
+                  {cat}
                 </button>
               ))}
             </div>
-            <div className="px-6 py-3 border-t border-gray-100 text-[12px] text-gray-500 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-              {quickApps.length} aplicativos disponibles
-            </div>
           </div>
+        </div>
+
+        <DndProvider backend={HTML5Backend}>
+          <div className={
+            vistaGrid === 'grid'
+              ? `grid gap-3 sm:gap-4 ${
+                  isXLDesktop ? 'grid-cols-3' : isDesktop ? 'grid-cols-2' : isTablet ? 'grid-cols-2' : 'grid-cols-1'
+                }`
+              : 'flex flex-col gap-3'
+          }>
+            {serviciosOrdenados
+              .filter((s) => (categoriaActiva === 'Todos' ? true : s.categoria === categoriaActiva))
+              .map((s, idx) => (
+                <ServiceCard
+                  key={s.id}
+                  service={s}
+                  index={idx}
+                  view={vistaGrid}
+                  onMove={handleMoveService}
+                  onClick={() => handleServiceClick(s.id)}
+                  compact={!isDesktop}
+                />
+              ))}
+          </div>
+        </DndProvider>
+      </div>
+    );
+
+    /* ── LAYOUT PRINCIPAL RESPONSIVE ── */
+    if (!isDesktop) {
+      /* ▸ Mobile & Tablet: vertical stack */
+      return (
+        <div className="space-y-4">
+          {renderLeftPanelMobile(contactItems)}
+          {renderGreeting()}
+          {renderServices()}
+          {renderQuickApps()}
+        </div>
+      );
+    }
+
+    if (!isLargeDesktop) {
+      /* ▸ Desktop (1024–1279px): 2 columnas, sin right panel, Quick Apps debajo */
+      return (
+        <div className="flex items-start gap-6">
+          {renderLeftPanelDesktop(contactItems)}
+          <div className="flex-1 min-w-0 space-y-5">
+            {renderGreeting()}
+            {renderServices()}
+            {renderQuickApps()}
+          </div>
+        </div>
+      );
+    }
+
+    /* ▸ Large Desktop (1280px+): 3 columnas completas */
+    return (
+      <div className="flex items-start gap-6">
+        {renderLeftPanelDesktop(contactItems)}
+        <div className="flex-1 min-w-0 space-y-5">
+          {renderGreeting()}
+          {renderServices()}
+        </div>
+        <div className="shrink-0" style={{ width: isXLDesktop ? 300 : 280 }}>
+          {renderQuickApps()}
         </div>
       </div>
     );
@@ -894,7 +1005,7 @@ export function PortalTransaccional({
 
   return (
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
-        <div className="w-full max-w-[1360px] mx-auto px-4 md:px-6 lg:px-8 xl:px-4 py-4 md:py-6 lg:py-8 flex justify-center items-start lg:gap-6 xl:gap-8">
+        <div className="w-full max-w-[1600px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
           <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
           <AnimatePresence mode="wait">
             <motion.div
@@ -919,12 +1030,14 @@ function ServiceCard({
   onMove,
   onClick,
   view,
+  compact = false,
 }: {
   service: Servicio;
   index: number;
   onMove: (from: number, to: number) => void;
   onClick: () => void;
   view: 'grid' | 'list';
+  compact?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -957,8 +1070,8 @@ function ServiceCard({
 
   const containerClass =
     view === 'grid'
-      ? 'bg-white border border-gray-200/80 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer p-5 relative'
-      : 'bg-white border border-gray-200/80 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer p-4 relative';
+      ? `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer ${compact ? 'p-3.5' : 'p-4 sm:p-5'} relative`
+      : `bg-white border border-gray-200/80 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer ${compact ? 'p-3' : 'p-3.5 sm:p-4'} relative`;
 
   return (
     <div
@@ -970,26 +1083,28 @@ function ServiceCard({
       }}
       onClick={onClick}
     >
-      <div className="absolute top-4 right-4 w-8 h-8 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400">
-        <GripVertical className="w-4 h-4" />
-      </div>
+      {!compact && (
+        <div className="absolute top-3 sm:top-4 right-3 sm:right-4 w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400">
+          <GripVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </div>
+      )}
 
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3 sm:gap-4">
         <div
-          className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+          className={`${compact ? 'w-9 h-9 rounded-xl' : 'w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl'} flex items-center justify-center flex-shrink-0`}
           style={{ background: service.iconBg, color: service.iconColor }}
         >
           {service.icon}
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 pr-10">
-            <div className="text-[14px] font-black text-gray-900 truncate">{service.nombre}</div>
-            <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-500">
+          <div className={`flex items-center gap-2 ${compact ? 'pr-2' : 'pr-10'}`}>
+            <div className="text-[13px] sm:text-[14px] font-black text-gray-900 truncate">{service.nombre}</div>
+            <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg bg-gray-50 border border-gray-200 text-gray-500 shrink-0">
               {service.codigo}
             </span>
           </div>
-          <div className="text-[12px] text-gray-500 mt-1 line-clamp-2">{service.descripcion}</div>
+          <div className="text-[11px] sm:text-[12px] text-gray-500 mt-1 line-clamp-2">{service.descripcion}</div>
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
