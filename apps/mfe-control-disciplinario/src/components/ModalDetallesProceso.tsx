@@ -3028,7 +3028,9 @@ export function ModalDetallesProceso({
   }, [handleFilesSelected]);
 
   const pct             = Math.min(proceso.porcentajeTiempo, 100);
-  const diasTranscurridos = Math.max(0, 90 - proceso.diasRestantes);
+  const diasTranscurridos = pct < 100
+    ? Math.max(0, Math.round(proceso.diasRestantes * pct / (100 - pct)))
+    : Math.max(0, -proceso.diasRestantes);
   const sc              = SEMAFORO[proceso.semaforo] ?? SEMAFORO.rojo;
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';

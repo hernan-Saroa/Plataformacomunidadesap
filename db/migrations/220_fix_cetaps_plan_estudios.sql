@@ -1,37 +1,22 @@
--- Migration 215: Seed territorial and CETAP official PTA catalog.
--- Source: backend/academic-work-plan-service/src/pta/catalogos/territoriales-cetaps-esap.ts
--- Notes:
--- - academic_work_plan."Territorial"/"Sede" keep the exact catalog IDs.
--- - auth.seccionales/auth.sedes receive deterministic bigint legacy IDs for auth.personas references.
--- - The catalog currently contains 17 territoriales and 307 CETAPs.
+-- Migration 220: Garantiza CETAPs (307) y re-conecta el plan de estudios (asignaturas).
+-- Número nuevo para asegurar ejecución (las 215/216 ya pudieron quedar marcadas en migrations_db_log).
+-- 1) Re-inserta seccionales + 307 CETAPs en auth (idempotente, sin tocar academic_work_plan espejo).
+-- 2) Re-mapea las 430 asignaturas huérfanas (programaId viejo de la tabla "Programa" borrada por 300)
+--    a los UUID de academic_work_plan.programas creados por la 216, para que el plan de estudios aparezca.
 
 DO $$
 DECLARE
   v_default_geopolitica bigint;
 BEGIN
-  -- auth.sedes.id_geopolitica es NOT NULL con FK a auth.geopolitica.
-  -- Tomamos un id_geopolitica válido de una sede existente (o el menor de geopolitica)
-  -- para no violar la FK al insertar los CETAPs nuevos.
   SELECT id_geopolitica INTO v_default_geopolitica
-  FROM auth.sedes
-  WHERE id_geopolitica IS NOT NULL
-  ORDER BY id_sede
-  LIMIT 1;
-
+  FROM auth.sedes WHERE id_geopolitica IS NOT NULL ORDER BY id_sede LIMIT 1;
   IF v_default_geopolitica IS NULL THEN
     SELECT MIN(id_geopolitica) INTO v_default_geopolitica FROM auth.geopolitica;
   END IF;
 
-  CREATE TEMP TABLE tmp_pta_territorial_seed (
-    id text PRIMARY KEY,
-    nombre text NOT NULL,
-    codigo text NOT NULL,
-    legacy_id bigint NOT NULL
-  ) ON COMMIT DROP;
-
-  INSERT INTO tmp_pta_territorial_seed (id, nombre, codigo, legacy_id)
-  VALUES
-    ('terr-sc', 'Sede Central', 'SC', 900001),
+  CREATE TEMP TABLE tmp_t220 (id text PRIMARY KEY, nombre text NOT NULL, codigo text NOT NULL, legacy_id bigint NOT NULL) ON COMMIT DROP;
+  INSERT INTO tmp_t220 (id, nombre, codigo, legacy_id) VALUES
+('terr-sc', 'Sede Central', 'SC', 900001),
     ('terr-ant', 'Antioquia', 'ANT', 900002),
     ('terr-atl', 'Atlántico', 'ATL', 900003),
     ('terr-bcs', 'Bolívar-Córdoba-Sucre', 'BCS', 900004),
@@ -49,58 +34,19 @@ BEGIN
     ('terr-tol', 'Tolima', 'TOL', 900016),
     ('terr-val', 'Valle', 'VAL', 900017);
 
-  -- NOTA: territoriales y CETAPs son TRANSVERSALES y viven SOLO en el esquema auth
-  -- (auth.seccionales / auth.sedes). No se tocan tablas espejo de academic_work_plan,
-  -- que además causaban conflicto con su unique index por nombre.
+  INSERT INTO auth.seccionales (id_seccional, nom_seccional, cod_seccional, fec_creacion, fec_ult_act, usu_creacion, usu_actualizacion)
+  SELECT legacy_id, nombre, codigo, CURRENT_DATE, CURRENT_DATE, 'migration_220', 'migration_220'
+  FROM tmp_t220 seed
+  WHERE NOT EXISTS (SELECT 1 FROM auth.seccionales sec WHERE sec.id_seccional = seed.legacy_id OR UPPER(NULLIF(BTRIM(sec.cod_seccional),'')) = UPPER(seed.codigo));
 
-  -- Insertar seccionales del catálogo que NO existan (match exacto por código o legacy_id).
-  -- No matcheamos por nombre porque los nombres del catálogo difieren de los datos viejos
-  -- (ej. catálogo 'Bolívar-Córdoba-Sucre' vs dato viejo 'Bolívar').
-  INSERT INTO auth.seccionales (
-    id_seccional,
-    nom_seccional,
-    cod_seccional,
-    fec_creacion,
-    fec_ult_act,
-    usu_creacion,
-    usu_actualizacion
-  )
-  SELECT legacy_id, nombre, codigo, CURRENT_DATE, CURRENT_DATE, 'migration_215', 'migration_215'
-  FROM tmp_pta_territorial_seed seed
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM auth.seccionales sec
-    WHERE sec.id_seccional = seed.legacy_id
-       OR UPPER(NULLIF(BTRIM(sec.cod_seccional), '')) = UPPER(seed.codigo)
-  );
+  CREATE TEMP TABLE tmp_tr220 ON COMMIT DROP AS
+  SELECT seed.codigo AS codigo,
+    COALESCE((SELECT sec.id_seccional FROM auth.seccionales sec WHERE UPPER(NULLIF(BTRIM(sec.cod_seccional),'')) = UPPER(seed.codigo) ORDER BY sec.id_seccional LIMIT 1), seed.legacy_id) AS id_seccional_real
+  FROM tmp_t220 seed;
 
-  -- Mapa código -> id_seccional REAL (usa la seccional existente por código si la hay,
-  -- de lo contrario el legacy_id recién insertado). Garantiza que los CETAPs apunten
-  -- siempre a un id_seccional que EXISTE (evita FK violation / huérfanos).
-  CREATE TEMP TABLE tmp_territorial_resolved ON COMMIT DROP AS
-  SELECT
-    seed.codigo AS codigo,
-    COALESCE(
-      (SELECT sec.id_seccional FROM auth.seccionales sec
-        WHERE UPPER(NULLIF(BTRIM(sec.cod_seccional), '')) = UPPER(seed.codigo)
-        ORDER BY sec.id_seccional LIMIT 1),
-      seed.legacy_id
-    ) AS id_seccional_real
-  FROM tmp_pta_territorial_seed seed;
-
-  CREATE TEMP TABLE tmp_pta_sede_seed (
-    id text PRIMARY KEY,
-    territorial_id text NOT NULL,
-    nombre text NOT NULL,
-    municipio text,
-    codigo text NOT NULL,
-    territorial_codigo text NOT NULL,
-    legacy_id bigint NOT NULL
-  ) ON COMMIT DROP;
-
-  INSERT INTO tmp_pta_sede_seed (id, territorial_id, nombre, municipio, codigo, territorial_codigo, legacy_id)
-  VALUES
-    ('cetap-sc-001', 'terr-sc', 'CETAP Sede Principal', 'Sede Principal', 'SC-001', 'SC', 910001),
+  CREATE TEMP TABLE tmp_s220 (id text PRIMARY KEY, territorial_id text NOT NULL, nombre text NOT NULL, municipio text, codigo text NOT NULL, territorial_codigo text NOT NULL, legacy_id bigint NOT NULL) ON COMMIT DROP;
+  INSERT INTO tmp_s220 (id, territorial_id, nombre, municipio, codigo, territorial_codigo, legacy_id) VALUES
+('cetap-sc-001', 'terr-sc', 'CETAP Sede Principal', 'Sede Principal', 'SC-001', 'SC', 910001),
     ('cetap-ant-001', 'terr-ant', 'CETAP Amagá', 'Amagá', 'ANT-001', 'ANT', 910002),
     ('cetap-ant-002', 'terr-ant', 'CETAP Amalfi', 'Amalfi', 'ANT-002', 'ANT', 910003),
     ('cetap-ant-003', 'terr-ant', 'CETAP Andes', 'Andes', 'ANT-003', 'ANT', 910004),
@@ -408,49 +354,28 @@ BEGIN
     ('cetap-val-009', 'terr-val', 'CETAP Sevilla', 'Sevilla', 'VAL-009', 'VAL', 910306),
     ('cetap-val-010', 'terr-val', 'CETAP Tuluá', 'Tuluá', 'VAL-010', 'VAL', 910307);
 
-  INSERT INTO auth.sedes (
-    id_sede,
-    id_empresa,
-    cod_sede,
-    nom_sede,
-    id_geopolitica,
-    id_seccional,
-    fec_creacion,
-    fec_ult_act,
-    usu_creacion,
-    usu_actualizacion,
-    sede_act,
-    visible_portal
-  )
-  SELECT
-    seed.legacy_id,
-    1,
-    SUBSTRING(seed.legacy_id::text FROM 2),
-    LEFT(seed.nombre, 50),
-    v_default_geopolitica,
-    res.id_seccional_real,
-    CURRENT_DATE,
-    CURRENT_DATE,
-    'migration_215',
-    'migration_215',
-    'S',
-    true
-  FROM tmp_pta_sede_seed seed
-  JOIN tmp_territorial_resolved res ON res.codigo = seed.territorial_codigo
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM auth.sedes sede
-    WHERE sede.id_sede = seed.legacy_id
-  );
+  -- cod_sede es varchar(5): usar los últimos 5 dígitos del legacy_id (único). nom_sede es varchar(50): truncar.
+  INSERT INTO auth.sedes (id_sede, id_empresa, cod_sede, nom_sede, id_geopolitica, id_seccional, fec_creacion, fec_ult_act, usu_creacion, usu_actualizacion, sede_act, visible_portal)
+  SELECT seed.legacy_id, 1, SUBSTRING(seed.legacy_id::text FROM 2), LEFT(seed.nombre, 50), v_default_geopolitica, res.id_seccional_real, CURRENT_DATE, CURRENT_DATE, 'migration_220', 'migration_220', 'S', true
+  FROM tmp_s220 seed
+  JOIN tmp_tr220 res ON res.codigo = seed.territorial_codigo
+  WHERE NOT EXISTS (SELECT 1 FROM auth.sedes sede WHERE sede.id_sede = seed.legacy_id);
 
-  UPDATE auth.sedes sede
-  SET nom_sede = LEFT(seed.nombre, 50),
-      id_seccional = res.id_seccional_real,
-      fec_ult_act = CURRENT_DATE,
-      usu_actualizacion = 'migration_215',
-      sede_act = COALESCE(sede.sede_act, 'S'),
-      visible_portal = true
-  FROM tmp_pta_sede_seed seed
-  JOIN tmp_territorial_resolved res ON res.codigo = seed.territorial_codigo
-  WHERE sede.id_sede = seed.legacy_id;
+  -- 2) Re-conectar asignaturas (plan de estudios) a los programas nuevos
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '055118cc-895e-4e9a-a64b-047c436c59f7', "updatedAt" = NOW() WHERE "programaId" = 'AP_Diurno';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '055118cc-895e-4e9a-a64b-047c436c59f7', "updatedAt" = NOW() WHERE "programaId" = 'AP-01';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '8dced35a-12c8-44a8-a1de-0ed60f882954', "updatedAt" = NOW() WHERE "programaId" = 'AP_Nocturno';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'cae0f4b2-fc47-4e45-a523-5a4e0d38c6bb', "updatedAt" = NOW() WHERE "programaId" = 'APT';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'cae0f4b2-fc47-4e45-a523-5a4e0d38c6bb', "updatedAt" = NOW() WHERE "programaId" = 'APT-02';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '65b32ee1-e935-4ea0-ad9f-75fd99ca4c37', "updatedAt" = NOW() WHERE "programaId" = 'Economía_Pública';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '01e9aed0-fc97-48f1-a565-a03f22f9dc62', "updatedAt" = NOW() WHERE "programaId" = 'Alta_Dirección_Del_Estado_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '95f81ef0-d4ac-4f80-ace0-7dd0cef586cd', "updatedAt" = NOW() WHERE "programaId" = 'Derechos_Humanos_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '93a70719-9076-44e5-aa9f-9d1e00ba923d', "updatedAt" = NOW() WHERE "programaId" = 'Finanzas_Públicas_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'e9fc371e-2fc4-4505-a1e0-8b692fcbc8ce', "updatedAt" = NOW() WHERE "programaId" = 'GEPUR_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '780225e6-97a5-4cac-a76d-c75add01264a', "updatedAt" = NOW() WHERE "programaId" = 'Gerencia_Social_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'be3ff6ec-7b89-4a35-ab4e-6fdb4e30d9f3', "updatedAt" = NOW() WHERE "programaId" = 'Gestión_Pública_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '9fda5af6-0cf0-4c40-a5a9-b516946efe7c', "updatedAt" = NOW() WHERE "programaId" = 'Proyectos_de_Desarrollo_ESP';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '7a737691-b084-4b67-abaf-1f82676b2ec2', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_DDHH_y_Posconflicto';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '99ac91a2-9593-4ec8-ae9d-78dea310d5cb', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_AdministraciónPública_DISTANCIA';
+  UPDATE academic_work_plan."Asignatura" SET "programaId" = '3a6a64c1-9478-4cb3-a1a9-a2d918375820', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_AdministraciónPública_PRESENCIAL';
 END $$;
