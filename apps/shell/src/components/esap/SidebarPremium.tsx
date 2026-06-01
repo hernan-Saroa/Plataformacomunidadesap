@@ -124,8 +124,10 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
   const hasArquitectura = canShowModule('arquitectura-empresarial');
 
-  // Determinar si el sidebar debe estar colapsado (manual o forzado)
-  const effectiveCollapsed = isCollapsed || forceCollapse;
+  // Determinar si el sidebar debe estar colapsado
+  // When the drawer is open (mobile/tablet), show expanded sidebar with text.
+  // When closed on tablet, show collapsed icons. Desktop follows user preference.
+  const effectiveCollapsed = isOpen ? false : (isCollapsed || forceCollapse);
 
   // Estado para controlar qué menús padre están expandidos
   let moduleGraduate = false
@@ -689,7 +691,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       {/* Backdrop para móviles */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-[998] md:hidden transition-opacity duration-300"
+          className="fixed inset-0 bg-black/50 z-[998] lg:hidden transition-opacity duration-300"
           onClick={onClose}
         />
       )}
@@ -699,8 +701,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
         id="sidebar-navigation"
         className={`fixed left-0 top-0 h-screen transition-all duration-300 flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 ${
-          effectiveCollapsed ? 'w-[80px]' : 'w-[280px] md:w-[260px]'
+        } lg:translate-x-0 ${
+          effectiveCollapsed ? 'w-[80px]' : 'w-[280px] lg:w-[260px]'
         }`}
         style={{
           background: 'linear-gradient(to bottom, #1e5da8 0%, #154a85 100%)',
@@ -716,7 +718,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {onClose && (
             <button
               onClick={onClose}
-              className="absolute right-3 top-3 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 md:hidden z-20"
+              className="absolute right-3 top-3 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 lg:hidden z-20"
               aria-label="Cerrar menú"
             >
               <X className="w-5 h-5" />
@@ -741,12 +743,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={springTransition}
-                    className="w-14 h-14 flex items-center justify-center"
+                    className="w-14 h-14 flex items-center justify-center shrink-0"
                   >
                     {/* Isotipo oficial ESAP */}
                     <ESAPLogo 
                       variant="icon"
-                      className="w-10 h-10 object-contain drop-shadow-lg filter brightness-0"
+                      className="shrink-0 object-contain drop-shadow-lg"
+                      style={{ width: '35px', height: '40px' }}
                     />
                   </motion.div>
                 ) : (
@@ -756,10 +759,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={springTransition}
+                    className="w-full flex justify-center shrink-0 px-2"
                   >
                     <ESAPLogo 
                       variant="white"
-                      className="h-10 w-auto mx-auto object-contain drop-shadow-lg"
+                      className="shrink-0 object-contain drop-shadow-lg"
+                      style={{ width: '135px', height: '40px' }}
                     />
                   </motion.div>
                 )}
@@ -770,7 +775,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {/* Botón Toggle Premium */}
           <motion.button
             onClick={onToggleCollapse}
-            className="hidden md:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
+            className="hidden lg:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
             style={{ top: '50%', transform: 'translateY(-50%)', color: '#1e5da8' }}
             whileHover={{ 
               scale: 1.15,
@@ -1289,8 +1294,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               transition={contentTransition}
               className="p-2 flex items-center justify-center"
             >
-              <div className="w-8 h-8" title="@Esap 2026 - Todos los derechos reservados">
-                <ESAPLogo variant="white" className="w-full h-full object-contain drop-shadow-lg" />
+              <div className="w-8 h-8 flex items-center justify-center" title="@Esap 2026 - Todos los derechos reservados">
+                <ESAPLogo variant="icon" className="drop-shadow-lg" style={{ width: '28px', height: '32px' }} />
               </div>
             </motion.div>
           )}

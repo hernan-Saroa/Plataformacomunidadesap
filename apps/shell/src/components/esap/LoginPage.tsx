@@ -5,8 +5,7 @@ import { toast } from 'sonner';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { authService } from '../../services/api/authService';
 import { config } from '../../config/environment';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface Usuario {
   id: string;
@@ -291,7 +290,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           >
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
-              <div className="text-2xl font-bold text-[#1e5da8]">ESAP</div>
+              <ESAPLogo variant="color" className="shrink-0" style={{ width: '135px', height: '40px' }} />
             </div>
 
             {/* Back to Home Button */}
@@ -653,11 +652,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-            <img 
-                src={esapLogoWhite} 
-                alt="ESAP" 
-                className="h-12 lg:h-14 xl:h-16 2xl:h-20 w-auto object-contain drop-shadow-2xl"
-              />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '250px', height: '74px' }} />
             </motion.div>
 
             {/* Main Content */}

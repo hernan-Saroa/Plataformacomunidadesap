@@ -189,7 +189,7 @@ export function PortalDashboard({
           {/* Header */}
           <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8 pb-6 border-b border-white/20">
             <div className="flex items-start gap-3">
-              <ESAPLogo variant="white" className="h-8 sm:h-9 md:h-10 w-auto" />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '135px', height: '40px' }} />
               <div>
                 <h3 className="text-[15px] font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-[13px] text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado desde 1958.</p>

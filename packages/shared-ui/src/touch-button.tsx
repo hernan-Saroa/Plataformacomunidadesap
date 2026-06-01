@@ -131,17 +131,17 @@ export function TouchButton({
   // Clases de variante (colores + estados)
   const variantClasses = {
     primary: `
-      bg-gradient-to-r from-[#003DA5] to-[#2962FF] 
+      bg-[#003DA5] 
       text-white 
-      hover:shadow-lg hover:from-[#002d7f] hover:to-[#1e4ec9]
+      hover:shadow-lg hover:bg-[#002D7A]
       active:scale-[0.98]
       disabled:opacity-50 disabled:cursor-not-allowed
       transition-all duration-200
     `,
     secondary: `
-      bg-gradient-to-r from-[#F57C00] to-[#FB8C00] 
+      bg-[#F57C00] 
       text-white 
-      hover:shadow-lg hover:from-[#e67100] hover:to-[#f57c00]
+      hover:shadow-lg hover:bg-[#E65100]
       active:scale-[0.98]
       disabled:opacity-50 disabled:cursor-not-allowed
       transition-all duration-200
@@ -162,9 +162,9 @@ export function TouchButton({
       transition-all duration-200
     `,
     danger: `
-      bg-gradient-to-r from-red-600 to-red-700 
+      bg-red-600 
       text-white 
-      hover:shadow-lg hover:from-red-700 hover:to-red-800
+      hover:shadow-lg hover:bg-red-700
       active:scale-[0.98]
       disabled:opacity-50 disabled:cursor-not-allowed
       transition-all duration-200

@@ -58,13 +58,24 @@ export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarPro
               onClick={handleLogoClick}
               className="flex items-center gap-3 hover:opacity-90 transition-opacity"
             >
-              <ESAPLogo 
-                variant="white"
-                className="h-8 sm:h-10 w-auto"
-              />
-              <div className="hidden sm:block">
-                <p className="text-[9px] font-medium text-white/90 -mt-0.5">ComUNIdad</p>
-              </div>
+              {isMobile ? (
+                <ESAPLogo 
+                  variant="icon"
+                  className="shrink-0"
+                  style={{ width: '38px', height: '44px' }}
+                />
+              ) : (
+                <>
+                  <ESAPLogo 
+                    variant="white"
+                    className="shrink-0"
+                    style={{ width: '189px', height: '56px' }}
+                  />
+                  <div>
+                    <p className="text-[9px] font-medium text-white/90 -mt-0.5">ComUNIdad</p>
+                  </div>
+                </>
+              )}
             </button>
 
             {/* Menú Desktop */}

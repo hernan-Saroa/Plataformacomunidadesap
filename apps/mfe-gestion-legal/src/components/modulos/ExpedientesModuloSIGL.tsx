@@ -1345,7 +1345,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
               */}
               <button
                 onClick={onToggleExpand}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-[#003DA5] hover:bg-[#002e7d] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
               >
                 {expandido ? (
                   <>
@@ -1687,7 +1687,7 @@ function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso
           </button>
           <button
             onClick={handleCargar}
-            className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
+            className="px-4 py-2 bg-[#003DA5] hover:bg-[#002e7d] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
             disabled={cargando || !file}
           >
             {cargando ? 'Cargando...' : 'Cargar Documento'}

@@ -13,6 +13,7 @@ import { ValidarCertificadoQR } from '../certificados-laborales/ValidarCertifica
 import { ValidarCertificadoGrado } from '../esap/registro-academico/ValidarCertificadoGrado';
 import { Card } from '../ui/card';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 
 interface ValidadorCertificadosPublicoProps {
   onBack: () => void;
@@ -23,6 +24,7 @@ type TipoCertificado = 'selector' | 'laboral' | 'grado';
 export function ValidadorCertificadosPublico({
   onBack,
 }: ValidadorCertificadosPublicoProps) {
+  const isMobile = useIsMobile();
   const [tipoSeleccionado, setTipoSeleccionado] =
     useState<TipoCertificado>('selector');
 
@@ -57,15 +59,29 @@ export function ValidadorCertificadosPublico({
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <ESAPLogo variant="white" className="h-8 w-auto sm:h-10" />
-              <div className="hidden sm:block">
-                <p className="text-xs font-semibold text-white">
-                  Validador de Certificados
-                </p>
-                <p className="text-[9px] font-medium text-white/70 -mt-0.5">
-                  Sistema oficial ESAP
-                </p>
-              </div>
+              {isMobile ? (
+                <ESAPLogo 
+                  variant="icon" 
+                  className="shrink-0" 
+                  style={{ width: '38px', height: '44px' }} 
+                />
+              ) : (
+                <>
+                  <ESAPLogo 
+                    variant="white" 
+                    className="shrink-0" 
+                    style={{ width: '189px', height: '56px' }} 
+                  />
+                  <div>
+                    <p className="text-xs font-semibold text-white">
+                      Validador de Certificados
+                    </p>
+                    <p className="text-[9px] font-medium text-white/70 -mt-0.5">
+                      Sistema oficial ESAP
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             <button
@@ -349,7 +365,7 @@ export function ValidadorCertificadosPublico({
 
         <footer className="mt-16 bg-gray-900 py-12 text-white">
           <div className="container mx-auto px-4 text-center">
-            <ESAPLogo variant="white" className="mx-auto mb-4 h-12 w-auto" />
+            <ESAPLogo variant="white" className="mx-auto mb-4 shrink-0" style={{ width: '162px', height: '48px' }} />
             <p className="text-sm text-gray-400">
               © 2026 ESAP - Escuela Superior de Administracion Publica
             </p>

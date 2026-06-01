@@ -29,8 +29,8 @@ export function PTAWizardProgress({ componentesProgreso, onClickComponente }: PT
       
       {/* Wizard Visual */}
       <div className="relative">
-        {/* Línea de conexión */}
-        <div className="absolute top-5 left-0 right-0 h-0.5 bg-gray-200">
+        {/* Línea de conexión - Oculta en móviles ya que los items scrollan horizontalmente */}
+        <div className="absolute top-5 left-0 right-0 h-0.5 bg-gray-200 hidden md:block">
           <div 
             className="h-full bg-[#003DA5] transition-all duration-500"
             style={{ 
@@ -39,15 +39,15 @@ export function PTAWizardProgress({ componentesProgreso, onClickComponente }: PT
           />
         </div>
         
-        {/* Steps */}
-        <div className="relative flex justify-between">
+        {/* Steps - Scroll horizontal snap en móviles, flex normal en tablet/desktop */}
+        <div className="relative flex overflow-x-auto md:overflow-x-visible md:justify-between gap-6 md:gap-0 pb-4 md:pb-0 snap-x snap-mandatory scroll-smooth no-scrollbar">
           {componentesProgreso.map((componente, index) => {
             const isLast = index === componentesProgreso.length - 1;
             
             return (
               <div 
                 key={componente.id}
-                className="flex flex-col items-center flex-1"
+                className="flex flex-col items-center flex-1 min-w-[120px] md:min-w-0 snap-center"
               >
                 {/* Círculo del paso */}
                 <button
@@ -72,9 +72,9 @@ export function PTAWizardProgress({ componentesProgreso, onClickComponente }: PT
                 </button>
                 
                 {/* Nombre del componente */}
-                <div className="text-center">
+                <div className="text-center w-full px-1">
                   <p className={`
-                    text-xs font-medium mb-1
+                    text-xs font-semibold mb-1 truncate md:whitespace-normal
                     ${componente.completado || componente.enCurso
                       ? 'text-gray-900'
                       : 'text-gray-500'
@@ -100,7 +100,7 @@ export function PTAWizardProgress({ componentesProgreso, onClickComponente }: PT
                   
                   {/* Estado descriptivo */}
                   <p className={`
-                    text-xs mt-1
+                    text-[10px] mt-1
                     ${componente.completado 
                       ? 'text-green-600' 
                       : componente.enCurso

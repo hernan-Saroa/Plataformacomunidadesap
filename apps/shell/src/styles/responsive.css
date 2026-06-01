@@ -854,17 +854,28 @@ body {
   aspect-ratio: 1 / 1;
 }
 
-/* Fallback para navegadores antiguos */
-@supports not (aspect-ratio: 1 / 1) {
-  .aspect-16-9 {
-    padding-bottom: 56.25%;
-  }
-  
-  .aspect-4-3 {
-    padding-bottom: 75%;
-  }
-  
   .aspect-square {
     padding-bottom: 100%;
   }
 }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* 🆕 SIDEBAR TRANSLATION FALLBACKS FOR MOBILE Drawer */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* Ocultar sidebar fuera de pantalla en móvil por defecto */
+.-translate-x-full {
+  transform: translateX(-100%) !important;
+}
+
+/* Mostrar sidebar en pantalla en móvil cuando se abre */
+.translate-x-0 {
+  transform: translateX(0) !important;
+}
+
+/* En tablets y escritorios, el sidebar debe estar visible en su posición */
+@media (min-width: 1024px) {
+  .lg\:translate-x-0 {
+    transform: translateX(0) !important;
+  }
+}

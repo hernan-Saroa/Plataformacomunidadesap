@@ -49,7 +49,7 @@ export interface TipoProcesoJudicial {
     paso: number;
     tiposDocumento?: string[];
   }>;
-  unidadTermino?: 'dias' | 'horas';
+  unidadTermino?: 'dias' | 'horas' | 'Dias Habiles' | 'Dias Calendario' | 'Horas' | 'Ambos';
   estados?: EstadoKanban[];
 }
 

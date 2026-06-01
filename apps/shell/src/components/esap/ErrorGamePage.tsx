@@ -1,7 +1,7 @@
 /* ErrorGamePage - Página de Error Interactiva con Mini-Juego y Ranking para ESAP */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import esapLogo from '../../assets/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+import { ESAPLogo } from '../../assets/ESAPLogo';
 import { 
   Trophy, Star, CheckCircle, XCircle, 
   Lightbulb, Brain, Award, Sparkles,
@@ -546,10 +546,15 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
           className="text-center mb-8"
         >
           <div className="flex justify-center mb-8">
-            <img 
-              src={esapLogo} 
-              alt="Logo ESAP" 
-              className="h-20 md:h-24 w-auto object-contain drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
+            <ESAPLogo 
+              variant="white"
+              className="hidden sm:block shrink-0 drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
+              style={{ width: '270px', height: '80px' }}
+            />
+            <ESAPLogo 
+              variant="icon"
+              className="block sm:hidden shrink-0 drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
+              style={{ width: '56px', height: '64px' }}
             />
           </div>
 
