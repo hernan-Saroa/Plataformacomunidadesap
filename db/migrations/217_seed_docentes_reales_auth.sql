@@ -88,37 +88,31 @@ BEGIN
         fec_modificacion = NOW(),
         usu_modificacion = 'migration_217';
 
-    INSERT INTO auth."user" (
-      id_user,
-      username,
-      password_hash,
-      id_person,
-      is_active,
-      password_temp,
-      created_at,
-      updated_at
-    )
-    VALUES (
-      gen_random_uuid(),
-      rec.username,
-      '$2b$10$lWsenGxE2s8d4IxweYD2Jue13J6V6vPUP3vS1sx9TeRcwVcaCxjD2',
-      v_person_id,
-      true,
-      true,
-      NOW(),
-      NOW()
-    )
-    ON CONFLICT (username) DO UPDATE
-    SET id_person = EXCLUDED.id_person,
-        is_active = true,
-        updated_at = NOW()
-    RETURNING id_user INTO v_user_id;
+    -- auth."user" no tiene constraint UNIQUE en username; no se puede usar ON CONFLICT.
+    SELECT id_user INTO v_user_id
+    FROM auth."user"
+    WHERE LOWER(username) = LOWER(rec.username) OR id_person = v_person_id
+    LIMIT 1;
 
     IF v_user_id IS NULL THEN
-      SELECT id_user INTO v_user_id
-      FROM auth."user"
-      WHERE username = rec.username
-      LIMIT 1;
+      INSERT INTO auth."user" (
+        id_user, username, password_hash, id_person, is_active, password_temp, created_at, updated_at
+      )
+      VALUES (
+        gen_random_uuid(),
+        rec.username,
+        '$2b$10$lWsenGxE2s8d4IxweYD2Jue13J6V6vPUP3vS1sx9TeRcwVcaCxjD2',
+        v_person_id,
+        true,
+        true,
+        NOW(),
+        NOW()
+      )
+      RETURNING id_user INTO v_user_id;
+    ELSE
+      UPDATE auth."user"
+      SET id_person = v_person_id, is_active = true, updated_at = NOW()
+      WHERE id_user = v_user_id;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = v_user_id AND id_rol = v_docente_role_id) THEN
@@ -140,8 +134,11 @@ BEGIN
     )
     VALUES (
       v_person_id::text,
-      v_person_id::text,
-      rec.territorial_id,
+      v_person_id,
+      COALESCE(
+        (SELECT p.id_seccional::text FROM auth.personas p WHERE p.id_person = v_person_id AND p.id_seccional IS NOT NULL),
+        (SELECT id_seccional::text FROM auth.seccionales ORDER BY id_seccional LIMIT 1)
+      ),
       rec.sede_id,
       rec.tipo_vinculacion,
       rec.dedicacion,

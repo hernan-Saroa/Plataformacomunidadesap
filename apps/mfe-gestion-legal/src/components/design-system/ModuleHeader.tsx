@@ -116,7 +116,7 @@ export function ModuleHeader({
             
             {buttons.map((button, idx) => {
               const defaultClassName = button.variant === 'primary' || !button.variant
-                ? 'bg-gradient-to-r from-[#003DA5] to-[#2563EB] hover:from-[#002e7d] hover:to-[#1e5da8] text-white font-extrabold shadow-sm hover:shadow active:scale-95 rounded-lg border-0'
+                ? 'bg-[#003DA5] hover:bg-[#002e7d] text-white font-extrabold shadow-sm hover:shadow active:scale-95 rounded-lg border-0'
                 : button.variant === 'secondary'
                 ? 'bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-sm hover:-translate-y-0.5 active:scale-95 rounded-lg border-0'
                 : 'bg-white hover:bg-slate-50 border border-slate-250 hover:border-slate-350 text-slate-700 hover:text-[#003DA5] font-extrabold shadow-sm hover:shadow active:scale-95 rounded-lg';

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown, AlertTriangle, Shield, GraduationCap, Users, BookOpen, MapPin, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
 import loginHeroImage from '../../assets/photo-1623156167557-281309073eef.png';
@@ -20,6 +21,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
+  const isMobile = useIsMobile();
   const loginOptions =
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
@@ -409,8 +411,12 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             transition={{ duration: 0.5 }}
             className="w-full max-w-[420px] my-auto"
           >
-            <div className="flex justify-center mb-8 sm:mb-10">
-              <ESAPLogo variant="color" className="h-12 sm:h-14 w-auto" />
+            <div className="flex justify-center mb-8" style={{ marginBottom: isMobile ? '32px' : '40px' }}>
+              <ESAPLogo
+                variant="color"
+                className="shrink-0"
+                style={isMobile ? { width: '162px', height: '48px' } : { width: '189px', height: '56px' }}
+              />
             </div>
 
 
@@ -761,7 +767,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            <ESAPLogo variant="white" className="h-16 xl:h-[74px] w-auto" />
+            <ESAPLogo variant="white" className="shrink-0" style={{ width: '250px', height: '74px' }} />
           </motion.div>
 
           <div className="space-y-8 xl:space-y-10">

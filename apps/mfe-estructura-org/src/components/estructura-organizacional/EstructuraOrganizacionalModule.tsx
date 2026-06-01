@@ -28,7 +28,7 @@ export function EstructuraOrganizacionalModule() {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [loading, setLoading] = useState(true);
   const [estadisticas, setEstadisticas] = useState<EstadisticasEstructuraOrganizacional | null>(null);
-  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('arbol');
+  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('lista');
 
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -62,16 +62,8 @@ export function EstructuraOrganizacionalModule() {
     } finally {
       setLoading(false);
     }
-
-    try {
-      const resp = await estructuraService.getUsuariosSinAsignar();
-      if (resp.success && resp.data) {
-        setSinTerritorial(resp.data.filter((u: any) => u.sinTerritorial).length);
-        setSinCetap(resp.data.filter((u: any) => !u.cetapId).length);
-      }
-    } catch {
-      // endpoint no disponible aún, no mostrar alerta
-    }
+    // El conteo de usuarios sin asignar requiere un endpoint que aún no existe en el backend.
+    // Se omite para no generar un 404 en consola; la alerta de "sin asignar" queda desactivada.
   };
 
   const handleCrear = (tipo: TipoCreacion) => {

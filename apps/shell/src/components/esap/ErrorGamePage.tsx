@@ -548,7 +548,13 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
           <div className="flex justify-center mb-8">
             <ESAPLogo 
               variant="white"
-              className="h-20 md:h-24 w-auto drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
+              className="hidden sm:block shrink-0 drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
+              style={{ width: '270px', height: '80px' }}
+            />
+            <ESAPLogo 
+              variant="icon"
+              className="block sm:hidden shrink-0 drop-shadow-sm hover:drop-shadow-md transition-all duration-300 hover:scale-105" 
+              style={{ width: '56px', height: '64px' }}
             />
           </div>
 
