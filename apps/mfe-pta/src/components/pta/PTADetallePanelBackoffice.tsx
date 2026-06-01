@@ -25,11 +25,13 @@ import {
   ChevronDown, ChevronRight, ArrowRight, AlertTriangle, Calendar,
   MapPin, Award, Hash, Calculator, TrendingUp, Shield, Printer,
   GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2, Edit2,
-  Activity
+  Activity, Download, ExternalLink
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { toast } from 'sonner';
 import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
+import { getBaseURL } from '../../../../shell/src/services/api';
+import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { PTAForm } from '../portal/pta/PTAForm';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
@@ -53,6 +55,16 @@ interface PTADetallePanelProps {
   isSuperUser?: boolean;
   actorId?: string;
 }
+
+type EvidencePreviewFile = {
+  sourceUrl: string;
+  displayUrl?: string;
+  objectUrl?: string;
+  nombre: string;
+  tipo: string;
+  loading?: boolean;
+  error?: string;
+};
 
 // ═══ CONSTANTS ════════════════════════════════════════════════════════
 
@@ -99,6 +111,18 @@ function getNextStateLabel(current: string, hayModificaciones = false): string {
   return 'Aprobar';
 }
 
+const ESTADO_NIVEL_APROBACION: Record<string, number> = {
+  'Pendiente Jefatura': 1,
+  'Pendiente Decanatura': 2,
+  'Pendiente Gestión Profesoral': 3,
+};
+
+function puedeAprobarEstadoActual(estado: string, nivelUsuario: number): boolean {
+  const nivelRequerido = ESTADO_NIVEL_APROBACION[estado];
+  if (!nivelRequerido) return false;
+  return nivelUsuario >= nivelRequerido;
+}
+
 function timeAgo(d: string): string {
   if (!d) return '';
   const now = Date.now();
@@ -117,6 +141,72 @@ function fmtFecha(d?: string): string {
   const date = new Date(d);
   if (isNaN(date.getTime())) return d;
   return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const IMAGE_FILE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+const OFFICE_FILE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+const EMBED_FILE_EXTENSIONS = ['txt', 'csv', 'json', 'xml', 'html', 'htm'];
+const BLOB_PREVIEW_EXTENSIONS = ['pdf', ...IMAGE_FILE_EXTENSIONS, ...EMBED_FILE_EXTENSIONS];
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-powerpoint': 'ppt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'text/plain': 'txt',
+  'text/csv': 'csv',
+  'application/json': 'json',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+};
+
+function getEvidenceFileExtension(evidencia: any): string {
+  const declaredType = evidencia?.tipoArchivo || evidencia?.tipo_archivo || evidencia?.tipo || '';
+  const name = evidencia?.nombre || evidencia?.filename || '';
+  const fromName = name.includes('.') ? name.split('.').pop() : '';
+  const normalizedType = String(declaredType || '').replace(/;.*/, '').trim().toLowerCase();
+  if (MIME_EXTENSION_MAP[normalizedType]) return MIME_EXTENSION_MAP[normalizedType];
+  if (normalizedType.includes('/')) return MIME_EXTENSION_MAP[normalizedType] || String(fromName || '').toLowerCase();
+  return String(declaredType || fromName || '').replace(/^\./, '').toLowerCase();
+}
+
+function getEvidenceFileUrl(evidencia: any): string {
+  const rawValue = evidencia?.storageUrl || evidencia?.storage_url || evidencia?.storagePath || evidencia?.storage_path || evidencia?.url || '';
+  const rawUrl = String(rawValue || '').trim();
+  if (!rawUrl) return '';
+  if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
+
+  const normalizedPath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+  const ptaServiceUrl = (MICROSERVICE_URLS as Record<string, string>).pta || '';
+
+  if (API_MODE === 'direct' && ptaServiceUrl) {
+    return `${ptaServiceUrl.replace(/\/$/, '')}${normalizedPath.replace(/^\/pta(?=\/uploads\/)/, '')}`;
+  }
+
+  const gatewayBaseUrl = getBaseURL().replace(/\/$/, '');
+  if (normalizedPath.startsWith('/pta/uploads/')) return `${gatewayBaseUrl}${normalizedPath}`;
+  if (normalizedPath.startsWith('/uploads/')) return `${gatewayBaseUrl}/pta${normalizedPath}`;
+  return `${gatewayBaseUrl}${normalizedPath}`;
+}
+
+function canUseOfficeViewer(url: string): boolean {
+  if (!/^https?:\/\//i.test(url)) return false;
+  try {
+    const { hostname } = new URL(url);
+    return hostname !== 'localhost' && hostname !== '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+function getMimeTypeForExtension(extension: string): string {
+  const mime = Object.entries(MIME_EXTENSION_MAP).find(([, ext]) => ext === extension)?.[0];
+  return mime || 'application/octet-stream';
 }
 
 // ═══ SUB-COMPONENTS ═══════════════════════════════════════════════════
@@ -307,6 +397,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [loadingExtras, setLoadingExtras] = useState(false);
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loadingEvidencias, setLoadingEvidencias] = useState(false);
+  const [previewFile, setPreviewFile] = useState<EvidencePreviewFile | null>(null);
 
   // ═══ FEATURE 3: MODO EDICIÓN ═══
   const { rules } = usePTARules();
@@ -376,6 +467,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const sc = getStatusConfig(pta.estado);
   const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
+  const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion);
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
@@ -431,7 +523,62 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
 
+  useEffect(() => {
+    return () => {
+      if (previewFile?.objectUrl) URL.revokeObjectURL(previewFile.objectUrl);
+    };
+  }, [previewFile?.objectUrl]);
+
+  const openEvidencePreview = async (evidencia: any) => {
+    const sourceUrl = getEvidenceFileUrl(evidencia);
+    if (!sourceUrl) return;
+    const tipo = getEvidenceFileExtension(evidencia);
+    const nombre = evidencia?.nombre || evidencia?.filename || 'Evidencia';
+
+    if (!BLOB_PREVIEW_EXTENSIONS.includes(tipo)) {
+      setPreviewFile({ sourceUrl, displayUrl: sourceUrl, nombre, tipo });
+      return;
+    }
+
+    setPreviewFile({ sourceUrl, nombre, tipo, loading: true });
+
+    try {
+      const response = await fetch(sourceUrl, {
+        credentials: 'include',
+        headers: { Accept: getMimeTypeForExtension(tipo) },
+      });
+
+      if (!response.ok) {
+        throw new Error(`No se pudo cargar el archivo (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const typedBlob = blob.type ? blob : blob.slice(0, blob.size, getMimeTypeForExtension(tipo));
+      const objectUrl = URL.createObjectURL(typedBlob);
+
+      setPreviewFile(prev => {
+        if (prev?.objectUrl) URL.revokeObjectURL(prev.objectUrl);
+        return { sourceUrl, displayUrl: objectUrl, objectUrl, nombre, tipo, loading: false };
+      });
+    } catch (error) {
+      console.error('[mfe-pta][preview evidencia] Error:', error);
+      setPreviewFile({
+        sourceUrl,
+        displayUrl: sourceUrl,
+        nombre,
+        tipo,
+        loading: false,
+        error: 'No fue posible cargar la previsualización. Puedes abrir o descargar el archivo.',
+      });
+    }
+  };
+
   const handleAprobar = async () => {
+    if (!puedeAprobarNivelActual) {
+      toast.error('No tienes permiso para aprobar este nivel del PTA');
+      return;
+    }
+
     // Toda aprobación requiere firma digital antes de avanzar
     if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado)) {
       setShowFirmaDigital(true);
@@ -459,6 +606,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const handleFirmaCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDigital(false);
+
+    if (!puedeAprobarNivelActual) {
+      toast.error('No tienes permiso para aprobar este nivel del PTA');
+      return;
+    }
 
     const hayCambios = pta.camposModificadosPorRevisor &&
       Object.keys(pta.camposModificadosPorRevisor).length > 0;
@@ -968,7 +1120,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {activeTab === 'componentes' && (
             <div>
               {/* Edición completa */}
-              {((puedeAprobar && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
+              {((puedeAprobarNivelActual && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
                     {rolLabel === 'Docente' ? 'Puede editar su PTA' : 'Como revisor puede editar el PTA completo antes de aprobar'}
@@ -1454,7 +1606,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, background: estadoBg, color: estadoColor }}>
                               {ev.estadoRevision || 'pendiente'}
                             </span>
-                            {ev.estadoRevision === 'pendiente' && puedeAprobar && (
+                            {ev.estadoRevision === 'pendiente' && puedeAprobarNivelActual && (
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
                                   onClick={async () => {
@@ -1476,12 +1628,25 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             )}
                           </div>
                         </div>
-                        {ev.storageUrl && (
-                          <a href={ev.storageUrl} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'inline-block', marginTop: 6, fontSize: '0.68rem', color: '#2563EB', textDecoration: 'underline' }}>
-                            Ver archivo
-                          </a>
-                        )}
+                        {(() => {
+                          const fileUrl = getEvidenceFileUrl(ev);
+                          if (!fileUrl) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => openEvidencePreview(ev)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                marginTop: 6, padding: 0, border: 'none', background: 'transparent',
+                                fontSize: '0.68rem', color: '#2563EB', textDecoration: 'underline',
+                                cursor: 'pointer', fontWeight: 600,
+                              }}
+                            >
+                              <Eye style={{ width: 12, height: 12 }} />
+                              Ver archivo
+                            </button>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -1638,7 +1803,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {isPendiente && puedeAprobar && (
+              {isPendiente && puedeAprobarNivelActual && (
                 <>
                   {yaAproboEstaJefatura ? (
                     <div style={{
@@ -1785,7 +1950,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 )}
               </div>
 
-              {isPendiente && puedeAprobar && (
+              {isPendiente && puedeAprobarNivelActual && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   {!yaAproboEstaJefatura && (
                   <button
@@ -1929,6 +2094,124 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 />
               );
             })()}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal de previsualización de evidencias */}
+      {previewFile && createPortal(
+        <div
+          onClick={() => setPreviewFile(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10002,
+            background: 'rgba(17,24,39,0.72)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: isMobile ? 10 : 20,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: 16,
+              width: '100%', maxWidth: 980, height: isMobile ? '92vh' : '88vh',
+              overflow: 'hidden',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #E5E7EB', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <FileText style={{ width: 18, height: 18, color: '#003DA5', flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {previewFile.nombre}
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: '#6B7280' }}>
+                    {previewFile.tipo ? previewFile.tipo.toUpperCase() : 'Archivo'}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => window.open(previewFile.sourceUrl, '_blank', 'noopener,noreferrer')}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <ExternalLink style={{ width: 14, height: 14 }} />
+                  Abrir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = previewFile.sourceUrl;
+                    link.download = previewFile.nombre;
+                    link.rel = 'noopener noreferrer';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                  }}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Download style={{ width: 14, height: 14 }} />
+                  Descargar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(null)}
+                  aria-label="Cerrar previsualización"
+                  style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X style={{ width: 16, height: 16, color: '#6B7280' }} />
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#F9FAFB', padding: isMobile ? 10 : 16 }}>
+              {previewFile.loading ? (
+                <div style={{ height: '100%', minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                  <div>
+                    <Loader2 style={{ width: 34, height: 34, margin: '0 auto 12px', color: '#2563EB', animation: 'spin 1s linear infinite' }} />
+                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#374151' }}>Cargando archivo...</p>
+                  </div>
+                </div>
+              ) : previewFile.error ? (
+                <div style={{ height: '100%', minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                  <div>
+                    <AlertTriangle style={{ width: 44, height: 44, margin: '0 auto 12px', color: '#D97706' }} />
+                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#374151' }}>{previewFile.error}</p>
+                  </div>
+                </div>
+              ) : IMAGE_FILE_EXTENSIONS.includes(previewFile.tipo) && previewFile.displayUrl ? (
+                <div style={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <img src={previewFile.displayUrl} alt={previewFile.nombre} style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8, objectFit: 'contain', background: 'white' }} />
+                </div>
+              ) : previewFile.tipo === 'pdf' && previewFile.displayUrl ? (
+                <object data={previewFile.displayUrl} type="application/pdf" style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }}>
+                  <iframe src={previewFile.displayUrl} title={previewFile.nombre} style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }} />
+                </object>
+              ) : OFFICE_FILE_EXTENSIONS.includes(previewFile.tipo) && canUseOfficeViewer(previewFile.sourceUrl) ? (
+                <iframe
+                  src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewFile.sourceUrl)}`}
+                  title={previewFile.nombre}
+                  style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }}
+                />
+              ) : EMBED_FILE_EXTENSIONS.includes(previewFile.tipo) && previewFile.displayUrl ? (
+                <iframe src={previewFile.displayUrl} title={previewFile.nombre} style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }} />
+              ) : (
+                <div style={{ height: '100%', minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                  <div>
+                    <FileText style={{ width: 54, height: 54, margin: '0 auto 12px', color: '#D1D5DB' }} />
+                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#374151' }}>No se puede previsualizar este archivo en el navegador</p>
+                    <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#6B7280', maxWidth: 420 }}>
+                      Puedes abrirlo o descargarlo desde las acciones del encabezado.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>,
         document.body
