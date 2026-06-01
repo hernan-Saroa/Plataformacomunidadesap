@@ -33,6 +33,7 @@ import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from '.
 import { FormularioProcesoDafpVisual as FormularioProcesoAuditable, type FormularioDafpData as ProcesoAuditableData } from './FormularioProcesoDafpVisualSimplificado';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { TabUniversoAuditableResponsive } from './TabUniversoAuditableResponsive';
+import { calcularAuditableDesdeCiclo, resolverAuditableEfectivo } from '../utils/auditableEvaluacion';
 import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 
 import { TooltipGuia } from './TooltipGuia';
@@ -161,6 +162,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
     agregarEvaluacion,
     editarEvaluacion,
     eliminarEvaluacion,
+    patchAuditableManual,
     refetch: refetchEvaluaciones,
   } = useEvaluacionesProcesoData({ vigencia });
 
@@ -198,6 +200,10 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       
       // ✅ Calcular horas estimadas desde evaluación o nivel de riesgo
       const horasEst = ev.horasEstimadas ?? calcHorasEstimadas(ev.nivelCriticidadDafp, ev.cicloRotacionDafp);
+      const auditableCalculado =
+        ev.auditableCalculado ?? calcularAuditableDesdeCiclo(ev.cicloRotacionDafp);
+      const auditableManual = ev.auditableManual ?? null;
+      const auditable = resolverAuditableEfectivo(auditableCalculado, auditableManual);
 
       // Extraer la dependencia y unidad auditable (macroproceso) si están concatenados
       let dep = p.dependencia || ev.dependenciaResponsable || '';
@@ -239,8 +245,12 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
           decisionFinal: ev.decisionFinal,
           vigencia: ev.vigencia,
           fechaCorte: ev.fechaCorte,
+          auditableCalculado,
+          auditableManual,
         } as any,
-        auditable: ev.decisionFinal === 'INCLUIR_PLAN_ANUAL' || ev.decisionFinal === 'INCLUIR PLAN ANUAL' || (ev as any).priorizacionAnos?.length > 0,
+        auditableCalculado,
+        auditableManual,
+        auditable,
         activo: ev.activo ?? p.activo,
         createdAt: ev.createdAt || p.createdAt,
         updatedAt: ev.updatedAt || p.updatedAt,
@@ -374,6 +384,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       ponderacionFinalDafp: Number(ponderacionFinalDafp),
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp || 'No auditar',
+      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp || 'No auditar'),
       decisionFinal: datos.decisionFinal || 'INCLUIR_AUDITORIA_POSTERIOR',
       motivoDecision: datos.motivoDecision || '',
       prioridadRegla: Number(datos.prioridadRegla) || 5,
@@ -439,6 +450,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       ponderacionFinalDafp: ponderacionFinalDafp,
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp,
+      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp),
       decisionFinal: datos.decisionFinal,
       motivoDecision: datos.motivoDecision,
       prioridadRegla: datos.prioridadRegla,
@@ -603,6 +615,10 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
                 onRefresh={async () => {
                   await refetchProcesos();
                   await refetchEvaluaciones();
+                }}
+                onCambiarAuditable={async (evaluacionId, auditableManual) => {
+                  const ok = await patchAuditableManual(evaluacionId, auditableManual);
+                  return ok !== null;
                 }}
                 puedeCrear={!modoSeguimiento && puedeCrearProceso}
                 puedeEditar={!modoSeguimiento && puedeEditarProceso}
@@ -777,6 +793,7 @@ interface TabUniversoAuditableProps {
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
   // ✅ Nueva prop para recargar datos
   onRefresh?: () => void;
+  onCambiarAuditable?: (evaluacionId: string, auditableManual: boolean | null) => Promise<boolean>;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeCrear?: boolean;
   puedeEditar?: boolean;
@@ -797,6 +814,7 @@ function TabUniversoAuditable({
   onEliminarProceso,
   onGuardarEvaluacion,
   onRefresh,
+  onCambiarAuditable,
   puedeCrear = true,
   puedeEditar = true,
   puedeEliminar = true
@@ -817,6 +835,7 @@ function TabUniversoAuditable({
       onEliminarProceso={onEliminarProceso}
       onGuardarEvaluacion={onGuardarEvaluacion}
       onRefresh={onRefresh}
+      onCambiarAuditable={onCambiarAuditable}
       puedeCrear={puedeCrear}
       puedeEditar={puedeEditar}
       puedeEliminar={puedeEliminar}

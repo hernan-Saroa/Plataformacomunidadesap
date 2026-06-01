@@ -534,7 +534,7 @@ function aplicarFlagsAutorizacionJefeOCI<T extends Record<string, unknown>>(act:
 
 /** Estilos del área de pasos en solo consulta (icono ojo del listado o «Vista previa»). */
 const WRAPPER_PASOS_SOLO_LECTURA =
-  'pointer-events-none select-none grayscale-[0.92] saturate-[0.15] contrast-[0.98] ' +
+  'select-none grayscale-[0.92] saturate-[0.15] contrast-[0.98] ' +
   '[&_input]:!bg-gray-100 [&_input]:!border-gray-300 [&_textarea]:!bg-gray-100 ' +
   '[&_button]:!cursor-default [&_label]:!cursor-default ' +
   '[&_.border-blue-400]:!border-gray-400 [&_.border-blue-200]:!border-gray-300 ' +
@@ -1183,19 +1183,10 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
       { nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
         descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
         control: 'Se hace seguimiento mensual.', evaluacion: '0% avance', seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.',
-        tareasSeguimiento: [
-          { id: 'r4-a1-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.', completada: false },
-        ]
       },
       { nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
         descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
         control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Evaluar el cumplimiento de los planes de mejoramiento',
-        tareasSeguimiento: [
-          { id: 'r4-a2-t1', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-05-29' },
-          { id: 'r4-a2-t2', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-08-28' },
-          { id: 'r4-a2-t3', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-11-20' },
-          { id: 'r4-a2-t4', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2027-03-31' },
-        ]
       }
     ],
     // """"""""""""""""""" ROL 5: RELACIN CON ENTES EXTERNOS DE CONTROL """""""""""""""""""
