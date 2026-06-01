@@ -33,6 +33,8 @@ import { CreateProgramaModal } from './CreateProgramaModal';
 import { PlanesEstudioDashboard } from './PlanesEstudioDashboard';
 import { OfertaAsignaturasModule } from './OfertaAsignaturasModule';
 import { AsignaturasPlanEstudios } from './AsignaturasPlanEstudios';
+import { ImportarAsignaturas } from './ImportarAsignaturas';
+import { GestionPeriodos } from './GestionPeriodos';
 import { useAuth } from '../hooks';
 import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
 
@@ -63,11 +65,13 @@ export function ProgramasAcademicosModule() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
-  const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'oferta-asignaturas'>('lista');
+  const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'oferta-asignaturas' | 'importar-asignaturas' | 'periodos-academicos'>('lista');
+  const [selectedPeriodoForImport, setSelectedPeriodoForImport] = useState<string | undefined>(undefined);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
+  const canImport = hasRole('GESTION_PROFESORAL') || isSuperAdmin;
 
   // Cargar datos del backend
   useEffect(() => {
@@ -277,8 +281,8 @@ export function ProgramasAcademicosModule() {
         </motion.div>
       )}
 
-      {/* View Toggle: Lista vs Dashboard vs Oferta Asignaturas */}
-      {stats.programasConPlan > 0 && (
+      {/* View Toggle: Lista vs Dashboard vs Oferta Asignaturas vs Importar Catálogo */}
+      {(stats.totalProgramas > 0 || canImport) && (
         <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit overflow-x-auto hide-scrollbar">
           <button
             onClick={() => setActiveView('lista')}
@@ -289,24 +293,50 @@ export function ProgramasAcademicosModule() {
             <GraduationCap className="w-3.5 h-3.5" />
             Lista de Programas
           </button>
-          <button
-            onClick={() => setActiveView('dashboard')}
-            className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-              activeView === 'dashboard' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            Dashboard Planes de Estudio
-          </button>
-          <button
-            onClick={() => setActiveView('oferta-asignaturas')}
-            className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-              activeView === 'oferta-asignaturas' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            Oferta de Asignaturas (426)
-          </button>
+          {stats.programasConPlan > 0 && (
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                activeView === 'dashboard' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Dashboard Planes de Estudio
+            </button>
+          )}
+          {stats.totalProgramas > 0 && (
+            <button
+              onClick={() => setActiveView('oferta-asignaturas')}
+              className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                activeView === 'oferta-asignaturas' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Oferta de Asignaturas
+            </button>
+          )}
+          {canImport && (
+            <>
+              <button
+                onClick={() => setActiveView('importar-asignaturas')}
+                className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeView === 'importar-asignaturas' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Importar Catálogo (Excel)
+              </button>
+              <button
+                onClick={() => setActiveView('periodos-academicos')}
+                className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeView === 'periodos-academicos' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Periodos Académicos
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -326,6 +356,34 @@ export function ProgramasAcademicosModule() {
           transition={{ duration: 0.3 }}
         >
           <OfertaAsignaturasModule onBack={() => setActiveView('lista')} />
+        </motion.div>
+      ) : activeView === 'importar-asignaturas' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ImportarAsignaturas
+            onBack={() => {
+              setActiveView('lista');
+              setSelectedPeriodoForImport(undefined);
+            }}
+            initialPeriodo={selectedPeriodoForImport}
+          />
+        </motion.div>
+      ) : activeView === 'periodos-academicos' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <GestionPeriodos
+            onBack={() => setActiveView('lista')}
+            onNavigateToImport={(pCod) => {
+              setSelectedPeriodoForImport(pCod);
+              setActiveView('importar-asignaturas');
+            }}
+          />
         </motion.div>
       ) : (
       <>

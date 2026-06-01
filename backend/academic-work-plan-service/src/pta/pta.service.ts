@@ -1203,7 +1203,7 @@ export class PtaService {
     const where = !completo && programaId
       ? (() => {
           params.push(programaId);
-          return `WHERE a."programaId" = $1 OR p.id::text = $1 OR p.codigo = $1`;
+          return `WHERE a.id_programa::text = $1 OR p.id::text = $1 OR p.codigo = $1`;
         })()
       : '';
 
@@ -1211,29 +1211,27 @@ export class PtaService {
       `
       SELECT
         a.id,
-        a."programaId",
+        a.id_programa AS "programaId",
         a.nombre,
         a.codigo,
         a.creditos,
-        a.horas,
-        a."nucleoTematico",
-        a.semestre,
+        a.horas_fijas_pta AS horas,
+        a.id_nucleo_tematico AS "nucleoTematico",
+        a.id_ubicacion_semestral AS semestre,
         a.modalidad,
-        a.tipo,
-        a."createdAt",
-        a."updatedAt",
+        a.tipo_excepcion AS tipo,
+        a.created_at AS "createdAt",
+        a.updated_at AS "updatedAt",
         p.id AS programa_real_id,
         p.codigo AS programa_codigo,
         p.nombre AS programa_nombre,
-        p.descripcion AS programa_descripcion,
-        p.estado AS programa_estado,
-        p.nivel_formacion AS programa_nivel,
-        p.facultad AS programa_facultad,
+        p.tipo AS programa_nivel,
+        p.activo AS programa_estado,
+        p.id_facultad AS programa_facultad,
         p.modalidad AS programa_modalidad
-      FROM academic_work_plan."Asignatura" a
-      LEFT JOIN academic_work_plan.programas p
-        ON p.codigo = a."programaId"
-        OR p.id::text = a."programaId"
+      FROM academic_work_plan.asignatura a
+      LEFT JOIN academic_work_plan.programa p
+        ON p.id = a.id_programa
       ${where}
       ORDER BY a.nombre ASC
       LIMIT 5000
@@ -1397,7 +1395,7 @@ export class PtaService {
 
   async getOfertaAcademica(_query?: any) {
     return await this.asignaturaRepo.find({
-      relations: { programa: true },
+      relations: { programaRel: true },
       order: { nombre: 'ASC' },
       take: 5000,
     });

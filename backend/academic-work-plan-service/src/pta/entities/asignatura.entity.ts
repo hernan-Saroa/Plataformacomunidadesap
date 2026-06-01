@@ -1,52 +1,96 @@
-import {  Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { UbicacionSemestralEntity } from './ubicacion-semestral.entity';
 import { ProgramaEntity } from './programa.entity';
+import { NucleoTematicoEntity } from './nucleo-tematico.entity';
+import { FacultadEntity } from './facultad.entity';
 
-@Entity({ schema: 'academic_work_plan', name: 'Asignatura' })
+@Entity({ schema: 'academic_work_plan', name: 'asignatura' })
 export class AsignaturaEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ name: 'programaId', type: 'text' })
-  programaId: string;
+  @Column({ type: 'varchar', length: 20, unique: true })
+  codigo: string;
 
-  @ManyToOne(() => ProgramaEntity, { nullable: false })
-  @JoinColumn({ name: 'programaId' })
-  programa: ProgramaEntity;
-
-  @Column({ type: 'text' })
+  @Column({ type: 'varchar', length: 200 })
   nombre: string;
 
-  @Column({ type: 'text', nullable: true })
-  codigo: string | null;
+  @Column({ name: 'nombre_base', type: 'varchar', length: 200, nullable: true })
+  nombreBase: string | null;
 
-  @Column({ type: 'int', default: 3 })
+  @Column({ name: 'modalidad_sufijo', type: 'varchar', length: 30, nullable: true })
+  modalidadSufijo: string | null;
+
+  @Column({ type: 'varchar', length: 30, default: 'sin_definir' })
+  modalidad: string; // 'presencial' | 'presencial_dia' | 'presencial_noche' | 'virtual' | 'distancia' | 'mixta' | 'sin_definir'
+
+  @Column({ name: 'requiere_revision_modalidad', type: 'boolean', default: false })
+  requiereRevisionModalidad: boolean;
+
+  @Column({ type: 'smallint' })
   creditos: number;
 
-  @Column({ type: 'int', default: 144 })
-  horas: number;
+  @Column({ name: 'id_ubicacion_semestral', type: 'smallint' })
+  idUbicacionSemestral: number;
 
-  @Column({ name: 'nucleoTematico', type: 'text', nullable: true })
-  nucleoTematico: string | null;
+  @ManyToOne(() => UbicacionSemestralEntity, { nullable: false })
+  @JoinColumn({ name: 'id_ubicacion_semestral' })
+  ubicacionSemestralRel: UbicacionSemestralEntity;
+
+  @Column({ name: 'id_programa', type: 'bigint' })
+  idPrograma: string;
+
+  @ManyToOne(() => ProgramaEntity, { nullable: false })
+  @JoinColumn({ name: 'id_programa' })
+  programaRel: ProgramaEntity;
+
+  @Column({ name: 'id_nucleo_tematico', type: 'bigint' })
+  idNucleoTematico: string;
+
+  @ManyToOne(() => NucleoTematicoEntity, { nullable: false })
+  @JoinColumn({ name: 'id_nucleo_tematico' })
+  nucleoTematicoRel: NucleoTematicoEntity;
+
+  @Column({ name: 'id_facultad', type: 'bigint' })
+  idFacultad: string;
+
+  @ManyToOne(() => FacultadEntity, { nullable: false })
+  @JoinColumn({ name: 'id_facultad' })
+  facultadRel: FacultadEntity;
+
+  @Column({ name: 'horas_fijas_pta', type: 'int', nullable: true })
+  horasFijasPta: number | null;
+
+  @Column({ name: 'tipo_excepcion', type: 'varchar', length: 40, nullable: true })
+  tipoExcepcion: string | null; // 'seminario_enfasis' | 'opciones_grado_ap' | 'seminario_opciones_apt'
+
+  @Column({ type: 'boolean', default: true })
+  activa: boolean;
 
   @Column({ type: 'text', nullable: true })
-  semestre: string | null;
+  observaciones: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  modalidad: string | null;
-
-  @Column({ type: 'varchar', nullable: true })
-  tipo: string | null;
-
-  @CreateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @UpdateDateColumn({ default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  updatedAt: Date;
+  @Column({ name: 'created_by', type: 'bigint', nullable: true })
+  createdBy: string | null;
+
+  @UpdateDateColumn({ name: 'updated_at', nullable: true })
+  updatedAt: Date | null;
+
+  @Column({ name: 'updated_by', type: 'bigint', nullable: true })
+  updatedBy: string | null;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ name: 'deleted_by', type: 'bigint', nullable: true })
+  deletedBy: string | null;
 
   @BeforeInsert()
   setTimestamps() {
     this.createdAt = new Date();
-    this.updatedAt = new Date();
   }
 
   @BeforeUpdate()

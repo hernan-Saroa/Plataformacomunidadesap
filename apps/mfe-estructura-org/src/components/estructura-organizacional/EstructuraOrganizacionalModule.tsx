@@ -9,14 +9,16 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Building2, Plus, Search, Download, Upload, MapPin,
   ChevronRight, GitBranch, Network, Users, Loader2, ChevronDown, Pencil, Trash2,
-  GraduationCap, RefreshCw, AlertTriangle
+  GraduationCap, RefreshCw, AlertTriangle, Layers
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { estructuraService } from '../../services/estructuraService';
+import { buildApiUrl, CORS_CONFIG } from '../../config/environment';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
 import { AsignarUsuariosModal } from './AsignarUsuariosModal';
+import { ImportarEstructuraView } from './ImportarEstructuraView';
 import { useAuth } from '../../hooks';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
 
@@ -26,9 +28,14 @@ export function EstructuraOrganizacionalModule() {
   const [busqueda, setBusqueda] = useState('');
   const [seccionales, setSeccionales] = useState<Seccional[]>([]);
   const [sedes, setSedes] = useState<Sede[]>([]);
+  const [seccionalesOriginales, setSeccionalesOriginales] = useState<Seccional[]>([]);
+  const [sedesOriginales, setSedesOriginales] = useState<Sede[]>([]);
+  const [periodo, setPeriodo] = useState('2025-2');
+  const [periodos, setPeriodos] = useState<any[]>([]);
+  const [loadingPeriodos, setLoadingPeriodos] = useState(false);
   const [loading, setLoading] = useState(true);
   const [estadisticas, setEstadisticas] = useState<EstadisticasEstructuraOrganizacional | null>(null);
-  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('arbol');
+  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol' | 'importar'>('arbol');
 
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -44,7 +51,84 @@ export function EstructuraOrganizacionalModule() {
   // Cargar datos al montar el componente
   useEffect(() => {
     cargarDatos();
+    loadPeriodos();
   }, []);
+
+  // Aplicar filtro de periodo cuando cambien los datos o el periodo seleccionado
+  useEffect(() => {
+    applyPeriodFilter();
+  }, [periodo, periodos, seccionalesOriginales, sedesOriginales]);
+
+  const loadPeriodos = async () => {
+    try {
+      setLoadingPeriodos(true);
+      const data = await estructuraService.obtenerPeriodos();
+      const sorted = [...data].sort((a, b) => b.codigo.localeCompare(a.codigo));
+      setPeriodos(sorted);
+      if (sorted.length > 0) {
+        const hasCurrent = sorted.some(p => p.codigo === '2025-2');
+        setPeriodo(hasCurrent ? '2025-2' : sorted[0].codigo);
+      }
+    } catch (e) {
+      console.error('Error cargando periodos:', e);
+    } finally {
+      setLoadingPeriodos(false);
+    }
+  };
+
+  const applyPeriodFilter = async () => {
+    if (seccionalesOriginales.length === 0 && sedesOriginales.length === 0) return;
+
+    try {
+      const p = periodos.find(x => x.codigo === periodo);
+      if (!p) {
+        setSeccionales(seccionalesOriginales);
+        setSedes(sedesOriginales);
+        return;
+      }
+
+      const response = await fetch(buildApiUrl('pta', `/pta/api/v1/periodos-academicos/${p.id}/detalle`), CORS_CONFIG);
+      if (response.ok) {
+        const detail = await response.json();
+        if (detail && detail.cetaps) {
+          if (detail.cetaps.length === 0) {
+            // Si el periodo está vacío (no se han asignado cetaps),
+            // mostramos la estructura master sin filtrar.
+            setSeccionales(seccionalesOriginales);
+            setSedes(sedesOriginales);
+          } else {
+            const activeCodes = new Set<string>(detail.cetaps.map((c: any) => c.codigo));
+            
+            const sedesFiltradas = sedesOriginales.filter(s => activeCodes.has(s.codSede));
+            const seccionalesFiltradas = seccionalesOriginales.filter(sec => 
+              sedesFiltradas.some(s => s.idSeccional === sec.idSeccional) ||
+              sec.codSeccional?.toUpperCase() === 'SCENT'
+            );
+            
+            setSeccionales(seccionalesFiltradas);
+            setSedes(sedesFiltradas);
+
+            if (estadisticas) {
+              setEstadisticas({
+                ...estadisticas,
+                totalSeccionales: seccionalesFiltradas.length,
+                totalSedes: sedesFiltradas.length,
+              });
+            }
+          }
+          return;
+        }
+      }
+
+      // Fallback
+      setSeccionales(seccionalesOriginales);
+      setSedes(sedesOriginales);
+    } catch (err) {
+      console.error('Error filtrando por periodo:', err);
+      setSeccionales(seccionalesOriginales);
+      setSedes(sedesOriginales);
+    }
+  };
 
   const cargarDatos = async () => {
     try {
@@ -53,8 +137,8 @@ export function EstructuraOrganizacionalModule() {
         estructuraService.obtenerEstructura(),
         estructuraService.obtenerEstadisticas(),
       ]);
-      setSeccionales(estructuraResponse.data.seccionales);
-      setSedes(estructuraResponse.data.sedes);
+      setSeccionalesOriginales(estructuraResponse.data.seccionales);
+      setSedesOriginales(estructuraResponse.data.sedes);
       setEstadisticas(statsResponse.data);
     } catch (error) {
       console.error('Error cargando estructura organizacional:', error);
@@ -129,7 +213,7 @@ export function EstructuraOrganizacionalModule() {
   };
 
   const handleImportar = () => {
-    toast.info('Importacion masiva en desarrollo');
+    setVistaActual('importar');
   };
 
   const handleCloseModal = () => {
@@ -139,17 +223,52 @@ export function EstructuraOrganizacionalModule() {
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
-      {/* Header */}
+      {vistaActual === 'importar' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ImportarEstructuraView
+            onBack={() => setVistaActual('arbol')}
+            onSuccess={cargarDatos}
+          />
+        </motion.div>
+      ) : (
+        <>
+          {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 flex items-center justify-center shrink-0">
               <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                Estructura Organizacional
-              </h1>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                  Estructura Organizacional
+                </h1>
+                
+                {/* Selector de Periodo Academico */}
+                <div className="flex items-center gap-1.5 bg-blue-50/50 border border-blue-100 rounded-xl px-2.5 py-1 text-xs font-bold text-[#003DA5]">
+                  <span className="text-gray-500 uppercase font-bold text-[10px]">Periodo:</span>
+                  {loadingPeriodos ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#003DA5]" />
+                  ) : (
+                    <select
+                      value={periodo}
+                      onChange={(e) => setPeriodo(e.target.value)}
+                      className="bg-transparent border-0 outline-none focus:ring-0 text-[#003DA5] font-black cursor-pointer pr-1 text-xs"
+                    >
+                      {periodos.map((p) => (
+                        <option key={p.id} value={p.codigo} className="text-gray-900 bg-white font-bold">
+                          {p.codigo} {p.codigo === '2025-2' ? '(Actual)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
               <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
                 Gestion de seccionales y sedes ESAP
               </p>
@@ -157,72 +276,103 @@ export function EstructuraOrganizacionalModule() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
+        <div className="flex items-center gap-3 bg-gray-50/60 backdrop-blur-md border border-gray-200/80 p-1.5 rounded-2xl shadow-sm shrink-0">
+          <button
             onClick={cargarDatos}
-            className="gap-2"
+            className="p-2.5 bg-white text-gray-600 hover:text-[#003DA5] hover:bg-blue-50 border border-gray-200/80 rounded-xl transition-all duration-300 shadow-sm hover:shadow hover:scale-105 active:scale-95 group flex items-center justify-center"
             title="Actualizar datos"
           >
-            <RefreshCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Actualizar</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+            <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
+          </button>
+          
+          <button
             onClick={handleImportar}
-            className="gap-2"
+            className="flex items-center gap-2 px-4 py-2 bg-[#003DA5]/5 hover:bg-[#003DA5] text-[#003DA5] hover:text-white border border-[#003DA5]/20 hover:border-transparent rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
           >
             <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Importar</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+            <span className="hidden sm:inline">Importación Masiva</span>
+          </button>
+
+          <button
             onClick={handleExportar}
-            className="gap-2"
+            className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200/80 rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar</span>
-          </Button>
+            <span className="hidden sm:inline">Exportar Catálogo</span>
+          </button>
+
+          {/* Separador vertical sutil */}
+          {isSuperAdmin && (
+            <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block" />
+          )}
 
           {/* Dropdown para crear */}
           {isSuperAdmin && (
             <div className="relative">
-              <Button
+              <button
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="gap-2 bg-[#003DA5] hover:bg-[#002d7a]"
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#003DA5] to-blue-600 hover:from-blue-700 hover:to-[#003DA5] text-white rounded-xl font-black text-sm transition-all duration-350 shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 cursor-pointer border border-[#003DA5]/20"
               >
                 <Plus className="w-4 h-4" />
-                Nuevo
-                <ChevronDown className="w-4 h-4" />
-              </Button>
+                <span>Crear Nuevo</span>
+                <motion.div
+                  animate={{ rotate: showDropdown ? 180 : 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </motion.div>
+              </button>
 
-              {showDropdown && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setShowDropdown(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                    <button
-                      onClick={() => handleCrear('seccional')}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              <AnimatePresence>
+                {showDropdown && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-20"
+                      onClick={() => setShowDropdown(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="absolute right-0 mt-3 w-72 bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200/50 p-2.5 z-30 ring-1 ring-black/5"
                     >
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      Nueva Seccional
-                    </button>
-                    <button
-                      onClick={() => handleCrear('sede')}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-orange-500" />
-                      Nueva Sede
-                    </button>
-                  </div>
-                </>
-              )}
+                      <div className="px-3 py-2 border-b border-gray-100/50 mb-2">
+                        <span className="text-[10px] font-black text-[#003DA5] uppercase tracking-widest flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5" />
+                          Crear Registro Master
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => { handleCrear('seccional'); setShowDropdown(false); }}
+                        className="w-full p-2.5 rounded-xl hover:bg-blue-50/50 transition-all duration-300 text-left flex items-start gap-3 group relative overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-green-500/0 via-green-500/0 to-green-500/0 group-hover:via-green-500/5 transition-all duration-500" />
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-50 to-green-100 text-green-600 flex items-center justify-center shrink-0 shadow-sm border border-green-200/50 group-hover:scale-110 transition-transform duration-300 relative z-10">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div className="relative z-10">
+                          <div className="text-sm font-bold text-gray-900 group-hover:text-green-700 transition-colors">Nueva Dirección Seccional</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5 leading-tight">Crear dirección territorial regional para agrupar sedes</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { handleCrear('sede'); setShowDropdown(false); }}
+                        className="w-full p-2.5 rounded-xl hover:bg-blue-50/50 transition-all duration-300 text-left flex items-start gap-3 group relative overflow-hidden mt-1"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/0 to-orange-500/0 group-hover:via-orange-500/5 transition-all duration-500" />
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 text-orange-600 flex items-center justify-center shrink-0 shadow-sm border border-orange-200/50 group-hover:scale-110 transition-transform duration-300 relative z-10">
+                          <MapPin className="w-4 h-4" />
+                        </div>
+                        <div className="relative z-10">
+                          <div className="text-sm font-bold text-gray-900 group-hover:text-orange-700 transition-colors">Nuevo CETAP (Sede)</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5 leading-tight">Crear sede (CETAP) para oferta educativa activa en territorio</div>
+                        </div>
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </div>
@@ -243,7 +393,7 @@ export function EstructuraOrganizacionalModule() {
             </div>
           </div>
           
-          {/* ✅ NUEVO: Toggle de Vistas */}
+          {/* Toggle de Vistas */}
           <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setVistaActual('lista')}
@@ -321,6 +471,8 @@ export function EstructuraOrganizacionalModule() {
           />
         )
       )}
+      </>
+      )}
 
       {/* Modal Crear/Editar Seccional/Sede */}
       <CreateSeccionalSedeModal
@@ -328,7 +480,7 @@ export function EstructuraOrganizacionalModule() {
         onClose={handleCloseModal}
         onSuccess={cargarDatos}
         tipo={tipoCreacion}
-        seccionales={seccionales}
+        seccionales={seccionalesOriginales}
         editItem={editItem}
       />
 
@@ -337,12 +489,12 @@ export function EstructuraOrganizacionalModule() {
         isOpen={showAsignarModal}
         onClose={() => setShowAsignarModal(false)}
         onSuccess={cargarDatos}
-        territoriales={seccionales
+        territoriales={seccionalesOriginales
           .filter(s => s.codSeccional?.toUpperCase() !== 'SCENT')
           .map(s => ({
             id: String(s.idSeccional),
             nombre: s.nomSeccional,
-            cetap: sedes
+            cetap: sedesOriginales
               .filter(sede => sede.idSeccional === s.idSeccional)
               .map(sede => ({ id: String(sede.idSede), nombre: sede.nomSede }))
           }))
@@ -431,25 +583,30 @@ function VistaArbolSeccionalesSedes({
     return null;
   }).filter(Boolean) as Array<{ seccional: Seccional; sedes: Sede[] }>;
 
+  const currentTotalSeccionales = seccionales.length;
+  const currentTotalSedes = sedes.length;
+  const currentTotalEstudiantes = sedes.reduce((sum, s) => sum + (s.capacidadEstudiantes || 0), 0);
+  const currentTotalDocentes = sedes.reduce((sum, s) => sum + (s.capacidadDocentes || 0), 0);
+
   return (
     <Card className="p-6">
       {/* Estadisticas */}
       <div className="mb-6 flex items-center gap-6 text-sm text-gray-600">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-green-600" />
-          <span className="font-medium">{estadisticas?.totalSeccionales || 0} Seccionales</span>
+          <span className="font-medium">{currentTotalSeccionales} Seccionales</span>
         </div>
         <div className="flex items-center gap-2">
           <MapPin className="w-4 h-4 text-orange-600" />
-          <span className="font-medium">{estadisticas?.totalSedes || 0} Sedes</span>
+          <span className="font-medium">{currentTotalSedes} Sedes</span>
         </div>
         <div className="flex items-center gap-2">
           <GraduationCap className="w-4 h-4 text-blue-600" />
-          <span className="font-medium">{estadisticas?.totalEstudiantes || 0} Estudiantes</span>
+          <span className="font-medium">{currentTotalEstudiantes} Estudiantes</span>
         </div>
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-purple-600" />
-          <span className="font-medium">{estadisticas?.totalDocentes || 0} Docentes</span>
+          <span className="font-medium">{currentTotalDocentes} Docentes</span>
         </div>
       </div>
 

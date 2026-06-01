@@ -5,7 +5,7 @@ import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
 
-@Controller('pta/banco-docentes')
+@Controller(['banco-docentes', 'pta/banco-docentes'])
 export class BancoDocentesController {
   constructor(private readonly service: BancoDocentesService) {}
 

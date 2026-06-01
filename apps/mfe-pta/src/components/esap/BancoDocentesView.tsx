@@ -84,8 +84,11 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
   const [previewData, setPreviewData] = useState<BancoDocentePreviewRow[] | null>(null);
   const [filtroEstadoCarga, setFiltroEstadoCarga] = useState('');
   const [hasAppliedPreview, setHasAppliedPreview] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
+  };
   // Get docentes from users (those with Docente role)
   const docentesFromUsers = useMemo(() => {
     return allUsers.filter(u => 
@@ -841,43 +844,83 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
                 </button>
               </div>
 
+              {/* Drag-and-drop box premium */}
               <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-                  isDragging ? 'border-[#003DA5] bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); handleDrop(e); }}
+                onClick={triggerFileSelect}
+                className={`border-3 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all ${
+                  isDragging
+                    ? 'border-[#003DA5] bg-blue-50/50 scale-[0.99]'
+                    : file
+                    ? 'border-emerald-500 bg-emerald-50/10'
+                    : 'border-gray-300 hover:border-[#003DA5] hover:bg-gray-50/50'
                 }`}
               >
-                <input type="file" id="docente-file-upload" className="hidden" accept=".xlsx,.csv" onChange={handleFileChange} />
-                <label htmlFor="docente-file-upload" className="cursor-pointer flex flex-col items-center">
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
-                    <Upload className="w-6 h-6 text-[#003DA5]" />
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 mb-1">
-                    {file ? file.name : 'Haga clic para subir o arrastre el archivo aqui'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {file ? `${(file.size / 1024).toFixed(2)} KB` : 'XLSX, CSV (Max. 10MB) — Formato DOCENTES_ESAP_[PERIODO]'}
-                  </p>
-                </label>
+                <input
+                  type="file"
+                  id="docente-file-upload"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept=".xlsx,.csv"
+                  onChange={handleFileChange}
+                />
+                
+                {file ? (
+                  <>
+                    <div className="w-16 h-16 mx-auto mb-4 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-200 shadow-sm">
+                      <FileSpreadsheet className="w-8 h-8" />
+                    </div>
+                    <p className="font-extrabold text-gray-900 text-sm max-w-md mx-auto truncate">
+                      {file.name}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Tamaño: {(file.size / 1024).toFixed(1)} KB — Listo para procesar
+                    </p>
+                    <div className="mt-6 flex justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFile(null);
+                        }}
+                        className="px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                      >
+                        Remover
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          simularProcesamiento();
+                        }}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-[#003DA5] hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2"
+                      >
+                        {isProcessing ? (
+                          <><Loader2 className="w-4 h-4 animate-spin" /> Procesando validaciones...</>
+                        ) : (
+                          <><CheckCircle className="w-4 h-4" /> Validar y Conciliar Archivo</>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 mx-auto mb-4 bg-blue-50 text-[#003DA5] rounded-full flex items-center justify-center border border-blue-100 shadow-sm">
+                      <Database className="w-8 h-8" />
+                    </div>
+                    <p className="font-bold text-gray-800 text-sm">
+                      Arrastra tu archivo aquí o haz clic para explorar
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Formatos soportados: Excel (.xlsx, .csv). Tamaño máximo: 10 MB.
+                    </p>
+                  </>
+                )}
               </div>
-
-              {file && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={simularProcesamiento}
-                    disabled={isProcessing}
-                    className="bg-[#003DA5] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors disabled:opacity-70 flex items-center gap-2"
-                  >
-                    {isProcessing ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Procesando validaciones V-01 a V-10...</>
-                    ) : (
-                      <><CheckCircle className="w-4 h-4" /> Validar y Conciliar Archivo</>
-                    )}
-                  </button>
-                </div>
-              )}
             </Card>
           )}
 

@@ -10,7 +10,7 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid', { name: 'id_notificacion' })
   id_notificacion: string;
 
-  @Column({ name: 'id_usuario_destinatario', type: 'uuid' })
+  @Column({ name: 'id_usuario_destinatario', type: 'uuid', nullable: true })
   id_usuario_destinatario: string;
 
   @Column({ name: 'tipo_notificacion', length: 100 })

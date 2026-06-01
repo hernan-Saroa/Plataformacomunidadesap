@@ -24,6 +24,16 @@ import { DocenteEntity } from './pta/entities/docente.entity';
 import { AprobacionJefaturaEntity } from './pta/entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
 
+// New entities
+import { FacultadEntity } from './pta/entities/facultad.entity';
+import { DireccionTerritorialEntity } from './pta/entities/direccion-territorial.entity';
+import { UbicacionSemestralEntity } from './pta/entities/ubicacion-semestral.entity';
+import { PeriodoAcademicoEntity } from './pta/entities/periodo-academico.entity';
+import { NucleoTematicoEntity } from './pta/entities/nucleo-tematico.entity';
+import { CetapEntity } from './pta/entities/cetap.entity';
+import { CetapAliasEntity } from './pta/entities/cetap-alias.entity';
+import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.entity';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -51,6 +61,14 @@ import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
         DocenteEntity,
         AprobacionJefaturaEntity,
         PtaEventoEntity,
+        FacultadEntity,
+        DireccionTerritorialEntity,
+        UbicacionSemestralEntity,
+        PeriodoAcademicoEntity,
+        NucleoTematicoEntity,
+        CetapEntity,
+        CetapAliasEntity,
+        OfertaCetapProgramaEntity,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true',
     }),

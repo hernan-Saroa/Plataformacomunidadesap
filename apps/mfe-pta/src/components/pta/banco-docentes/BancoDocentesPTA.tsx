@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
   X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight,
-  GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet,
+  GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, toggleBancoDocenteEstado,
@@ -486,37 +486,54 @@ export function BancoDocentesPTA() {
       {/* ── Tab: Carga Masiva ─────────────────────────────────────────────── */}
       {tab === 'carga-masiva' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '20px 24px' }}>
-          {/* Info box */}
-          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '14px 18px' }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1d4ed8', marginBottom: 6 }}>
-              Carga Masiva de Docentes — Especificación PARTE XXVI, Sec. 26.1.1
-            </div>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#1e40af', lineHeight: 1.6 }}>
-              Carga flexible con las columnas del ListadoDocentes oficial. No todos los 31 campos son obligatorios: se exigen documento, nombre, territorial, vinculación y dedicación; categoría y núcleo temático quedan como recomendados. La plantilla incluye ejemplo, catálogos y el sistema muestra un visor final con filas aplicadas, fallidas y motivo detallado.
-            </p>
-          </div>
 
           {/* Upload card */}
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>SUBIR ARCHIVO DE DOCENTES</h3>
-              <button onClick={handleDownloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: '0.78rem', color: '#1d4ed8', fontWeight: 600 }}>
-                <Download size={13} /> Descargar Plantilla
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 24, boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 900, color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Upload size={20} color="#003DA5" />
+              Subir Archivo Excel/CSV (.xlsx, .csv)
+            </h3>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+              <button onClick={handleDownloadTemplate} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.75rem', color: '#003DA5', fontWeight: 700 }}>
+                <Download size={14} /> Descargar Plantilla CSV
               </button>
             </div>
 
             {/* Drop zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              style={{ border: '2px dashed #cbd5e1', borderRadius: 10, padding: '40px 20px', textAlign: 'center', cursor: 'pointer', background: bulkFile ? '#f0fdf4' : '#f8fafc', transition: 'all 0.15s' }}
+              style={{ border: bulkFile ? '2px solid #10b981' : '3px dashed #cbd5e1', borderRadius: 16, padding: '48px 20px', textAlign: 'center', cursor: 'pointer', background: bulkFile ? '#f0fdf4' : '#f8fafc', transition: 'all 0.2s ease-in-out' }}
+              onDragEnter={(e) => { e.preventDefault(); e.currentTarget.style.backgroundColor = '#eff6ff'; e.currentTarget.style.borderColor = '#3b82f6'; }}
+              onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.backgroundColor = bulkFile ? '#f0fdf4' : '#f8fafc'; e.currentTarget.style.borderColor = bulkFile ? '#10b981' : '#cbd5e1'; }}
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setBulkFile(f); }}
+              onDrop={(e) => { e.preventDefault(); e.currentTarget.style.backgroundColor = '#f0fdf4'; e.currentTarget.style.borderColor = '#10b981'; const f = e.dataTransfer.files[0]; if (f) setBulkFile(f); }}
             >
-              <Upload size={32} color={bulkFile ? '#059669' : '#94a3b8'} style={{ marginBottom: 10 }} />
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: bulkFile ? '#059669' : '#475569', marginBottom: 4 }}>
-                {bulkFile ? `📄 ${bulkFile.name}` : 'Haga clic para subir o arrastre el archivo aquí'}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>XLSX, CSV (Max. 10MB) — Formato DOCENTES_ESAP_[PERIODO]</div>
+              {!bulkFile ? (
+                <>
+                  <div style={{ width: 64, height: 64, margin: '0 auto 16px', background: '#eff6ff', color: '#1d4ed8', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #dbeafe', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <Database size={32} />
+                  </div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>
+                    Arrastra tu archivo aquí o haz clic para explorar
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Formatos soportados: Excel (.xlsx, .xls) o CSV. Tamaño máximo: 10 MB.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ width: 64, height: 64, margin: '0 auto 16px', background: '#dcfce7', color: '#059669', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #bbf7d0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <FileSpreadsheet size={32} />
+                  </div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>
+                    {bulkFile.name}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Tamaño: {(bulkFile.size / 1024).toFixed(1)} KB — Listo para procesar
+                  </div>
+                </>
+              )}
             </div>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={(e) => setBulkFile(e.target.files?.[0] || null)} />
 

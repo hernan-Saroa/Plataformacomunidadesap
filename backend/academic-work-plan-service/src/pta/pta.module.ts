@@ -18,6 +18,23 @@ import { UsuarioEntity } from './entities/usuario.entity';
 import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './entities/pta-evento.entity';
 
+// New entities
+import { FacultadEntity } from './entities/facultad.entity';
+import { DireccionTerritorialEntity } from './entities/direccion-territorial.entity';
+import { UbicacionSemestralEntity } from './entities/ubicacion-semestral.entity';
+import { PeriodoAcademicoEntity } from './entities/periodo-academico.entity';
+import { NucleoTematicoEntity } from './entities/nucleo-tematico.entity';
+import { CetapEntity } from './entities/cetap.entity';
+import { CetapAliasEntity } from './entities/cetap-alias.entity';
+import { OfertaCetapProgramaEntity } from './entities/oferta-cetap-programa.entity';
+
+// Import and Cascada Controllers & Services
+import { AsignaturasImportController } from './asignaturas-import/asignaturas-import.controller';
+import { AsignaturasImportService } from './asignaturas-import/asignaturas-import.service';
+import { ExcelParserService } from './asignaturas-import/parsers/excel-parser.service';
+import { CascadaController } from './cascada.controller';
+import { PeriodoAcademicoController } from './periodo-academico.controller';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -36,9 +53,17 @@ import { PtaEventoEntity } from './entities/pta-evento.entity';
       UsuarioEntity,
       AprobacionJefaturaEntity,
       PtaEventoEntity,
+      FacultadEntity,
+      DireccionTerritorialEntity,
+      UbicacionSemestralEntity,
+      PeriodoAcademicoEntity,
+      NucleoTematicoEntity,
+      CetapEntity,
+      CetapAliasEntity,
+      OfertaCetapProgramaEntity,
     ]),
   ],
-  controllers: [PtaController],
-  providers: [PtaService],
+  controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController],
+  providers: [PtaService, AsignaturasImportService, ExcelParserService],
 })
 export class PtaModule {}

@@ -30,47 +30,35 @@ export interface SedesFilters {
 export interface CreateSeccionalData {
   codSeccional?: string;
   nomSeccional: string;
-  idUbiSeccional?: number;
+  ordenVisualizacion?: number;
+  activo?: boolean;
 }
 
 export interface UpdateSeccionalData {
   codSeccional?: string;
   nomSeccional?: string;
-  idUbiSeccional?: number;
+  ordenVisualizacion?: number;
+  activo?: boolean;
 }
 
 export interface CreateSedeData {
   codSede?: string;
   nomSede: string;
-  idGeopolitica?: number;
   idSeccional?: number;
-  dirSede?: string;
-  telSede?: string;
-  emailSede?: string;
-  capacidadEstudiantes?: number;
-  capacidadDocentes?: number;
+  tipo?: string;
+  latitud?: number;
+  longitud?: number;
   sedeAct?: string;
-  permiteInscripciones?: boolean;
-  permiteMatriculas?: boolean;
-  visiblePortal?: boolean;
-  observaciones?: string;
 }
 
 export interface UpdateSedeData {
   codSede?: string;
   nomSede?: string;
-  idGeopolitica?: number;
   idSeccional?: number;
-  dirSede?: string;
-  telSede?: string;
-  emailSede?: string;
-  capacidadEstudiantes?: number;
-  capacidadDocentes?: number;
+  tipo?: string;
+  latitud?: number;
+  longitud?: number;
   sedeAct?: string;
-  permiteInscripciones?: boolean;
-  permiteMatriculas?: boolean;
-  visiblePortal?: boolean;
-  observaciones?: string;
 }
 
 /**
@@ -307,6 +295,19 @@ export const estructuraService = {
     return apiClient.post<{ success: boolean; actualizados: number }>(
       `${SERVICE_PREFIX}/estructura-organizacional/usuarios/asignar`,
       { ids, territorialId, cetapId }
+    );
+  },
+
+  async obtenerPeriodos(): Promise<any[]> {
+    return apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+  },
+
+  async importarEstructura(file: File, dryRun: boolean): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.upload<any>(
+      `${SERVICE_PREFIX}/estructura-import/upload-geografico?dry_run=${dryRun}`,
+      formData
     );
   },
 };
