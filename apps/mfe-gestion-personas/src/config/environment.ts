@@ -33,6 +33,10 @@ const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | unde
 const VITE_API_MODE = import.meta.env.VITE_API_MODE as string | undefined;
 const isLocalhost = typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const isDevServer = typeof window !== 'undefined' &&
+  window.location.port !== '' &&
+  window.location.port !== '80' &&
+  window.location.port !== '443';
 
 const isLoopbackHost = (host?: string | null) =>
   host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -46,7 +50,8 @@ const rewriteLoopbackUrl = (rawUrl: string): string => {
     const currentHost = window.location.hostname;
 
     if (isLoopbackHost(url.hostname) && currentHost && !isLoopbackHost(currentHost)) {
-      url.hostname = currentHost;
+      url.host = window.location.host;
+      url.protocol = window.location.protocol;
       if (!hadTrailingSlash && url.pathname === '/' && !url.search && !url.hash) {
         return `${url.protocol}//${url.host}`;
       }
@@ -130,7 +135,8 @@ export const getApiGatewayBaseUrl = (): string => {
   return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
 };
 
-export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
+const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && !!(window as any).__ESAP_DEV__);
+export const API_MODE = VITE_API_MODE || (isDev && isLocalhost && isDevServer ? 'direct' : 'gateway');
 
 export const ONLYOFFICE_URL = (() => {
   const configuredUrl = VITE_ONLYOFFICE_URL

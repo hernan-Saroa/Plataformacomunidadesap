@@ -204,7 +204,11 @@ export class PlanesMejoramientoService {
    * Obtiene todos los planes de mejoramiento con filtros opcionales
    * Asegura que el hallazgo se cargue completamente con todos sus campos
    */
-  async findAll(filters?: { estado?: string; area?: string }): Promise<PlanMejoramiento[]> {
+  async findAll(filters?: {
+    estado?: string;
+    area?: string;
+    planAnualVigencia?: number;
+  }): Promise<PlanMejoramiento[]> {
     try {
       // Primero intentar una consulta simple sin relaciones complejas
       const query = this.planRepository
@@ -223,6 +227,25 @@ export class PlanesMejoramientoService {
 
       if (filters?.area) {
         query.andWhere('plan.areaResponsable ILIKE :area', { area: `%${filters.area}%` });
+      }
+
+      if (filters?.planAnualVigencia != null && !Number.isNaN(Number(filters.planAnualVigencia))) {
+        const v = Number(filters.planAnualVigencia);
+        query.andWhere(
+          `(
+            auditoria.planAnualVigencia = :planAnualVigencia
+            OR (
+              auditoria.planAnualVigencia IS NULL
+              AND auditoria.fechaInicio IS NOT NULL
+              AND EXTRACT(YEAR FROM auditoria.fechaInicio) = :planAnualVigencia
+            )
+            OR (
+              plan.auditoriaId IS NULL
+              AND plan.codigo LIKE :codigoVigenciaPat
+            )
+          )`,
+          { planAnualVigencia: v, codigoVigenciaPat: `PM-${v}-%` },
+        );
       }
 
       const results = await query.getMany();

@@ -62,6 +62,12 @@ export interface PermisosPTA {
 const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.ver_gestion': 'gestion',
   'pta.backoffice.ver_detalle': 'gestion',
+  'pta.backoffice.aprobador_N1': 'gestion',
+  'pta.backoffice.aprobador_N2': 'gestion',
+  'pta.backoffice.aprobador_N3': 'gestion',
+  'pta.backoffice.revisor_N1': 'gestion',
+  'pta.backoffice.revisor_N2': 'gestion',
+  'pta.backoffice.revisor_N3': 'gestion',
   'pta.backoffice.tablero_control': 'tablero',
   'pta.backoffice.dashboard_directivo': 'directivo',
   'pta.backoffice.kanban': 'kanban',
@@ -120,12 +126,26 @@ function deriveFromGranular(
   
   // Wildcard check
   const hasWildcard = allPermisos.includes('*');
-  const has = (perm: string) => hasWildcard || allPermisos.includes(perm);
+  const normalizedPerms = new Set(allPermisos.map(p => p.toLowerCase()));
+  const has = (perm: string) => hasWildcard || allPermisos.includes(perm) || normalizedPerms.has(perm.toLowerCase());
+  const hasAny = (perms: string[]) => perms.some(has);
+
+  const aprobadorNivelPerms = [
+    { perm: 'pta.backoffice.aprobador_N1', nivel: 1 },
+    { perm: 'pta.backoffice.aprobador_N2', nivel: 2 },
+    { perm: 'pta.backoffice.aprobador_N3', nivel: 3 },
+  ];
+  const maxNivelAprobador = aprobadorNivelPerms.reduce(
+    (max, item) => has(item.perm) ? Math.max(max, item.nivel) : max,
+    0,
+  );
+  const tienePermisoAprobador = maxNivelAprobador > 0;
 
   // Derivar vistas
   const vistasSet = new Set<string>();
   for (const perm of ptaPerms) {
-    const vista = PERMISO_TO_VISTA[perm];
+    const vista = PERMISO_TO_VISTA[perm]
+      || Object.entries(PERMISO_TO_VISTA).find(([code]) => code.toLowerCase() === perm.toLowerCase())?.[1];
     if (vista) vistasSet.add(vista);
   }
   // Si tiene wildcard, agregar todas las vistas
@@ -136,7 +156,9 @@ function deriveFromGranular(
 
   // Derivar nivel de aprobacion
   let nivelAprobacion = 0;
-  if (has('pta.backoffice.aprobar')) {
+  if (tienePermisoAprobador) {
+    nivelAprobacion = maxNivelAprobador;
+  } else if (has('pta.backoffice.aprobar')) {
     if (perfil.rol === 'admin') nivelAprobacion = 3;
     else if (perfil.rol === 'decanatura') nivelAprobacion = 2;
     else if (perfil.rol === 'jefatura') nivelAprobacion = 1;
@@ -146,13 +168,13 @@ function deriveFromGranular(
 
   return {
     vistasPerm,
-    puedeAprobar: has('pta.backoffice.aprobar') || has('pta.backoffice.aprobacion_masiva'),
+    puedeAprobar: tienePermisoAprobador || has('pta.backoffice.aprobar') || has('pta.backoffice.aprobacion_masiva'),
     puedeExportar: has('pta.backoffice.exportar') || has('pta.backoffice.centro_reportes'),
     puedeVerSNA: has('pta.backoffice.panel_sna'),
     puedeArbitrar: has('pta.backoffice.arbitrar'),
     puedeEditarCatalogo: has('pta.backoffice.editar_catalogo'),
     puedeCargarMasivo: has('pta.backoffice.carga_masiva'),
-    puedeConcertar: has('pta.backoffice.concertar') || has('pta.portal.concertar'),
+    puedeConcertar: has('pta.backoffice.concertar') || has('pta.portal.concertar') || hasAny(aprobadorNivelPerms.map(item => item.perm)),
     nivelAprobacion,
     filtroTerritorial: perfil.territorial_ids.length > 0 ? perfil.territorial_ids : null,
     filtroPrograma: perfil.programa_ids.length > 0 ? perfil.programa_ids : null,

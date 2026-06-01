@@ -27,6 +27,15 @@ interface PortalDashboardProps {
   onSystemChange?: (system: 'backoffice' | 'portal') => void;
 }
 
+const PORTAL_ACADEMIC_ROLE_CODES = new Set([
+  'ESTUDIANTE',
+  'DOCENTE',
+  'GRADUADO',
+  'EGRESADO',
+  'ASPIRANTE',
+  'USUARIO_AUDITADO',
+]);
+
 const normalizePortalRoleCode = (role?: string | null) =>
   String(role || '')
     .trim()
@@ -50,6 +59,8 @@ const displayPortalRoleFromCode = (roleCode?: string | null) => {
   return labels[code] || roleCode || 'Estudiante';
 };
 
+const isPortalAcademicRoleCode = (roleCode: string) => PORTAL_ACADEMIC_ROLE_CODES.has(roleCode);
+
 export function PortalDashboard({
   userName,
   userEmail,
@@ -65,7 +76,11 @@ export function PortalDashboard({
   const portalRoleCodes = useMemo(
     () =>
       Array.from(
-        new Set(((Array.isArray(userData?.roles) && userData.roles.length ? userData.roles : userRoles) || []).map(normalizePortalRoleCode).filter(Boolean)),
+        new Set(
+          ((Array.isArray(userData?.roles) && userData.roles.length ? userData.roles : userRoles) || [])
+            .map(normalizePortalRoleCode)
+            .filter((code: string) => Boolean(code) && isPortalAcademicRoleCode(code)),
+        ),
       ),
     [userData?.roles, userRoles],
   );
@@ -174,7 +189,7 @@ export function PortalDashboard({
           {/* Header */}
           <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8 pb-6 border-b border-white/20">
             <div className="flex items-start gap-3">
-              <ESAPLogo variant="white" className="h-8 sm:h-9 md:h-10 w-auto" />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '135px', height: '40px' }} />
               <div>
                 <h3 className="text-[15px] font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-[13px] text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado desde 1958.</p>

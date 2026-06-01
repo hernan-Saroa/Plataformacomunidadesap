@@ -45,6 +45,8 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
 import { controlInternoService } from '../../services/api/controlInternoService';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 
 // Validaciones
 import { validarPlanParaAuditoriaCompleta, mostrarErroresValidacion } from './utils/validaciones';
@@ -369,6 +371,9 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   // ✅ HOOK DE BACKEND - Planes de mejoramiento
   const {
     planes,
@@ -379,7 +384,9 @@ export function PlanesMejoramientoModuleRediseno() {
     actualizarEstadoPlan,
     aprobarPlan,
     rechazarPlan
-  } = usePlanesMejoramiento();
+  } = usePlanesMejoramiento(
+    vigenciaActiva != null ? { planAnualVigencia: vigenciaActiva } : undefined,
+  );
 
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
   const [auditoriasElegiblesBackend, setAuditoriasElegiblesBackend] = useState<any[]>([]);
@@ -450,12 +457,25 @@ export function PlanesMejoramientoModuleRediseno() {
 
   const cargarAuditoriasElegibles = useCallback(async () => {
     try {
+      const filtrosVigencia =
+        vigenciaActiva != null
+          ? { planAnualVigencia: vigenciaActiva, year: vigenciaActiva }
+          : undefined;
       const [auditoriasResp, planesResp] = await Promise.all([
-        controlInternoService.getAuditorias(),
-        controlInternoService.getPlanesMejoramiento().catch(() => []),
+        controlInternoService.getAuditorias(filtrosVigencia),
+        controlInternoService
+          .getPlanesMejoramiento(
+            vigenciaActiva != null ? { planAnualVigencia: vigenciaActiva } : undefined,
+          )
+          .catch(() => []),
       ]);
 
-      const auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      let auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      if (vigenciaActiva != null) {
+        auditorias = auditorias.filter((a: any) =>
+          auditoriaCoincideVigenciaPlan(a, vigenciaActiva),
+        );
+      }
       const planesExistentes = Array.isArray(planesResp) ? planesResp : [];
       const idsConPlan = new Set(
         planesExistentes
@@ -506,7 +526,7 @@ export function PlanesMejoramientoModuleRediseno() {
       console.error('[PlanesMejoramiento] Error cargando auditorias elegibles:', err);
       setAuditoriasElegiblesBackend([]);
     }
-  }, []);
+  }, [vigenciaActiva]);
 
   // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
@@ -690,7 +710,7 @@ export function PlanesMejoramientoModuleRediseno() {
       <div className="min-h-screen bg-gray-50">
         <ModuleHeaderBar
           title="Planes de Mejoramiento"
-          subtitle="Formulación, seguimiento y cierre de acciones correctivas"
+          subtitle={`Formulación, seguimiento y cierre de acciones correctivas${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''}`}
           icon={<AlertTriangle className="w-5 h-5 text-white" />}
           color="#EF4444"
         />
@@ -1215,7 +1235,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
     return (
       <motion.div
         ref={drop}
-        className="w-full lg:w-16 flex-shrink-0 lg:h-full"
+        className="w-full lg:w-10 flex-shrink-0 lg:h-full"
         initial={{ width: '100%' }}
         animate={{ width: '100%' }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
@@ -1226,7 +1246,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
           }`}
           onClick={onToggleColapso}
         >
-          <div className="flex flex-col items-center py-4 px-2 gap-3">
+          <div className="flex flex-col items-center py-3 px-1 gap-2.5 relative">
             {isOver && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -1236,35 +1256,35 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
             )}
             
             <button
-              className="p-2 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
+              className="p-1.5 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
               title={`Expandir ${columna.titulo}`}
             >
-              <Maximize2 className="w-4 h-4 text-gray-600 group-hover:text-[#1e5da8]" />
+              <Maximize2 className="w-3.5 h-3.5 text-gray-600 group-hover:text-[#1e5da8]" />
             </button>
 
-            <div className="p-2 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="p-1 rounded-lg bg-gray-50 border border-gray-200">
               {columna.icono}
             </div>
 
             {/* Indicadores de semáforo */}
             {planes.length > 0 && (
-              <div className="flex flex-col gap-1 py-2">
+              <div className="flex flex-col gap-1 py-1">
                 {planesRojos > 0 && (
                   <div className="flex items-center gap-1" title={`${planesRojos} vencidos`}>
-                    <div className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-xs font-bold text-red-600">{planesRojos}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span className="text-[10px] font-bold text-red-600">{planesRojos}</span>
                   </div>
                 )}
                 {planesAmarillos > 0 && (
                   <div className="flex items-center gap-1" title={`${planesAmarillos} próximos a vencer`}>
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-xs font-bold text-amber-600">{planesAmarillos}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <span className="text-[10px] font-bold text-amber-600">{planesAmarillos}</span>
                   </div>
                 )}
                 {planesVerdes > 0 && (
                   <div className="flex items-center gap-1" title={`${planesVerdes} en término`}>
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-xs font-bold text-green-600">{planesVerdes}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    <span className="text-[10px] font-bold text-green-600">{planesVerdes}</span>
                   </div>
                 )}
               </div>
@@ -1272,7 +1292,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
 
             <div className="flex-1 flex items-center justify-center py-4">
               <h3 
-                className="font-black text-xs text-gray-800 whitespace-nowrap"
+                className="font-black text-[10px] text-gray-800 whitespace-nowrap"
                 style={{ 
                   writingMode: 'vertical-rl',
                   textOrientation: 'mixed'
@@ -1282,7 +1302,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
               </h3>
             </div>
 
-            <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-700">
+            <Badge className="font-bold text-[10px] px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-700">
               {planes.length}
             </Badge>
           </div>
@@ -1367,7 +1387,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
             ? 'bg-gradient-to-b from-blue-100 to-blue-50 border-[#1e5da8] border-dashed shadow-inner' 
             : 'bg-gray-50 border-transparent'
         }`}
-        style={{ minHeight: 'calc(100vh - 200px)', maxHeight: 'calc(100vh - 200px)' }}
+        style={{ minHeight: 'calc(100vh - 180px)', maxHeight: 'calc(100vh - 180px)' }}
       >
         {isOver && (
           <motion.div

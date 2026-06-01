@@ -46,6 +46,16 @@ export interface Expediente {
     demandadoDireccion?: string;
     demandadoTelefono?: string;
     demandadoEmail?: string;
+    // Riesgo y provisión
+    nivelRiesgo?: string;
+    provisionContable?: number;
+    observacionProvision?: string;
+    fechaEstimacionProvision?: string;
+    // Clasificación penal
+    esDelitoAdminPublica?: boolean;
+    esConductaPatrimonioPublico?: boolean;
+    esOtroDelitoPenal?: boolean;
+    otroDelitoPenalDescripcion?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -444,6 +454,12 @@ export class LegalService {
 
     async actualizarDocumento(id: string, data: Partial<Documento>): Promise<Documento> {
         return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}`, data);
+    }
+
+    async actualizarDocumentoArchivo(id: string, file: File): Promise<Documento> {
+        const formData = new FormData();
+        formData.append('archivo', file);
+        return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}/upload`, formData);
     }
 
     async eliminarDocumento(id: string): Promise<void> {

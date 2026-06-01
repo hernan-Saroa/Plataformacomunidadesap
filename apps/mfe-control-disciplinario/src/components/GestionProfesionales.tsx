@@ -1054,7 +1054,6 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
             </p>
           </div>
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_CREATE) && (
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_CREATE) && (
           <button
             onClick={() => {
               setProfesionalEditar(undefined);
@@ -1066,7 +1065,6 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
             <Plus className="w-4 h-4" />
             Asignar Profesional
           </button>
-          )}
           )}
         </div>
 
@@ -1280,7 +1278,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                     <div className="col-span-2 flex flex-col justify-center gap-2">
                       <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#F9FAFB' }}>
                         <div className="flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" style={{ color: '#10B981' }}>
+                          <TrendingUp className="w-4 h-4" style={{ color: '#10B981' }} />
                           <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
                             Efectividad
                           </span>

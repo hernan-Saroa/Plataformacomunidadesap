@@ -9,10 +9,10 @@ export class ExcepcionProcesal {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ length: 50 })
+    @Column({ length: 50, nullable: true })
     tipo: TipoExcepcion;
 
-    @Column('text')
+    @Column('text', { nullable: true })
     descripcion: string;
 
     @Column('text', { nullable: true })
@@ -37,7 +37,7 @@ export class ExcepcionProcesal {
     @JoinColumn({ name: 'expediente_id' })
     expediente: Expediente;
 
-    @Column({ name: 'expediente_id' })
+    @Column({ name: 'expediente_id', nullable: true })
     expedienteId: string;
 
     @CreateDateColumn({ name: 'created_at' })

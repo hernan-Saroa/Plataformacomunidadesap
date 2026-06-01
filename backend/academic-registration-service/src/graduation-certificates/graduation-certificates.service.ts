@@ -13,7 +13,6 @@ import { Graduate } from './graduate.entity';
 import { GraduationCertificateRequest } from './graduation-certificate-request.entity';
 import { GraduationCertificate } from './graduation-certificate.entity';
 import { CertificateValidation } from './certificate-validation.entity';
-import { CertificateDownload } from './certificate-download.entity';
 import { Signer } from './signer.entity';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
@@ -103,8 +102,6 @@ export class GraduationCertificatesService {
     private certificateRepository: Repository<GraduationCertificate>,
     @InjectRepository(CertificateValidation)
     private validationRepository: Repository<CertificateValidation>,
-    @InjectRepository(CertificateDownload)
-    private downloadRepository: Repository<CertificateDownload>,
     @InjectRepository(Signer)
     private signerRepository: Repository<Signer>,
     @InjectRepository(TemplateConfig)
@@ -4862,44 +4859,6 @@ export class GraduationCertificatesService {
       where,
       order: { validationDate: 'DESC' },
     });
-  }
-
-  /**
-   * ADMIN: Listar descargas de certificados
-   */
-  async listarDescargas(certificateId?: string) {
-    const where = certificateId ? { certificateId } : {};
-    return await this.downloadRepository.find({
-      where,
-      order: { downloadDate: 'DESC' },
-    });
-  }
-
-  /**
-   * PUBLICO: Registrar descarga de certificado
-   */
-  async registrarDescarga(
-    certificateId: string,
-    ipAddress?: string,
-    userAgent?: string | string[],
-  ) {
-    const certificate = await this.certificateRepository.findOne({
-      where: { id: certificateId },
-    });
-
-    if (!certificate) {
-      throw new NotFoundException('Certificado no encontrado');
-    }
-
-    const download = this.downloadRepository.create({
-      certificateId,
-      ipAddress: this.normalizeIpAddress(ipAddress),
-      userAgent: this.normalizeUserAgent(userAgent),
-    });
-
-    await this.downloadRepository.save(download);
-
-    return { mensaje: 'Descarga registrada' };
   }
 
   private resolveLocation(

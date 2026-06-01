@@ -59,7 +59,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
-  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string; descripcion?: string; id?: string } | null>(null);
 
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
@@ -697,7 +697,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     const fullUrl = getFullUrl(url);
     // Abrir en el visor inline en lugar de una nueva pestaña
-    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', asunto: doc.tipoDocumento || '' });
+    setDocParaVisor({ 
+      url: fullUrl, 
+      nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', 
+      asunto: doc.tipoDocumento || '', 
+      descripcion: doc.descripcion || '',
+      id: doc.id 
+    });
     setVisorAbierto(true);
   };
 
@@ -1368,90 +1374,100 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                   )}
 
                   <div className="space-y-2">
-                    {documentos.map((doc) => (
-                      <Card key={doc.id} className={`p-4 hover:shadow-md transition-shadow ${!doc.firmado ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-green-400'}`}>
-                        <div className="flex items-center gap-4">
-                          <div className={`p-3 rounded-lg ${doc.firmado ? 'bg-green-50' : 'bg-amber-50'}`}>
-                            <FileText className={`w-6 h-6 ${doc.firmado ? 'text-green-600' : 'text-amber-600'}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="font-bold text-sm truncate">{doc.nombre}</p>
-                              {doc.firmado ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-green-500 flex items-center gap-1 flex-shrink-0">
-                                  <CheckCircle className="w-3 h-3" /> Firmado
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500 flex items-center gap-1 flex-shrink-0">
-                                  <AlertCircle className="w-3 h-3" /> Sin Firmar
-                                </span>
+                    {documentos.map((doc) => {
+                      const isSigned = doc.firmado || (() => {
+                        if (doc.descripcion) {
+                          try {
+                            const data = JSON.parse(doc.descripcion);
+                            return !!(data && data.firmado);
+                          } catch (e) {
+                            return false;
+                          }
+                        }
+                        return false;
+                      })();
+
+                      return (
+                        <Card key={doc.id} className={`p-4 hover:shadow-md transition-shadow ${!isSigned ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-green-400'}`}>
+                          <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-lg ${isSigned ? 'bg-green-50' : 'bg-amber-50'}`}>
+                              <FileText className={`w-6 h-6 ${isSigned ? 'text-green-600' : 'text-amber-600'}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                                {isSigned ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-green-500 flex items-center gap-1 flex-shrink-0">
+                                    <CheckCircle className="w-3 h-3" /> Firmado
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500 flex items-center gap-1 flex-shrink-0">
+                                    <AlertCircle className="w-3 h-3" /> Sin Firmar
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                {doc.tamanoBytes ? (
+                                  <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
+                                ) : null}
+                                {doc.createdAt && (
+                                  <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                )}
+                                {doc.subidoPor && (
+                                  <span>Por: {doc.subidoPor}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 flex items-center gap-2">
+                              {/* Botón Subir Firmado — solo para jefe (JEFE_GESTION_LEGAL), no abogados */}
+                              {!isSigned && esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 font-bold"
+                                  onClick={() => {
+                                    setReplacingDocId(doc.id);
+                                    replaceFileInputRef.current?.click();
+                                  }}
+                                  disabled={uploadingDoc}
+                                >
+                                  <Upload className="w-4 h-4 mr-1" />
+                                  Subir Firmado
+                                </Button>
+                              )}
+                              {/* Botón Ver */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleVerDocumento(doc)}
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                Ver
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDescargarDocumento(doc)}
+                              >
+                                <Download className="w-4 h-4 mr-1" />
+                                Descargar
+                              </Button>
+                              {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && !isSigned && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                  onClick={() => handleEliminarDocumento(doc)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                  Eliminar
+                                </Button>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              {doc.tamanoBytes ? (
-                                <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
-                              ) : null}
-                              {doc.createdAt && (
-                                <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
-                              )}
-                              {doc.subidoPor && (
-                                <span>Por: {doc.subidoPor}</span>
-                              )}
-                            </div>
                           </div>
-                          <div className="flex-shrink-0 flex items-center gap-2">
-                            {/* Botón Subir Firmado — solo para jefe (JEFE_GESTION_LEGAL), no abogados */}
-                            {!doc.firmado && esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 font-bold"
-                                onClick={() => {
-                                  setReplacingDocId(doc.id);
-                                  replaceFileInputRef.current?.click();
-                                }}
-                                disabled={uploadingDoc}
-                              >
-                                <Upload className="w-4 h-4 mr-1" />
-                                Subir Firmado
-                              </Button>
-                            )}
-                            {/* Botón Ver */}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const fullUrl = getFullUrl(doc.archivoUrl || doc.url);
-                                if (fullUrl) window.open(fullUrl, '_blank');
-                                else toast.error('No se pudo obtener la URL del documento');
-                              }}
-                            >
-                              <Eye className="w-4 h-4 mr-1" />
-                              Ver
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDescargarDocumento(doc)}
-                            >
-                              <Download className="w-4 h-4 mr-1" />
-                              Descargar
-                            </Button>
-                            {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                onClick={() => handleEliminarDocumento(doc)}
-                              >
-                                <Trash2 className="w-4 h-4 mr-1" />
-                                Eliminar
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </TabsContent>
 
@@ -2056,6 +2072,64 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={docParaVisor.asunto}
+          descripcion={docParaVisor.descripcion}
+          docId={docParaVisor.id}
+          allowSigning={true}
+          onSignComplete={async (docId, signedData, pdfFile) => {
+            try {
+              const originalDocName = docParaVisor.nombre;
+              let nuevoNombre = originalDocName;
+              if (!originalDocName.toLowerCase().includes('(firmado)')) {
+                const extIndex = originalDocName.lastIndexOf('.');
+                if (extIndex !== -1) {
+                  nuevoNombre = `${originalDocName.substring(0, extIndex)} (Firmado)${originalDocName.substring(extIndex)}`;
+                } else {
+                  nuevoNombre = `${originalDocName} (Firmado)`;
+                }
+              }
+
+              // FIX: Ensure it always has .pdf extension since the signed file is a PDF
+              if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+                nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
+              }
+
+              const signatureJson = JSON.stringify({
+                firmado: true,
+                coords: signedData.coords,
+                firmaImg: signedData.firmaImg,
+                hash: signedData.hash,
+                timestamp: signedData.timestamp,
+                firmante: signedData.firmante,
+                cargo: signedData.cargo,
+                certificadoId: signedData.certificado_id,
+                scale: signedData.scale
+              });
+
+              toast.loading('✍️ Guardando firma en el documento de consulta...', { id: 'firma-documento' });
+
+              if (pdfFile) {
+                const renamedFile = new File([pdfFile], nuevoNombre, { type: pdfFile.type });
+                const formData = new FormData();
+                formData.append('archivo', renamedFile);
+                await legalService.replaceDocumentoConsulta(docId, formData);
+              }
+
+              await legalService.actualizarDocumentoConsulta(docId, { 
+                firmado: true, 
+                nombre: nuevoNombre,
+                descripcion: signatureJson
+              });
+              toast.success('✅ Documento firmado exitosamente', { id: 'firma-documento' });
+
+              // Refrescar documentos
+              await loadDocumentos();
+              setVisorAbierto(false);
+              setDocParaVisor(null);
+            } catch (error) {
+              console.error('Error al firmar documento de consulta:', error);
+              toast.error('❌ Error al actualizar la firma del documento', { id: 'firma-documento' });
+            }
+          }}
         />
       )}
     </>

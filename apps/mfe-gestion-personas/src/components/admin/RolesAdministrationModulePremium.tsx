@@ -1397,7 +1397,7 @@ export function RolesAdministrationModulePremium() {
       {/* Confirmation Dialog */}
       <ConfirmationDialog />
 
-      <Toaster position="top-right" richColors />
+      <Toaster position="bottom-right" richColors />
     </div>
   );
 }

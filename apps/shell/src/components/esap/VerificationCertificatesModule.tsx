@@ -69,7 +69,6 @@ import { copyToClipboard } from '@/utils/browser';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import graduadosService, {
   CertificadoGraduado,
-  DescargaCertificado,
   GraduationCertificateTemplateConfig,
   GraduationCertificateTemplateTexts,
   SolicitudCertificadoGraduado,
@@ -121,7 +120,6 @@ interface CertificateRequest {
   requestCount: number; // Numero de solicitudes asociadas al certificado
   qrScanCount: number; // Número de veces que se ha escaneado el QR
   viewCount: number;
-  downloadCount: number;
   lastActivity: string;
   requestHistory: Array<{
     id: string;
@@ -422,17 +420,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     isLoadingCertificatesRef.current = true;
     setIsLoading(true);
     try {
-      const [certificatesResponse, requestsResponse, validationsResponse, downloadsResponse] = await Promise.all([
+      const [certificatesResponse, requestsResponse, validationsResponse] = await Promise.all([
         graduadosService.certificados.listar(),
         graduadosService.solicitudes.listar(),
         graduadosService.validaciones.listar(),
-        graduadosService.descargas.listar(),
       ]);
 
       const certificatesData = ensureArray<CertificadoGraduado>(certificatesResponse);
       const requestsData = ensureArray<SolicitudCertificadoGraduado>(requestsResponse);
       const validationsData = ensureArray<ValidacionCertificado>(validationsResponse);
-      const downloadsData = ensureArray<DescargaCertificado>(downloadsResponse);
 
       const requestsById = new Map<string, SolicitudCertificadoGraduado>();
       requestsData.forEach((request) => {
@@ -445,14 +441,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           validationsByCertificate.set(validation.certificateId, []);
         }
         validationsByCertificate.get(validation.certificateId)!.push(validation);
-      });
-
-      const downloadsByCertificate = new Map<string, DescargaCertificado[]>();
-      downloadsData.forEach((download) => {
-        if (!downloadsByCertificate.has(download.certificateId)) {
-          downloadsByCertificate.set(download.certificateId, []);
-        }
-        downloadsByCertificate.get(download.certificateId)!.push(download);
       });
 
       const mappedCertificates = certificatesData.map((certificate) => {
@@ -482,7 +470,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const scanHistory = mapScanHistory(
             validationsByCertificate.get(certificate.id) || []
           );
-          const downloadCount = (downloadsByCertificate.get(certificate.id) || []).length;
 
           const lastScan = scanHistory.length
             ? scanHistory[0].scannedAt
@@ -557,7 +544,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             requestCount: 1,
             qrScanCount: 0,
             viewCount: 1,
-            downloadCount,
             lastActivity,
             requestHistory: mainRequest
               ? [
@@ -1790,17 +1776,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         document.body.removeChild(link);
         URL.revokeObjectURL(downloadUrl);
 
-        setQrPreviewCertificate((prev) =>
-          prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev
-        );
-        setCertificates((prev) =>
-          prev.map((item) =>
-            item.id === qrPreviewCertificate.id
-              ? { ...item, downloadCount: item.downloadCount + 1 }
-              : item
-          )
-        );
-
         toast.success('QR descargado exitosamente', {
           description: `El codigo QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
         });
@@ -2556,7 +2531,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <TrendingUp className="w-4 h-4 text-green-600" />
                             Estadísticas de Uso
                           </h4>
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="bg-white border border-amber-200 rounded-lg p-3 text-center">
                               <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mx-auto mb-2">
                                 <QrCode className="w-5 h-5 text-amber-600" />
@@ -2570,13 +2545,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               </div>
                               <p className="text-2xl font-bold text-gray-900">{cert.viewCount}</p>
                               <p className="text-xs text-gray-600">Visualizaciones</p>
-                            </div>
-                            <div className="bg-white border border-green-200 rounded-lg p-3 text-center">
-                              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mx-auto mb-2">
-                                <Download className="w-5 h-5 text-green-600" />
-                              </div>
-                              <p className="text-2xl font-bold text-gray-900">{cert.downloadCount}</p>
-                              <p className="text-xs text-gray-600">Descargas</p>
                             </div>
                           </div>
                         </div>
@@ -3094,82 +3062,149 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Editar plantilla del certificado academico */}
       <Dialog open={isTemplateEditorOpen} onOpenChange={setIsTemplateEditorOpen}>
-        <DialogContent className="w-[96vw] max-w-7xl h-[92vh] max-h-[92vh] p-0 sm:p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-5 pt-5 sm:px-6 sm:pt-6 shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <PencilLine className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Editar Certificado
-            </DialogTitle>
-            <DialogDescription>
-              Edita solo los textos del certificado de registro academico. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
-            </DialogDescription>
+        <DialogContent className="w-[96vw] max-w-7xl h-[92vh] max-h-[92vh] overflow-hidden border border-slate-200 bg-slate-50 p-0 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] sm:p-0 flex flex-col">
+          <DialogHeader className="relative shrink-0 overflow-hidden border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#003DA5] via-[#0052CC] to-[#C79A2B]" />
+            <div className="flex flex-col gap-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#003DA5] text-white shadow-sm">
+                  <PencilLine className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-xl font-bold text-slate-900">
+                    Editar Certificado
+                  </DialogTitle>
+                  <DialogDescription className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
+                    Edita solo los textos del certificado de registro academico. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="border-[#BFD6FF] bg-[#EEF5FF] px-2.5 py-1 text-[#003DA5]">
+                  <Shield className="h-3.5 w-3.5" />
+                  Protegido
+                </Badge>
+                <Badge
+                  className={
+                    hasTemplateChanges
+                      ? 'border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800'
+                      : 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                  }
+                >
+                  {hasTemplateChanges ? 'Cambios pendientes' : 'Sin cambios'}
+                </Badge>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 sm:px-6 sm:pb-6">
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-6 py-2">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-5 sm:px-6 sm:pb-6">
+            <div className="grid grid-cols-1 gap-5 py-5 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
               <div className="space-y-4 min-w-0">
-                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                  <p className="font-semibold mb-1">Edicion controlada</p>
-                  <p>
-                    Aqui solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, codigos QR, enlaces de validacion ni numeraciones ya emitidas.
-                  </p>
-                </div>
-
-                {templateConfig && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Version</p>
-                      <p className="text-sm font-semibold text-gray-900">{templateConfig.version}</p>
+                <section className="overflow-hidden rounded-lg border border-[#C8DAF5] bg-white shadow-sm">
+                  <div className="flex items-start gap-3 bg-[#F2F7FF] px-4 py-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#003DA5] shadow-sm">
+                      <Shield className="h-4 w-4" />
                     </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Actualizado por</p>
-                      <p className="text-sm font-semibold text-gray-900">{templateConfig.updatedBy || 'Sistema'}</p>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Ultima actualizacion</p>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {templateConfig.updatedAt
-                          ? new Date(templateConfig.updatedAt).toLocaleString('es-CO')
-                          : 'Sin registro'}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#003DA5]">Edicion controlada</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">
+                        Aqui solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, codigos QR, enlaces de validacion ni numeraciones ya emitidas.
                       </p>
                     </div>
                   </div>
-                )}
+
+                  {templateConfig && (
+                    <div className="grid grid-cols-1 gap-3 border-t border-[#DCE8FA] p-4 md:grid-cols-3">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <FileText className="h-3.5 w-3.5 text-[#003DA5]" />
+                          Version
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">{templateConfig.version}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <User className="h-3.5 w-3.5 text-[#003DA5]" />
+                          Actualizado por
+                        </div>
+                        <p className="truncate text-sm font-bold text-slate-900">{templateConfig.updatedBy || 'Sistema'}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <Clock className="h-3.5 w-3.5 text-[#003DA5]" />
+                          Ultima actualizacion
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">
+                          {templateConfig.updatedAt
+                            ? new Date(templateConfig.updatedAt).toLocaleString('es-CO')
+                            : 'Sin registro'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </section>
 
                 {isLoadingTemplateConfig ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-5 text-sm text-gray-600">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-5 text-sm font-medium text-slate-600 shadow-sm">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#003DA5]" />
                     Cargando configuracion de la plantilla...
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {TEMPLATE_TEXT_FIELDS.map((field) => (
-                      <div key={field.key} className="space-y-2">
-                        <Label htmlFor={`template-${field.key}`}>{field.label}</Label>
-                        {field.rows ? (
-                          <Textarea
-                            id={`template-${field.key}`}
-                            rows={field.rows}
-                            value={templateForm[field.key]}
-                            onChange={(e) =>
-                              handleTemplateTextChange(field.key, e.target.value)
-                            }
-                            placeholder={field.label}
-                          />
-                        ) : (
-                          <Input
-                            id={`template-${field.key}`}
-                            value={templateForm[field.key]}
-                            onChange={(e) =>
-                              handleTemplateTextChange(field.key, e.target.value)
-                            }
-                            placeholder={field.label}
-                          />
-                        )}
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Textos editables</p>
+                        <p className="text-xs text-slate-500">Campos fijos de la plantilla academica</p>
                       </div>
-                    ))}
-                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                      <div className="flex items-start gap-3">
+                      <Badge className="border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">
+                        {TEMPLATE_TEXT_FIELDS.length} campos
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 p-4">
+                      {TEMPLATE_TEXT_FIELDS.map((field) => (
+                        <div
+                          key={field.key}
+                          className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors focus-within:border-[#8BB8F6] focus-within:bg-[#FBFDFF]"
+                        >
+                          <Label
+                            htmlFor={`template-${field.key}`}
+                            className="text-[13px] font-semibold text-slate-800"
+                          >
+                            {field.label}
+                          </Label>
+                          {field.rows ? (
+                            <Textarea
+                              id={`template-${field.key}`}
+                              rows={field.rows}
+                              value={templateForm[field.key]}
+                              onChange={(e) =>
+                                handleTemplateTextChange(field.key, e.target.value)
+                              }
+                              placeholder={field.label}
+                              className="mt-2 min-h-[104px] border-slate-200 bg-slate-50/80 text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:ring-[#003DA5]/20"
+                            />
+                          ) : (
+                            <Input
+                              id={`template-${field.key}`}
+                              value={templateForm[field.key]}
+                              onChange={(e) =>
+                                handleTemplateTextChange(field.key, e.target.value)
+                              }
+                              placeholder={field.label}
+                              className="mt-2 border-slate-200 bg-slate-50/80 text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {!isLoadingTemplateConfig && (
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-start gap-3 px-4 py-4">
+                      <div className="pt-0.5">
                         <Checkbox
                           id="template-electronic-signature"
                           checked={templateSignatureForm.enabled}
@@ -3189,151 +3224,171 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           }}
                           disabled={isSavingTemplateConfig}
                         />
-                        <div className="min-w-0 flex-1">
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <Label
+                          htmlFor="template-electronic-signature"
+                          className="text-sm font-bold text-slate-900"
+                        >
+                          Incluir firma electronica
+                        </Label>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          La firma se aplicara a los certificados generados despues de guardar esta plantilla. Requiere nombre, imagen y cargo.
+                        </p>
+                      </div>
+                      <Badge
+                        className={
+                          templateSignatureForm.enabled
+                            ? 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                            : 'border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600'
+                        }
+                      >
+                        {templateSignatureForm.enabled ? 'Activa' : 'Opcional'}
+                      </Badge>
+                    </div>
+
+                    {templateSignatureForm.enabled && (
+                      <div className="grid grid-cols-1 gap-4 border-t border-slate-200 bg-[#F6FAFF] p-4">
+                        <div className="space-y-2">
                           <Label
-                            htmlFor="template-electronic-signature"
-                            className="text-sm font-semibold text-gray-900"
+                            htmlFor="template-signer-name"
+                            className="text-[13px] font-semibold text-slate-800"
                           >
-                            Incluir firma electronica
+                            Nombre del firmante *
                           </Label>
-                          <p className="mt-1 text-xs text-gray-500">
-                            La firma se aplicara a los certificados generados despues de guardar esta plantilla. Requiere nombre, imagen y cargo.
-                          </p>
+                          <Input
+                            id="template-signer-name"
+                            value={templateSignatureForm.signerName}
+                            onChange={(event) =>
+                              setTemplateSignatureForm((prev) => ({
+                                ...prev,
+                                signerName: event.target.value,
+                              }))
+                            }
+                            placeholder="Nombre completo del firmante"
+                            disabled={isSavingTemplateConfig}
+                            className="border-slate-200 bg-white text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="template-signer-title"
+                            className="text-[13px] font-semibold text-slate-800"
+                          >
+                            Cargo o titulo del firmante *
+                          </Label>
+                          <Input
+                            id="template-signer-title"
+                            value={templateForm.signerTitle}
+                            onChange={(event) =>
+                              handleTemplateTextChange(
+                                'signerTitle',
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Ej: Administrador jefe Registro academico"
+                            maxLength={255}
+                            disabled={isSavingTemplateConfig}
+                            className="border-slate-200 bg-white text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-[13px] font-semibold text-slate-800">
+                            Imagen de la firma *
+                          </Label>
+                          <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#8BB8F6] bg-white px-4 py-5 text-center transition-colors hover:border-[#003DA5] hover:bg-[#FAFCFF]">
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg"
+                              className="hidden"
+                              onChange={handleSignatureFileChange}
+                              disabled={isSavingTemplateConfig}
+                            />
+                            <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF5FF] text-[#003DA5]">
+                              <Upload className="h-5 w-5" />
+                            </span>
+                            <span className="text-sm font-bold text-slate-900">
+                              Subir firma PNG o JPEG
+                            </span>
+                            <span className="mt-1 text-xs text-slate-500">
+                              Maximo 2 MB. Se ajustara al espacio del certificado.
+                            </span>
+                          </label>
+
+                          {signaturePreviewUrl ? (
+                            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <ImageIcon className="h-4 w-4 text-[#003DA5]" />
+                                {templateSignatureForm.signatureImageFilename ||
+                                  templateSignatureForm.signatureFilename ||
+                                  'Firma cargada'}
+                              </div>
+                              <img
+                                src={signaturePreviewUrl}
+                                alt="Vista previa de la firma"
+                                className="h-16 max-w-[260px] object-contain object-left"
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-
-                      {templateSignatureForm.enabled && (
-                        <div className="grid grid-cols-1 gap-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="template-signer-name">
-                              Nombre del firmante *
-                            </Label>
-                            <Input
-                              id="template-signer-name"
-                              value={templateSignatureForm.signerName}
-                              onChange={(event) =>
-                                setTemplateSignatureForm((prev) => ({
-                                  ...prev,
-                                  signerName: event.target.value,
-                                }))
-                              }
-                              placeholder="Nombre completo del firmante"
-                              disabled={isSavingTemplateConfig}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="template-signer-title">
-                              Cargo o titulo del firmante *
-                            </Label>
-                            <Input
-                              id="template-signer-title"
-                              value={templateForm.signerTitle}
-                              onChange={(event) =>
-                                handleTemplateTextChange(
-                                  'signerTitle',
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Ej: Administrador jefe Registro academico"
-                              maxLength={255}
-                              disabled={isSavingTemplateConfig}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>Imagen de la firma *</Label>
-                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-5 text-center transition-colors hover:border-blue-400">
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg"
-                                className="hidden"
-                                onChange={handleSignatureFileChange}
-                                disabled={isSavingTemplateConfig}
-                              />
-                              <Upload className="mb-2 h-5 w-5 text-blue-600" />
-                              <span className="text-sm font-semibold text-gray-900">
-                                Subir firma PNG o JPEG
-                              </span>
-                              <span className="mt-1 text-xs text-gray-500">
-                                Maximo 2 MB. Se ajustara al espacio del certificado.
-                              </span>
-                            </label>
-
-                            {signaturePreviewUrl ? (
-                              <div className="rounded-lg border border-gray-200 bg-white p-3">
-                                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
-                                  <ImageIcon className="h-4 w-4 text-blue-600" />
-                                  {templateSignatureForm.signatureImageFilename ||
-                                    templateSignatureForm.signatureFilename ||
-                                    'Firma cargada'}
-                                </div>
-                                <img
-                                  src={signaturePreviewUrl}
-                                  alt="Vista previa de la firma"
-                                  className="h-16 max-w-[260px] object-contain object-left"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    )}
+                  </section>
                 )}
               </div>
 
-              <div className="min-w-0">
-                <div className="rounded-xl border border-[#DDE6F3] bg-[#F7FAFF] p-4">
-                  <div className="mb-3 flex items-center justify-between">
+              <div className="min-w-0 xl:sticky xl:top-5 xl:self-start">
+                <section className="overflow-hidden rounded-lg border border-[#DDE6F3] bg-white shadow-sm">
+                  <div className="flex items-center justify-between gap-3 border-b border-[#DDE6F3] bg-[#F7FAFF] px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">Vista previa</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-sm font-bold text-slate-900">Vista previa</p>
+                      <p className="text-xs text-slate-500">
                         Los valores del ejemplo representan campos dinamicos reales del certificado.
                       </p>
                     </div>
-                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                    <Badge className="border-[#BFD6FF] bg-[#EEF5FF] px-2.5 py-1 text-[#003DA5]">
+                      <QrCode className="h-3.5 w-3.5" />
                       QR protegido
                     </Badge>
                   </div>
 
-                  <div className="mx-auto max-w-[780px] rounded-[24px] border border-blue-200 bg-gradient-to-b from-slate-50 via-blue-50/70 to-slate-100 p-4 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.45)]">
-                    <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-dashed border-blue-300 bg-white/85 px-4 py-3 shadow-sm">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-700">
-                          Previsualizacion protegida
-                        </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Este recuadro es solo de referencia visual. Los textos se modifican desde el formulario.
-                        </p>
-                      </div>
-                      <Badge className="border-blue-200 bg-blue-100 text-blue-800 shadow-sm">
-                        Solo lectura
-                      </Badge>
-                    </div>
-
-                    <div className="relative overflow-hidden rounded-[20px] border border-slate-200 bg-white p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_30px_-20px_rgba(15,23,42,0.35)]">
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-100/90 to-transparent" />
-                      <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 shadow-sm backdrop-blur-sm">
-                        Muestra no editable
-                      </div>
-
-                      <div className="relative">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex min-w-0 items-center gap-3 rounded-lg bg-gray-100 px-4 py-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C79A2B] text-xs font-black text-white">
-                              ES
-                            </div>
-                            <div className="text-base font-black tracking-wide text-[#444444]">
-                              FUNCION PUBLICA
-                            </div>
-                          </div>
-                          <div className="max-w-[220px] text-right text-[11px] font-semibold text-gray-700">
-                            Codigo para validaciones: {previewCertificate.validationCode}
-                          </div>
+                  <div className="bg-[#F7FAFF] p-4">
+                    <div className="mx-auto max-w-[780px] rounded-lg border border-[#BFD6FF] bg-white p-3 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.5)]">
+                      <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-dashed border-[#8BB8F6] bg-[#F7FAFF] px-4 py-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase text-[#003DA5]">
+                            Previsualizacion protegida
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            Este recuadro es solo de referencia visual. Los textos se modifican desde el formulario.
+                          </p>
                         </div>
+                        <Badge className="border-[#BFD6FF] bg-white px-2.5 py-1 text-[#003DA5] shadow-sm">
+                          Solo lectura
+                        </Badge>
+                      </div>
 
-                        <div className="mt-6 text-sm text-gray-900">
+                      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#003DA5] via-[#0052CC] to-[#C79A2B]" />
+
+                        <div className="relative">
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 items-center gap-3 rounded-lg bg-slate-100 px-4 py-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C79A2B] text-xs font-black text-white">
+                                ES
+                              </div>
+                              <div className="text-base font-black text-[#444444]">
+                                FUNCION PUBLICA
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold text-slate-700 sm:max-w-[230px] sm:text-right">
+                              Codigo para validaciones: {previewCertificate.validationCode}
+                            </div>
+                          </div>
+
+                        <div className="mt-6 text-sm text-slate-900">
                           {templateForm.cityDatePrefix} {new Date().toLocaleDateString('es-CO', {
                             year: 'numeric',
                             month: 'long',
@@ -3342,22 +3397,22 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </div>
 
                         <div className="mt-10 text-center">
-                          <div className="text-[28px] font-black uppercase tracking-wide text-gray-900">
+                          <div className="text-[24px] font-black uppercase leading-tight text-slate-900 sm:text-[28px]">
                             {templateForm.institutionTitle}
                           </div>
-                          <div className="mt-3 text-[22px] font-bold text-gray-900">
+                          <div className="mt-3 text-[20px] font-bold text-slate-900 sm:text-[22px]">
                             {templateForm.certificateTitle}
                           </div>
-                          <div className="mt-6 text-[20px] font-bold text-gray-900">
+                          <div className="mt-6 text-[18px] font-bold text-slate-900 sm:text-[20px]">
                             {templateForm.addressee}
                           </div>
                         </div>
 
-                        <p className="mt-8 whitespace-pre-line text-justify text-[15px] leading-7 text-gray-900">
+                        <p className="mt-8 whitespace-pre-line text-justify text-[15px] leading-7 text-slate-900">
                           {templateForm.introParagraph}
                         </p>
 
-                        <div className="mt-8 overflow-hidden rounded-lg border border-gray-300">
+                        <div className="mt-8 overflow-hidden rounded-lg border border-slate-300">
                           {[
                             [templateForm.degreeLabel, previewCertificate.degreeTitle],
                             [templateForm.graduateNameLabel, previewCertificate.fullName],
@@ -3367,19 +3422,19 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           ].map(([label, value], index) => (
                             <div
                               key={`${label}-${index}`}
-                              className="grid grid-cols-[42%_58%] border-b border-gray-300 last:border-b-0"
+                              className="grid grid-cols-1 border-b border-slate-300 last:border-b-0 sm:grid-cols-[42%_58%]"
                             >
-                              <div className="bg-gray-50 px-3 py-3 text-sm font-semibold text-gray-900">
+                              <div className="bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900">
                                 {label}
                               </div>
-                              <div className="px-3 py-3 text-sm text-gray-900">{value}</div>
+                              <div className="px-3 py-3 text-sm text-slate-900">{value}</div>
                             </div>
                           ))}
                         </div>
 
-                        <div className="mt-10 flex items-end justify-between gap-6">
+                        <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
                           <div className="flex-1">
-                            <p className="whitespace-pre-line text-[15px] text-gray-900">
+                            <p className="whitespace-pre-line text-[15px] text-slate-900">
                               {templateForm.closingText}
                             </p>
                             {templateSignatureForm.enabled && signaturePreviewUrl ? (
@@ -3389,67 +3444,76 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                   alt="Firma electronica"
                                   className="h-14 max-w-[220px] object-contain object-left"
                                 />
-                                <p className="mt-2 text-[15px] font-semibold leading-5 text-gray-900">
+                                <p className="mt-2 text-[15px] font-semibold leading-5 text-slate-900">
                                   {templateSignatureForm.signerName || 'Nombre del firmante'}
                                 </p>
-                                <p className="text-[15px] font-semibold leading-5 text-gray-900">
+                                <p className="text-[15px] font-semibold leading-5 text-slate-900">
                                   {templateForm.signerTitle || 'Cargo o titulo del firmante'}
                                 </p>
                               </div>
                             ) : (
-                              <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-gray-900">
+                              <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-slate-900">
                                 {templateForm.signerTitle}
                               </p>
                             )}
                           </div>
 
-                          <div className="flex flex-col items-center rounded-lg border border-gray-200 bg-white p-2">
+                          <div className="flex w-fit flex-col items-center rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
                             <QRCodeSVG
                               value={previewCertificate.validationUrl}
                               size={92}
                               level="M"
                               includeMargin
                             />
-                            <p className="mt-1.5 max-w-[116px] text-center text-[10px] leading-3 text-gray-600">
+                            <p className="mt-1.5 max-w-[116px] text-center text-[10px] leading-3 text-slate-600">
                               Escanee y verifique el certificado
                             </p>
                           </div>
                         </div>
 
                         <div className="mt-8 text-center">
-                          <p className="text-sm font-semibold text-gray-900">
+                          <p className="text-sm font-semibold text-slate-900">
                             {templateForm.validationMessage}
                           </p>
-                          <p className="mt-2 break-all text-xs font-medium text-blue-700">
+                          <p className="mt-2 break-all text-xs font-medium text-[#003DA5]">
                             {previewCertificate.validationUrl}
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-[11px] text-slate-600 shadow-sm">
+                    <div className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
                       <span>La vista previa no es un campo editable.</span>
                       <span className="font-semibold text-slate-700">
                         QR, enlaces y variables reales siguen protegidos.
                       </span>
                     </div>
+                    </div>
                   </div>
-                </div>
+                </section>
               </div>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-between border-t border-gray-200 px-5 py-4 sm:px-6 bg-white shrink-0">
-            <div className="text-xs text-gray-500">
-              {hasTemplateChanges
-                ? 'Hay cambios pendientes por guardar.'
-                : 'No hay cambios pendientes.'}
+          <DialogFooter className="shrink-0 gap-3 border-t border-slate-200 bg-white px-5 py-4 shadow-[0_-12px_30px_-28px_rgba(15,23,42,0.55)] sm:justify-between sm:px-6">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              <span
+                className={
+                  hasTemplateChanges
+                    ? 'h-2 w-2 rounded-full bg-amber-500'
+                    : 'h-2 w-2 rounded-full bg-emerald-500'
+                }
+              />
+              <span>
+                {hasTemplateChanges
+                  ? 'Hay cambios pendientes por guardar.'
+                  : 'No hay cambios pendientes.'}
+              </span>
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 onClick={() => void handleResetTemplateConfig()}
-                className="px-4 py-2 text-sm font-medium rounded-lg border-2 inline-flex items-center gap-2"
-                style={{ borderColor: '#D1D5DB', color: '#374151' }}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#003DA5] hover:text-[#003DA5] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSavingTemplateConfig || isLoadingTemplateConfig}
               >
                 <RotateCcw className="w-4 h-4" />
@@ -3457,15 +3521,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </button>
               <button
                 onClick={() => setIsTemplateEditorOpen(false)}
-                className="px-4 py-2 text-sm font-medium rounded-lg border-2"
-                style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSavingTemplateConfig}
               >
                 Cerrar
               </button>
               <button
                 onClick={() => void handleSaveTemplateConfig()}
-                className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
                 disabled={isSavingTemplateConfig || isLoadingTemplateConfig || !hasTemplateChanges}
               >

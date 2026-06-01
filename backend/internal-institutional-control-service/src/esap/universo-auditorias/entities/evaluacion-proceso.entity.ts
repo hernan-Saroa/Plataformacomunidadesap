@@ -37,7 +37,7 @@ export enum PonderacionRiesgo {
 }
 
 @Entity('evaluacion_proceso', { schema: 'control_interno' })
-@Index(['procesoId', 'vigencia', 'fechaCorte'], { unique: true })
+@Index(['procesoId', 'vigencia', 'fechaCorte', 'dependenciaResponsable'], { unique: true })
 @Index(['vigencia'])
 @Index(['decisionFinal'])
 export class EvaluacionProceso {

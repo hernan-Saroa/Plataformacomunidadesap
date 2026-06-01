@@ -15,7 +15,7 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, DollarSign, Filter, Search,
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2, Gavel
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -27,8 +27,8 @@ import { legalService } from '../../../../services/api/legal.service';
 import type { ExpedienteJudicial, EtapaDefensaJudicial } from '../core/types';
 import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
 import { generarReporteExpedientesPDF } from './generarReporteExpedientes';
+import { ModalFiltrosReporte } from './ModalFiltrosReporte';
 import { ModalExpediente } from './ModalExpediente';
-import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
@@ -46,6 +46,7 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { calcularProgreso } from '../core/expedienteShared';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
 import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
@@ -72,9 +73,73 @@ const ItemTypes = {
   EXPEDIENTE: 'expediente'
 };
 
+const normalizeString = (str: string) => {
+  return str
+    ?.toLowerCase()
+    ?.normalize('NFD')
+    ?.replace(/[\u0300-\u036f]/g, '')
+    ?.trim() || '';
+};
+
+const getBoardCookie = (): string => {
+  if (typeof document === 'undefined') return '';
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; esap_defensa_judicial_tablero_seleccionado=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || '';
+  return '';
+};
+
+const setBoardCookie = (val: string) => {
+  if (typeof document === 'undefined') return;
+  document.cookie = `esap_defensa_judicial_tablero_seleccionado=${val}; path=/; max-age=31536000; SameSite=Lax`;
+};
+
 export function ModuloDefensaJudicialV3() {
   // ✅ Obtener configuraciones desde el Context API
-  const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+  const { estadosActivos, tiposProcesosActivos: allTiposProcesos } = useConfiguracionModulo('defensa-judicial');
+
+  // Filtrar los tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
+  const tiposProcesosActivos = (allTiposProcesos || []).filter((tp: any) => {
+    if (!tp.rolAsociado) return true;
+    return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
+  });
+
+  // Selector de tablero (por tipo de proceso)
+  const [tableroSeleccionado, setTableroSeleccionado] = useState<string>(() => {
+    return getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || '';
+  });
+
+  const handleCambiarTablero = (val: string) => {
+    setTableroSeleccionado(val);
+    setBoardCookie(val);
+    localStorage.setItem('esap_defensa_judicial_tablero_seleccionado', val);
+  };
+
+  // Sincronizar tableroSeleccionado con el primer tipo de proceso activo al cargar
+  useEffect(() => {
+    if (tiposProcesosActivos.length > 0) {
+      const persistedBoard = getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || tableroSeleccionado;
+      const isValid = tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
+      
+      if (isValid) {
+        if (tableroSeleccionado !== persistedBoard) {
+          setTableroSeleccionado(persistedBoard);
+        }
+        setBoardCookie(persistedBoard);
+        localStorage.setItem('esap_defensa_judicial_tablero_seleccionado', persistedBoard);
+      } else {
+        const defaultId = tiposProcesosActivos[0].id;
+        setTableroSeleccionado(defaultId);
+        setBoardCookie(defaultId);
+        localStorage.setItem('esap_defensa_judicial_tablero_seleccionado', defaultId);
+      }
+    }
+  }, [tiposProcesosActivos, tableroSeleccionado]);
+
+  const procesoSeleccionado = (allTiposProcesos || []).find((tp: any) => tp.id === tableroSeleccionado);
+  const columnasTablero = (procesoSeleccionado?.estados && procesoSeleccionado.estados.length > 0)
+    ? procesoSeleccionado.estados.filter((e: any) => e.activo).sort((a: any, b: any) => a.orden - b.orden)
+    : estadosActivos;
 
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
@@ -85,12 +150,16 @@ export function ModuloDefensaJudicialV3() {
   const { isMobile, isTablet, isLg, isXl, width: screenWidth } = useResponsive();
   const isSmallDesktop = isLg || (isXl && screenWidth < 1440);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
+  const [columnasColapsadas, setColumnasColapsadas] = useState<Record<string, boolean>>({});
   const [modalNuevaDemandaOpen, setModalNuevaDemandaOpen] = useState(false);
+  const [modalFiltrosReporteOpen, setModalFiltrosReporteOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroAbogado, setFiltroAbogado] = useState<string>('TODOS');
+  const [filtroFecha, setFiltroFecha] = useState<string>('');
   const [abogadosList, setAbogadosList] = useState<{ id: string; nombre: string }[]>([]);
+  const [usuariosList, setUsuariosList] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Estado local para manejar drag and drop
@@ -235,10 +304,11 @@ export function ModuloDefensaJudicialV3() {
     try {
       setLoading(true);
 
-      // Cargar expedientes y abogados en paralelo
-      const [data, abogadosData] = await Promise.all([
+      // Cargar expedientes, abogados y todos los usuarios activos en paralelo
+      const [data, abogadosData, todosLosUsuarios] = await Promise.all([
         legalService.getExpedientes(),
-        legalService.getAbogadosDashboard()
+        legalService.getAbogadosDashboard(),
+        authService.getTodosLosUsuariosActivos() // picked up from shell
       ]);
 
       // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
@@ -253,6 +323,14 @@ export function ModuloDefensaJudicialV3() {
           }
         });
         setAbogadosList(lista);
+      }
+
+      if (Array.isArray(todosLosUsuarios)) {
+        const listado: { id: string; nombre: string }[] = todosLosUsuarios.map((u: any) => ({
+          id: String(u.id),
+          nombre: u.nombre
+        }));
+        setUsuariosList(listado);
       }
 
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
@@ -309,6 +387,9 @@ export function ModuloDefensaJudicialV3() {
           diasTotales: (() => {
             const inicio = new Date(exp.fechaNotificacion || Date.now());
             const fin = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'HORAS') {
+              return exp.terminoProcesalDias || Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60));
+            }
             if (exp.tipoConteoTermino === 'Dias Calendario' || exp.tipoConteoTermino === 'CALENDARIO') {
               return calcularDiasTotales(inicio, fin);
             }
@@ -328,6 +409,10 @@ export function ModuloDefensaJudicialV3() {
           diasRestantes: (() => {
             const hoy = new Date();
             const venc = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'HORAS') {
+              const diffMs = venc.getTime() - hoy.getTime();
+              return Math.ceil(diffMs / (1000 * 60 * 60)); // Devuelve horas restantes
+            }
             if (exp.tipoConteoTermino === 'Dias Calendario' || exp.tipoConteoTermino === 'CALENDARIO') {
               return calcularDiasRestantes(venc);
             }
@@ -361,6 +446,11 @@ export function ModuloDefensaJudicialV3() {
           tiempoRestante: (() => {
             // Optional property just in case it's used
             const venc = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'HORAS') {
+              const diffMs = venc.getTime() - new Date().getTime();
+              const hours = Math.ceil(diffMs / (1000 * 60 * 60));
+              return hours < 0 ? `Vencido` : `${hours} horas`;
+            }
             return calcularDiasRestantes(venc) < 0 ? `Vencido` : `${calcularDiasRestantes(venc)} días`;
           })(),
           // Para abogado, buscar el nombre en el mapa o usar valor directo si no es UUID
@@ -436,6 +526,109 @@ export function ModuloDefensaJudicialV3() {
     // Si la etapa es la misma, no hacer nada
     if (expediente.etapa === nuevaEtapa) return;
 
+    // Obtener la configuración de la etapa actual
+    const etapaActualNorm = normalizeString(expediente.etapa || '');
+    const colActual = columnasTablero.find((col: any) => 
+      normalizeString(col.id) === etapaActualNorm || 
+      normalizeString(col.nombre) === etapaActualNorm
+    );
+    const requiereAprobacion = colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno';
+
+    // Bloquear arrastre hacia atrás si la etapa requiere aprobación (debe ser por modal con observaciones)
+    const currentIndex = columnasTablero.findIndex((col: any) => 
+      normalizeString(col.id) === etapaActualNorm || 
+      normalizeString(col.nombre) === etapaActualNorm
+    );
+    const destStageNorm = normalizeString(nuevaEtapa);
+    const destIndex = columnasTablero.findIndex((col: any) => 
+      normalizeString(col.id) === destStageNorm || 
+      normalizeString(col.nombre) === destStageNorm
+    );
+
+    if (currentIndex !== -1 && destIndex !== -1 && destIndex < currentIndex && requiereAprobacion) {
+      toast.error('Movimiento no permitido', {
+        description: 'Para devolver el expediente a la etapa anterior, por favor abra el expediente y utilice el botón "Devolver Etapa" para registrar las observaciones obligatorias.',
+        duration: 7000
+      });
+      return;
+    }
+
+    if (requiereAprobacion) {
+      // Validar que todas las actuaciones tengan los documentos firmados antes de cambiar etapa
+      try {
+        const idToCheck = expediente.uuid || expediente.id;
+        const [actuacionesList, documentosList] = await Promise.all([
+          legalService.getActuaciones(idToCheck),
+          legalService.getDocumentos(idToCheck)
+        ]);
+
+        const isDocSigned = (d: any) => {
+          if (!d) return false;
+          if (d.descripcion) {
+            try {
+              const data = JSON.parse(d.descripcion);
+              return !!(data && data.firmado);
+            } catch (e) {
+              return false;
+            }
+          }
+          return false;
+        };
+
+        const checkActuacionDocsSigned = (act: any) => {
+          const associatedDocIds = act.metadata?.documentosAsociados || [];
+          if (associatedDocIds.length === 0) return true;
+          
+          const resolvedDocs = documentosList.filter((doc: any) => {
+            const docIdStr = String(doc.id);
+            return associatedDocIds.some((id: any) => String(id) === docIdStr);
+          });
+          
+          return resolvedDocs.every((doc: any) => isDocSigned(doc));
+        };
+
+        const actuacionesConDocsSinFirmar = actuacionesList.filter((a: any) => {
+          return !checkActuacionDocsSigned(a);
+        });
+
+        if (actuacionesConDocsSinFirmar.length > 0) {
+          toast.error('No se puede cambiar de etapa. Existen actuaciones con documentos sin firmar.', {
+            description: `Las siguientes actuaciones tienen documentos pendientes de firma: ${actuacionesConDocsSinFirmar.map((a: any) => a.descripcion).join(', ')}`
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn('No se pudieron verificar las firmas de los documentos de las actuaciones:', error);
+      }
+
+      // Validar reglas de aprobación de la etapa ACTUAL (para poder continuar/salir de ella)
+      if (colActual) {
+        const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+        if (aprobacionTipo === 'rol' && aprobacionRol) {
+          const hasRol = authService.hasRole(aprobacionRol) || authService.isSuperAdmin();
+          if (!hasRol) {
+            toast.error('Movimiento bloqueado por regla de aprobación', {
+              description: `Se requiere el rol "${aprobacionRol}" para aprobar la etapa "${colActual.nombre}" y continuar.`
+            });
+            return;
+          }
+        } else if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+          const currentUser = authService.getCurrentUser();
+          const currentUserId = currentUser?.id || currentUser?.id_user || (currentUser as any)?.uuid;
+          const isAuthorizedUser = currentUserId === aprobacionUsuario || authService.isSuperAdmin();
+          if (!isAuthorizedUser) {
+            const userReq = usuariosList.find((u) => String(u.id) === String(aprobacionUsuario)) || 
+                            abogadosList.find((a) => String(a.id) === String(aprobacionUsuario));
+            const nameDisplay = userReq ? userReq.nombre : 'un abogado específico';
+            toast.error('Movimiento bloqueado por regla de aprobación', {
+              description: `Solo el usuario asignado/autorizado "${nameDisplay}" puede aprobar la etapa "${colActual.nombre}".`
+            });
+            return;
+          }
+        }
+      }
+    }
+
     // Validar tareas pendientes antes de cambiar etapa
     try {
       const idToCheck = expediente.uuid || expediente.id;
@@ -452,6 +645,29 @@ export function ModuloDefensaJudicialV3() {
     } catch (error) {
       // Si falla la consulta de tareas, permitir el cambio (fallo silencioso)
       console.warn('No se pudieron verificar tareas:', error);
+    }
+
+    // Validar si la nueva etapa requiere aprobación
+    const colDestino = destIndex !== -1 ? columnasTablero[destIndex] : null;
+    const destinoRequiereAprobacion = !!(colDestino && colDestino.aprobacionTipo && colDestino.aprobacionTipo !== 'ninguno');
+
+    if (destinoRequiereAprobacion) {
+      try {
+        const idToCheck = expediente.uuid || expediente.id;
+        const actuacionesList = await legalService.getActuaciones(idToCheck);
+        const tieneActuacionProcesal = (actuacionesList || []).some(
+          (a: any) => a.tipoActuacion !== 'NOTA_INTERNA' && a.tipoActuacion !== 'NOTA'
+        );
+        if (!tieneActuacionProcesal) {
+          toast.error('No se puede enviar a aprobación', {
+            description: 'Debe registrar al menos una actuación procesal antes de enviar a aprobación.',
+            duration: 5000
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn('No se pudieron verificar las actuaciones para aprobación:', error);
+      }
     }
 
     // Optimistic Update
@@ -502,21 +718,90 @@ export function ModuloDefensaJudicialV3() {
 
   // ✅ Primero aplicar filtros globales (búsqueda, tipo de proceso)
   const expedientesFiltrados = expedientes.filter(exp => {
+    // Filtro por Tablero Seleccionado (tipo de proceso de la vista actual)
+    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+    const boardNorm = normalize(tableroSeleccionado);
+    const boardNombreNorm = procesoSeleccionado ? normalize(procesoSeleccionado.nombre) : '';
+
+    const matchesBoard = !tableroSeleccionado ||
+      exp.tipo === tableroSeleccionado ||
+      exp.tipoAccion === tableroSeleccionado ||
+      (exp as any).tipoProceso === tableroSeleccionado ||
+      normalize(exp.tipo) === boardNorm ||
+      normalize(exp.tipoAccion) === boardNorm ||
+      normalize((exp as any).tipoProceso) === boardNorm ||
+      (boardNombreNorm && (
+        normalize(exp.tipo) === boardNombreNorm ||
+        normalize(exp.tipoAccion) === boardNombreNorm ||
+        normalize((exp as any).tipoProceso) === boardNombreNorm
+      ));
+
+    if (!matchesBoard) return false;
+
+    // Filtro de Seguridad por Rol de Proceso
+    const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+    const tipoProcesoObj = (allTiposProcesos || []).find((t: any) => {
+      const normName = norm(t.nombre || t.name);
+      return norm(t.id) === norm(exp.tipo) ||
+             norm(t.id) === norm((exp as any).tipoProceso) ||
+             normName === norm(exp.tipo) ||
+             normName === norm((exp as any).tipoProceso);
+    });
+
+    if (tipoProcesoObj && tipoProcesoObj.rolAsociado) {
+      const hasAssociatedRole = authService.hasRole(tipoProcesoObj.rolAsociado);
+      const isSuperAdmin = authService.isSuperAdmin();
+      if (!hasAssociatedRole && !isSuperAdmin) {
+        return false;
+      }
+    }
+
     // Filtro por búsqueda
     const q = busqueda.toLowerCase();
     const matchBusqueda = busqueda === '' ||
       exp.id?.toLowerCase().includes(q) ||
+      exp.radicado?.toLowerCase().includes(q) ||
       exp.demandante?.toLowerCase().includes(q) ||
       exp.demandado?.toLowerCase().includes(q) ||
+      exp.apoderado?.toLowerCase().includes(q) ||
       exp.juzgado?.toLowerCase().includes(q) ||
+      exp.juzgadoConocimiento?.toLowerCase().includes(q) ||
       (exp as any).tipoProceso?.toLowerCase().includes(q) ||
       exp.tipo?.toLowerCase().includes(q) ||
-      exp.medioControl?.toLowerCase().includes(q);
+      exp.tipoAccion?.toLowerCase().includes(q) ||
+      exp.medioControl?.toLowerCase().includes(q) ||
+      exp.abogadoAsignado?.toLowerCase().includes(q) ||
+      exp.abogadoResponsable?.toLowerCase().includes(q) ||
+      exp.hechos?.toLowerCase().includes(q) ||
+      exp.pretensiones?.toLowerCase().includes(q) ||
+      exp.pretensionDemandante?.toLowerCase().includes(q) ||
+      exp.demandantes?.some(d => 
+        d.nombre?.toLowerCase().includes(q) || 
+        d.identificacion?.toLowerCase().includes(q) || 
+        d.email?.toLowerCase().includes(q) || 
+        d.apoderado?.toLowerCase().includes(q)
+      ) ||
+      exp.demandados?.some(d => 
+        d.nombre?.toLowerCase().includes(q) || 
+        d.identificacion?.toLowerCase().includes(q) || 
+        d.email?.toLowerCase().includes(q) || 
+        d.apoderado?.toLowerCase().includes(q)
+      ) ||
+      exp.otrosActores?.some(d => 
+        d.nombre?.toLowerCase().includes(q) || 
+        d.identificacion?.toLowerCase().includes(q) || 
+        d.email?.toLowerCase().includes(q) || 
+        d.apoderado?.toLowerCase().includes(q)
+      ) ||
+      exp.actuaciones?.some(a => 
+        a.descripcion?.toLowerCase().includes(q) || 
+        a.tipoActuacion?.toLowerCase().includes(q) ||
+        (a as any).tipo?.toLowerCase().includes(q)
+      );
 
     // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl, tipoAccion y tipoProceso)
     // Los IDs del filtro (ej: 'reparacion-directa') no coinciden con los valores del backend
     // (ej: 'Reparación Directa'), así que normalizamos ambos lados para comparar.
-    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
     const filtroNorm = normalize(filtroTipo);
     // También buscar el nombre legible del tipo seleccionado en la configuración
     const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
@@ -551,7 +836,19 @@ export function ModuloDefensaJudicialV3() {
       exp.abogadoResponsable === filtroAbogado ||
       (filtroAbogado === 'Sin asignar' && esSinAsignar);
 
-    return matchBusqueda && matchTipo && matchAbogado;
+    // Filtro por rango de fecha de creación del proceso
+    let matchFecha = true;
+    if (filtroFecha) {
+      const [fromStr, toStr] = filtroFecha.split(':');
+      if (fromStr && toStr) {
+        const fromDate = new Date(fromStr + 'T00:00:00');
+        const toDate = new Date(toStr + 'T23:59:59');
+        const itemDate = exp.fechaCreacion instanceof Date ? exp.fechaCreacion : new Date(exp.fechaCreacion);
+        matchFecha = itemDate >= fromDate && itemDate <= toDate;
+      }
+    }
+
+    return matchBusqueda && matchTipo && matchAbogado && matchFecha;
   });
 
   // Función para normalizar strings (quitar acentos, mojibake y convertir a minúsculas)
@@ -577,7 +874,7 @@ export function ModuloDefensaJudicialV3() {
   };
 
   // Agrupar expedientes filtrados por etapa de forma dinámica
-  const expedientesPorEtapa = estadosActivos.reduce((acc: any, estado: any, index: number) => {
+  const expedientesPorEtapa = columnasTablero.reduce((acc: any, estado: any, index: number) => {
     if (!estado?.id) return acc;
 
     // Inicializar array para este estado
@@ -617,7 +914,7 @@ export function ModuloDefensaJudicialV3() {
   const expedientesCriticos = expedientesVisibles.filter((e: ExpedienteJudicial) => e.diasRestantes <= 5).length;
   const expedientesEnTermino = expedientesVisibles.filter((e: ExpedienteJudicial) => e.diasRestantes > 15).length;
 
-  const etapas = estadosActivos.map((estado: any) => ({
+  const etapas = columnasTablero.map((estado: any) => ({
     nombre: estado.nombre,
     valor: estado.id, // Usamos el ID del estado como valor para mover
     color: estado.color,
@@ -654,8 +951,9 @@ export function ModuloDefensaJudicialV3() {
         pretensionDemandante: demandaData.pretensiones,
         fechaNotificacion: demandaData.fechaNotificacion,
         fechaVencimientoTermino: demandaData.fechaVencimiento,
-        etapaProcesal: demandaData.etapa || (estadosActivos.length > 0 ? estadosActivos[0].id : 'RADICACION'),
+        etapaProcesal: demandaData.etapa || (columnasTablero.length > 0 ? columnasTablero[0].id : 'RADICACION'),
         ultimaActuacion: undefined, // Backend manages initial state or assumes created
+        camposAdicionales: demandaData.camposAdicionales,
 
         // Mapeo unificado de actores
         actors: [
@@ -711,7 +1009,35 @@ export function ModuloDefensaJudicialV3() {
         esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
       };
 
-      await legalService.crearExpediente(expedienteData);
+      const created = await legalService.crearExpediente(expedienteData);
+
+      // Subir documentos de campos adicionales dinámicos si son nuevos
+      const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
+      if (id && demandaData.camposAdicionales) {
+        for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
+          if (val && typeof val === 'object' && val.base64 && val.nombre && val.esNuevo) {
+            try {
+              const res = await fetch(val.base64);
+              const blob = await res.blob();
+              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
+
+              const formDataDoc = new FormData();
+              formDataDoc.append('archivo', file);
+              formDataDoc.append('expedienteId', id);
+              formDataDoc.append('nombre', val.nombre);
+              formDataDoc.append('tipo', 'DATO_ADICIONAL');
+              formDataDoc.append('origen', 'CARGA_DIRECTA');
+              formDataDoc.append('categoria', 'documentos');
+              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
+
+              await legalService.crearDocumento(formDataDoc);
+            } catch (err) {
+              console.error('Error uploading dynamic document:', err);
+            }
+          }
+        }
+      }
+
       toast.success('Demanda registrada exitosamente', {
         description: `Radicado: ${demandaData.numeroRadicado}`
       });
@@ -731,34 +1057,26 @@ export function ModuloDefensaJudicialV3() {
     if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
       btns.push({
         label: 'Nueva Demanda',
+        labelMobile: 'Demanda',
         icon: <Plus className="w-4 h-4 mr-1" />,
         onClick: () => setModalNuevaDemandaOpen(true),
-        className: 'bg-orange-600 hover:bg-orange-700 text-white font-bold'
+        className: 'bg-[#003DA5] hover:bg-[#002e7d] text-white font-bold transition-all duration-200 shadow-sm hover:shadow active:scale-95 rounded-lg border-0'
       });
     }
     btns.push({
       label: 'Descargar Reporte',
+      labelMobile: 'Reporte',
       icon: <Download className="w-4 h-4 mr-1" />,
       onClick: () => {
-        const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
-        const nombreFiltro = filtroTipo === 'TODOS' ? 'TODOS' : (tipoConfigSeleccionado?.nombre || filtroTipo);
         if (expedientesVisibles.length === 0) {
           toast.error('No hay expedientes para exportar', {
             description: 'Ajusta los filtros para incluir expedientes en el reporte.'
           });
           return;
         }
-        toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
-        setTimeout(() => {
-          generarReporteExpedientesPDF(expedientesVisibles as any, nombreFiltro);
-          toast.success(`Reporte generado con ${expedientesVisibles.length} expediente(s)`, {
-            id: 'reporte-pdf',
-            description: `Filtro: ${nombreFiltro}`,
-            duration: 4000
-          });
-        }, 300);
+        setModalFiltrosReporteOpen(true);
       },
-      className: 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
+      className: 'bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-[#003DA5] font-bold transition-all duration-200 shadow-sm hover:shadow active:scale-95 rounded-lg'
     });
     return btns;
   };
@@ -773,188 +1091,202 @@ export function ModuloDefensaJudicialV3() {
 
   return (
     <div className="space-y-3 md:space-y-4">
-      {/* Header con Info Tooltip */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <ModuleHeader
-            title="Tablero Kanban Operativo"
-            subtitle="Gestión visual de demandas judiciales contra ESAP"
-            buttons={addBtnsPermission()}
-            toggleView={{
-              current: tipoVista,
-              onChange: (v: string) => setTipoVista(v as VistaModulo),
-              options: [
-                { label: 'Kanban', icon: <Columns3 className="w-4 h-4" /> },
-                { label: 'Lista', icon: <List className="w-4 h-4" /> },
-                { label: 'Archivados', icon: <Archive className="w-4 h-4" /> }
-              ]
+      <ModuleHeader
+        title="Defensa Judicial"
+        subtitle="Gestión visual de demandas judiciales y actuaciones procesales contra la ESAP"
+        icon={<Gavel className="w-5 h-5 text-white" />}
+        color="#003DA5"
+        buttons={addBtnsPermission()}
+        topCustomActions={
+          <div className="relative flex items-center w-[200px] sm:w-[260px] mr-1 shrink-0">
+            <div className="absolute left-0 top-0 bottom-0 flex items-center pl-3 pointer-events-none rounded-l-lg border-r-0">
+              <Gavel className="w-4 h-4 text-[#003DA5]" />
+            </div>
+            <select
+              value={tableroSeleccionado}
+              onChange={(e) => handleCambiarTablero(e.target.value)}
+              className="w-full pl-10 pr-9 py-1.5 bg-white border border-slate-300 hover:border-[#003DA5] text-[#003DA5] font-black rounded-lg text-[13px] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm appearance-none cursor-pointer truncate"
+              style={{ 
+                backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '1.25rem',
+                backgroundRepeat: 'no-repeat'
+              }}
+            >
+              <option value="TODOS">Todos los procesos</option>
+              {tiposProcesosActivos.map((tp: any) => (
+                <option key={tp.id} value={tp.id}>
+                  {tp.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+
+        toggleView={{
+          current: tipoVista,
+          onChange: (v: string) => setTipoVista(v as VistaModulo),
+          options: [
+            { label: 'Kanban', icon: <Columns3 className="w-4 h-4" /> },
+            { label: 'Lista', icon: <List className="w-4 h-4" /> },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" /> }
+          ]
+        }}
+        customActions={
+          <ModuleFilters
+            borderless
+            searchValue={busqueda}
+            onSearchChange={setBusqueda}
+            filters={[
+              {
+                type: 'date-range',
+                label: 'Fecha de Creación',
+                value: filtroFecha,
+                onChange: setFiltroFecha,
+                placeholder: 'Fecha Creación'
+              },
+              {
+                type: 'select',
+                label: 'Etapa Procesal',
+                value: filtroEtapa,
+                onChange: setFiltroEtapa,
+                options: [
+                  { value: 'TODAS', label: 'Todas las etapas' },
+                  ...etapas.map((e: any) => ({ value: e.nombre, label: e.nombre }))
+                ]
+              },
+              {
+                type: 'select',
+                label: 'Tipo de Proceso',
+                value: filtroTipo,
+                onChange: setFiltroTipo,
+                options: [
+                  { value: 'TODOS', label: 'Todos los tipos' },
+                  ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
+                ]
+              },
+              ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR)
+                ? [{
+                    type: 'select' as const,
+                    label: 'Abogado',
+                    value: filtroAbogado,
+                    onChange: setFiltroAbogado,
+                    options: [
+                      { value: 'TODOS', label: 'Todos los abogados' },
+                      { value: 'Sin asignar', label: 'Sin abogado asignado' },
+                      ...abogadosList.map(a => ({ value: a.nombre, label: a.nombre }))
+                    ]
+                  }]
+                : [])
+            ]}
+            totalItems={totalExpedientes}
+            filteredItems={expedientesVisibles.length}
+            showCounter={false}
+            onClearFilters={() => {
+              setBusqueda('');
+              setFiltroEtapa('TODAS');
+              setFiltroTipo('TODOS');
+              setFiltroAbogado('TODOS');
+              setFiltroFecha('');
             }}
           />
-        </div>
-
-        {/* Info Tooltip - Guía de flujo */}
-        <div className="flex-shrink-0 pt-1">
-          <ModuleInfoTooltip
-            title="Guía de Defensa Judicial"
-            variant="icon"
-            sections={[
-              {
-                label: "📍 Punto de Inicio del Sistema",
-                content: "La Defensa Judicial es donde INICIA todo el flujo cuando ESAP es demandada. Aquí llegan las notificaciones de demandas desde juzgados y se registran en el sistema.",
-                type: "info"
-              },
-              {
-                label: "⚖️ Propósito del Módulo",
-                content: "Gestión centralizada de procesos judiciales activos contra ESAP: demandas laborales, nulidades y restablecimiento del derecho, acciones populares, tutelas y otros medios de control.",
-                type: "default"
-              },
-              {
-                label: "🔄 Flujo de Trabajo (4 Etapas)",
-                content: "1️⃣ NOTIFICADA: Demanda recibida del juzgado → 2️⃣ CONTESTACIÓN: Redactar y presentar respuesta (30 días) → 3️⃣ PROBATORIA: Recolectar y aportar pruebas (60 días) → 4️⃣ ALEGATOS: Argumentos finales antes del fallo (20 días).",
-                type: "premium"
-              },
-              {
-                label: "🚦 Semáforo de Términos",
-                content: "🟢 Verde (>15 días): En término | 🟡 Amarillo (5-15 días): Próximo a vencer | 🔴 Rojo (≤5 días): CRÍTICO - Acción inmediata requerida. El sistema alerta automáticamente.",
-                type: "warning"
-              },
-              {
-                label: "📋 Última Actuación (Bloque Azul)",
-                content: "El bloque azul destacado en cada tarjeta muestra la actuación procesal más reciente del juzgado, facilitando seguimiento rápido sin abrir el expediente completo.",
-                type: "default"
-              },
-              {
-                label: "🔗 Integración con Otros Módulos",
-                content: "Este módulo se conecta con: • Centro Comunicaciones (notificaciones del juzgado) • Términos e Informes (control de plazos) • Asesoría Jurídica (conceptos técnicos necesarios).",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Click 'Nueva Demanda' cuando llega notificación → 2️⃣ Arrastra tarjetas entre columnas al cambiar etapa → 3️⃣ Click 'Expediente' para ver documentos completos → 4️⃣ Usa botones rápidos (Autos, Evidencias, Oficios) para gestión documental.",
-                type: "default"
-              },
-              {
-                label: "⏭️ Siguiente Paso",
-                content: "Cuando el proceso judicial relaciona funcionarios internos, se deriva al módulo 'Juzgamiento Disciplinario' (MOD-02) para investigación interna paralela.",
-                type: "info"
-              }
-            ]}
-          />
-        </div>
-      </div>
-
-      {/* Métricas - IGUAL A DISCIPLINARIO */}
-      <ModuleMetrics
-        metrics={[
-          {
-            value: totalExpedientes,
-            label: 'Expedientes',
-            icon: <FileText className="w-5 h-5" />,
-            color: 'orange'
-          },
-          {
-            value: expedientesCriticos,
-            label: 'Críticos',
-            icon: <AlertCircle className="w-5 h-5" />,
-            color: 'red'
-          },
-          {
-            value: expedientesEnTermino,
-            label: 'En Término',
-            labelMobile: 'En término',
-            icon: <CheckCircle className="w-5 h-5" />,
-            color: 'green'
-          }
-        ]}
+        }
       />
-
-      {/* Filtros */}
-      <ModuleFilters
-        searchValue={busqueda}
-        onSearchChange={setBusqueda}
-        filters={[
-          {
-            type: 'select',
-            label: 'Etapa Procesal',
-            value: filtroEtapa,
-            onChange: setFiltroEtapa,
-            options: [
-              { value: 'TODAS', label: 'Todas las etapas' },
-              ...etapas.map((e: any) => ({ value: e.nombre, label: e.nombre }))
-            ]
-          },
-          {
-            type: 'select',
-            label: 'Tipo de Proceso',
-            value: filtroTipo,
-            onChange: setFiltroTipo,
-            options: [
-              { value: 'TODOS', label: 'Todos los tipos' },
-              ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
-            ]
-          },
-          ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR)
-            ? [{
-                type: 'select' as const,
-                label: 'Abogado',
-                value: filtroAbogado,
-                onChange: setFiltroAbogado,
-                options: [
-                  { value: 'TODOS', label: 'Todos los abogados' },
-                  { value: 'Sin asignar', label: 'Sin abogado asignado' },
-                  ...abogadosList.map(a => ({ value: a.nombre, label: a.nombre }))
-                ]
-              }]
-            : [])
-        ]}
-        totalItems={totalExpedientes}
-        filteredItems={expedientesVisibles.length}
-        onClearFilters={() => {
-          setBusqueda('');
-          setFiltroEtapa('TODAS');
-          setFiltroTipo('TODOS');
-          setFiltroAbogado('TODOS');
-        }}
-      />
-
-      {/* ✅ Banner de Días Hábiles - Indicador prominente */}
-      <IndicadorDiasHabiles className="animate-fade-in" />
 
       {/* Tablero Kanban - Diseño migrado desde SuperApp Gestión Legal */}
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
           <div className="relative">
-            {!useFluidKanban && (
-              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                  Desliza
-                </p>
-              </div>
-            )}
+            {isMobile ? (
+              /* Vista Adaptativa Mobile - Acordeón de Etapas */
+              <div className="space-y-3 px-1">
+                {etapas.map((etapa: any) => {
+                  const estaAbierto = !columnasColapsadas[etapa.valor];
+                  return (
+                    <Card key={etapa.nombre} className="border border-gray-200 overflow-hidden bg-white shadow-sm rounded-xl">
+                      <button
+                        onClick={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 hover:bg-gray-100/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 flex-shrink-0">
+                            {etapa.icono}
+                          </div>
+                          <span className="font-black text-sm text-gray-800 truncate text-left">
+                            {etapa.nombre}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="font-bold text-xs px-2 py-0.5 bg-[#E0EDFF] text-[#003DA5] border border-blue-200">
+                            {etapa.expedientes.length}
+                          </Badge>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${estaAbierto ? '' : 'rotate-[-90deg]'}`} />
+                        </div>
+                      </button>
 
-            <div
-              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#CBD5E0 #F7FAFC',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
-              {etapas.map((etapa: any) => (
-                <ColumnaKanban
-                  key={etapa.nombre}
-                  etapa={etapa}
-                  isMobile={isMobile}
-                  isTablet={isTablet}
-                  isSmallDesktop={isSmallDesktop}
-                  columnWidth={kanbanColumnWidth}
-                  useFluid={useFluidKanban}
-                  onRefresh={loadExpedientes}
-                  onMoverExpediente={handleMoverExpediente}
-                />
-              ))}
-            </div>
+                      {estaAbierto && (
+                        <div className="p-3 space-y-3 bg-gray-50/50">
+                          {etapa.expedientes.map((expediente: any) => (
+                            <TarjetaExpediente
+                              key={expediente.id}
+                              expediente={expediente}
+                              isMobile={isMobile}
+                              isCompact={false}
+                              onRefresh={loadExpedientes}
+                              onMoverExpediente={handleMoverExpediente}
+                              etapaActual={etapa.valor}
+                            />
+                          ))}
+                          {etapa.expedientes.length === 0 && (
+                            <div className="text-center py-8 text-gray-400">
+                              <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                              <p className="text-xs font-semibold">Sin expedientes en esta etapa</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Vista Desktop - Kanban tradicional */
+              <>
+                {!useFluidKanban && (
+                  <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                    <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                      <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                      Desliza
+                    </p>
+                  </div>
+                )}
+
+                <div
+                  className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 kanban-board-scroll ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth snap-x snap-mandatory`}
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#CBD5E0 #F7FAFC',
+                    WebkitOverflowScrolling: 'touch'
+                  }}
+                >
+                  {etapas.map((etapa: any) => (
+                    <ColumnaKanban
+                      key={etapa.nombre}
+                      etapa={etapa}
+                      isMobile={isMobile}
+                      isTablet={isTablet}
+                      isSmallDesktop={isSmallDesktop}
+                      columnWidth={kanbanColumnWidth}
+                      useFluid={useFluidKanban}
+                      onRefresh={loadExpedientes}
+                      onMoverExpediente={handleMoverExpediente}
+                      isCollapsed={!!columnasColapsadas[etapa.valor]}
+                      onToggleCollapse={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </DndProvider>
       )}
@@ -966,6 +1298,7 @@ export function ModuloDefensaJudicialV3() {
           isMobile={isMobile}
           isTablet={isTablet}
           onMoverExpediente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) ? handleMoverExpediente : undefined}
+          onRefresh={loadExpedientes}
         />
       )}
 
@@ -984,6 +1317,27 @@ export function ModuloDefensaJudicialV3() {
         isOpen={modalNuevaDemandaOpen}
         onClose={() => setModalNuevaDemandaOpen(false)}
         onSave={handleSaveNuevaDemanda}
+        tableroSeleccionado={tableroSeleccionado}
+      />
+
+      {/* Modal Filtros Reporte */}
+      <ModalFiltrosReporte
+        open={modalFiltrosReporteOpen}
+        onClose={() => setModalFiltrosReporteOpen(false)}
+        expedientes={expedientesVisibles as any}
+        filtroTipoActual={filtroTipo}
+        nombreTipoActual={filtroTipo === 'TODOS' ? 'Todos los tipos de proceso' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo)}
+        onGenerar={(expedientesFiltrados, descripcionFiltros) => {
+          toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
+          setTimeout(() => {
+            generarReporteExpedientesPDF(expedientesFiltrados as any, filtroTipo === 'TODOS' ? 'TODOS' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo), descripcionFiltros);
+            toast.success(`Reporte generado con ${expedientesFiltrados.length} expediente(s)`, {
+              id: 'reporte-pdf',
+              description: descripcionFiltros,
+              duration: 4000
+            });
+          }, 300);
+        }}
       />
 
       {/* ✅ Modal Expediente abierto desde notificación (nivel padre) */}
@@ -1016,6 +1370,8 @@ interface ColumnaKanbanProps {
   useFluid: boolean;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
   onRefresh?: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function ColumnaKanban({
@@ -1025,7 +1381,9 @@ function ColumnaKanban({
   columnWidth,
   useFluid,
   onMoverExpediente,
-  onRefresh
+  onRefresh,
+  isCollapsed,
+  onToggleCollapse
 }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.EXPEDIENTE,
@@ -1038,16 +1396,61 @@ function ColumnaKanban({
   const backgroundColor = isOver ? ESAP_TOKENS.colors.primaryLight : ESAP_TOKENS.colors.surfaceAlt;
   const borderColor = isOver ? ESAP_TOKENS.colors.primary : 'transparent';
 
+  if (isCollapsed && !isMobile) {
+    return (
+      <div
+        className="flex-shrink-0 w-[40px] min-w-[40px] transition-all duration-300 relative flex flex-col snap-center"
+        style={{ height: 'calc(100vh - 180px)' }}
+      >
+        <Card
+          ref={drop}
+          className="h-full border border-gray-200 bg-gray-50/50 hover:bg-gray-100/50 transition-all flex flex-col items-center py-4 cursor-pointer select-none rounded-xl overflow-hidden relative"
+          onClick={onToggleCollapse}
+          title={`Expandir etapa ${etapa.nombre}`}
+        >
+          {/* Acento de color arriba */}
+          <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
+
+          {/* Badge de cantidad */}
+          <Badge className="font-bold text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 shadow-sm flex-shrink-0 mb-6">
+            {etapa.expedientes.length}
+          </Badge>
+
+          {/* Nombre vertical */}
+          <div className="flex-1 flex items-center justify-center">
+            <span
+              className="font-black text-[10px] text-gray-600 uppercase tracking-wider whitespace-nowrap rotate-90 select-none pointer-events-none"
+              style={{ transformOrigin: 'center center' }}
+            >
+              {etapa.nombre}
+            </span>
+          </div>
+
+          {/* Icono de expandir */}
+          <div className="mt-6 p-1 rounded-md bg-white border border-gray-200 text-gray-400 hover:text-[#003DA5] hover:border-[#003DA5]/30 shadow-sm">
+            <ChevronsDown className="w-3.5 h-3.5 rotate-[-90deg]" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="flex-shrink-0"
-      initial={{ width: 320 }}
-      animate={{ width: 320 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
-      style={{ maxWidth: '320px' }}
+      className="flex flex-col transition-all duration-300 snap-center"
+      style={{
+        width: etapa.expedientes.length > 0 ? 319 : 194,
+        minWidth: etapa.expedientes.length > 0 ? 319 : 194,
+        maxWidth: etapa.expedientes.length > 0 ? 319 : 194,
+        flex: 'none',
+        height: isMobile ? 'auto' : 'calc(100vh - 180px)'
+      }}
     >
-      <Card className="h-full border border-gray-200 bg-white">
-        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50`}>
+      <Card className="h-full border border-gray-200 bg-white flex flex-col overflow-hidden relative">
+        {/* Acento de color arriba */}
+        <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: etapa.color || ESAP_TOKENS.colors.primary }} />
+
+        <div className={`${isMobile ? 'p-2.5' : isSmallDesktop ? 'p-2.5' : 'p-3'} border-b bg-gray-50 flex-shrink-0 pt-3.5`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <div className="p-1.5 rounded-lg bg-white border border-gray-200 flex-shrink-0">
@@ -1057,28 +1460,35 @@ function ColumnaKanban({
                 <h3 className="font-black text-xs text-gray-800 truncate">
                   {etapa.nombre}
                 </h3>
-                <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5" />
-                  {etapa.diasEstimados} días hábiles
-                </p>
               </div>
             </div>
-            <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0 ml-1">
-              {etapa.expedientes.length}
-            </Badge>
+            {/* Collapse action and badge */}
+            <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+              <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0">
+                {etapa.expedientes.length}
+              </Badge>
+              {!isMobile && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+                  className="p-1 rounded bg-white hover:bg-gray-100 border border-gray-200 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                  title={`Colapsar etapa ${etapa.nombre}`}
+                >
+                  <ChevronsDown className="w-3.5 h-3.5 rotate-[90deg]" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         <div
           ref={drop}
-          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto`}
+          className={`${isMobile ? 'p-2' : isSmallDesktop ? 'p-1.5' : 'p-2'} space-y-2 overflow-y-auto flex-1`}
           style={{
-            minHeight: isMobile ? '350px' : '400px',
-            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 340px)',
             backgroundColor: backgroundColor,
             borderLeft: `3px solid ${borderColor}`,
             borderRight: `3px solid ${borderColor}`,
-            transition: 'all 0.2s ease'
+            transition: 'all 0.2s ease',
+            minHeight: isMobile ? '350px' : 'auto'
           }}
         >
           {etapa.expedientes.map((expediente) => (
@@ -1101,6 +1511,19 @@ function ColumnaKanban({
               </p>
             </div>
           )}
+
+          {/* Dotted Drop Target Placeholder when dragging over */}
+          {isOver && (
+            <div
+              className="border-2 border-dashed border-[#003DA5]/30 bg-[#003DA5]/[0.02] rounded-xl flex items-center justify-center p-6 transition-all duration-200"
+              style={{ height: '100px' }}
+            >
+              <p className="text-xs font-bold text-[#003DA5]/50 flex items-center gap-1.5">
+                <Plus className="w-4 h-4" />
+                Soltar expediente aquí
+              </p>
+            </div>
+          )}
         </div>
       </Card>
     </div>
@@ -1114,12 +1537,12 @@ interface TarjetaExpedienteProps {
   isCompact?: boolean;
   onRefresh?: () => void;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
-  etapaActual: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
+  etapaActual: string;
 }
 
 function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
+  const { estadosActivos } = useConfiguracionModulo('defensa-judicial');
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
-  const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
   const [showEliminarModal, setShowEliminarModal] = useState(false);
   const [motivoEliminar, setMotivoEliminar] = useState('');
   const [eliminando, setEliminando] = useState(false);
@@ -1157,8 +1580,14 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   };
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
-  const porcentajeTiempo = Math.min(100, Math.max(0, Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100)));
-  const procesoVencido = expediente.diasRestantes < 0;
+  const { porcentajeGlobal: porcentajeTiempo, procesoVencido } = calcularProgreso(
+    expediente.diasTotales,
+    expediente.diasRestantes,
+    expediente.etapa,
+    estadosActivos,
+    expediente.documentos,
+    expediente.actuaciones
+  );
   const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
   const canDrag = authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT);
@@ -1175,7 +1604,11 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: canDrag ? 'move' : 'default' }} className="h-[380px]">
+    <div
+      ref={drag}
+      style={{ opacity, cursor: canDrag ? 'move' : 'default' }}
+      className="h-fit transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rounded-xl"
+    >
       <KanbanCard
         accentColor={ESAP_TOKENS.colors.primary}
         isDragging={isDragging}
@@ -1198,7 +1631,10 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
                   }}
                 />
                 <span className="font-bold" style={{ color: semaforo.color }}>
-                  {expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes}d`}
+                  {(() => {
+                    const unit = expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd';
+                    return expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}${unit}` : `${expediente.diasRestantes}${unit}`;
+                  })()}
                 </span>
               </div>
               {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
@@ -1257,15 +1693,18 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
               icon: <Clock className="w-3.5 h-3.5" />,
               // Si no hay días totales (ej. sin fecha límite clara) o ya se venció, 
               // mostrar simplemente los días absolutos transcurridos o restantes con sentido lógico.
-              label: expediente.diasRestantes < 0
-                ? `${Math.abs(expediente.diasRestantes)}d`
-                : `${Math.max(0, expediente.diasTotales - expediente.diasRestantes)}d`,
+              label: (() => {
+                const unit = expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd';
+                return expediente.diasRestantes < 0
+                  ? `${Math.abs(expediente.diasRestantes)}${unit}`
+                  : `${Math.max(0, expediente.diasTotales - expediente.diasRestantes)}${unit}`;
+              })(),
               color: ESAP_TOKENS.colors.text.secondary,
             },
             {
               icon: <AlertCircle className="w-3.5 h-3.5" />,
-              // Evitamos porcentajes negativos o mayores a 100% si diasRestantes es negativo
-              label: expediente.diasRestantes < 0 ? '0%' : `${porcentajeTiempo}%`,
+              // Muestra el progreso global multi-factor
+              label: `${porcentajeTiempo}%`,
               color: procesoVencido ? ESAP_TOKENS.colors.danger : ESAP_TOKENS.colors.text.secondary,
             },
           ]}
@@ -1273,7 +1712,7 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
 
         {!isCompact && (
           <div
-            className="mb-2.5 p-2 rounded-lg border"
+            className="mt-3 mb-2.5 p-2 rounded-lg border"
             style={{
               backgroundColor: ESAP_TOKENS.colors.primaryLight,
               borderColor: '#BFDBFE'
@@ -1294,15 +1733,10 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
             <KanbanButtonPrimary
               icon={<FolderOpen className="w-3.5 h-3.5" />}
               onClick={handleAbrirExpediente}
+              className="w-full"
             >
               Expediente
             </KanbanButtonPrimary>
-            <KanbanButtonSecondary
-              icon={<MessageSquare className="w-3.5 h-3.5" />}
-              onClick={() => setModalComunicacionesOpen(true)}
-            >
-              Comunic.
-            </KanbanButtonSecondary>
           </KanbanActionRowPrimary>
 
         </KanbanActionSection>
@@ -1313,12 +1747,6 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
         onClose={() => setModalExpedienteOpen(false)}
         expediente={expediente}
         onUpdate={onRefresh}
-      />
-
-      <ModalComunicaciones
-        isOpen={modalComunicacionesOpen}
-        onClose={() => setModalComunicacionesOpen(false)}
-        expediente={expediente}
       />
 
       {/* Modal de confirmación eliminar */}

@@ -263,6 +263,16 @@ export function GestionLegalFull() {
     }
   };
 
+  // Disparar evento para colapsar/expandir el sidebar del Shell según la vista actual
+  useEffect(() => {
+    const isConfig = vistaActual === 'configuraciones';
+    window.dispatchEvent(
+      new CustomEvent('esap:sidebar:collapse', {
+        detail: { collapsed: isConfig }
+      })
+    );
+  }, [vistaActual]);
+
   // Definir menu items sin Dashboard ni Tour
   const menuItems: MenuItem[] = [
     // 📋 MÓDULOS KANBAN - PRIORIZADOS POR FLUJO E IMPORTANCIA
@@ -403,7 +413,7 @@ export function GestionLegalFull() {
   return (
     <ConfiguracionesSIGLProvider key={authContextKey}>
       <PermisosProvider>
-        <Toaster position="top-right" richColors closeButton duration={4000} />
+        <Toaster position="bottom-right" richColors closeButton duration={4000} />
         <ModuleLayout
           moduleName="GESTIÓN LEGAL"
           moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
@@ -412,7 +422,7 @@ export function GestionLegalFull() {
           menuItems={menuItems}
           activeSection={vistaActual}
           onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
-          initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
+          initialSidebarCollapsed={vistaActual === 'configuraciones'} // Logo ESAP compacto cuando se colapsa
         >
           {renderVistaActual()}
         </ModuleLayout>

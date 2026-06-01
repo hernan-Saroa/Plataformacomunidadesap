@@ -1163,11 +1163,15 @@ export class ProcessController {
     @Query('abogadoId') abogadoId: string,
   ): Promise<DisciplinaryProcess[]> {
     const access = await this.getSensitiveAccessContext(req);
+    
+    console.log('abogadoId',abogadoId);
+    
 
     if (access.fullAccess) {
       if (!abogadoId) {
         throw new HttpException('abogadoId es requerido', HttpStatus.BAD_REQUEST);
       }
+      console.log('resultados',await this.processService.findByAbogadoId(abogadoId));
 
       return await this.processService.findByAbogadoId(abogadoId);
     }
@@ -1490,47 +1494,65 @@ export class ProcessController {
     }
   }
 
-  /**
-   * Enviar correo electrónico
-   */
-  @Post('send-email')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Enviar Correo Electrónico',
-    description: 'Envía un correo electrónico usando el servicio de notificaciones',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Correo enviado exitosamente',
-  })
-  @ApiResponse({ status: 400, description: 'Datos inválidos' })
-  @ApiResponse({ status: 500, description: 'Error interno del servidor' })
-  async sendEmail(@Body() emailData: { to: string; subject: string; body?: string; html?: string }) {
-    try {
-      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
+/**
+    * Enviar correo electrónico
+    */
+   @Post('send-email')
+   @HttpCode(HttpStatus.OK)
+   @ApiOperation({
+     summary: 'Enviar Correo Electrónico',
+     description: 'Envía un correo electrónico usando el servicio de notificaciones',
+   })
+   @ApiResponse({
+     status: 200,
+     description: 'Correo enviado exitosamente',
+   })
+   @ApiResponse({ status: 400, description: 'Datos inválidos' })
+   @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+   async sendEmail(@Body() emailData: { to: string; subject: string; body?: string; html?: string }) {
+     try {
+       const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
 
-      const emailPayload = {
-        to: emailData.to,
-        subject: emailData.subject,
-        text: emailData.body,
-        html: emailData.html,
-      };
+       const emailPayload = {
+         to: emailData.to,
+         subject: emailData.subject,
+         text: emailData.body,
+         html: emailData.html,
+       };
 
-      console.log('📧 [ProcessController] Enviando correo a:', emailData.to);
+       console.log('📧 [ProcessController] Enviando correo a:', emailData.to);
 
-      const response = await firstValueFrom(
-        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
-      );
+       const response = await firstValueFrom(
+         this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
+       );
 
-      console.log('📧 [ProcessController] Correo enviado exitosamente:', response.data);
+       console.log('📧 [ProcessController] Correo enviado exitosamente:', response.data);
 
-      return { success: true, message: 'Correo enviado exitosamente' };
-    } catch (error) {
-      console.error('📧 [ProcessController] Error al enviar correo:', error);
-      throw new HttpException(
-        `Error al enviar correo: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-}
+       return { success: true, message: 'Correo enviado exitosamente' };
+     } catch (error) {
+       console.error('📧 [ProcessController] Error al enviar correo:', error);
+       throw new HttpException(
+         `Error al enviar correo: ${error.message}`,
+         HttpStatus.INTERNAL_SERVER_ERROR,
+       );
+     }
+   }
+
+   /**
+    * Obtener todas las noticias RADICADA con documentos adjuntos
+    * Estas noticias no tienen proceso asociado aún
+    */
+   @Get('radicated-news')
+   @HttpCode(HttpStatus.OK)
+   @ApiOperation({
+     summary: 'Obtener Noticias Radicadas con Documentos',
+     description: 'Retorna las noticias en estado RADICADA que tienen archivos adjuntos pero no tienen proceso asociado',
+   })
+   @ApiResponse({
+     status: 200,
+     description: 'Lista de noticias radicadas con documentos',
+   })
+   async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
+     return await this.processService.findRadicatedNewsWithDocuments();
+   }
+ }

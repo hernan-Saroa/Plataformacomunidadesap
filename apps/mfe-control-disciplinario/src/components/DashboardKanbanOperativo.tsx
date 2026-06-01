@@ -2029,11 +2029,10 @@ function ColumnaKanban({
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
 
-  // Ordenar noticias por la fecha que eligió el usuario al crear (fechaRecepcion/fechaQueja), no por orden de inserción en BD
   const noticias = (itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[])
     .sort((a, b) => {
-      const da = new Date(a.fechaRecepcion || (a as any).createdAt || 0).getTime();
-      const db = new Date(b.fechaRecepcion || (b as any).createdAt || 0).getTime();
+      const da = new Date((a as any).createdAt || a.fechaRecepcion || 0).getTime();
+      const db = new Date((b as any).createdAt || b.fechaRecepcion || 0).getTime();
       return db - da;
     });
 
@@ -3046,7 +3045,6 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         }));
       })(),
       hechosSeparados: [],
-      archivosAdjuntos: [],
       origenNoticia: proceso.news?.origen || '',
       fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
       prioridadNoticia: proceso.news?.prioridad || 'media',
@@ -3583,6 +3581,7 @@ export function DashboardKanbanOperativo({
       })),
       hechos: (noticia as any).hechos || '',
       estado: mapEstadoNoticia((noticia as any).estado) as any,
+      createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
@@ -3784,7 +3783,6 @@ export function DashboardKanbanOperativo({
         }));
       })(),
       hechosSeparados: [],
-      archivosAdjuntos: [],
       origenNoticia: proceso.news?.origen || '',
       fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
       prioridadNoticia: proceso.news?.prioridad || 'media',
@@ -4118,7 +4116,6 @@ export function DashboardKanbanOperativo({
           : (data.hechos || data.descripcionHechos || ''),
         fechaHechos: data.fechaHechos ? (data.fechaHechos.length > 10 ? data.fechaHechos.split('T')[0] : data.fechaHechos) : undefined,
         fechaQueja: data.fechaQueja ? (data.fechaQueja.length > 10 ? data.fechaQueja.split('T')[0] : data.fechaQueja) : undefined,
-        fechaQueja: data.fechaQueja || undefined,  // Enviar como string YYYY-MM-DD para que llegue al backend
         conducta: data.conducta || data.conductaSeleccionada || '',
         conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
         radicadorId: currentUser.id

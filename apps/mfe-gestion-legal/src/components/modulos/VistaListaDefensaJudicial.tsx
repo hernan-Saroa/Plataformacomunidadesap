@@ -8,17 +8,23 @@ import { motion } from 'motion/react';
 import {
   FileText, User, Clock, Calendar, DollarSign, Filter, Settings,
   Eye, MoreVertical, ChevronsUp, ChevronsDown, Scale, List,
-  Download, Paperclip, Send, MessageSquare, FileCheck, Edit, Search
+  Download, Paperclip, Send, MessageSquare, FileCheck, Edit, Search,
+  AlertCircle, Trash2
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalExpediente } from './ModalExpediente';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { legalService } from '../../../../services/api/legal.service';
+import { calcularProgreso } from '../core/expedienteShared';
 
 interface VistaListaProps {
   expedientes: ExpedienteJudicial[];
@@ -188,15 +194,18 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
 
   // Vista Desktop/Tablet - Tabla profesional
   return (
-    <Card className="border border-gray-200 bg-white overflow-hidden">
+    <Card className="border border-gray-200 bg-white overflow-hidden shadow-sm rounded-xl relative">
+      {/* Barra de acento */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-[#003DA5]" />
+      
       {/* Header de la tabla */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 border-b border-blue-700">
-        <div className="flex items-center justify-between">
-          <h3 className="font-black text-white flex items-center gap-2">
+      <div className="bg-white px-4 py-4 border-b border-gray-100 flex items-center justify-between mt-1">
+        <div className="flex items-center justify-between w-full">
+          <h3 className="font-black text-[#003DA5] flex items-center gap-2 text-base">
             <List className="w-5 h-5" />
             Vista de Lista - Expedientes Judiciales
           </h3>
-          <Badge className="bg-white text-blue-700 font-bold">
+          <Badge className="bg-[#E0EDFF] text-[#003DA5] border border-blue-200 font-bold px-2.5 py-1">
             {expedientesOrdenados.length} expedientes
           </Badge>
         </div>
@@ -272,7 +281,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
               </th>
 
               {/* Cuantía */}
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left hidden lg:table-cell">
                 <div className="flex items-center gap-1.5 text-xs font-black text-gray-700">
                   <DollarSign className="w-3.5 h-3.5" />
                   Cuantía
@@ -280,7 +289,7 @@ export function VistaListaDefensaJudicial({ expedientes, isMobile, isTablet, onM
               </th>
 
               {/* Última Actualización */}
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left hidden xl:table-cell">
                 <button
                   onClick={() => handleOrdenar('fecha')}
                   className="flex items-center gap-1.5 text-xs font-black text-gray-700 hover:text-blue-600 transition-colors"
@@ -421,6 +430,41 @@ interface FilaExpedienteTablaProps {
 function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estadosActivos, onMoverExpediente, onRefresh }: FilaExpedienteTablaProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [menuAccionesOpen, setMenuAccionesOpen] = useState(false);
+  const [showEliminarModal, setShowEliminarModal] = useState(false);
+  const [motivoEliminar, setMotivoEliminar] = useState('');
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleEliminarDemanda = async () => {
+    if (!motivoEliminar.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+    try {
+      setEliminando(true);
+      const idToDelete = expediente.uuid || expediente.id;
+      await legalService.eliminarExpedienteSoft(idToDelete, motivoEliminar, 'usuario');
+      toast.success('🗑️ Demanda eliminada exitosamente', {
+        description: `Radicado: ${expediente.id} — Movida a archivados`
+      });
+      setShowEliminarModal(false);
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error eliminando demanda:', error);
+      toast.error('❌ Error al eliminar la demanda');
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  const { porcentajeGlobal: porcentajeTiempo, procesoVencido } = calcularProgreso(
+    expediente.diasTotales,
+    expediente.diasRestantes,
+    expediente.etapa,
+    estadosActivos,
+    expediente.documentos,
+    expediente.actuaciones
+  );
+  const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
   const formatCuantia = (cuantia: number | undefined) => {
     if (!cuantia) return 'No determinada';
@@ -457,44 +501,56 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
 
         {/* Demandante */}
         <td className="px-4 py-3">
-          <div className="max-w-xs space-y-1">
+          <div className="max-w-xs space-y-1.5">
             {/* Demandantes */}
-            {expediente.demandantes && expediente.demandantes.length > 0 ? (
-              <>
-                <p className="text-[10px] font-semibold text-orange-700 uppercase">Demandante(s):</p>
-                {expediente.demandantes.map((demandante, idx) => (
-                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
-                    • {demandante.nombre}
+            <div className="flex items-start gap-1.5">
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-[#003DA5] uppercase shrink-0">
+                DTE
+              </span>
+              <div className="min-w-0 flex-1">
+                {expediente.demandantes && expediente.demandantes.length > 0 ? (
+                  expediente.demandantes.map((demandante, idx) => (
+                    <p key={idx} className="font-bold text-xs text-gray-900 truncate" title={demandante.nombre}>
+                      {demandante.nombre}
+                    </p>
+                  ))
+                ) : (
+                  <p className="font-bold text-xs text-gray-900 truncate" title={expediente.demandante}>
+                    {expediente.demandante}
                   </p>
-                ))}
-              </>
-            ) : (
-              <p className="font-bold text-sm text-gray-900 line-clamp-2">
-                {expediente.demandante}
-              </p>
-            )}
+                )}
+              </div>
+            </div>
 
             {/* Demandados */}
             {expediente.demandados && expediente.demandados.length > 0 && (
-              <div className="mt-1 pt-1 border-t border-gray-200">
-                <p className="text-[10px] font-semibold text-red-700 uppercase">Demandado(s):</p>
-                {expediente.demandados.map((demandado, idx) => (
-                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
-                    • {demandado.nombre}
-                  </p>
-                ))}
+              <div className="flex items-start gap-1.5 pt-1.5 border-t border-gray-100">
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 text-gray-600 uppercase shrink-0">
+                  DDO
+                </span>
+                <div className="min-w-0 flex-1">
+                  {expediente.demandados.map((demandado, idx) => (
+                    <p key={idx} className="font-bold text-xs text-gray-900 truncate" title={demandado.nombre}>
+                      {demandado.nombre}
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* Otros Actores */}
             {expediente.otrosActores && expediente.otrosActores.length > 0 && (
-              <div className="mt-1 pt-1 border-t border-gray-200">
-                <p className="text-[10px] font-semibold text-blue-700 uppercase">Otros Actores:</p>
-                {expediente.otrosActores.map((actor, idx) => (
-                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
-                    • {actor.nombre} <span className="text-[9px] text-gray-600">({actor.rol})</span>
-                  </p>
-                ))}
+              <div className="flex items-start gap-1.5 pt-1.5 border-t border-gray-100">
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 uppercase shrink-0">
+                  OTRO
+                </span>
+                <div className="min-w-0 flex-1">
+                  {expediente.otrosActores.map((actor, idx) => (
+                    <p key={idx} className="font-bold text-xs text-gray-900 truncate" title={`${actor.nombre} (${actor.rol})`}>
+                      {actor.nombre} <span className="text-[9px] text-gray-500 font-normal">({actor.rol})</span>
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -556,37 +612,64 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
 
         {/* Días Restantes */}
         <td className="px-4 py-3">
-          <div
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border"
-            style={{
-              backgroundColor: semaforo.bg,
-              borderColor: semaforo.border
-            }}
-          >
+          <div className="flex flex-col gap-1.5">
             <div
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ backgroundColor: semaforo.border }}
-            />
-            <p className="font-bold text-sm" style={{ color: semaforo.text }}>
-              {expediente.diasRestantes} días
-            </p>
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border w-fit"
+              style={{
+                backgroundColor: semaforo.bg,
+                borderColor: semaforo.border
+              }}
+            >
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: semaforo.border }}
+              />
+              <p className="font-bold text-xs" style={{ color: semaforo.text }}>
+                {(() => {
+                  const unit = expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd';
+                  return expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}${unit}` : `${expediente.diasRestantes}${unit}`;
+                })()}
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2 text-xs text-gray-500 font-semibold">
+              <span className="flex items-center gap-1" title="Documentos">
+                <FileText className="w-3 h-3 text-gray-400" />
+                {expediente.documentos?.length || 0} docs
+              </span>
+              <span className="flex items-center gap-1" style={{ color: procesoVencido ? '#DC2626' : undefined }} title="Progreso global">
+                <AlertCircle className="w-3 h-3 text-gray-400" style={{ color: procesoVencido ? '#DC2626' : undefined }} />
+                {porcentajeTiempo}%
+              </span>
+            </div>
           </div>
         </td>
 
         {/* Cuantía */}
-        <td className="px-4 py-3">
+        <td className="px-4 py-3 hidden lg:table-cell">
           <p className="font-bold text-sm text-gray-900">
             {formatCuantia(Number(expediente.cuantia) || undefined)}
           </p>
         </td>
 
         {/* Última Actualización */}
-        <td className="px-4 py-3">
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-gray-400" />
-            <p className="text-sm text-gray-700">
-              {expediente.fechaActualizacion.toLocaleDateString('es-CO')}
-            </p>
+        <td className="px-4 py-3 hidden xl:table-cell">
+          <div className="space-y-1.5 max-w-[220px]">
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-gray-400" />
+              <p className="text-sm text-gray-700 font-medium">
+                {expediente.fechaActualizacion.toLocaleDateString('es-CO')}
+              </p>
+            </div>
+            <div className="p-2 rounded-lg border bg-blue-50/50 border-blue-100">
+              <p className="text-[9px] font-black text-blue-700 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                Última Actuación
+              </p>
+              <p className="text-[11px] text-gray-600 line-clamp-2 leading-snug">
+                {ultimaActuacion}
+              </p>
+            </div>
           </div>
         </td>
 
@@ -681,6 +764,24 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
                       <Download className="w-3 h-3 mr-2" />
                       Descargar
                     </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                      <>
+                        <div className="h-px bg-gray-200 my-1" />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="w-full justify-start text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            setMotivoEliminar('');
+                            setShowEliminarModal(true);
+                            setMenuAccionesOpen(false);
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3 mr-2" />
+                          Eliminar Demanda
+                        </Button>
+                      </>
+                    )}
                   </Card>
                 </>
               )}
@@ -696,6 +797,62 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
         expediente={expediente}
         onUpdate={onRefresh}
       />
+
+      {/* Modal de confirmación eliminar */}
+      <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              Eliminar Demanda
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-red-800">
+                <p className="font-semibold">¿Eliminar esta demanda?</p>
+                <p className="text-xs mt-1 opacity-80">Radicado: <strong>{expediente.id}</strong>. Será movida a la papelera y podrá restaurarla desde Archivados.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo de eliminación <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón de la eliminación..."
+                value={motivoEliminar}
+                onChange={(e) => setMotivoEliminar(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEliminarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleEliminarDemanda}
+              disabled={!motivoEliminar.trim() || eliminando}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              {eliminando ? 'Eliminando...' : 'Eliminar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -713,6 +870,41 @@ interface FilaExpedienteMobileProps {
 function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivos, onMoverExpediente, onRefresh }: FilaExpedienteMobileProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [expandido, setExpandido] = useState(false);
+  const [showEliminarModal, setShowEliminarModal] = useState(false);
+  const [motivoEliminar, setMotivoEliminar] = useState('');
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleEliminarDemanda = async () => {
+    if (!motivoEliminar.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+    try {
+      setEliminando(true);
+      const idToDelete = expediente.uuid || expediente.id;
+      await legalService.eliminarExpedienteSoft(idToDelete, motivoEliminar, 'usuario');
+      toast.success('🗑️ Demanda eliminada exitosamente', {
+        description: `Radicado: ${expediente.id} — Movida a archivados`
+      });
+      setShowEliminarModal(false);
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error eliminando demanda:', error);
+      toast.error('❌ Error al eliminar la demanda');
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  const { porcentajeGlobal: porcentajeTiempo, procesoVencido } = calcularProgreso(
+    expediente.diasTotales,
+    expediente.diasRestantes,
+    expediente.etapa,
+    estadosActivos,
+    expediente.documentos,
+    expediente.actuaciones
+  );
+  const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
   const formatCuantia = (cuantia: number | undefined) => {
     if (!cuantia) return 'No determinada';
@@ -744,37 +936,63 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
               </div>
             </div>
             {onMoverExpediente ? (
-              <Select
-                value={expediente.etapa}
-                onValueChange={(value: string) => onMoverExpediente(expediente.id, value)}
-              >
-                <SelectTrigger
-                  className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 flex-shrink-0 text-xs w-auto min-w-[120px]"
-                  style={{
-                    backgroundColor: etapaConfig.bg,
-                    borderColor: etapaConfig.border,
-                    color: etapaConfig.text
-                  }}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Select
+                  value={expediente.etapa}
+                  onValueChange={(value: string) => onMoverExpediente(expediente.id, value)}
                 >
-                  <div className="flex items-center gap-1 flex-1 pr-1">
-                    {etapaConfig.icono}
-                    <SelectValue />
-                  </div>
-                </SelectTrigger>
-                <SelectContent className="z-[100000]">
-                  {estadosActivos.map(estado => (
-                    <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 flex-shrink-0 text-xs w-auto min-w-[120px]"
+                    style={{
+                      backgroundColor: etapaConfig.bg,
+                      borderColor: etapaConfig.border,
+                      color: etapaConfig.text
+                    }}
+                  >
+                    <div className="flex items-center gap-1 flex-1 pr-1">
+                      {etapaConfig.icono}
+                      <SelectValue />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="z-[100000]">
+                    {estadosActivos.map(estado => (
+                      <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setMotivoEliminar(''); setShowEliminarModal(true); }}
+                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    title="Eliminar demanda"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             ) : (
-              <span
-                className="inline-flex items-center gap-1 py-1 px-2.5 border rounded-full font-semibold flex-shrink-0 text-xs"
-                style={{ backgroundColor: etapaConfig.bg, borderColor: etapaConfig.border, color: etapaConfig.text }}
-              >
-                {etapaConfig.icono}
-                {expediente.etapa}
-              </span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span
+                  className="inline-flex items-center gap-1 py-1 px-2.5 border rounded-full font-semibold flex-shrink-0 text-xs"
+                  style={{ backgroundColor: etapaConfig.bg, borderColor: etapaConfig.border, color: etapaConfig.text }}
+                >
+                  {etapaConfig.icono}
+                  {expediente.etapa}
+                </span>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setMotivoEliminar(''); setShowEliminarModal(true); }}
+                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    title="Eliminar demanda"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             )}
           </div>
 
@@ -807,7 +1025,7 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
             <div>
               <p className="text-xs text-gray-500 mb-1">⏰ Plazo:</p>
               <div
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border"
                 style={{
                   backgroundColor: semaforo.bg,
                   borderColor: semaforo.border
@@ -818,10 +1036,36 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
                   style={{ backgroundColor: semaforo.border }}
                 />
                 <p className="font-bold text-xs" style={{ color: semaforo.text }}>
-                  {expediente.diasRestantes}d
+                  {(() => {
+                    const unit = expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd';
+                    return expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}${unit}` : `${expediente.diasRestantes}${unit}`;
+                  })()}
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Métricas Adicionales (Paridad con Kanban) */}
+          <div className="flex items-center gap-3 my-2.5 pt-2 border-t border-gray-100 text-xs text-gray-500 font-semibold">
+            <span className="flex items-center gap-1" title="Documentos">
+              <FileText className="w-3.5 h-3.5 text-gray-400" />
+              {expediente.documentos?.length || 0} docs
+            </span>
+            <span className="flex items-center gap-1" style={{ color: procesoVencido ? '#DC2626' : undefined }} title="Progreso global">
+              <AlertCircle className="w-3.5 h-3.5 text-gray-400" style={{ color: procesoVencido ? '#DC2626' : undefined }} />
+              {porcentajeTiempo}% progreso
+            </span>
+          </div>
+
+          {/* Banner Última Actuación */}
+          <div className="my-2.5 p-2 rounded-lg border bg-blue-50/50 border-blue-100">
+            <p className="text-[9px] font-black text-blue-700 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+              Última Actuación
+            </p>
+            <p className="text-xs text-gray-600 line-clamp-2 leading-snug">
+              {ultimaActuacion}
+            </p>
           </div>
 
           {/* Expandible */}
@@ -873,7 +1117,64 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
         isOpen={modalExpedienteOpen}
         onClose={() => setModalExpedienteOpen(false)}
         expediente={expediente}
+        onUpdate={onRefresh}
       />
+
+      {/* Modal de confirmación eliminar */}
+      <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              Eliminar Demanda
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-red-800">
+                <p className="font-semibold">¿Eliminar esta demanda?</p>
+                <p className="text-xs mt-1 opacity-80">Radicado: <strong>{expediente.id}</strong>. Será movida a la papelera y podrá restaurarla desde Archivados.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo de eliminación <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón de la eliminación..."
+                value={motivoEliminar}
+                onChange={(e) => setMotivoEliminar(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEliminarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleEliminarDemanda}
+              disabled={!motivoEliminar.trim() || eliminando}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              {eliminando ? 'Eliminando...' : 'Eliminar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

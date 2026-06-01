@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsUUID, IsNumber, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsUUID, IsNumber, Min, IsInt } from 'class-validator';
 import { TipoDocumento, EtapaDocumento } from '../entities/documento.entity';
 
 export class CreateDocumentoDto {
@@ -45,6 +45,14 @@ export class CreateDocumentoDto {
   @IsOptional()
   @IsUUID()
   visibleAuditoriaId?: string;
+
+  @IsOptional()
+  @IsInt()
+  planAnualVigencia?: number;
+
+  @IsOptional()
+  @IsUUID()
+  planAnualId?: string;
 
   @IsString()
   @IsNotEmpty()

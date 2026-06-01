@@ -116,7 +116,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Plantillas de Documentos
         PlantillaDocumento
     ],
-    synchronize: false, // ⚠️ Reverted to false to avoid conflicts
+    synchronize: process.env.TYPEORM_SYNC === 'true',
     logging: ['error'], // Solo mostrar errores, no queries
 };
 

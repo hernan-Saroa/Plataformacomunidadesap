@@ -14,6 +14,7 @@ export type PTAModuleProps = {
   userName?: string;
   userEmail?: string;
   userRoles?: string[];
+  userPermissions?: string[];
   embedded?: boolean;
   /** Vista inicial al montar el módulo (ej: 'banco_docentes') */
   initialView?: string;
@@ -29,6 +30,7 @@ export function PTAModule({
   userName,
   userEmail,
   userRoles,
+  userPermissions = [],
   embedded = false,
   initialView,
 }: PTAModuleProps) {
@@ -42,12 +44,12 @@ export function PTAModule({
       userName={userName}
       userRole={userRoles?.[0]}
       isSuperUser={isSuperUser}
-      permisos={[]}
+      permisos={userPermissions}
       sessionRol={userRoles?.[0]}
     >
       <NotificationsProvider>
         <>
-          <Toaster position="top-right" richColors />
+          <Toaster position="bottom-right" richColors />
           <div className="min-h-screen">
             {!embedded && (
               <div className="sticky top-0 z-10 bg-white border-b">

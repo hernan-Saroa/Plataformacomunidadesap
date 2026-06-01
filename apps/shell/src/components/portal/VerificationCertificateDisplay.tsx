@@ -252,17 +252,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
-      // Registrar la descarga (no bloquea la descarga si falla)
-      if (certificate?.id) {
-        try {
-          await graduadosService.descargas.registrar(certificate.id, {
-            skipErrorToast: true,
-          });
-        } catch (error) {
-          console.warn('No se pudo registrar la descarga:', error);
-        }
-      }
-
       let pdfBlob: Blob;
 
       try {
@@ -545,7 +534,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
                 <div className="bg-white rounded-xl p-3 shadow-lg">
-                  <ESAPLogo variant="color" className="h-16 w-auto" />
+                  <ESAPLogo variant="color" className="shrink-0" style={{ width: '216px', height: '64px' }} />
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
                   <Shield className="w-5 h-5 text-white" />
@@ -994,7 +983,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              <ESAPLogo variant="white" className="h-14" />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '189px', height: '56px' }} />
               <div>
                 <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>

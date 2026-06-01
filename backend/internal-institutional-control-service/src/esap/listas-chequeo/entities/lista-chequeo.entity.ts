@@ -193,6 +193,12 @@ export class ListaChequeo {
   @Column({ name: 'etapa_kanban_nombre', type: 'varchar', length: 255, nullable: true })
   etapaNombreKanban?: string;
 
+  @Column({ name: 'plan_anual_vigencia', type: 'integer', nullable: true })
+  planAnualVigencia?: number;
+
+  @Column({ name: 'plan_anual_id', type: 'uuid', nullable: true })
+  planAnualId?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

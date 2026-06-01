@@ -38,11 +38,17 @@ const fromHttpOnlyCookie = (req: Request): string | null => {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
     super({
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-        fromProxyTokenHeader,
-        fromHttpOnlyCookie,
-      ]),
+      jwtFromRequest: (req) => {
+        const token = ExtractJwt.fromExtractors([
+          ExtractJwt.fromAuthHeaderAsBearerToken(),
+          fromProxyTokenHeader,
+          fromHttpOnlyCookie,
+        ])(req);
+        const secret = process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024';
+        const fs = require('fs');
+        try { fs.appendFileSync('C:\\\\Users\\\\Hernan_Buitrago\\\\.gemini\\\\antigravity-ide\\\\brain\\\\883b3a72-b726-4e69-988f-a5e16cb54cd3\\\\scratch\\\\gateway-jwt-error.log', `[Strategy] Token: ${token}\n[Strategy] Secret: ${secret}\n`); } catch(e) {}
+        return token;
+      },
       ignoreExpiration: false,
       secretOrKey: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
     });

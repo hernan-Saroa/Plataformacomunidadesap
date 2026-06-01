@@ -120,6 +120,12 @@ export class EvidenciasService {
     }
     fs.renameSync(file.path, rutaArchivo);
 
+    // Si viene por hallazgo, resolver auditoría para indexar en expediente
+    let auditoriaIdResuelta = createDto.auditoriaId || null;
+    if (!auditoriaIdResuelta && createDto.hallazgoId) {
+      auditoriaIdResuelta = await this.obtenerAuditoriaDeHallazgo(createDto.hallazgoId);
+    }
+
     // Crear entidad
     const evidencia = this.evidenciaRepository.create({
       nombre: createDto.nombre,
@@ -128,7 +134,7 @@ export class EvidenciasService {
       hallazgoId: createDto.hallazgoId || null,
       accionCorrectivaId: createDto.accionCorrectivaId || null,
       planMejoramientoId: createDto.planMejoramientoId || null,
-      auditoriaId: createDto.auditoriaId || null,
+      auditoriaId: auditoriaIdResuelta,
       rutaArchivo,
       nombreArchivoOriginal: file.originalname,
       tipoMime: file.mimetype,
@@ -212,10 +218,13 @@ export class EvidenciasService {
    * Obtiene evidencias por auditoría
    */
   async findByAuditoria(auditoriaId: string): Promise<EvidenciaDocumento[]> {
-    return this.evidenciaRepository.find({
-      where: { auditoriaId },
-      order: { fechaSubida: 'DESC' },
-    });
+    return this.evidenciaRepository
+      .createQueryBuilder('evidencia')
+      .leftJoin('evidencia.hallazgo', 'hallazgo')
+      .where('evidencia.auditoriaId = :auditoriaId', { auditoriaId })
+      .orWhere('hallazgo.auditoriaId = :auditoriaId', { auditoriaId })
+      .orderBy('evidencia.fechaSubida', 'DESC')
+      .getMany();
   }
 
   /**

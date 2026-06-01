@@ -52,11 +52,152 @@ export function getSemaforoColor(diasRestantes: number): SemaforoInfo {
   return { color: '#10B981', label: 'En término', bg: '#D1FAE5' };
 }
 
-export function calcularProgreso(diasTotales: number, diasRestantes: number) {
-  const porcentajeTiempoRaw = Math.round(((diasTotales - diasRestantes) / diasTotales) * 100);
+export function calcularProgreso(
+  diasTotales: number,
+  diasRestantes: number,
+  etapa?: string,
+  columnasTablero?: any[],
+  documentos?: any[],
+  actuaciones?: any[]
+) {
+  // 1. Calcular el progreso del tiempo
+  const totalDays = diasTotales > 0 ? diasTotales : 0;
+  const remainingDays = diasRestantes;
+  const transcurridos = Math.max(0, totalDays - remainingDays);
+  const porcentajeTiempoRaw = totalDays > 0 ? Math.round((transcurridos / totalDays) * 100) : 100;
   const porcentajeTiempo = Math.min(100, Math.max(0, porcentajeTiempoRaw));
-  const procesoVencido = porcentajeTiempoRaw > 100;
-  return { porcentajeTiempoRaw, porcentajeTiempo, procesoVencido };
+  const procesoVencido = totalDays > 0 && remainingDays < 0;
+
+  // Si no se proveen los parámetros opcionales para la fórmula multi-factor,
+  // devolvemos el cálculo tradicional basado en tiempo por compatibilidad.
+  if (!etapa) {
+    return {
+      porcentajeTiempoRaw,
+      porcentajeTiempo,
+      procesoVencido,
+      porcentajeEtapa: 0,
+      porcentajeDocumentos: 0,
+      porcentajeAprobaciones: 0,
+      porcentajeGlobal: porcentajeTiempo
+    };
+  }
+
+  // Helper local para normalizar texto
+  const normalize = (str: string) =>
+    (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+
+  // 2. Progreso por Etapa (Peso: 40%)
+  let porcentajeEtapa = 0;
+  const etapasDefecto = [
+    'NOTIFICADA',
+    'CONTESTACIÓN',
+    'PROBATORIA',
+    'ALEGATOS',
+    'SENTENCIA',
+    'APELACIÓN',
+    'FALLO_2A_INSTANCIA',
+    'CUMPLIMIENTO'
+  ];
+
+  const normalizedEtapa = normalize(etapa);
+
+  if (columnasTablero && columnasTablero.length > 0) {
+    const idx = columnasTablero.findIndex(
+      (c: any) => normalize(c.id) === normalizedEtapa || normalize(c.nombre) === normalizedEtapa
+    );
+    if (idx !== -1) {
+      porcentajeEtapa = Math.round(((idx + 1) / columnasTablero.length) * 100);
+    } else {
+      // Fallback si no está en la configuración de columnas
+      const fallbackIdx = etapasDefecto.findIndex((e) => normalize(e) === normalizedEtapa);
+      porcentajeEtapa = fallbackIdx !== -1
+        ? Math.round(((fallbackIdx + 1) / etapasDefecto.length) * 100)
+        : Math.round((1 / columnasTablero.length) * 100);
+    }
+  } else {
+    const idx = etapasDefecto.findIndex((e) => normalize(e) === normalizedEtapa);
+    porcentajeEtapa = idx !== -1
+      ? Math.round(((idx + 1) / etapasDefecto.length) * 100)
+      : 12.5; // Default al menos primer etapa
+  }
+
+  // 3. Progreso por Documentos Anexados (Peso: 20%)
+  // Determinar meta de documentos por etapa
+  let targetDocs = 3;
+  let stageIdx = 0;
+  
+  if (columnasTablero && columnasTablero.length > 0) {
+    stageIdx = columnasTablero.findIndex(
+      (c: any) => normalize(c.id) === normalizedEtapa || normalize(c.nombre) === normalizedEtapa
+    );
+  } else {
+    stageIdx = etapasDefecto.findIndex((e) => normalize(e) === normalizedEtapa);
+  }
+  
+  if (stageIdx <= 0) targetDocs = 1;
+  else if (stageIdx === 1) targetDocs = 2;
+  else if (stageIdx === 2) targetDocs = 3;
+  else if (stageIdx === 3) targetDocs = 4;
+  else targetDocs = 5;
+
+  const numDocs = documentos ? documentos.length : 0;
+  const porcentajeDocumentos = Math.min(100, Math.round((numDocs / targetDocs) * 100));
+
+  // 4. Progreso por Aprobaciones y Firmas (Peso: 20%)
+  // Helper para ver si documento está firmado
+  const isDocSigned = (d: any) => {
+    if (!d) return false;
+    if (d.descripcion) {
+      try {
+        const data = typeof d.descripcion === 'string' ? JSON.parse(d.descripcion) : d.descripcion;
+        return !!(data && data.firmado);
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  const totalDocs = documentos ? documentos.length : 0;
+  const signedDocs = documentos ? documentos.filter(doc => isDocSigned(doc)).length : 0;
+  const pctFirmas = totalDocs > 0 ? (signedDocs / totalDocs) * 100 : 100;
+
+  const totalAprobaciones = actuaciones ? actuaciones.filter(a => a.metadata?.estadoAutorizacion).length : 0;
+  const aprobacionesRealizadas = actuaciones ? actuaciones.filter(a => a.metadata?.estadoAutorizacion === 'AUTORIZADO').length : 0;
+  const pctAprobaciones = totalAprobaciones > 0 ? (aprobacionesRealizadas / totalAprobaciones) * 100 : 100;
+
+  let porcentajeAprobaciones = 100;
+  if (totalAprobaciones > 0 && totalDocs > 0) {
+    porcentajeAprobaciones = Math.round(pctAprobaciones * 0.6 + pctFirmas * 0.4);
+  } else if (totalAprobaciones > 0) {
+    porcentajeAprobaciones = Math.round(pctAprobaciones);
+  } else if (totalDocs > 0) {
+    porcentajeAprobaciones = Math.round(pctFirmas);
+  } else {
+    porcentajeAprobaciones = 100;
+  }
+
+  // 5. Progreso Temporal (Peso: 20%)
+  // Si no hay fechas definidas, consideramos 100%
+  const porcentajeTiempoVal = (diasTotales <= 0) ? 100 : porcentajeTiempo;
+
+  // 6. Progreso Global
+  const porcentajeGlobal = Math.round(
+    porcentajeEtapa * 0.40 +
+    porcentajeTiempoVal * 0.20 +
+    porcentajeDocumentos * 0.20 +
+    porcentajeAprobaciones * 0.20
+  );
+
+  return {
+    porcentajeTiempoRaw,
+    porcentajeTiempo: porcentajeGlobal, // Reemplazamos para compatibilidad visual directa
+    procesoVencido,
+    porcentajeEtapa,
+    porcentajeDocumentos,
+    porcentajeAprobaciones,
+    porcentajeGlobal
+  };
 }
 
 export function formatCuantia(cuantia: number | undefined): string {

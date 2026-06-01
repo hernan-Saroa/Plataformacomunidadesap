@@ -61,7 +61,14 @@ export class DocumentosController {
     @Query('tipoDocumento') tipoDocumento?: string,
     @Query('etapa') etapa?: string,
     @Query('search') search?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
+    @Query('planAnualId') planAnualId?: string,
+    @Query('bibliotecaOnly') bibliotecaOnly?: string,
   ) {
+    const vigenciaNum =
+      planAnualVigencia != null && planAnualVigencia !== ''
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
     return this.documentosService.findAll({
       auditoriaId,
       hallazgoId,
@@ -69,6 +76,9 @@ export class DocumentosController {
       tipoDocumento,
       etapa,
       search,
+      planAnualId,
+      planAnualVigencia: Number.isNaN(vigenciaNum) ? undefined : vigenciaNum,
+      bibliotecaOnly: bibliotecaOnly === 'true',
     });
   }
 
@@ -184,6 +194,10 @@ export class DocumentosController {
       planMejoramientoId: body.planMejoramientoId || undefined,
       documentoBibliotecaId: body.documentoBibliotecaId || undefined,
       visibleAuditoriaId: body.visibleAuditoriaId || undefined,
+      planAnualVigencia: body.planAnualVigencia
+        ? parseInt(body.planAnualVigencia, 10)
+        : undefined,
+      planAnualId: body.planAnualId || undefined,
       nombreArchivo: file.originalname,
       tipoMime: file.mimetype,
       tamanioBytes: file.size,

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown, AlertTriangle, Shield, GraduationCap, Users, BookOpen, MapPin, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
 import loginHeroImage from '../../assets/photo-1623156167557-281309073eef.png';
@@ -20,6 +21,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
+  const isMobile = useIsMobile();
   const loginOptions =
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
@@ -128,7 +130,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
         onLogin(loginResponse.user, loginResponse.accessToken, rememberMe);
       } catch (error: any) {
-        console.error('Error en callback de Microsoft:', error);
+        // console.error('Error en callback de Microsoft:', error);
         setMicrosoftLoginError(error?.message || 'No fue posible completar el inicio de sesión con Microsoft.');
         toast.error('No fue posible iniciar sesión con Microsoft', {
           description: error?.message || 'Intenta nuevamente.',
@@ -255,12 +257,18 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         error?.response?.status ??
         error?.response?.data?.statusCode ??
         null;
-      const errorMessage =
+      let errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
-      if (![400, 401, 429].includes(statusCode)) {
-        console.error('Error de autenticación:', error);
+
+      if (errorMessage === 'Error' || errorMessage === 'Failed to fetch') {
+        errorMessage = 'No se pudo conectar con el servidor. Verifica tu conexión o intenta más tarde.';
+      }
+
+      // Log para desarrolladores (sin spam)
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[Login Error] Status: ${statusCode || 'Network/CORS'}, Message:`, error?.message || error);
       }
 
       // Manejar diferentes tipos de errores
@@ -352,7 +360,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         setIsMicrosoftLoading(true);
         window.location.assign(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${query.toString()}`);
       } catch (error: any) {
-        console.error('Error iniciando OAuth Microsoft:', error);
+        // console.error('Error iniciando OAuth Microsoft:', error);
         setIsMicrosoftLoading(false);
         toast.error('No se pudo iniciar el login con Microsoft', {
           description: error?.message || 'Revisa la configuración OAuth.',
@@ -396,16 +404,21 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           </motion.button>
         </div>
 
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-start px-6 sm:px-10 py-8 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="w-full max-w-[420px]"
+            className="w-full max-w-[420px] my-auto"
           >
-            <div className="lg:hidden flex justify-center mb-10">
-              <ESAPLogo variant="color" className="h-14 w-auto" />
+            <div className="flex justify-center mb-8" style={{ marginBottom: isMobile ? '32px' : '40px' }}>
+              <ESAPLogo
+                variant="color"
+                className="shrink-0"
+                style={isMobile ? { width: '162px', height: '48px' } : { width: '189px', height: '56px' }}
+              />
             </div>
+
 
             <div style={{ marginBottom: '32px' }}>
               <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
@@ -754,7 +767,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            <ESAPLogo variant="white" className="h-16 xl:h-[74px] w-auto" />
+            <ESAPLogo variant="white" className="shrink-0" style={{ width: '250px', height: '74px' }} />
           </motion.div>
 
           <div className="space-y-8 xl:space-y-10">

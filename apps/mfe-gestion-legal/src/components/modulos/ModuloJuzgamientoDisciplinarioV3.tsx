@@ -34,7 +34,6 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
-import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
 
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
@@ -67,6 +66,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
+  const [columnasColapsadas, setColumnasColapsadas] = useState<Record<string, boolean>>({});
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
@@ -543,30 +543,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         }
       />
 
-      {/* Métricas - IGUAL A DEFENSA JUDICIAL */}
-      <ModuleMetrics
-        metrics={[
-          {
-            value: totalProcesos,
-            label: 'Procesos',
-            icon: <FileText className="w-5 h-5" />,
-            color: 'orange'
-          },
-          {
-            value: procesosCriticos,
-            label: 'Críticos',
-            icon: <AlertCircle className="w-5 h-5" />,
-            color: 'red'
-          },
-          {
-            value: procesosEnTermino,
-            label: 'En Término',
-            labelMobile: 'En término',
-            icon: <CheckCircle className="w-5 h-5" />,
-            color: 'green'
-          }
-        ]}
-      />
+
 
       {/* Filtros */}
       <ModuleFilters
@@ -608,36 +585,94 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
           <div className="relative">
-            {(isMobile || isTablet) && (
-              <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
-                <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
-                  <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
-                  Desliza
-                </p>
-              </div>
-            )}
+            {isMobile ? (
+              /* Vista Adaptativa Mobile - Acordeón de Etapas */
+              <div className="space-y-3 px-1">
+                {etapas.map((etapa: any) => {
+                  const estaAbierto = !columnasColapsadas[etapa.valor];
+                  return (
+                    <Card key={etapa.nombre} className="border border-gray-200 overflow-hidden bg-white shadow-sm rounded-xl">
+                      <button
+                        onClick={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.valor]: !prev[etapa.valor] }))}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 hover:bg-gray-100/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 flex-shrink-0">
+                            {etapa.icono}
+                          </div>
+                          <span className="font-black text-sm text-gray-800 truncate text-left">
+                            {etapa.nombre}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="font-bold text-xs px-2 py-0.5 bg-[#E0EDFF] text-[#003DA5] border border-blue-200">
+                            {etapa.procesos.length}
+                          </Badge>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${estaAbierto ? '' : 'rotate-[-90deg]'}`} />
+                        </div>
+                      </button>
 
-            <div
-              className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
-              style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#CBD5E0 #F7FAFC',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
-              {etapas.map((etapa: any) => (
-                <ColumnaKanban
-                  key={etapa.nombre}
-                  etapa={etapa}
-                  isMobile={isMobile}
-                  isTablet={isTablet}
-                  handleMoverProceso={handleMoverProceso}
-                  canMove={canMutateJuzgamiento}
-                  onRefresh={fetchProcesos}
-                  onVerExpedienteAnexado={handleVerExpedienteAnexado}
-                />
-              ))}
-            </div>
+                      {estaAbierto && (
+                        <div className="p-3 space-y-3 bg-gray-50/50">
+                          {etapa.procesos.map((proceso: any) => (
+                            <TarjetaProceso
+                              key={proceso.id}
+                              proceso={proceso}
+                              isMobile={isMobile}
+                              handleMoverProceso={handleMoverProceso}
+                              canMove={canMutateJuzgamiento}
+                              nuevaEtapa={etapa.valor}
+                              onRefresh={fetchProcesos}
+                              onVerExpedienteAnexado={handleVerExpedienteAnexado}
+                            />
+                          ))}
+                          {etapa.procesos.length === 0 && (
+                            <div className="text-center py-8 text-gray-400">
+                              <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                              <p className="text-xs font-semibold">Sin procesos en esta etapa</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Vista Desktop - Kanban tradicional */
+              <>
+                {(isMobile || isTablet) && (
+                  <div className="absolute top-2 right-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-md border border-gray-200">
+                    <p className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                      <ChevronDown className="w-3 h-3 rotate-[-90deg]" />
+                      Desliza
+                    </p>
+                  </div>
+                )}
+
+                <div
+                  className={`flex gap-3 md:gap-4 overflow-x-auto pb-4 ${isMobile ? '-mx-4 px-4' : ''} scroll-smooth`}
+                  style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: '#CBD5E0 #F7FAFC',
+                    WebkitOverflowScrolling: 'touch'
+                  }}
+                >
+                  {etapas.map((etapa: any) => (
+                    <ColumnaKanban
+                      key={etapa.nombre}
+                      etapa={etapa}
+                      isMobile={isMobile}
+                      isTablet={isTablet}
+                      handleMoverProceso={handleMoverProceso}
+                      canMove={canMutateJuzgamiento}
+                      onRefresh={fetchProcesos}
+                      onVerExpedienteAnexado={handleVerExpedienteAnexado}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </DndProvider>
       )}
@@ -835,8 +870,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove,
   return (
     <motion.div
       className="flex-shrink-0"
-      initial={{ width: 320 }}
-      animate={{ width: 320 }}
+      initial={{ width: etapa.procesos.length > 0 ? 319 : 194 }}
+      animate={{ width: etapa.procesos.length > 0 ? 319 : 194 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
       <Card className="h-full border border-gray-200 bg-white">
@@ -851,10 +886,6 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove,
                 <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
                   {etapa.nombre}
                 </h3>
-                <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5" />
-                  {etapa.diasEstimados} días
-                </p>
               </div>
             </div>
             <Badge className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}>
@@ -869,7 +900,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove,
           className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{
             minHeight: isMobile ? '400px' : '500px',
-            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 280px)',
+            maxHeight: isMobile ? 'calc(100vh - 380px)' : 'calc(100vh - 180px)',
             backgroundColor: backgroundColor,
             borderLeft: `3px solid ${borderColor}`,
             borderRight: `3px solid ${borderColor}`,
@@ -917,7 +948,6 @@ interface TarjetaProcesoProps {
 function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
-  const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
 
   // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
@@ -1045,7 +1075,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaE
             <p className="text-xs text-gray-500">📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-gray-200">
+          <div className="pt-1.5 border-t border-gray-200">
             <Button
               onClick={() => setModalProcesoOpen(true)}
               size="sm"
@@ -1055,37 +1085,22 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaE
               <FolderOpen className="w-3 h-3 mr-1 flex-shrink-0" />
               Expediente
             </Button>
-
-            <Button
-              onClick={() => setModalComunicacionesOpen(true)}
-              size="sm"
-              variant="outline"
-              className="w-full text-[10px] py-1.5 font-bold border h-auto"
-              style={{ borderColor: '#003DA5', color: '#003DA5' }}
-            >
-              <MessageSquare className="w-3 h-3 mr-1 flex-shrink-0" />
-              Comunic.
-            </Button>
           </div>
         </div>
 
-        <ModalProcesoDisciplinario
-          isOpen={modalProcesoOpen}
-          onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso as any}
-          onRefresh={onRefresh}
-          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
-          onVerExpedienteAnexado={(id) => {
-            setModalProcesoOpen(false); // Close current nested
-            if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
-          }}
-        />
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expedienteParaModales as any}
-          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
-        />
+        {modalProcesoOpen && (
+          <ModalProcesoDisciplinario
+            isOpen={modalProcesoOpen}
+            onClose={() => setModalProcesoOpen(false)}
+            proceso={proceso as any}
+            onRefresh={onRefresh}
+            readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
+            onVerExpedienteAnexado={(id) => {
+              setModalProcesoOpen(false); // Close current nested
+              if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
+            }}
+          />
+        )}
       </Card>
     </div>
   );
