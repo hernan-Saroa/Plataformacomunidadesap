@@ -111,6 +111,18 @@ function getNextStateLabel(current: string, hayModificaciones = false): string {
   return 'Aprobar';
 }
 
+const ESTADO_NIVEL_APROBACION: Record<string, number> = {
+  'Pendiente Jefatura': 1,
+  'Pendiente Decanatura': 2,
+  'Pendiente Gestión Profesoral': 3,
+};
+
+function puedeAprobarEstadoActual(estado: string, nivelUsuario: number): boolean {
+  const nivelRequerido = ESTADO_NIVEL_APROBACION[estado];
+  if (!nivelRequerido) return false;
+  return nivelUsuario >= nivelRequerido;
+}
+
 function timeAgo(d: string): string {
   if (!d) return '';
   const now = Date.now();
@@ -455,6 +467,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const sc = getStatusConfig(pta.estado);
   const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
+  const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion);
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
@@ -519,7 +532,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const openEvidencePreview = async (evidencia: any) => {
     const sourceUrl = getEvidenceFileUrl(evidencia);
     if (!sourceUrl) return;
-    console.log('openEvidencePreview',evidencia);
     const tipo = getEvidenceFileExtension(evidencia);
     const nombre = evidencia?.nombre || evidencia?.filename || 'Evidencia';
 
@@ -562,6 +574,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   };
 
   const handleAprobar = async () => {
+    if (!puedeAprobarNivelActual) {
+      toast.error('No tienes permiso para aprobar este nivel del PTA');
+      return;
+    }
+
     // Toda aprobación requiere firma digital antes de avanzar
     if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado)) {
       setShowFirmaDigital(true);
@@ -589,6 +606,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const handleFirmaCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDigital(false);
+
+    if (!puedeAprobarNivelActual) {
+      toast.error('No tienes permiso para aprobar este nivel del PTA');
+      return;
+    }
 
     const hayCambios = pta.camposModificadosPorRevisor &&
       Object.keys(pta.camposModificadosPorRevisor).length > 0;
@@ -1098,7 +1120,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {activeTab === 'componentes' && (
             <div>
               {/* Edición completa */}
-              {((puedeAprobar && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
+              {((puedeAprobarNivelActual && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
                     {rolLabel === 'Docente' ? 'Puede editar su PTA' : 'Como revisor puede editar el PTA completo antes de aprobar'}
@@ -1584,7 +1606,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, background: estadoBg, color: estadoColor }}>
                               {ev.estadoRevision || 'pendiente'}
                             </span>
-                            {ev.estadoRevision === 'pendiente' && puedeAprobar && (
+                            {ev.estadoRevision === 'pendiente' && puedeAprobarNivelActual && (
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
                                   onClick={async () => {
@@ -1781,7 +1803,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {isPendiente && puedeAprobar && (
+              {isPendiente && puedeAprobarNivelActual && (
                 <>
                   {yaAproboEstaJefatura ? (
                     <div style={{
@@ -1928,7 +1950,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 )}
               </div>
 
-              {isPendiente && puedeAprobar && (
+              {isPendiente && puedeAprobarNivelActual && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   {!yaAproboEstaJefatura && (
                   <button
