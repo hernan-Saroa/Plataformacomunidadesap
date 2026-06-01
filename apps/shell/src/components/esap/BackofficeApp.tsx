@@ -686,6 +686,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               userName={currentUser.name}
               userEmail={currentUser.email}
               userRoles={userRoles || []}
+              userPermissions={userPermissionsList}
               embedded
             />
           </Suspense>
@@ -700,6 +701,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               userName={currentUser.name}
               userEmail={currentUser.email}
               userRoles={userRoles || []}
+              userPermissions={userPermissionsList}
               embedded
               initialView="banco_docentes"
             />
