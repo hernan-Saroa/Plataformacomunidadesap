@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { useResponsive } from './hooks/useResponsive';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutGrid, Users, Shield, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft, Lock } from 'lucide-react';
+import { LayoutGrid, Users, Shield, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft, Lock, PenLine } from 'lucide-react';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
@@ -23,12 +23,19 @@ import { ConfiguracionTiposRemision } from './configuracion/ConfiguracionTiposRe
 import { ConfiguracionNotificacionesAlertas } from './configuracion/ConfiguracionNotificacionesAlertas';
 import { ConfiguracionPrescripcion } from './configuracion/ConfiguracionPrescripcion';
 import { ConfiguracionConductasDisciplinarias } from './configuracion/ConfiguracionConductasDisciplinarias';
+import { ConfiguracionFirmaJefe } from './configuracion/ConfiguracionFirmaJefe';
 
-type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'CONDUCTAS_DISCIPLINARIAS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_OFICIOS' | 'PLANTILLAS_ACTAS' | 'ENTIDADES' | 'TIPOS_REMISION' | 'NOTIFICACIONES' | 'PRESCRIPCION';
+type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'CONDUCTAS_DISCIPLINARIAS' | 'PLANTILLAS_AUTOS' | 'PLANTILLAS_OFICIOS' | 'PLANTILLAS_ACTAS' | 'ENTIDADES' | 'TIPOS_REMISION' | 'NOTIFICACIONES' | 'PRESCRIPCION' | 'FIRMA_JEFE';
 
 export function ModuloConfiguracionPremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('CONDUCTAS_DISCIPLINARIAS'); // Por defecto en Conductas Disciplinarias
   const { isMobile } = useResponsive();
+
+  const user = authService.getCurrentUser() as any;
+  const roles: string[] = Array.isArray(user?.roles)
+    ? user.roles.map((r: any) => typeof r === 'string' ? r : r?.code || r?.name || '')
+    : [];
+  const isJefe = roles.includes('JEFE_DE_LA_OCID');
 
   const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE);
 
@@ -128,6 +135,14 @@ export function ModuloConfiguracionPremium() {
               icon={<Clock className="w-4 h-4" />}
               label="Prescripción"
             />
+            {isJefe && (
+              <TabButton
+                active={tabActiva === 'FIRMA_JEFE'}
+                onClick={() => setTabActiva('FIRMA_JEFE')}
+                icon={<PenLine className="w-4 h-4" />}
+                label="Firma del Jefe"
+              />
+            )}
           </div>
         </div>
       </div>
@@ -151,6 +166,7 @@ export function ModuloConfiguracionPremium() {
           {tabActiva === 'TIPOS_REMISION' && <ConfiguracionTiposRemision />}
           {tabActiva === 'NOTIFICACIONES' && <ConfiguracionNotificacionesAlertas />}
           {tabActiva === 'PRESCRIPCION' && <ConfiguracionPrescripcion />}
+          {tabActiva === 'FIRMA_JEFE' && isJefe && <ConfiguracionFirmaJefe />}
         </motion.div>
       </AnimatePresence>
     </div>
