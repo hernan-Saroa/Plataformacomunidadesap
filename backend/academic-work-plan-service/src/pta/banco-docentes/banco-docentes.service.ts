@@ -210,46 +210,54 @@ export function resolveTerritorial(territoriales: AuthSeccionalTerritorial[], ra
 // ─── payload normalization ────────────────────────────────────────────────────
 
 export function normalizeBancoDocentePayload(raw: any) {
-  const fullName = firstNonEmpty(raw?.nombreCompleto, raw?.nombre_completo, raw?.nombre, raw?.['Nombre completo']);
+  if (raw && typeof raw === 'object') {
+    for (const k of Object.keys(raw)) {
+      const upper = k.toUpperCase().trim().replace(/\s+/g, '_');
+      if (raw[upper] === undefined) raw[upper] = raw[k];
+    }
+  }
+
+  const fullName = firstNonEmpty(raw?.NOMBRE_COMPLETO, raw?.nombreCompleto, raw?.nombre_completo, raw?.nombre, raw?.['Nombre completo']);
   const splitName = splitFullName(fullName);
-  const fechaNacimiento = parseMaybeDate(raw?.fechaNacimiento ?? raw?.fecha_nacimiento ?? raw?.nacimiento ?? raw?.['Nacimiento']);
-  const edad = computeEdad(fechaNacimiento, raw?.edad ?? raw?.edadReferencia ?? raw?.['Edad']);
+  const fechaNacimiento = parseMaybeDate(raw?.FECHA_NACIMIENTO ?? raw?.fechaNacimiento ?? raw?.fecha_nacimiento ?? raw?.nacimiento ?? raw?.['Nacimiento']);
+  const edad = computeEdad(fechaNacimiento, raw?.EDAD ?? raw?.edad ?? raw?.edadReferencia ?? raw?.['Edad']);
 
   return {
     orderIndex: parseMaybeInt(raw?.ordenListado ?? raw?.orderIndex),
-    documentNumber: firstNonEmpty(raw?.documentNumber, raw?.documento_identidad, raw?.identificacion, raw?.document, raw?.documento, raw?.['Documento de identidad']),
-    documentType: firstNonEmpty(raw?.tipo_identificacion, raw?.tipo_documento, raw?.documentType, raw?.tipoDocumento, 'CC'),
+    documentNumber: firstNonEmpty(raw?.DOCUMENTO_IDENTIDAD, raw?.documentNumber, raw?.documento_identidad, raw?.identificacion, raw?.document, raw?.documento, raw?.['Documento de identidad']),
+    documentType: firstNonEmpty(raw?.TIPO_DOCUMENTO, raw?.tipo_identificacion, raw?.tipo_documento, raw?.documentType, raw?.tipoDocumento, 'CC'),
     fullName,
     primer_nombre: firstNonEmpty(raw?.primer_nombre, raw?.primerNombre, splitName.primer_nombre),
     segundo_nombre: firstNonEmpty(raw?.segundo_nombre, raw?.segundoNombre, splitName.segundo_nombre),
     primer_apellido: firstNonEmpty(raw?.primer_apellido, raw?.primerApellido, splitName.primer_apellido),
     segundo_apellido: firstNonEmpty(raw?.segundo_apellido, raw?.segundoApellido, splitName.segundo_apellido),
-    territorialNombre: firstNonEmpty(raw?.territorialNombre, raw?.territorial, raw?.territorial_nombre, raw?.['Territorial']),
-    vinculacionLabel: firstNonEmpty(raw?.vinculacion, raw?.vinculacionDisplay, raw?.tipoVinculacionDisplay, raw?.['Vinculación'], raw?.tipoVinculacion),
-    tipoVinculacion: normalizeTipoVinculacionCode(raw?.tipoVinculacion ?? raw?.vinculacion ?? raw?.['Vinculación']),
-    dedicacionLabel: firstNonEmpty(raw?.dedicacionLabel, raw?.dedicacion, raw?.['Dedicación']),
-    dedicacion: normalizeDedicacionCode(raw?.dedicacion ?? raw?.dedicacionLabel ?? raw?.['Dedicación']),
-    escalafon: firstNonEmpty(raw?.escalafon, raw?.categoriaEscalafon, raw?.categoria, raw?.['Categoría']),
-    nucleoTematico: firstNonEmpty(raw?.nucleoTematico, raw?.['Núcleo Temático']),
-    nivelFormacion: firstNonEmpty(raw?.nivelFormacion, raw?.['Nivel de Formación']),
-    perfilAcademicoPro: firstNonEmpty(raw?.perfilAcademicoPro, raw?.['Perfil académico PRO']),
-    perfilAcademico: firstNonEmpty(raw?.perfilAcademico, raw?.['Perfil académico']),
-    pregrado: firstNonEmpty(raw?.pregrado, raw?.['Pregrado']),
-    especializacion: firstNonEmpty(raw?.especializacion, raw?.['Especialización']),
-    maestria: firstNonEmpty(raw?.maestria, raw?.['Maestría']),
-    doctorado: firstNonEmpty(raw?.doctorado, raw?.['Doctorado']),
-    posDoctorado: firstNonEmpty(raw?.posDoctorado, raw?.posdoctorado, raw?.['PosDoctorado']),
-    investigacion: firstNonEmpty(raw?.investigacion, raw?.investigacion2025, raw?.['Investigación'], raw?.['Investigación 2025']),
-    origenVinculacion: firstNonEmpty(raw?.origenVinculacion, raw?.['Origen de vinculación']),
-    actoAdministrativoVinculacion: firstNonEmpty(raw?.actoAdministrativoVinculacion, raw?.actoAdministrativo, raw?.['Acto Administrativo de Vinculación'], raw?.['Acto Administrativo de Vinculación ']),
-    correoInstitucional: extractFirstEmail(firstNonEmpty(raw?.correoInstitucional, raw?.correo_institucional, raw?.['Correo Institucional'], raw?.['Correo\nInstitucional'], raw?.email)),
-    correoAlternativo: extractFirstEmail(firstNonEmpty(raw?.correoAlternativo, raw?.correo_alternativo, raw?.correo_personal, raw?.correoPersonal, raw?.['Correo personal'])),
-    telefono: firstNonEmpty(raw?.telefono, raw?.phone, raw?.['Telefono']),
-    ultimaEvaluacion: firstNonEmpty(raw?.ultimaEvaluacion, raw?.['Última Evaluación']),
-    situacionAdministrativa: firstNonEmpty(raw?.situacionAdministrativa, raw?.['Situación Administrativa']),
-    fechaInicioVinculacion: parseMaybeDate(raw?.fechaInicioVinculacion ?? raw?.inicioVinculacion ?? raw?.['Inicio de Vinculación']),
-    fechaFinVinculacion: parseMaybeDate(raw?.fechaFinVinculacion ?? raw?.finVinculacion ?? raw?.['Fin de Vinculación']),
-    puntajeSalarial: parseMaybeFloat(raw?.puntajeSalarial ?? raw?.['Puntaje Salarial']),
+    territorialNombre: firstNonEmpty(raw?.TERRITORIAL, raw?.territorialNombre, raw?.territorial, raw?.territorial_nombre, raw?.['Territorial']),
+    cetapNombre: firstNonEmpty(raw?.CETAP, raw?.cetap, raw?.cetapNombre, raw?.['CETAP'], raw?.['Cetap']),
+    vinculacionLabel: firstNonEmpty(raw?.VINCULACION, raw?.vinculacion, raw?.vinculacionDisplay, raw?.tipoVinculacionDisplay, raw?.['VinculaciA3n'], raw?.tipoVinculacion),
+    tipoVinculacion: normalizeTipoVinculacionCode(raw?.VINCULACION ?? raw?.tipoVinculacion ?? raw?.vinculacion ?? raw?.['VinculaciA3n']),
+    dedicacionLabel: firstNonEmpty(raw?.DEDICACION, raw?.dedicacionLabel, raw?.dedicacion, raw?.['DedicaciA3n']),
+    dedicacion: normalizeDedicacionCode(raw?.DEDICACION ?? raw?.dedicacion ?? raw?.dedicacionLabel ?? raw?.['DedicaciA3n']),
+    escalafon: firstNonEmpty(raw?.CATEGORIA_ESCALAFON, raw?.escalafon, raw?.categoriaEscalafon, raw?.categoria, raw?.['CategorA-a']),
+    nucleoTematico: firstNonEmpty(raw?.NUCLEO_TEMATICO, raw?.nucleoTematico, raw?.['NAcleo TemAtico']),
+    nivelFormacion: firstNonEmpty(raw?.NIVEL_FORMACION, raw?.nivelFormacion, raw?.['Nivel de FormaciA3n']),
+    perfilAcademicoPro: firstNonEmpty(raw?.perfilAcademicoPro, raw?.['Perfil acadAcmico PRO']),
+    perfilAcademico: firstNonEmpty(raw?.PERFIL_ACADEMICO, raw?.perfilAcademico, raw?.['Perfil acadAcmico']),
+    pregrado: firstNonEmpty(raw?.TITULO_PREGRADO, raw?.pregrado, raw?.['Pregrado']),
+    especializacion: firstNonEmpty(raw?.TITULO_ESPECIALIZACION, raw?.especializacion, raw?.['EspecializaciA3n']),
+    maestria: firstNonEmpty(raw?.TITULO_MAESTRIA, raw?.maestria, raw?.['MaestrA-a']),
+    doctorado: firstNonEmpty(raw?.TITULO_DOCTORADO, raw?.doctorado, raw?.['Doctorado']),
+    posDoctorado: firstNonEmpty(raw?.TITULO_POSDOCTORADO, raw?.posDoctorado, raw?.posdoctorado, raw?.['PosDoctorado']),
+    investigacion: firstNonEmpty(raw?.INVESTIGACION_ACTIVA, raw?.investigacion, raw?.investigacion2025, raw?.['InvestigaciA3n'], raw?.['InvestigaciA3n 2025']),
+    origenVinculacion: firstNonEmpty(raw?.ORIGEN_VINCULACION, raw?.origenVinculacion, raw?.['Origen de vinculaciA3n']),
+    actoAdministrativoVinculacion: firstNonEmpty(raw?.ACTO_ADMINISTRATIVO, raw?.actoAdministrativoVinculacion, raw?.actoAdministrativo, raw?.['Acto Administrativo de VinculaciA3n'], raw?.['Acto Administrativo de VinculaciA3n ']),
+    correoInstitucional: extractFirstEmail(firstNonEmpty(raw?.CORREO_INSTITUCIONAL, raw?.correoInstitucional, raw?.correo_institucional, raw?.['Correo Institucional'], raw?.['Correo\\nInstitucional'], raw?.email)),
+    correoAlternativo: extractFirstEmail(firstNonEmpty(raw?.CORREO_PERSONAL, raw?.correoAlternativo, raw?.correo_alternativo, raw?.correo_personal, raw?.correoPersonal, raw?.['Correo personal'])),
+    telefono: firstNonEmpty(raw?.TELEFONO, raw?.telefono, raw?.phone, raw?.['Telefono']),
+    ultimaEvaluacion: firstNonEmpty(raw?.ULTIMA_EVALUACION, raw?.ultimaEvaluacion, raw?.['Asltima EvaluaciA3n']),
+    situacionAdministrativa: firstNonEmpty(raw?.SITUACION_ADMINISTRATIVA, raw?.situacionAdministrativa, raw?.['SituaciA3n Administrativa']),
+    fechaInicioVinculacion: parseMaybeDate(raw?.INICIO_VINCULACION ?? raw?.fechaInicioVinculacion ?? raw?.inicioVinculacion ?? raw?.['Inicio de VinculaciA3n']),
+    fechaFinVinculacion: parseMaybeDate(raw?.FIN_VINCULACION ?? raw?.fechaFinVinculacion ?? raw?.finVinculacion ?? raw?.['Fin de VinculaciA3n']),
+    puntajeSalarial: parseMaybeFloat(raw?.PUNTAJE_SALARIAL ?? raw?.puntajeSalarial ?? raw?.['Puntaje Salarial']),
     genero: firstNonEmpty(raw?.genero, raw?.['Género']),
     fechaNacimiento,
     edadReferencia: edad,
@@ -942,7 +950,7 @@ export class BancoDocentesService {
     return result;
   }
 
-  async bulkUpsert(rows: any[], options: { rejectExisting?: boolean } = {}) {
+  async bulkUpsert(rows: any[], options: { rejectExisting?: boolean, dryRun?: boolean, omitErrors?: boolean } = {}) {
     const results: any[] = [];
     const errors: any[] = [];
 
