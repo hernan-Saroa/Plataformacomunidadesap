@@ -63,7 +63,7 @@ import { DigitalFolderSection } from './DigitalFolderSection';
 import { UserExpandedView } from './UserExpandedView';  
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../hooks';
 import { ModalCambiarContrasena } from "./ModalCambiarContrasena"; 
 import { estructuraService } from '../../services/estructuraService';
@@ -138,6 +138,8 @@ export function UsersPersonsModulePremium() {
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesSaving, setRolesSaving] = useState(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+  const [isRoleFilterOpen, setIsRoleFilterOpen] = useState(false);
+  const [roleFilterSearch, setRoleFilterSearch] = useState('');
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false); // ✅ MODAL CAMBIAR CONTRASEÑA
   const [showPasswordHistoryModal, setShowPasswordHistoryModal] = useState(false);
   const [passwordHistory, setPasswordHistory] = useState<any[]>([]);
@@ -148,6 +150,27 @@ export function UsersPersonsModulePremium() {
   const isMountedRef = useRef(true);
   const latestLoadUsersRequestRef = useRef(0);
   const { visibleCols, setVisibleCols } = useTableColumns('personas', PERSONAS_COLUMNS);
+
+  const sortedAvailableRoles = useMemo(
+    () => [...availableRoles].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })
+    ),
+    [availableRoles]
+  );
+
+  const filteredRoleOptions = useMemo(() => {
+    const query = roleFilterSearch.trim().toLowerCase();
+    if (!query) return sortedAvailableRoles;
+    return sortedAvailableRoles.filter((role) =>
+      (role.name || '').toLowerCase().includes(query) ||
+      (role.code || '').toLowerCase().includes(query)
+    );
+  }, [roleFilterSearch, sortedAvailableRoles]);
+
+  const selectedRoleFilter = useMemo(
+    () => sortedAvailableRoles.find((role) => role.id === roleFilter),
+    [roleFilter, sortedAvailableRoles]
+  );
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
@@ -1106,20 +1129,132 @@ export function UsersPersonsModulePremium() {
               <option value="inactive">Inactivos</option>
             </select>
 
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-[#D1D5DB] rounded-lg bg-white cursor-pointer font-medium text-sm transition-all"
-              style={{ height: "44px" }}
-            >
-              <option value="all">Todos los roles</option>
-              {rolesLoading && <option value="" disabled>Cargando roles...</option>}
-              {availableRoles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative" style={{ minWidth: "280px" }}>
+              <button
+                type="button"
+                onClick={() => setIsRoleFilterOpen(!isRoleFilterOpen)}
+                className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#003DA5] hover:border-[#003DA5] transition-colors flex items-center justify-between bg-white"
+                style={{ height: "44px" }}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Shield className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  {selectedRoleFilter ? (
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: selectedRoleFilter.color || "#003DA5" }}
+                      />
+                      <span className="text-gray-900 truncate">{selectedRoleFilter.name}</span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">{rolesLoading ? "Cargando roles..." : "Todos los roles"}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {roleFilter !== "all" && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setRoleFilter("all");
+                        setRoleFilterSearch("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setRoleFilter("all");
+                          setRoleFilterSearch("");
+                        }
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Limpiar filtro"
+                    >
+                      <X className="w-3 h-3 text-gray-500" />
+                    </span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isRoleFilterOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+
+              {isRoleFilterOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsRoleFilterOpen(false)} />
+                  <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-hidden">
+                    <div className="p-3 border-b border-gray-200">
+                      <input
+                        type="text"
+                        placeholder="Buscar rol..."
+                        value={roleFilterSearch}
+                        onChange={(e) => setRoleFilterSearch(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+
+                    <div className="overflow-y-auto max-h-80">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter("all");
+                          setIsRoleFilterOpen(false);
+                          setRoleFilterSearch("");
+                        }}
+                        className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 ${
+                          roleFilter === "all" ? "bg-blue-50" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-sm font-medium text-gray-900">Todos los roles</span>
+                        </div>
+                      </button>
+
+                      {rolesLoading ? (
+                        <div className="p-4 text-center text-sm text-gray-500">Cargando roles...</div>
+                      ) : filteredRoleOptions.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">No se encontraron roles</div>
+                      ) : (
+                        filteredRoleOptions.map((role) => (
+                          <button
+                            key={role.id}
+                            type="button"
+                            onClick={() => {
+                              setRoleFilter(role.id);
+                              setIsRoleFilterOpen(false);
+                              setRoleFilterSearch("");
+                            }}
+                            className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+                              roleFilter === role.id ? "bg-blue-50" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: role.color || "#003DA5" }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-900 truncate">{role.name}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="bg-gray-50 px-3 py-2 border-t border-gray-200 text-xs text-gray-600">
+                      <div className="flex items-center justify-between">
+                        <span>Total: {filteredRoleOptions.length} roles</span>
+                        <span className="text-gray-500">Orden alfabético</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             <select
               value={locationFilter}
@@ -1182,7 +1317,7 @@ export function UsersPersonsModulePremium() {
             )}
             {roleFilter !== "all" && (
               <Badge variant="outline" className="gap-1">
-                Rol: {availableRoles.find(r => r.id === roleFilter)?.name}
+                Rol: {selectedRoleFilter?.name}
                 <button
                   onClick={() => setRoleFilter("all")}
                   className="ml-1 hover:bg-gray-200 rounded-full p-0.5"

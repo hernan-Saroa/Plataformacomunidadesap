@@ -1,5 +1,6 @@
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Users, Check, Loader2 } from 'lucide-react';
+import { X, Users, Check, Loader2, Search } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 
 interface AssignRolesModalProps {
@@ -32,6 +33,27 @@ export function AssignRolesModal({
   loading = false,
   saving = false
 }: AssignRolesModalProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const availableRoles = useMemo(
+    () => roles
+      .filter((role) => role.code !== 'SUPER_ADMIN')
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })),
+    [roles]
+  );
+
+  const filteredRoles = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return availableRoles;
+
+    return availableRoles.filter((role) =>
+      (role.name || '').toLowerCase().includes(query) ||
+      (role.code || '').toLowerCase().includes(query) ||
+      (role.type || '').toLowerCase().includes(query) ||
+      (role.description || '').toLowerCase().includes(query)
+    );
+  }, [availableRoles, searchTerm]);
+
   if (!isOpen) return null;
 
   return (
@@ -79,7 +101,28 @@ export function AssignRolesModal({
           <div className="p-6">
             <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
               <span>Roles seleccionados: {selectedRoleIds.size}</span>
-              <span>Total disponibles: {roles.length}</span>
+              <span>Total disponibles: {availableRoles.length}</span>
+            </div>
+
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Buscar rol por nombre, código, tipo o descripción..."
+                className="w-full h-11 pl-10 pr-10 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5]"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="Limpiar búsqueda de roles"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
             </div>
 
             <div className="border border-gray-200 rounded-xl max-h-[50vh] overflow-y-auto">
@@ -88,13 +131,13 @@ export function AssignRolesModal({
                   <Loader2 className="w-5 h-5 inline-block mr-2 animate-spin" />
                   Cargando roles...
                 </div>
+              ) : filteredRoles.length === 0 ? (
+                <div className="py-8 px-4 text-center text-sm text-gray-500">
+                  No se encontraron roles para "{searchTerm}"
+                </div>
               ) : (
-                roles.map((role) => {
+                filteredRoles.map((role) => {
                   const selected = selectedRoleIds.has(role.id);
-                  const isSuperAdmin = role.code === 'SUPER_ADMIN';
-                  if (isSuperAdmin) {
-                    return null;
-                  }
                   return (
                     <button
                       key={role.id}
