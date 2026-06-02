@@ -726,7 +726,7 @@ export function CertificadoDetallePanel({
           transition={{ duration: 0.3, ease: 'easeInOut' }}
           style={{ gridColumn: '1 / -1' }}
         >
-          <div className="bg-gradient-to-br from-blue-50/70 via-white to-indigo-50/40 border-l-4 border-[#003DA5] px-4 py-5 sm:px-6">
+          <div className="bg-gradient-to-br from-blue-50/60 via-white to-indigo-50/30 px-4 py-5 sm:px-6">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
               
               {/* Columna Izquierda - Información del Empleado */}
