@@ -534,7 +534,7 @@ function aplicarFlagsAutorizacionJefeOCI<T extends Record<string, unknown>>(act:
 
 /** Estilos del área de pasos en solo consulta (icono ojo del listado o «Vista previa»). */
 const WRAPPER_PASOS_SOLO_LECTURA =
-  'pointer-events-none select-none grayscale-[0.92] saturate-[0.15] contrast-[0.98] ' +
+  'select-none grayscale-[0.92] saturate-[0.15] contrast-[0.98] ' +
   '[&_input]:!bg-gray-100 [&_input]:!border-gray-300 [&_textarea]:!bg-gray-100 ' +
   '[&_button]:!cursor-default [&_label]:!cursor-default ' +
   '[&_.border-blue-400]:!border-gray-400 [&_.border-blue-200]:!border-gray-300 ' +
@@ -549,6 +549,7 @@ function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = tareasOriginales.map((t: any, tIdx: number) => ({
     ...t,
+    responsables: normalizarResponsablesTarea(t.responsables),
     puntoControlId:
       t.puntoControlId
       || t.punto_control_id
@@ -647,6 +648,22 @@ function normalizarArrayResponsablesBackend(raw: unknown): unknown[] {
     }
   }
   return Array.isArray(raw) ? raw : [];
+}
+
+/** Tareas Rol 4 (sync backend): responsables vienen como { id, nombre, cargo } */
+function nombreResponsableTarea(resp: unknown): string {
+  if (typeof resp === 'string') return resp.trim();
+  if (resp && typeof resp === 'object') {
+    const o = resp as { nombre?: string; name?: string; email?: string };
+    return String(o.nombre || o.name || o.email || '').trim();
+  }
+  return '';
+}
+
+function normalizarResponsablesTarea(raw: unknown): string[] {
+  return normalizarArrayResponsablesBackend(raw)
+    .map((r) => nombreResponsableTarea(r))
+    .filter(Boolean);
 }
 
 function inferirResponsablesRolDesdeActividades(rol: any): Auditor[] {
@@ -976,6 +993,23 @@ function generarCortesOficiales(
   return [];
 }
 
+/**
+ * Rol 4: auditorías (universo) y planes de mejoramiento generan tareas_seguimiento en backend.
+ * No precargar 12 cortes mensuales ni cortes trimestrales vacíos al crear el plan.
+ */
+function actividadRol4SinCortesPrecargados(
+  rolNumero: number,
+  act: { nombre?: string },
+): boolean {
+  if (rolNumero !== 4) return false;
+  const n = (act.nombre || '').toLowerCase();
+  return (
+    n.includes('auditor') ||
+    n.includes('programa de auditor') ||
+    (n.includes('plan') && n.includes('mejoramiento'))
+  );
+}
+
 function alinearCortesConFechasOficiales(
   puntos: PuntoControl[],
   actividad: ActividadBase,
@@ -1183,19 +1217,10 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
       { nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
         descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
         control: 'Se hace seguimiento mensual.', evaluacion: '0% avance', seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.',
-        tareasSeguimiento: [
-          { id: 'r4-a1-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.', completada: false },
-        ]
       },
       { nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
         descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
         control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Evaluar el cumplimiento de los planes de mejoramiento',
-        tareasSeguimiento: [
-          { id: 'r4-a2-t1', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-05-29' },
-          { id: 'r4-a2-t2', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-08-28' },
-          { id: 'r4-a2-t3', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-11-20' },
-          { id: 'r4-a2-t4', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2027-03-31' },
-        ]
       }
     ],
     // """"""""""""""""""" ROL 5: RELACIN CON ENTES EXTERNOS DE CONTROL """""""""""""""""""
@@ -1890,6 +1915,21 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       const actividadesConPuntos = actividades.map((act, idx) => {
         const uniqueId = `rol-${rol.numero}-act-${idx}`;
         const año = Number(vigencia || new Date().getFullYear());
+
+        if (actividadRol4SinCortesPrecargados(rol.numero, act)) {
+          return {
+            ...act,
+            id: uniqueId,
+            tipoEvidencia: 'SOLO_CHECK' as const,
+            fechaInicio: act.fechaInicio || `${año}-01-01`,
+            fechaFin: act.fechaFin || `${año}-12-31`,
+            fechaCorte: act.fechaFin || `${año}-12-31`,
+            puntosControl: [],
+            frecuenciaPuntosControl: undefined,
+            tareasSeguimiento: [],
+          };
+        }
+
         const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
           id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
           fechaProgramada: fi, fechaSeguimiento: ff,
@@ -2016,6 +2056,25 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         ...rol,
         actividadesSeleccionadas: rol.actividadesSeleccionadas.map((act) => {
           const año = vigencia;
+          if (actividadRol4SinCortesPrecargados(rol.numero, act)) {
+            return {
+              ...act,
+              fechaInicio: act.fechaInicio
+                ? reemplazarAnioEnFechaIso(act.fechaInicio, año)
+                : act.fechaInicio,
+              fechaFin: act.fechaFin
+                ? reemplazarAnioEnFechaIso(act.fechaFin, año)
+                : act.fechaFin,
+              fechaCorte: act.fechaCorte
+                ? reemplazarAnioEnFechaIso(act.fechaCorte, año)
+                : resolverFechaCorteActividad(act, vigencia),
+              puntosControl: [],
+              tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
+                act.tareasSeguimiento,
+                vigencia,
+              ),
+            };
+          }
           const puntos = act.puntosControl || [];
           // Para actividades con periodicidad definida regeneramos cortes oficiales
           // para no romper fechas que caen en año+1 (p.ej. 31/01 del año siguiente).
@@ -3463,6 +3522,24 @@ function Paso2({
       if (!actividadBase) return rol;
 
       const año = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
+
+      if (actividadRol4SinCortesPrecargados(numeroRol, actividadBase)) {
+        return {
+          ...rol,
+          actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
+            ...actividadBase,
+            id: actId,
+            incluidaEnPlan: true,
+            tipoEvidencia: 'SOLO_CHECK' as const,
+            fechaCorte: actividadBase.fechaFin || `${año}-12-31`,
+            responsables: [],
+            puntosControl: [],
+            frecuenciaPuntosControl: undefined,
+            tareasSeguimiento: [],
+          }],
+        };
+      }
+
       const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
         id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
         fechaProgramada: fi, fechaSeguimiento: ff,
@@ -9390,12 +9467,15 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                       {tarea.descripcion}
                                     </p>
                                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                                      {(tarea.responsables || []).map((resp, ri) => (
+                                      {(tarea.responsables || []).map((resp, ri) => {
+                                        const nombreResp = nombreResponsableTarea(resp);
+                                        if (!nombreResp) return null;
+                                        return (
                                         <div key={ri} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-[10px] font-medium">
                                           <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center text-white text-[7px] font-bold flex-shrink-0">
-                                            {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                            {nombreResp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                                           </div>
-                                          <span className="text-gray-700">{resp}</span>
+                                          <span className="text-gray-700">{nombreResp}</span>
                                           <button
                                             onClick={async () => {
                                               const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>
@@ -9419,7 +9499,8 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                             className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[8px] transition-colors"
                                           >×</button>
                                         </div>
-                                      ))}
+                                      );
+                                      })}
                                       {tarea.fechaCompletado && (
                                         <span className="text-xs text-green-600">Completada: {tarea.fechaCompletado}</span>
                                       )}
@@ -9453,7 +9534,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                         >
                                           <option value="">+ Responsable</option>
                                           {auditores
-                                            .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                            .filter(a => !(tarea.responsables || []).some(r => nombreResponsableTarea(r) === a.nombre))
                                             .map(a => (
                                               <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
                                             ))}

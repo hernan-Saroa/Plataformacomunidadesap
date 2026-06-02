@@ -193,6 +193,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
   const validationUrlCodeRef = useRef<HTMLElement | null>(null);
+  const [qrModalViewport, setQrModalViewport] = useState({ width: 0, height: 0 });
   const isLoadingCertificatesRef = useRef(false);
   const lastCertificatesLoadAtRef = useRef(0);
   const FOCUS_RELOAD_COOLDOWN_MS = 20000;
@@ -568,6 +569,37 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCertificates]);
+
+  useEffect(() => {
+    if (!isQrModalOpen) {
+      return;
+    }
+
+    const updateQrViewport = () => {
+      setQrModalViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    updateQrViewport();
+    window.addEventListener('resize', updateQrViewport);
+    return () => window.removeEventListener('resize', updateQrViewport);
+  }, [isQrModalOpen]);
+
+  const qrDisplaySize = useMemo(() => {
+    const viewportWidth = qrModalViewport.width || 1280;
+    const viewportHeight = qrModalViewport.height || 900;
+    const dynamicSize = Math.min(
+      172,
+      Math.floor(viewportWidth * 0.3),
+      Math.floor(viewportHeight * 0.22),
+    );
+
+    return Math.max(128, dynamicSize);
+  }, [qrModalViewport.height, qrModalViewport.width]);
+  const qrCardWidth = qrDisplaySize + 52;
+  const qrCardMinHeight = qrDisplaySize + 60;
 
   useEffect(() => {
     if (!isQrModalOpen || !qrPreviewCertificate?.id) {
@@ -1843,10 +1875,31 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-x border-b border-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedCertId === cert.id
+                    ? 'relative z-[1] bg-[#F8FBFF] shadow-sm ring-1 ring-blue-200'
+                    : 'hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedCertId === cert.id}
+                  aria-label={`Ver trazabilidad del certificado ${cert.certificateNumber}`}
+                  onClick={() => handleViewDetails(cert)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(cert);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedCertId === cert.id
+                      ? 'bg-gradient-to-r from-blue-50/80 via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado */}
                     <div className="col-span-3">
@@ -1896,7 +1949,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleViewQR(cert)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleViewQR(cert);
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
                           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 relative"
                           style={{ background: '#F3F4F6', cursor: 'pointer' }}
                           title="Ver código QR único"
@@ -1938,9 +1995,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(cert)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(cert);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedCertId === cert.id ? '#F0F6FF' : '#F9FAFB',
@@ -1959,6 +2023,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
@@ -2008,16 +2073,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
-                      <div className="p-6 space-y-4">
+                      <div className="space-y-5 p-4 sm:p-6">
                         {/* Título */}
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: '#1F2937' }}>
-                            <Shield className="w-5 h-5" style={{ color: '#003DA5' }} />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="flex min-w-0 items-center gap-3 text-base font-semibold text-slate-900">
+                            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50">
+                              <Shield className="h-5 w-5 text-blue-700" />
+                            </span>
                             Trazabilidad Completa del Certificado
                           </h3>
-                          <Badge className="bg-blue-100 text-blue-800 border-blue-200 border text-xs">
+                          <Badge className="max-w-full truncate rounded-md border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
                             ID: {cert.id}
                           </Badge>
                         </div>
@@ -2025,12 +2092,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         {/* Grid 2 columnas - Info Graduado y Solicitante */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           {/* Info Graduado */}
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <Award className="w-4 h-4 text-blue-600" />
+                          <div className="rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
+                            <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                                <Award className="h-4 w-4 text-blue-600" />
+                              </span>
                               Información del Graduado
                             </h4>
-                            <div className="space-y-2.5 text-sm">
+                            <div className="space-y-3 text-sm [&>div>div]:min-w-0 [&>div>svg]:mt-0.5 [&>div>svg]:h-4 [&>div>svg]:w-4 [&>div>svg]:flex-none [&>div>svg]:text-blue-500 [&>div>div>p:first-child]:text-[11px] [&>div>div>p:first-child]:font-medium [&>div>div>p:first-child]:uppercase [&>div>div>p:first-child]:tracking-wide [&>div>div>p:first-child]:text-slate-500 [&>div>div>p:last-child]:break-words [&>div>div>p:last-child]:leading-snug [&>div>div>p:last-child]:text-slate-900">
                               <div className="flex items-start gap-2">
                                 <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
@@ -2087,12 +2156,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </div>
 
                           {/* Info Solicitante */}
-                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <Building2 className="w-4 h-4 text-purple-600" />
+                          <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm">
+                            <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50">
+                                <Building2 className="h-4 w-4 text-violet-600" />
+                              </span>
                               Información del Solicitante
                             </h4>
-                            <div className="space-y-2.5 text-sm">
+                            <div className="space-y-3 text-sm [&>div>div]:min-w-0 [&>div>svg]:mt-0.5 [&>div>svg]:h-4 [&>div>svg]:w-4 [&>div>svg]:flex-none [&>div>svg]:text-violet-500 [&>div>div>p:first-child]:text-[11px] [&>div>div>p:first-child]:font-medium [&>div>div>p:first-child]:uppercase [&>div>div>p:first-child]:tracking-wide [&>div>div>p:first-child]:text-slate-500 [&>div>div>p:last-child]:break-words [&>div>div>p:last-child]:leading-snug [&>div>div>p:last-child]:text-slate-900">
                               <div className="flex items-start gap-2">
                                 {cert.requester.type === 'entidad' && <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 {cert.requester.type === 'graduado' && <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
@@ -2163,40 +2234,42 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </div>
 
                         {/* Hash y Seguridad */}
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                            <Hash className="w-4 h-4 text-gray-700" />
+                        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                          <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+                              <Hash className="h-4 w-4 text-slate-700" />
+                            </span>
                             Seguridad y Verificación Digital
                           </h4>
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             <div>
-                              <p className="text-xs text-gray-600 mb-1.5">Hash SHA-256 del Certificado</p>
-                              <div className="flex items-center gap-2 bg-white p-3 rounded border border-gray-200">
-                                <p className="text-xs font-mono flex-1 break-all text-gray-900">
+                              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Hash SHA-256 del Certificado</p>
+                              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                                <p className="min-w-0 flex-1 break-all rounded-md bg-white px-3 py-2 text-xs font-mono leading-relaxed text-slate-900">
                                   {cert.certificateHash}
                                 </p>
                                 <button
                                   onClick={() => handleCopyToClipboard(cert.certificateHash, 'Hash')}
-                                  className="p-2 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+                                  className="flex-shrink-0 rounded-md p-2 transition-colors hover:bg-blue-50"
                                   title="Copiar hash"
                                 >
-                                  <Copy className="w-4 h-4 text-gray-600" />
+                                  <Copy className="h-4 w-4 text-slate-600" />
                                 </button>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div>p:first-child]:mb-1.5 [&>div>p:first-child]:text-[11px] [&>div>p:first-child]:font-medium [&>div>p:first-child]:uppercase [&>div>p:first-child]:tracking-wide [&>div>p:first-child]:text-slate-500">
                               <div>
                                 <p className="text-xs text-gray-600 mb-1.5">Código QR</p>
-                                <div className="flex items-center gap-2 bg-white p-2 rounded border border-gray-200">
-                                  <QrCode className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                  <p className="text-xs font-mono text-gray-900">{cert.qrCode}</p>
+                                <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                                  <QrCode className="h-4 w-4 flex-shrink-0 text-amber-600" />
+                                  <p className="min-w-0 break-all text-xs font-mono text-slate-900">{cert.qrCode}</p>
                                 </div>
                               </div>
                               <div>
                                 <p className="text-xs text-gray-600 mb-1.5">Generado por</p>
-                                <div className="flex items-center gap-2 bg-white p-2 rounded border border-gray-200">
-                                  <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                  <p className="text-xs font-semibold text-gray-900">{cert.generatedBy}</p>
+                                <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                                  <Shield className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                                  <p className="min-w-0 break-words text-xs font-semibold text-slate-900">{cert.generatedBy}</p>
                                 </div>
                               </div>
                             </div>
@@ -2228,7 +2301,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </div>
 
                         {/* Historial de Escaneos */}
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100">
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                               <Monitor className="w-4 h-4 text-gray-700" />
@@ -2249,7 +2322,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               {cert.scanHistory.map((scan, idx) => (
                                 <div 
                                   key={scan.id} 
-                                  className="bg-gray-50 p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                                  className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
                                 >
                                   <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -2924,43 +2997,58 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl max-h-[80vh] overflow-y-auto top-1/2 -translate-y-1/2">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="w-5 h-5 text-amber-600" />
+        <DialogContent className="!top-1/2 !-translate-y-1/2 w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-2rem)] sm:max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0 border-slate-200 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.45)]">
+          <DialogHeader className="flex-shrink-0 border-b border-slate-200 bg-white px-4 pb-3 pt-4 sm:px-6 sm:pb-4 sm:pt-5">
+            <DialogTitle className="flex items-start gap-3 pr-8 text-base leading-snug text-slate-900 sm:text-lg">
+              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-amber-200 bg-amber-50">
+                <QrCode className="h-5 w-5 text-amber-600" />
+              </span>
               Código QR Único - Validación Pública
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="pr-8 pl-12 text-xs leading-relaxed text-slate-500 sm:text-sm">
               Este QR permite que cualquier persona valide la autenticidad del certificado. Cada escaneo queda registrado en el historial.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4 space-y-4">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain bg-slate-50/70 px-4 py-4 sm:px-6 sm:py-5">
             {/* QR Placeholder + Estado */}
-            <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-6`}>
+            <div className={`${qrPreviewCertificate?.status === 'active' ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-white'} rounded-2xl border p-4 shadow-sm sm:p-6`}>
               <div className="flex flex-col items-center text-center">
                 {/* QR real */}
-                <div 
-                  className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{
-                    background: '#FFFFFF',
-                    border: '2px solid #D1D5DB'
-                  }}
-                >
-                  <div className="text-center p-2">
-                    {qrPreviewCertificate?.qrCode ? (
-                      <QRCodeSVG
-                        value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
-                        size={160}
-                        level="M"
-                        includeMargin
-                      />
-                    ) : (
-                      <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
-                    )}
-                    <p className="text-xs font-mono font-semibold mt-2" style={{ color: '#6B7280' }}>
-                      {qrPreviewCertificate?.qrCode || 'Sin codigo'}
-                    </p>
+                <div className="mb-4 flex w-full justify-center">
+                  <div
+                    className="flex flex-none items-center justify-center rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200"
+                    style={{
+                      minHeight: `${qrCardMinHeight}px`,
+                      minWidth: `${qrCardWidth}px`,
+                      width: `${qrCardWidth}px`,
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-col items-center text-center">
+                      {qrPreviewCertificate?.qrCode ? (
+                        <QRCodeSVG
+                          value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
+                          size={qrDisplaySize}
+                          level="M"
+                          includeMargin
+                          className="block flex-none"
+                          style={{
+                            height: `${qrDisplaySize}px`,
+                            minHeight: `${qrDisplaySize}px`,
+                            minWidth: `${qrDisplaySize}px`,
+                            width: `${qrDisplaySize}px`,
+                          }}
+                        />
+                      ) : (
+                        <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
+                      )}
+                      <p
+                        className="mt-2 break-all text-[10px] font-mono font-semibold leading-tight sm:text-xs"
+                        style={{ color: '#6B7280', maxWidth: `${qrDisplaySize}px` }}
+                      >
+                        {qrPreviewCertificate?.qrCode || 'Sin codigo'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -2977,16 +3065,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
                 {/* Badge de Estado */}
                 {qrPreviewCertificate?.status === 'active' ? (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-green-100 border-2 border-green-300 rounded-lg">
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="font-semibold text-sm text-green-800">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-3 py-2 shadow-sm sm:px-4">
+                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.16)] animate-pulse"></div>
+                    <span className="text-center text-xs font-semibold text-emerald-800 sm:text-sm">
                       ✅ QR ACTIVO PARA VALIDACIÓN
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border-2 border-red-300 rounded-lg">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-full border border-red-300 bg-white px-3 py-2 shadow-sm sm:px-4">
                     <XCircle className="w-4 h-4 text-red-600" />
-                    <span className="font-semibold text-sm text-red-800">
+                    <span className="text-center text-xs font-semibold text-red-800 sm:text-sm">
                       ❌ QR INACTIVO
                     </span>
                   </div>
@@ -2995,12 +3083,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </div>
 
             {/* Info del Certificado Solicitado */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Award className="w-4 h-4 text-blue-600" />
+            <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
+              <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                  <Award className="h-4 w-4 text-blue-600" />
+                </span>
                 Datos del Certificado Solicitado
               </h4>
-              <div className="space-y-2 text-sm">
+              <div className="grid gap-2.5 text-sm [&>div]:grid [&>div]:gap-1 [&>div>span:first-child]:text-slate-500 [&>div>span+span]:ml-0 [&>div>span+span]:min-w-0 [&>div>span+span]:break-words [&>div>span+span]:font-semibold [&>div>span+span]:text-slate-900 sm:[&>div]:grid-cols-[160px_minmax(0,1fr)]">
                 <div>
                   <span className="text-gray-600">Graduado:</span>
                   <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.graduate.fullName}</span>
@@ -3153,7 +3243,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
             <button
               onClick={() => setIsQrModalOpen(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"

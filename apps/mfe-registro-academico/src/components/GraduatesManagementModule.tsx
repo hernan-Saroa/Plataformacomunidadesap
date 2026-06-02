@@ -62,7 +62,11 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import React from 'react';
-import graduadosService, { GraduadoArchivo, GraduadoData } from '../../services/api/graduados.service';
+import graduadosService, {
+  CertificadoGraduado,
+  GraduadoArchivo,
+  GraduadoData,
+} from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
@@ -374,6 +378,48 @@ export function GraduatesManagementModule() {
   };
 
   const normalizeKey = (value?: string) => (value || '').trim().toLowerCase();
+  const normalizeDocumentKey = (value?: string) => {
+    const digits = (value || '').replace(/\D+/g, '');
+    return digits || normalizeKey(value);
+  };
+  const buildCertificateCountIndexes = (certificates: CertificadoGraduado[]) => {
+    const countsByGraduateId = new Map<string, number>();
+    const fallbackCountsByDocument = new Map<string, number>();
+    const seenCertificates = new Set<string>();
+
+    certificates.forEach((certificate) => {
+      const uniqueKey =
+        certificate.id ||
+        certificate.certificateNumber ||
+        certificate.verificationCode ||
+        `${certificate.graduateId || ''}:${certificate.idNumber || ''}:${certificate.issueDate || ''}`;
+      if (uniqueKey && seenCertificates.has(uniqueKey)) {
+        return;
+      }
+      if (uniqueKey) {
+        seenCertificates.add(uniqueKey);
+      }
+
+      const graduateId = (certificate.graduateId || '').trim();
+      if (graduateId) {
+        countsByGraduateId.set(
+          graduateId,
+          (countsByGraduateId.get(graduateId) || 0) + 1,
+        );
+        return;
+      }
+
+      const documentKey = normalizeDocumentKey(certificate.idNumber);
+      if (documentKey) {
+        fallbackCountsByDocument.set(
+          documentKey,
+          (fallbackCountsByDocument.get(documentKey) || 0) + 1,
+        );
+      }
+    });
+
+    return { countsByGraduateId, fallbackCountsByDocument };
+  };
   const normalizeDisplayName = (value?: string) => {
     const trimmed = (value || '').trim();
     if (!trimmed) return trimmed;
@@ -750,7 +796,7 @@ export function GraduatesManagementModule() {
             createdBy: createdBy?.trim() || undefined,
             asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
             // Valor inicial para render rápido; luego se actualiza en segundo plano.
-            certificatesCount: graduate.graduationDate ? 1 : 0,
+            certificatesCount: 0,
             numRegistro: graduate.numRegistro,
             numFolio: graduate.numFolio,
             numLibro: graduate.numLibro,
@@ -789,33 +835,22 @@ export function GraduatesManagementModule() {
           .then((certificatesResponse) => {
             if (!isMounted) return;
 
-            const certificatePrograms = new Map<string, Set<string>>();
-            (certificatesResponse || []).forEach((certificate) => {
-              if (!certificate.idNumber) return;
-              const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
-              if (!certificatePrograms.has(certificate.idNumber)) {
-                certificatePrograms.set(certificate.idNumber, new Set());
-              }
-              if (programKey) {
-                certificatePrograms.get(certificate.idNumber)!.add(programKey);
-              } else {
-                certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
-              }
-            });
-
-            const certificateCounts = new Map<string, number>();
-            certificatePrograms.forEach((programs, idNumber) => {
-              certificateCounts.set(idNumber, programs.size);
-            });
-
-            if (!certificateCounts.size) return;
+            const { countsByGraduateId, fallbackCountsByDocument } =
+              buildCertificateCountIndexes(certificatesResponse || []);
 
             setGraduates((prev) =>
-              prev.map((graduate) => ({
-                ...graduate,
-                certificatesCount:
-                  certificateCounts.get(graduate.document) ?? graduate.certificatesCount,
-              })),
+              prev.map((graduate) => {
+                const documentKey = normalizeDocumentKey(graduate.document);
+                return {
+                  ...graduate,
+                  certificatesCount:
+                    countsByGraduateId.get(graduate.id) ??
+                    (documentKey
+                      ? fallbackCountsByDocument.get(documentKey)
+                      : undefined) ??
+                    0,
+                };
+              }),
             );
           })
           .catch((error) => {
@@ -1723,10 +1758,31 @@ export function GraduatesManagementModule() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-x border-b border-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedUserId === user.id
+                    ? 'relative z-[1] bg-[#F8FBFF] shadow-sm ring-1 ring-blue-200'
+                    : 'hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal con Columnas */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedUserId === user.id}
+                  aria-label={`Ver detalles de ${user.firstName} ${user.lastName}`}
+                  onClick={() => handleViewDetails(user)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(user);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedUserId === user.id
+                      ? 'bg-gradient-to-r from-blue-50/80 via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado (Avatar + Nombre + Contacto) */}
                     <div className="col-span-3">
@@ -1811,9 +1867,16 @@ export function GraduatesManagementModule() {
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(user)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(user);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedUserId === user.id ? '#F0F6FF' : '#F9FAFB',
@@ -1833,6 +1896,7 @@ export function GraduatesManagementModule() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
@@ -1876,10 +1940,10 @@ export function GraduatesManagementModule() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-slate-200 [&>div]:bg-white [&>div]:p-3 [&>div]:shadow-sm">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documento

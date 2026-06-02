@@ -1856,6 +1856,16 @@ if (fechaQuejaRaw) {
         return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
     }
 
+    async uploadFirmaJefe(file: File): Promise<{ message: string; filename: string }> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post(`${SERVICE_PREFIX}/configuration/firma-jefe`, formData);
+    }
+
+    async firmaJefeExiste(): Promise<{ existe: boolean }> {
+        return apiClient.get(`${SERVICE_PREFIX}/configuration/firma-jefe/existe`);
+    }
+
 }
 
 const disciplinaryService = new DisciplinaryService();

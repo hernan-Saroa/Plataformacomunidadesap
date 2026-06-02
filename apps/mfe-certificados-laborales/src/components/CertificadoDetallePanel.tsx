@@ -81,9 +81,16 @@ interface CertificadoDetallePanelProps {
     pdfUrl?: string;
   };
   isOpen: boolean;
+  onValidationHistoryChange?: (certificateId: string, totalVerificaciones: number) => void;
 }
 
-export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
+const HISTORIAL_VERIFICACIONES_POLL_INTERVAL_MS = 5000;
+
+export function CertificadoDetallePanel({
+  certificado,
+  isOpen,
+  onValidationHistoryChange,
+}: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
   const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | 'email' | null>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
@@ -348,6 +355,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const [historialCargado, setHistorialCargado] = React.useState(false);
   const [cargandoHistorial, setCargandoHistorial] = React.useState(false);
   const [historialError, setHistorialError] = React.useState<string | null>(null);
+  const historialSyncInFlightRef = React.useRef(false);
 
   const normalizarResultado = (valor: any) => {
     const val = typeof valor === 'string' ? valor.toLowerCase() : '';
@@ -396,16 +404,25 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }));
   };
 
-  const cargarHistorialVerificaciones = async () => {
-    if (historialCargado || cargandoHistorial) return;
-    setCargandoHistorial(true);
-    setHistorialError(null);
+  const cargarHistorialVerificaciones = async (
+    options: { force?: boolean; silent?: boolean } = {},
+  ) => {
+    const { force = false, silent = false } = options;
+    if ((!force && historialCargado) || historialSyncInFlightRef.current) return;
+    historialSyncInFlightRef.current = true;
+    if (!silent) {
+      setCargandoHistorial(true);
+      setHistorialError(null);
+    }
 
     if (!codigoVerificacion) {
       setHistorialError('No hay un codigo de verificacion disponible para este certificado.');
       setVerificaciones([]);
       setHistorialCargado(true);
-      setCargandoHistorial(false);
+      if (!silent) {
+        setCargandoHistorial(false);
+      }
+      historialSyncInFlightRef.current = false;
       return;
     }
 
@@ -419,22 +436,36 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
         response?.historial ||
         [];
 
-      if (Array.isArray(historialRemoto) && historialRemoto.length > 0) {
-        setVerificaciones(mapearHistorial(historialRemoto));
-      } else {
-        setVerificaciones([]);
-      }
+      const verificacionesActualizadas = Array.isArray(historialRemoto)
+        ? mapearHistorial(historialRemoto)
+        : [];
+
+      setVerificaciones(verificacionesActualizadas);
+      onValidationHistoryChange?.(certificado.id, verificacionesActualizadas.length);
 
       setHistorialCargado(true);
+      setHistorialError(null);
     } catch (error) {
-      console.error('Error cargando historial de verificaciones:', error);
-      setHistorialError('No se pudo cargar el historial de verificaciones en vivo.');
-      setVerificaciones([]);
+      if (!silent) {
+        console.error('Error cargando historial de verificaciones:', error);
+      }
+      if (!silent) {
+        setHistorialError('No se pudo cargar el historial de verificaciones en vivo.');
+        setVerificaciones([]);
+      }
       setHistorialCargado(true);
     } finally {
-      setCargandoHistorial(false);
+      historialSyncInFlightRef.current = false;
+      if (!silent) {
+        setCargandoHistorial(false);
+      }
     }
   };
+
+  const cargarHistorialVerificacionesRef = React.useRef(cargarHistorialVerificaciones);
+  React.useEffect(() => {
+    cargarHistorialVerificacionesRef.current = cargarHistorialVerificaciones;
+  });
 
   const handleToggleHistorial = async () => {
     const nextValue = !showHistorialVerificaciones;
@@ -444,6 +475,29 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       await cargarHistorialVerificaciones();
     }
   };
+
+  React.useEffect(() => {
+    if (!isOpen || !showHistorialVerificaciones || !codigoVerificacion) return;
+
+    const syncHistorial = () => {
+      void cargarHistorialVerificacionesRef.current({ force: true, silent: true });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncHistorial();
+      }
+    };
+
+    const intervalId = window.setInterval(syncHistorial, HISTORIAL_VERIFICACIONES_POLL_INTERVAL_MS);
+    window.addEventListener('focus', syncHistorial);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', syncHistorial);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isOpen, showHistorialVerificaciones, codigoVerificacion]);
 
   const totalVerificaciones = verificaciones.length || certificado.cantidadEscaneos || 0;
   const spinnerTransition = {
@@ -656,6 +710,11 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     );
   };
 
+  const infoTileClass = 'rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2';
+  const sectionCardClass = 'rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm ring-1 ring-slate-100 sm:p-5';
+  const sectionHeaderClass = 'mb-4 flex items-center gap-2 border-b border-slate-200 pb-3';
+  const iconBoxClass = 'flex h-8 w-8 items-center justify-center rounded-lg bg-[#003DA5]/10';
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -667,15 +726,15 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
           transition={{ duration: 0.3, ease: 'easeInOut' }}
           style={{ gridColumn: '1 / -1' }}
         >
-          <div className="bg-gradient-to-br from-blue-50/50 to-indigo-50/30 border-l-4 border-[#003DA5] px-6 py-5">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-gradient-to-br from-blue-50/70 via-white to-indigo-50/40 border-l-4 border-[#003DA5] px-4 py-5 sm:px-6">
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
               
               {/* Columna Izquierda - Información del Empleado */}
               <div className="space-y-5">
                 {/* Información del Empleado */}
-                <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
-                    <div className="w-8 h-8 rounded-lg bg-[#003DA5]/10 flex items-center justify-center">
+                <div className={sectionCardClass}>
+                  <div className={sectionHeaderClass}>
+                    <div className={iconBoxClass}>
                       <User className="w-4 h-4 text-[#003DA5]" strokeWidth={2.5} />
                     </div>
                     <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
@@ -683,10 +742,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </h3>
                   </div>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {/* Nombre y Documento */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Nombre Completo
                         </label>
@@ -694,7 +753,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           {certificado.empleado.nombre}
                         </p>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Documento
                         </label>
@@ -705,8 +764,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </div>
 
                     {/* Cargo y Tipo Vinculación */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Cargo
                         </label>
@@ -715,7 +774,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           {cargoCalculado}
                         </p>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Tipo de Vinculación
                         </label>
@@ -726,8 +785,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </div>
 
                     {/* Fecha Vinculación y Correo */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Fecha de Vinculación
                         </label>
@@ -736,7 +795,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           {formatearFecha(certificado.empleado.fechaVinculacion)}
                         </p>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Correo Electrónico
                         </label>
@@ -748,8 +807,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </div>
 
                     {/* Dependencia y Salario */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Dependencia
                         </label>
@@ -757,7 +816,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           {certificado.empleado.dependencia || ubicacionCargo || 'No disponible'}
                         </p>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario
                         </label>
@@ -783,12 +842,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                 </div>
               </div>
 
-              {/* Columna Derecha - Detalles del Certificado y Acciones */}
-              <div className="space-y-5">
+              {/* Columna Derecha - Detalles del Certificado */}
+              <div className="space-y-4">
                 {/* Detalles del Certificado */}
-                <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
-                    <div className="w-8 h-8 rounded-lg bg-[#003DA5]/10 flex items-center justify-center">
+                <div className={sectionCardClass}>
+                  <div className={sectionHeaderClass}>
+                    <div className={iconBoxClass}>
                       <FileText className="w-4 h-4 text-[#003DA5]" strokeWidth={2.5} />
                     </div>
                     <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
@@ -796,10 +855,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </h3>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {/* Consecutivo y Estado */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Consecutivo
                         </label>
@@ -816,7 +875,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           </button>
                         </div>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Estado
                         </label>
@@ -825,8 +884,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </div>
 
                     {/* Fechas */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Fecha de Solicitud
                         </label>
@@ -835,7 +894,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           {formatearFecha(certificado.fechaSolicitud, { year: 'numeric', month: 'short', day: 'numeric' })}
                         </p>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Fecha de Generación
                         </label>
@@ -847,8 +906,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </div>
 
                     {/* QR y Escaneos */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Código QR
                         </label>
@@ -868,7 +927,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           )}
                         </div>
                       </div>
-                      <div>
+                      <div className={infoTileClass}>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Escaneos
                         </label>
@@ -879,100 +938,104 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </div>
                   </div>
                 </div>
-
                 {/* Acciones Rápidas */}
-                <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
+                <div className={sectionCardClass}>
+                  <div className={sectionHeaderClass}>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+                      <Activity className="w-4 h-4 text-slate-700" strokeWidth={2.5} />
+                    </div>
                     <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
                       Acciones Rápidas
                     </h3>
                   </div>
 
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-3">
                     {/* Fila de acciones iguales */}
-                    <div className="flex gap-2">
-                    <button
-                      onClick={handleVerPDF}
-                      className="flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium"
-                    >
-                      <Eye className="w-4 h-4 shrink-0" />
-                      Ver PDF
-                    </button>
-                    <button
-                      onClick={handleDescargar}
-                      disabled={isDownloading}
-                      aria-busy={isDownloading}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-green-50 text-green-700 rounded-lg transition-colors text-xs font-medium ${
-                        isDownloading ? 'opacity-80 cursor-not-allowed' : 'hover:bg-green-100'
-                      }`}
-                    >
-                      {isDownloading ? (
-                        <motion.span
-                          className="inline-flex"
-                          animate={{ rotate: 360 }}
-                          transition={spinnerTransition}
-                        >
-                          <Loader2 className="w-4 h-4" />
-                        </motion.span>
-                      ) : (
-                        <Download className="w-4 h-4 shrink-0" />
-                      )}
-                      {isDownloading ? (
-                        <motion.span
-                          animate={{ opacity: [1, 0.55, 1] }}
-                          transition={sendingTextTransition}
-                        >
-                          Descargando...
-                        </motion.span>
-                      ) : (
-                        'Descargar'
-                      )}
-                    </button>
-                    <button
-                      onClick={handleEnviarEmail}
-                      disabled={isSendingEmail}
-                      aria-busy={isSendingEmail}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-purple-50 text-purple-700 rounded-lg transition-colors text-xs font-medium ${
-                        isSendingEmail ? 'opacity-80 cursor-not-allowed' : 'hover:bg-purple-100'
-                      }`}
-                    >
-                      {isSendingEmail ? (
-                        <motion.span
-                          className="inline-flex"
-                          animate={{ rotate: 360 }}
-                          transition={spinnerTransition}
-                        >
-                          <Loader2 className="w-4 h-4" />
-                        </motion.span>
-                      ) : (
-                        <Mail className="w-4 h-4 shrink-0" />
-                      )}
-                      {isSendingEmail ? (
-                        <motion.span
-                          animate={{ opacity: [1, 0.55, 1] }}
-                          transition={sendingTextTransition}
-                        >
-                          Enviando...
-                        </motion.span>
-                      ) : (
-                        'Reenviar'
-                      )}
-                    </button>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <button
+                        onClick={handleVerPDF}
+                        className="flex min-h-[64px] transform items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-700 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-100 hover:shadow-md active:translate-y-0 active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:flex-col sm:gap-1.5 sm:text-xs"
+                      >
+                        <Eye className="w-4 h-4 shrink-0" />
+                        Ver PDF
+                      </button>
+                      <button
+                        onClick={handleDescargar}
+                        disabled={isDownloading}
+                        aria-busy={isDownloading}
+                        className={`flex min-h-[64px] transform items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 shadow-sm transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 sm:flex-col sm:gap-1.5 sm:text-xs ${
+                          isDownloading ? 'opacity-80 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 hover:shadow-md active:translate-y-0 active:shadow-sm'
+                        }`}
+                      >
+                        {isDownloading ? (
+                          <motion.span
+                            className="inline-flex"
+                            animate={{ rotate: 360 }}
+                            transition={spinnerTransition}
+                          >
+                            <Loader2 className="w-4 h-4" />
+                          </motion.span>
+                        ) : (
+                          <Download className="w-4 h-4 shrink-0" />
+                        )}
+                        {isDownloading ? (
+                          <motion.span
+                            animate={{ opacity: [1, 0.55, 1] }}
+                            transition={sendingTextTransition}
+                          >
+                            Descargando...
+                          </motion.span>
+                        ) : (
+                          'Descargar'
+                        )}
+                      </button>
+                      <button
+                        onClick={handleEnviarEmail}
+                        disabled={isSendingEmail}
+                        aria-busy={isSendingEmail}
+                        className={`flex min-h-[64px] transform items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-3 text-sm font-semibold text-violet-700 shadow-sm transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 sm:flex-col sm:gap-1.5 sm:text-xs ${
+                          isSendingEmail ? 'opacity-80 cursor-not-allowed' : 'hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100 hover:shadow-md active:translate-y-0 active:shadow-sm'
+                        }`}
+                      >
+                        {isSendingEmail ? (
+                          <motion.span
+                            className="inline-flex"
+                            animate={{ rotate: 360 }}
+                            transition={spinnerTransition}
+                          >
+                            <Loader2 className="w-4 h-4" />
+                          </motion.span>
+                        ) : (
+                          <Mail className="w-4 h-4 shrink-0" />
+                        )}
+                        {isSendingEmail ? (
+                          <motion.span
+                            animate={{ opacity: [1, 0.55, 1] }}
+                            transition={sendingTextTransition}
+                          >
+                            Enviando...
+                          </motion.span>
+                        ) : (
+                          'Reenviar'
+                        )}
+                      </button>
                     </div>
-                    <button
-                      onClick={handleVerQR}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] text-white rounded-lg hover:bg-[#002873] transition-colors text-sm font-medium"
-                    >
-                      <QrCode className="w-4 h-4" />
-                      Ver Código QR
-                    </button>
-                    <button
-                      onClick={handleToggleHistorial}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
-                    >
-                      <Activity className="w-4 h-4" />
-                      {showHistorialVerificaciones ? 'Ocultar' : 'Ver'} Historial de Verificaciones
-                    </button>
+                    <div className="grid grid-cols-1 gap-3">
+                      <button
+                        onClick={handleVerQR}
+                        className="flex w-full transform items-center justify-center gap-2 rounded-lg border border-blue-700 bg-[#003DA5] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-blue-800 hover:bg-[#002873] hover:shadow-md active:translate-y-0 active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        Ver Código QR
+                      </button>
+                      <button
+                        onClick={handleToggleHistorial}
+                        className="flex w-full transform items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-700 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-100 hover:shadow-md active:translate-y-0 active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                      >
+                        <Activity className="w-4 h-4" />
+                        {showHistorialVerificaciones ? 'Ocultar' : 'Ver'} Historial de Verificaciones
+                      </button>
+                    </div>
                     {(isDownloading || isSendingEmail || emailFeedback.type) && (
                       <div
                         className={`w-full rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
@@ -1021,7 +1084,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
             </div>
 
             {/* Banner Autoservicio */}
-            <div className="mt-5 bg-blue-100 border-l-4 border-blue-600 rounded-r-lg p-4">
+            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/80 p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-200 flex items-center justify-center flex-shrink-0">
                   <Mail className="w-4 h-4 text-blue-700" strokeWidth={2.5} />
@@ -1045,7 +1108,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
 
             {/* Historial de Verificaciones QR - Sección adicional debajo del panel */}
             {showHistorialVerificaciones && (
-              <div className="mt-5 border-t border-gray-200 pt-5">
+              <div className="mt-5 rounded-xl border border-blue-200 bg-white/95 p-4 shadow-sm ring-1 ring-blue-100">
                 {cargandoHistorial && (
                   <p className="text-sm text-gray-500 mb-3">Cargando historial de verificaciones...</p>
                 )}

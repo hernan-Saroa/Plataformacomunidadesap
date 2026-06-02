@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { StorageService } from './storage.service';
 
@@ -46,7 +47,7 @@ export class PdfModifierService {
     }
 
     /**
-     * Adds a signature placeholder at the bottom of the last page.
+     * Adds the jefe's signature image (if configured) + text block at the bottom of the last page.
      */
     async addSignature(filename: string, signerName: string, role: string): Promise<void> {
         try {
@@ -68,6 +69,35 @@ export class PdfModifierService {
 
             const fontSize = 10;
             const yPosition = 100; // From bottom
+
+            // Embed signature image if the jefe has configured one
+            const pngPath = this.storageService.getFullPath('firma_jefe.png');
+            const jpgPath = this.storageService.getFullPath('firma_jefe.jpg');
+            try {
+                let signatureImage: any = null;
+                if (existsSync(pngPath)) {
+                    const imgBytes = await fs.readFile(pngPath);
+                    signatureImage = await pdfDoc.embedPng(imgBytes);
+                } else if (existsSync(jpgPath)) {
+                    const imgBytes = await fs.readFile(jpgPath);
+                    signatureImage = await pdfDoc.embedJpg(imgBytes);
+                }
+                if (signatureImage) {
+                    const maxWidth = 150;
+                    const maxHeight = 60;
+                    const scale = Math.min(maxWidth / signatureImage.width, maxHeight / signatureImage.height, 1);
+                    const imgWidth = signatureImage.width * scale;
+                    const imgHeight = signatureImage.height * scale;
+                    lastPage.drawImage(signatureImage, {
+                        x: (width - imgWidth) / 2,
+                        y: yPosition + 10,
+                        width: imgWidth,
+                        height: imgHeight,
+                    });
+                }
+            } catch (imgError) {
+                console.warn('No se pudo embeber imagen de firma:', imgError.message);
+            }
 
             // Center text horizontally
             const drawCenteredText = (text: string, font: any, y: number) => {

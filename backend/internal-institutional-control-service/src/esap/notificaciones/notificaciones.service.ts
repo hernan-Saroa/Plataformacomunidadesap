@@ -214,16 +214,33 @@ export class NotificacionesService {
 
       // Reemplazar variables en el mensaje (ej: [NOMBRE], [CODIGO], etc.)
       if (mensajeFinal && typeof mensajeFinal === 'string') {
-        const metadatos = {
+        const metadatos: Record<string, any> = {
           ...context.metadata,
           CODIGO: context.auditoriaCodigo || context.metadata?.auditoriaCodigo || context.metadata?.codigoAuditoria || '',
           NOMBRE: context.auditoriaNombre || context.metadata?.auditoriaNombre || context.metadata?.nombreAuditoria || '',
-          ETAPA: context.metadata?.nuevoEstado || context.metadata?.estadoNuevo || '',
+          ETAPA: context.metadata?.nuevoEstado || context.metadata?.estadoNuevo || context.metadata?.etapa || '',
           MOTIVO: context.metadata?.motivo || context.metadata?.justificacion || '',
+          FECHA: context.metadata?.fecha || context.metadata?.fechaVencimiento || new Date().toLocaleDateString('es-CO'),
+          ROL: context.metadata?.rol || context.metadata?.cargo || '',
+          DIAS: context.metadata?.dias || context.metadata?.diasAnticipacion || context.metadata?.plazoDiasHabiles || '',
         };
 
         mensajeFinal = mensajeFinal.replace(/\[(.*?)\]/g, (match, p1) => {
-          return metadatos[p1] || metadatos[p1.toLowerCase()] || match;
+          const key = p1.toUpperCase().replace('Í', 'I'); // Normaliza DÍAS a DIAS
+          
+          let valor = metadatos[key];
+          
+          // Fallback buscando directamente en el contexto original
+          if (valor === undefined || valor === null || valor === '') {
+            valor = context.metadata?.[p1.toLowerCase()] || context.metadata?.[p1];
+          }
+
+          // Si definitivamente no hay valor, devolver por defecto en lugar de dejar el placeholder
+          if (valor === undefined || valor === null || valor === '') {
+            return 'No especificado';
+          }
+
+          return String(valor);
         });
       }
 

@@ -664,6 +664,24 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
+  const handleValidationHistoryChange = React.useCallback(
+    (certificateId: string, totalVerificaciones: number) => {
+      if (!certificateId || !Number.isFinite(totalVerificaciones)) return;
+      const nextTotal = Math.max(0, totalVerificaciones);
+      const updateCertificate = (cert: CertificadoLaboral) =>
+        cert.id === certificateId && cert.cantidadEscaneos !== nextTotal
+          ? { ...cert, cantidadEscaneos: nextTotal }
+          : cert;
+
+      setCertificadosRaw((prev) => prev.map(updateCertificate));
+      setCertificadosMetricas((prev) => prev.map(updateCertificate));
+      setSelectedCertificado((prev) =>
+        prev?.id === certificateId ? updateCertificate(prev) : prev,
+      );
+    },
+    [],
+  );
+
   const handleReenviarEmail = async (cert: CertificadoLaboral) => {
     if (processingIds.has(cert.id)) return;
     setProcessingIds(prev => new Set(prev).add(cert.id));
@@ -1285,7 +1303,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   {paginatedCertificados.map((cert, index) => (
                     <React.Fragment key={cert.rowKey || `${cert.id}-${index}`}>
                       <tr
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        className={`cursor-pointer transition-colors ${
+                          expandedCertId === cert.id
+                            ? 'bg-blue-50/60 shadow-[inset_4px_0_0_#003DA5]'
+                            : 'hover:bg-gray-50'
+                        }`}
                         onClick={() => handleVerDetalle(cert)}
                       >
                         {/* Estado */}
@@ -1410,11 +1432,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
-                        <tr>
-                          <td colSpan={9} className="p-0 bg-gray-50">
+                        <tr className="bg-blue-50/30">
+                          <td colSpan={9} className="border-y border-blue-100 bg-gradient-to-br from-blue-50/70 via-white to-slate-50 p-0">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
+                              onValidationHistoryChange={handleValidationHistoryChange}
                             />
                           </td>
                         </tr>

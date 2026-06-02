@@ -25,6 +25,7 @@ import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } from '../aprobaciones/entities/aprobacion.entity';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { PlanMejoramientoRol4TareaSyncService } from './plan-mejoramiento-rol4-tarea-sync.service';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -47,7 +48,41 @@ export class PlanesMejoramientoService {
     private readonly aprobacionRepository: Repository<Aprobacion>,
     private readonly notificacionesService: NotificacionesService,
     private readonly dataSource: DataSource,
+    private readonly rol4TareaSync: PlanMejoramientoRol4TareaSyncService,
   ) {}
+
+  /**
+   * Backfill: sincroniza tareas Rol 4 para todos los planes en seguimiento de una vigencia.
+   */
+  async sincronizarTareasRol4Vigencia(
+    vigencia: number,
+  ): Promise<{ vigencia: number; sincronizados: number }> {
+    const sincronizados = await this.rol4TareaSync.sincronizarVigencia(vigencia);
+    return { vigencia, sincronizados };
+  }
+
+  /** Sincroniza tarea pendiente en Rol 4 (actividad planes de mejoramiento). */
+  private async syncTareaRol4(planId: string): Promise<void> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['auditoria', 'acciones'],
+    });
+    if (!plan) return;
+
+    const acciones = plan.acciones ?? [];
+    const estadoCalculado = this.determinarEstadoReal(
+      plan,
+      acciones.length,
+      this.promedioPorcentajeAvanceAcciones(acciones),
+    );
+    // Mantener borrador/revisión del registro; el cálculo Kanban no debe ocultar el plan recién creado.
+    const estadoParaSync =
+      plan.estado === PlanMejoramientoEstado.BORRADOR ||
+      plan.estado === PlanMejoramientoEstado.REVISION
+        ? plan.estado
+        : estadoCalculado;
+    await this.rol4TareaSync.sincronizarDesdePlan(plan, estadoParaSync);
+  }
 
   private normalizarTexto(valor?: string | null): string {
     return String(valor || '')
@@ -140,10 +175,36 @@ export class PlanesMejoramientoService {
   }
 
   /**
-   * Genera un código único para el plan en formato PM-YYYY-###
+   * Vigencia para nomenclatura PM-{vigencia}-### (desde auditoría vinculada).
    */
-  private async generarCodigo(): Promise<string> {
-    const year = new Date().getFullYear();
+  private async resolverVigenciaCodigoPlan(
+    auditoriaId: string | null,
+  ): Promise<number> {
+    if (!auditoriaId) {
+      return new Date().getFullYear();
+    }
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'planAnualVigencia', 'fechaInicio'],
+    });
+    if (aud?.planAnualVigencia != null && !Number.isNaN(Number(aud.planAnualVigencia))) {
+      return Number(aud.planAnualVigencia);
+    }
+    if (aud?.fechaInicio) {
+      const y = new Date(aud.fechaInicio).getFullYear();
+      if (!Number.isNaN(y)) return y;
+    }
+    return new Date().getFullYear();
+  }
+
+  /**
+   * Genera un código único para el plan en formato PM-{vigencia}-###
+   */
+  private async generarCodigo(vigencia?: number): Promise<string> {
+    const year =
+      vigencia != null && !Number.isNaN(Number(vigencia))
+        ? Number(vigencia)
+        : new Date().getFullYear();
     const prefix = `PM-${year}-`;
 
     const ultimo = await this.planRepository
@@ -549,8 +610,6 @@ export class PlanesMejoramientoService {
    * Crea un nuevo plan de mejoramiento
    */
   async create(createDto: CreatePlanMejoramientoDto): Promise<PlanMejoramiento> {
-    const codigo = await this.generarCodigo();
-
     // Resolver hallazgo
     let hallazgoId: string | null = null;
     
@@ -603,6 +662,21 @@ export class PlanesMejoramientoService {
     }
 
     await this.validarCreacionSoloEnComunicacion(auditoriaId);
+
+    if (auditoriaId) {
+      const planExistente = await this.planRepository.findOne({
+        where: { auditoriaId },
+        select: ['id', 'codigo'],
+      });
+      if (planExistente) {
+        throw new BadRequestException(
+          `Ya existe el plan de mejoramiento ${planExistente.codigo} para esta auditoría`,
+        );
+      }
+    }
+
+    const vigenciaCodigo = await this.resolverVigenciaCodigoPlan(auditoriaId);
+    const codigo = await this.generarCodigo(vigenciaCodigo);
 
     const plan = this.planRepository.create({
       codigo,
@@ -673,6 +747,8 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.create] Error al crear notificaciones:', notifError);
       console.error('[PlanesMejoramientoService.create] Stack trace:', notifError?.stack);
     }
+
+    await this.syncTareaRol4(savedPlan.id);
 
     const saved = await this.findOne(savedPlan.id);
     // Serializar fechas para evitar problemas de zona horaria
@@ -798,6 +874,8 @@ export class PlanesMejoramientoService {
         }
       }
     }
+
+    await this.syncTareaRol4(savedPlan.id);
 
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializePlanMejoramiento(savedPlan) as any;
@@ -1039,6 +1117,8 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.aprobar] Error notificando al auditado:', notifErr.message);
     }
 
+    await this.syncTareaRol4(savedPlan.id);
+
     return savedPlan;
   }
 
@@ -1079,6 +1159,8 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.rechazar] Error notificando al auditado:', notifErr.message);
     }
 
+    await this.syncTareaRol4(savedPlan.id);
+
     return savedPlan;
   }
 
@@ -1086,7 +1168,17 @@ export class PlanesMejoramientoService {
    * Elimina un plan de mejoramiento
    */
   async delete(id: string): Promise<void> {
-    const plan = await this.findOne(id);
+    const plan = await this.planRepository.findOne({
+      where: { id },
+      relations: ['auditoria'],
+    });
+    if (!plan) {
+      throw new NotFoundException(`Plan de mejoramiento con ID ${id} no encontrado`);
+    }
+    await this.rol4TareaSync.sincronizarDesdePlan(
+      plan,
+      PlanMejoramientoEstado.COMPLETADO,
+    );
     await this.planRepository.remove(plan);
   }
 
@@ -1134,6 +1226,8 @@ export class PlanesMejoramientoService {
     } catch (eventoError) {
       console.error('[PlanesMejoramientoService.createAccion] Error al registrar evento:', eventoError);
     }
+
+    await this.syncTareaRol4(planId);
 
     // Serializar fechas para evitar problemas de zona horaria
     return {
@@ -1217,6 +1311,8 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.updateAccion] Error al registrar evento:', eventoError);
     }
 
+    await this.syncTareaRol4(planId);
+
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
@@ -1241,6 +1337,7 @@ export class PlanesMejoramientoService {
     }
 
     await this.accionRepository.remove(accion);
+    await this.syncTareaRol4(planId);
   }
 
   /**
@@ -1352,7 +1449,9 @@ export class PlanesMejoramientoService {
       seguimiento.porcentajeEfectividad = promedioEfectividad;
     }
 
-    return this.seguimientoRepository.save(seguimiento);
+    const saved = await this.seguimientoRepository.save(seguimiento);
+    await this.syncTareaRol4(planId);
+    return saved;
   }
 
   /**
