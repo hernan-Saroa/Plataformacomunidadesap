@@ -2156,7 +2156,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-x border-b border-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedCertId === cert.id
+                    ? 'relative z-[1] bg-[#F8FBFF] shadow-sm ring-1 ring-blue-200'
+                    : 'hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal */}
                 <div
@@ -2172,7 +2176,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     }
                   }}
                   className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
-                    expandedCertId === cert.id ? 'bg-[#F8FBFF]' : 'hover:bg-[#F8FBFF]'
+                    expandedCertId === cert.id
+                      ? 'bg-gradient-to-r from-blue-50/80 via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
                   }`}
                 >
                   <div className="grid grid-cols-12 gap-4 items-center">
@@ -2357,7 +2363,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="overflow-hidden border-t border-slate-200 bg-slate-50"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       <div className="space-y-5 p-4 sm:p-6">
                         {/* Título */}
@@ -2585,7 +2591,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </div>
 
                         {/* Historial de Escaneos */}
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100">
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                               <Monitor className="w-4 h-4 text-gray-700" />
@@ -2622,7 +2628,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               {cert.scanHistory.map((scan, idx) => (
                                 <div 
                                   key={scan.id} 
-                                  className="bg-gray-50 p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                                  className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
                                 >
                                   <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-center gap-2">

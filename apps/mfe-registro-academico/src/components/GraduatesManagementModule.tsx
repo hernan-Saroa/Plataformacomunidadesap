@@ -1758,7 +1758,11 @@ export function GraduatesManagementModule() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-x border-b border-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedUserId === user.id
+                    ? 'relative z-[1] bg-[#F8FBFF] shadow-sm ring-1 ring-blue-200'
+                    : 'hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal con Columnas */}
                 <div
@@ -1774,7 +1778,9 @@ export function GraduatesManagementModule() {
                     }
                   }}
                   className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
-                    expandedUserId === user.id ? 'bg-[#F8FBFF]' : 'hover:bg-[#F8FBFF]'
+                    expandedUserId === user.id
+                      ? 'bg-gradient-to-r from-blue-50/80 via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
                   }`}
                 >
                   <div className="grid grid-cols-12 gap-4 items-center">
@@ -1934,10 +1940,10 @@ export function GraduatesManagementModule() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-slate-200 [&>div]:bg-white [&>div]:p-3 [&>div]:shadow-sm">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documento
