@@ -54,8 +54,6 @@ interface CertificadoVista {
   acta: string;
   diploma: string;
   fechaEmision: string;
-  motivoRevocatoria?: string;
-  fechaRevocatoria?: string;
 }
 
 function DetalleCertificado({
@@ -177,10 +175,6 @@ const mapCertificado = (
   acta: certificado.actaNumber || 'No especificado',
   diploma: certificado.diplomaNumber || 'No especificado',
   fechaEmision: formatDateOnly(certificado.issueDate),
-  motivoRevocatoria: certificado.revocationReason,
-  fechaRevocatoria: certificado.revocationDate
-    ? formatDateOnly(certificado.revocationDate)
-    : undefined,
 });
 
 const statusMetaByResult: Record<
@@ -481,19 +475,6 @@ export function ValidarCertificadoGrado({
                     </div>
                   </div>
 
-                  {certificado.motivoRevocatoria ? (
-                    <DetalleCertificado
-                      label="Motivo de revocatoria"
-                      value={certificado.motivoRevocatoria}
-                    />
-                  ) : null}
-
-                  {certificado.fechaRevocatoria ? (
-                    <DetalleCertificado
-                      label="Fecha de revocatoria"
-                      value={certificado.fechaRevocatoria}
-                    />
-                  ) : null}
                 </CardContent>
               </Card>
             ) : null}
