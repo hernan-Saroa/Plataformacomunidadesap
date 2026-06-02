@@ -13,6 +13,10 @@ import { useState, useCallback, useEffect } from 'react';
 import controlInternoService from '../../../../services/api/controlInternoService';
 import { auditoriaCoincideVigenciaPlan } from './useAuditoriasKanban';
 import { toast } from 'sonner';
+import {
+  PM_MAX_TITULO,
+  textoCampoPlanMejoramiento,
+} from '../../utils/planMejoramientoCampos';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -24,6 +28,7 @@ type SemaforoPlan = 'verde' | 'amarillo' | 'rojo';
 export interface PlanMejoramientoKanban {
   id: string;
   codigo: string;
+  titulo?: string;
   auditoria: string;
   auditoriaId?: string;
   area: string;
@@ -334,6 +339,7 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
   return {
     id: planBackend.id,
     codigo: planBackend.codigo || `PM-${new Date().getFullYear()}-${planBackend.id?.substring(0, 4) || '001'}`,
+    titulo: planBackend.titulo || planBackend.nombre,
     auditoria: nombreAuditoria,
     auditoriaId: planBackend.auditoriaId || planBackend.auditoria_id || (typeof auditoriaObj === 'object' ? auditoriaObj?.id : undefined),
     area: planBackend.area || planBackend.areaResponsable || '',
@@ -435,12 +441,19 @@ export function usePlanesMejoramiento(filters?: PlanesMejoramientoFilters) {
       
       // DTO según backend CreatePlanMejoramientoDto
       const planData = {
-        areaResponsable: data.areaResponsable,
-        responsableImplementacion: data.responsableImplementacion,
+        areaResponsable: textoCampoPlanMejoramiento(data.areaResponsable, 'Sin área'),
+        responsableImplementacion: textoCampoPlanMejoramiento(
+          data.responsableImplementacion,
+          'Sin responsable',
+        ),
         fechaLimite: data.fechaLimite, // ISO 8601
         ...(data.auditoriaId && { auditoriaId: data.auditoriaId }),
-        ...(data.titulo && { titulo: data.titulo }),
-        ...(data.descripcion && { descripcion: data.descripcion }),
+        ...(data.titulo && {
+          titulo: textoCampoPlanMejoramiento(data.titulo, 'Plan de Mejoramiento', PM_MAX_TITULO),
+        }),
+        ...(data.descripcion && {
+          descripcion: textoCampoPlanMejoramiento(data.descripcion, '', 2000),
+        }),
         ...(data.objetivos && { objetivos: data.objetivos }),
         ...(data.hallazgoId && { hallazgoId: data.hallazgoId })
       };

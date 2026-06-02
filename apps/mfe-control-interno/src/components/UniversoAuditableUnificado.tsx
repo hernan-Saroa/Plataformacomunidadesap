@@ -670,7 +670,6 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
               procesoAuditado: data.procesoAuditado,
               alcance: data.alcance,
               auditorLider: data.auditorLider,
-              auditorAsignado: data.auditorAsignado,
               equipoAuditores: data.equipoAuditores,
               supervisorAsignado: data.supervisorAsignado,
               ...(data.responsableArea && {

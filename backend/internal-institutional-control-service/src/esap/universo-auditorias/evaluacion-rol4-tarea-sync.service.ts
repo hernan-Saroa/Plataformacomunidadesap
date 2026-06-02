@@ -26,6 +26,9 @@ export interface TareaSeguimientoPlan {
   origen?: string;
   evaluacionProcesoId?: string;
   procesoId?: string;
+  planMejoramientoId?: string;
+  auditoriaId?: string;
+  areaResponsable?: string;
   [key: string]: unknown;
 }
 

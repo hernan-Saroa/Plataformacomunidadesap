@@ -2441,7 +2441,6 @@ export function GestionAuditoriasKanbanSimple() {
         riesgosIdentificados: data.riesgosIdentificados || [],
         controlesAplicar: data.controlesAplicar || [],
         auditorLiderId: data.auditorLider || undefined,
-        auditorAsignadoId: data.auditorAsignado || undefined,
         supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
         // Responsable del Área Auditada (Paso 2 del formulario). Se envía en campos
