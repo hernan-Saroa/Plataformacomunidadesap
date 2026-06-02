@@ -81,9 +81,16 @@ interface CertificadoDetallePanelProps {
     pdfUrl?: string;
   };
   isOpen: boolean;
+  onValidationHistoryChange?: (certificateId: string, totalVerificaciones: number) => void;
 }
 
-export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
+const HISTORIAL_VERIFICACIONES_POLL_INTERVAL_MS = 5000;
+
+export function CertificadoDetallePanel({
+  certificado,
+  isOpen,
+  onValidationHistoryChange,
+}: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
   const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | 'email' | null>(null);
   const [isDownloading, setIsDownloading] = React.useState(false);
@@ -348,6 +355,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const [historialCargado, setHistorialCargado] = React.useState(false);
   const [cargandoHistorial, setCargandoHistorial] = React.useState(false);
   const [historialError, setHistorialError] = React.useState<string | null>(null);
+  const historialSyncInFlightRef = React.useRef(false);
 
   const normalizarResultado = (valor: any) => {
     const val = typeof valor === 'string' ? valor.toLowerCase() : '';
@@ -396,16 +404,25 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }));
   };
 
-  const cargarHistorialVerificaciones = async () => {
-    if (historialCargado || cargandoHistorial) return;
-    setCargandoHistorial(true);
-    setHistorialError(null);
+  const cargarHistorialVerificaciones = async (
+    options: { force?: boolean; silent?: boolean } = {},
+  ) => {
+    const { force = false, silent = false } = options;
+    if ((!force && historialCargado) || historialSyncInFlightRef.current) return;
+    historialSyncInFlightRef.current = true;
+    if (!silent) {
+      setCargandoHistorial(true);
+      setHistorialError(null);
+    }
 
     if (!codigoVerificacion) {
       setHistorialError('No hay un codigo de verificacion disponible para este certificado.');
       setVerificaciones([]);
       setHistorialCargado(true);
-      setCargandoHistorial(false);
+      if (!silent) {
+        setCargandoHistorial(false);
+      }
+      historialSyncInFlightRef.current = false;
       return;
     }
 
@@ -419,22 +436,36 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
         response?.historial ||
         [];
 
-      if (Array.isArray(historialRemoto) && historialRemoto.length > 0) {
-        setVerificaciones(mapearHistorial(historialRemoto));
-      } else {
-        setVerificaciones([]);
-      }
+      const verificacionesActualizadas = Array.isArray(historialRemoto)
+        ? mapearHistorial(historialRemoto)
+        : [];
+
+      setVerificaciones(verificacionesActualizadas);
+      onValidationHistoryChange?.(certificado.id, verificacionesActualizadas.length);
 
       setHistorialCargado(true);
+      setHistorialError(null);
     } catch (error) {
-      console.error('Error cargando historial de verificaciones:', error);
-      setHistorialError('No se pudo cargar el historial de verificaciones en vivo.');
-      setVerificaciones([]);
+      if (!silent) {
+        console.error('Error cargando historial de verificaciones:', error);
+      }
+      if (!silent) {
+        setHistorialError('No se pudo cargar el historial de verificaciones en vivo.');
+        setVerificaciones([]);
+      }
       setHistorialCargado(true);
     } finally {
-      setCargandoHistorial(false);
+      historialSyncInFlightRef.current = false;
+      if (!silent) {
+        setCargandoHistorial(false);
+      }
     }
   };
+
+  const cargarHistorialVerificacionesRef = React.useRef(cargarHistorialVerificaciones);
+  React.useEffect(() => {
+    cargarHistorialVerificacionesRef.current = cargarHistorialVerificaciones;
+  });
 
   const handleToggleHistorial = async () => {
     const nextValue = !showHistorialVerificaciones;
@@ -444,6 +475,29 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       await cargarHistorialVerificaciones();
     }
   };
+
+  React.useEffect(() => {
+    if (!isOpen || !showHistorialVerificaciones || !codigoVerificacion) return;
+
+    const syncHistorial = () => {
+      void cargarHistorialVerificacionesRef.current({ force: true, silent: true });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncHistorial();
+      }
+    };
+
+    const intervalId = window.setInterval(syncHistorial, HISTORIAL_VERIFICACIONES_POLL_INTERVAL_MS);
+    window.addEventListener('focus', syncHistorial);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', syncHistorial);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isOpen, showHistorialVerificaciones, codigoVerificacion]);
 
   const totalVerificaciones = verificaciones.length || certificado.cantidadEscaneos || 0;
   const spinnerTransition = {

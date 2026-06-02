@@ -664,6 +664,24 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
+  const handleValidationHistoryChange = React.useCallback(
+    (certificateId: string, totalVerificaciones: number) => {
+      if (!certificateId || !Number.isFinite(totalVerificaciones)) return;
+      const nextTotal = Math.max(0, totalVerificaciones);
+      const updateCertificate = (cert: CertificadoLaboral) =>
+        cert.id === certificateId && cert.cantidadEscaneos !== nextTotal
+          ? { ...cert, cantidadEscaneos: nextTotal }
+          : cert;
+
+      setCertificadosRaw((prev) => prev.map(updateCertificate));
+      setCertificadosMetricas((prev) => prev.map(updateCertificate));
+      setSelectedCertificado((prev) =>
+        prev?.id === certificateId ? updateCertificate(prev) : prev,
+      );
+    },
+    [],
+  );
+
   const handleReenviarEmail = async (cert: CertificadoLaboral) => {
     if (processingIds.has(cert.id)) return;
     setProcessingIds(prev => new Set(prev).add(cert.id));
@@ -1415,6 +1433,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
+                              onValidationHistoryChange={handleValidationHistoryChange}
                             />
                           </td>
                         </tr>

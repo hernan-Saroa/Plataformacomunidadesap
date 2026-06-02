@@ -1878,7 +1878,22 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
               >
                 {/* Fila Principal */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedCertId === cert.id}
+                  aria-label={`Ver trazabilidad del certificado ${cert.certificateNumber}`}
+                  onClick={() => handleViewDetails(cert)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(cert);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedCertId === cert.id ? 'bg-[#F8FBFF]' : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado */}
                     <div className="col-span-3">
@@ -1928,7 +1943,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleViewQR(cert)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleViewQR(cert);
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
                           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 relative"
                           style={{ background: '#F3F4F6', cursor: 'pointer' }}
                           title="Ver código QR único"
@@ -1970,9 +1989,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(cert)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(cert);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedCertId === cert.id ? '#F0F6FF' : '#F9FAFB',
@@ -1991,6 +2017,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
