@@ -107,7 +107,7 @@ export function calcularPorcentajeCortes(actividad: ActividadAvanceInput): numbe
   if (cortes.length === 0) return null;
 
   const cumplidos = cortes.filter((corte) => corteEstaCumplido(actividad, corte.id)).length;
-  return clampPorcentaje((cumplidos.length / cortes.length) * 100);
+  return clampPorcentaje((cumplidos / cortes.length) * 100);
 }
 
 /** Resumen de evidencias y observaciones en tareas (no a nivel actividad). */
