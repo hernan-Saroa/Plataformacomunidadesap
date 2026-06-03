@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 
 type PonderacionRiesgo = 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO' | 'MUY BAJO';
 type ModoProcesoEspecial = 'ponderacion' | 'todos_los_anos';
@@ -677,7 +678,7 @@ export function FormularioProcesoDafpVisual({
     await Promise.resolve(onSubmit(payload, procesoIdSeleccionado));
   };
 
-  if (!open) return null;
+  // if (!open) return null;
 
   const nivelBadgeClass = LEVEL_STYLES[riesgoInherenteCualitativo];
   const readonlyProcesoValue =
@@ -694,36 +695,21 @@ export function FormularioProcesoDafpVisual({
       .join(' | ');
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 16 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-        >
-          <div className="flex items-center justify-between border-b-4 border-[#F57C00] bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20">
-                <Layers className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-lg font-black leading-tight text-white">
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
+          {/* HEADER */}
+          <div className="flex items-start justify-between p-6 border-b border-gray-200">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <Layers className="w-6 h-6" style={{ color: '#003DA5' }} />
+                <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
                   {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'}
                 </h2>
-                <p className="text-xs font-medium text-white/80">
+              </div>
+                <p className="text-sm text-gray-600">
                   Universo de Auditoría Basada en Riesgos · RE-E-GE-034
                 </p>
-              </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-2 transition-all hover:bg-white/20"
-            >
-              <X className="h-5 w-5 text-white" />
-            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -1273,8 +1259,7 @@ export function FormularioProcesoDafpVisual({
               </div>
             </div>
           </form>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        </DialogContent>
+      </Dialog>
   );
 }
