@@ -251,8 +251,6 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `status` | `status` | varchar (length 50) | No |  | No | No | VALID |  |
 | `issue_date` | `issueDate` | date | No |  | No | No | () => 'CURRENT_DATE' |  |
 | `expiry_date` | `expiryDate` | date | No |  | Sí | No |  |  |
-| `revocation_date` | `revocationDate` | timestamp | No |  | Sí | No |  |  |
-| `revocation_reason` | `revocationReason` | text | No |  | Sí | No |  |  |
 | `created_at` | `createdAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updatedAt` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 | `created_by` | `createdBy` | varchar (length 255) | No |  | Sí | No |  |  |
@@ -288,9 +286,7 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `full_name` | `fullName` | varchar (length 255) | No |  | No | No |  |  |
 | `position` | `position` | varchar (length 255) | No |  | No | No |  |  |
 | `department` | `department` | varchar (length 255) | No |  | Sí | No |  |  |
-| `email` | `email` | varchar (length 255) | No |  | Sí | No |  |  |
 | `signature_url` | `signatureUrl` | text | No |  | Sí | No |  |  |
-| `signature_filename` | `signatureFilename` | varchar (length 255) | No |  | Sí | No |  |  |
 | `is_active` | `isActive` | boolean | No |  | No | No | true |  |
 | `is_primary` | `isPrimary` | boolean | No |  | No | No | false |  |
 | `created_at` | `createdAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
@@ -1774,7 +1770,6 @@ MER relacionado: [certification](<mer/06-may-2026/esap_db - certification.png>)
 | `metadata` | `metadata` | jsonb | No |  | Sí | No |  |  |
 | `changed_at` | `changedAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `changed_by` | `changedBy` | varchar | No |  | Sí | No |  |  |
-| `user_info` | `userInfo` | jsonb | No |  | Sí | No |  |  |
 
 #### Tabla `validaciones_certificado`
 

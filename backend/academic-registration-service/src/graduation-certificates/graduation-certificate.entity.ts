@@ -97,12 +97,6 @@ export class GraduationCertificate {
   @Column({ name: 'expiry_date', type: 'date', nullable: true })
   expiryDate: Date;
 
-  @Column({ name: 'revocation_date', type: 'timestamp', nullable: true })
-  revocationDate: Date;
-
-  @Column({ name: 'revocation_reason', type: 'text', nullable: true })
-  revocationReason: string;
-
   // Auditoría
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
