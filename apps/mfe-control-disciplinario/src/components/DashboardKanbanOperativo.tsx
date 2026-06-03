@@ -4777,11 +4777,11 @@ export function DashboardKanbanOperativo({
     const toastId = toast.loading('Apelando proceso a segunda instancia...');
 
     try {
-      // First restore the process from archived state
-      await disciplinaryService.restoreProcess(item.id);
-
-      // Then change the stage to second instance
+      // First change the stage to second instance (process is still archived, so stage validation is skipped)
       const updatedProcess = await disciplinaryService.cambiarEtapa(item.id, backendStage);
+
+      // Then restore the process from archived state
+      await disciplinaryService.restoreProcess(item.id);
 
       setItems(prev => [
         ...prev,

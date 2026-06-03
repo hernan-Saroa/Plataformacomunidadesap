@@ -964,6 +964,10 @@ export class ProcessService {
   /**
    * Cambia la etapa del proceso (US-009)
    */
+  private isUUID(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  }
+
   async changeStage(
     id: string,
     stageId: string,
@@ -972,20 +976,28 @@ export class ProcessService {
     try {
       const proceso = await this.findById(id, false);
 
-      if (proceso.estado === ProcessStatus.CERRADO) {
-        throw new HttpException(
-          'No se puede cambiar la etapa de un proceso CERRADO',
-          HttpStatus.FORBIDDEN,
-        );
+      // if (proceso.estado === ProcessStatus.CERRADO) {
+      //   throw new HttpException(
+      //     'No se puede cambiar la etapa de un proceso CERRADO',
+      //     HttpStatus.FORBIDDEN,
+      //   );
+      // }
+
+      let newStageConfig: StageConfiguration | null;
+
+      if (this.isUUID(stageId)) {
+        newStageConfig = await this.stageConfigurationRepository.findOne({
+          where: { id: stageId, activo: true },
+        });
+      } else {
+        newStageConfig = await this.stageConfigurationRepository.findOne({
+          where: { etapa: stageId, activo: true },
+        });
       }
 
-      // Get the new stage configuration
-      const newStageConfig = await this.stageConfigurationRepository.findOne({
-        where: { id: stageId, activo: true },
-      });
       if (!newStageConfig) {
         throw new HttpException(
-          `Stage configuration with id ${stageId} not found`,
+          `Stage configuration not found for identifier: ${stageId}`,
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -1006,8 +1018,9 @@ export class ProcessService {
       }
 
       if (proceso.etapaActual !== newStageConfig.etapa) {
-        // Validar transicion de etapa using orden
-        this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+        if (proceso.estado === ProcessStatus.ACTIVO) {
+          this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+        }
 
         // Calcular nuevo vencimiento
         const { fechaVencimiento } =
