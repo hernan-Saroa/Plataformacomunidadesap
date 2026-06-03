@@ -255,6 +255,7 @@ export class CompartirExpedienteController {
     const documentosMapeados = evidencias.map(doc => ({
       id: doc.id,
       nombre: doc.documentName || doc.nombreDocumento || doc.filename || 'Documento sin nombre',
+      archivoNombre: doc.documentName || doc.nombreDocumento || doc.filename || 'Documento sin nombre',
       tipo: doc.documentType || 'Documento',
       etapa: doc.etapa || 'Sin etapa',
       version: doc.version || 1,
@@ -265,6 +266,8 @@ export class CompartirExpedienteController {
       url: doc.url,
       urlExterna: doc.urlExterna,
       downloadUrl: `/compartir-expediente/documento/${token}/${doc.id}/download`,
+      fileType: doc.fileType || 'application/octet-stream',
+      fileSize: doc.fileSize || 0,
       metadatos: {
         firmado: doc.metadatos?.firmado || false,
         notificado: doc.metadatos?.notificado || false,
@@ -339,6 +342,22 @@ export class CompartirExpedienteController {
       if (proceso.news && Array.isArray((proceso.news as any).adjuntos) && (proceso.news as any).adjuntos.length > 0) {
         (proceso.news as any).adjuntos.forEach((adjPath: string, index: number) => {
           const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+          const extension = filename.split('.').pop()?.toLowerCase() || '';
+          const mimeTypes: { [key: string]: string } = {
+            pdf: 'application/pdf',
+            doc: 'application/msword',
+            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            xls: 'application/vnd.ms-excel',
+            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            gif: 'image/gif',
+            bmp: 'image/bmp',
+            txt: 'text/plain',
+            rtf: 'application/rtf',
+          };
+          const fileType = mimeTypes[extension] || 'application/octet-stream';
           const tamaño = 'N/A';
           const fecha = (proceso.news as any).createdAt?.toISOString() || new Date().toISOString();
           documentosAdjuntosNoticia.push({
@@ -356,7 +375,7 @@ export class CompartirExpedienteController {
             urlExterna: null,
             downloadUrl: `/files/${filename}`,
             processId: compartido.procesoId,
-            fileType: 'application/octet-stream',
+            fileType,
             fileSize: 0,
             versiones: [{
               numero: 1,
@@ -477,11 +496,35 @@ export class CompartirExpedienteController {
       // Configurar headers según si es vista o descarga
       if (view === 'true') {
         // Vista inline
-        const mimeType = documento.fileType || 'application/octet-stream';
+        const extension = (documento.nombreDocumento || documento.filename || '').split('.').pop()?.toLowerCase() || '';
+        const mimeTypes: { [key: string]: string } = {
+          pdf: 'application/pdf',
+          doc: 'application/msword',
+          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          xls: 'application/vnd.ms-excel',
+          xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          html: 'text/html',
+          htm: 'text/html',
+          txt: 'text/plain',
+          png: 'image/png',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          gif: 'image/gif',
+          webp: 'image/webp',
+          bmp: 'image/bmp',
+          heic: 'image/heic',
+          mp4: 'video/mp4',
+          webm: 'video/webm',
+          mov: 'video/quicktime',
+          avi: 'video/x-msvideo',
+          mp3: 'audio/mpeg',
+          wav: 'audio/wav',
+        };
+        const mimeType = documento.fileType || mimeTypes[extension] || 'application/octet-stream';
         const encodedFilename = encodeURIComponent(nombreArchivo);
         const filenameStar = `filename*=UTF-8''${encodedFilename}`;
 
-        res.setHeader('Content-Type', `${mimeType}; charset=utf-8`);
+        res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Disposition', `inline; filename="${nombreArchivo}"; ${filenameStar}`);
       } else {
         // Descarga

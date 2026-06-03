@@ -20,6 +20,7 @@ import {
   type EvaluacionProceso, 
   type CreateEvaluacionProcesoDTO 
 } from '../../../services/api/controlInternoService';
+import { calcularAuditableDesdeCiclo } from '../../utils/auditableEvaluacion';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS FRONTEND
@@ -72,6 +73,8 @@ export interface EvaluacionProcesoUI {
   decisionFinal?: DecisionFinal | string;
   motivoDecision?: string;
   prioridadRegla?: number;
+  auditableCalculado?: boolean;
+  auditableManual?: boolean | null;
   // Meta
   activo: boolean;
   createdAt: string;
@@ -119,6 +122,8 @@ function mapBackendToUI(backend: EvaluacionProceso): EvaluacionProcesoUI {
     decisionFinal: backend.decisionFinal,
     motivoDecision: backend.motivoDecision,
     prioridadRegla: backend.prioridadRegla,
+    auditableCalculado: backend.auditableCalculado,
+    auditableManual: backend.auditableManual ?? null,
     activo: backend.activo,
     createdAt: backend.createdAt,
     updatedAt: backend.updatedAt,
@@ -153,6 +158,9 @@ function mapUIToBackend(ui: Partial<EvaluacionProcesoUI>): Partial<CreateEvaluac
     decisionFinal: ui.decisionFinal,
     motivoDecision: ui.motivoDecision,
     prioridadRegla: ui.prioridadRegla,
+    auditableCalculado:
+      ui.auditableCalculado ??
+      calcularAuditableDesdeCiclo(ui.cicloRotacionDafp),
   };
   // Incluir procesoId si existe y tiene formato válido
   if (ui.procesoId) {
@@ -180,6 +188,7 @@ interface UseEvaluacionesProcesoReturn {
   agregarEvaluacion: (data: Partial<EvaluacionProcesoUI>) => Promise<EvaluacionProcesoUI | null>;
   editarEvaluacion: (id: string, data: Partial<EvaluacionProcesoUI>) => Promise<EvaluacionProcesoUI | null>;
   eliminarEvaluacion: (id: string) => Promise<boolean>;
+  patchAuditableManual: (id: string, auditableManual: boolean | null) => Promise<EvaluacionProcesoUI | null>;
   getEstadisticas: (vigencia: number) => Promise<any>;
 }
 
@@ -363,6 +372,33 @@ export function useEvaluacionesProcesoData(
     }
   }, [showToasts]);
 
+  const patchAuditableManual = useCallback(async (
+    id: string,
+    auditableManual: boolean | null
+  ): Promise<EvaluacionProcesoUI | null> => {
+    try {
+      const updated = await controlInternoService.patchAuditableManual(id, auditableManual);
+      const ui = mapBackendToUI(updated);
+      if (mountedRef.current) {
+        setEvaluaciones((prev) => prev.map((e) => (e.id === id ? ui : e)));
+      }
+      if (showToasts) {
+        toast.success(
+          auditableManual === null
+            ? 'Priorización restaurada al valor calculado (DAFP)'
+            : auditableManual
+              ? 'Proceso marcado como priorizado'
+              : 'Proceso excluido de priorización'
+        );
+      }
+      return ui;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar priorización';
+      if (showToasts) toast.error(msg);
+      return null;
+    }
+  }, [showToasts]);
+
   // ══════════════════════════════════════════════════════════════════════════
   // ESTADÍSTICAS
   // ══════════════════════════════════════════════════════════════════════════
@@ -400,6 +436,7 @@ export function useEvaluacionesProcesoData(
     agregarEvaluacion,
     editarEvaluacion,
     eliminarEvaluacion,
+    patchAuditableManual,
     getEstadisticas,
   };
 }

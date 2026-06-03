@@ -207,6 +207,13 @@ export class CreateEvaluacionProcesoDto {
   @IsOptional()
   @IsString()
   creadoPor?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  auditableCalculado?: boolean;
+
+  @IsOptional()
+  auditableManual?: boolean | null;
 }
 
 export class UpdateEvaluacionProcesoDto {
@@ -365,4 +372,17 @@ export class UpdateEvaluacionProcesoDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  auditableCalculado?: boolean;
+
+  @IsOptional()
+  auditableManual?: boolean | null;
+}
+
+export class PatchAuditableManualDto {
+  /** null restaura el valor calculado por DAFP */
+  @IsOptional()
+  auditableManual?: boolean | null;
 }

@@ -84,7 +84,7 @@ export class MicrosoftGraphService {
                     .api(`/users/${this.emailAccount}/messages`)
                     .top(limit)
                     .orderby('receivedDateTime desc')
-                    .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
+                    .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
                     .get();
             }
 
@@ -116,7 +116,7 @@ export class MicrosoftGraphService {
                 .api(`/users/${this.emailAccount}/messages`)
                 .top(100) // Fetch 100 per page
                 .orderby('receivedDateTime desc')
-                .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
                 .get();
 
             allEmails = response.value || [];
@@ -163,7 +163,7 @@ export class MicrosoftGraphService {
                 .filter('isRead eq false')
                 .top(top)
                 .orderby('receivedDateTime desc')
-                .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
                 .get();
 
             this.logger.log(`Fetched ${response.value?.length || 0} unread emails`);
@@ -185,7 +185,7 @@ export class MicrosoftGraphService {
                 .api(`/users/${this.emailAccount}/messages`)
                 .top(top)
                 .orderby('receivedDateTime desc')
-                .select('id,subject,from,toRecipients,receivedDateTime,bodyPreview,hasAttachments,isRead')
+                .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
                 .get();
 
             this.logger.log(`Fetched ${response.value?.length || 0} recent emails`);

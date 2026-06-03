@@ -20,6 +20,7 @@ import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { DataSource } from 'typeorm';
+import { PlanMejoramientoRol4TareaSyncService } from './plan-mejoramiento-rol4-tarea-sync.service';
 
 // ─── Helper: repositorio mock mínimo ────────────────────────────────────────
 const mockRepository = () => ({
@@ -45,6 +46,11 @@ const mockNotificacionesService = {
 
 const mockDataSource = {
   transaction: jest.fn(),
+};
+
+const mockRol4TareaSync = {
+  sincronizarDesdePlan: jest.fn().mockResolvedValue(undefined),
+  sincronizarVigencia: jest.fn().mockResolvedValue(0),
 };
 
 // ─── Subclase que expone métodos privados para testing ──────────────────────
@@ -114,6 +120,7 @@ describe('PlanesMejoramientoService — lógica de negocio pura', () => {
         { provide: getRepositoryToken(Aprobacion), useFactory: mockRepository },
         { provide: NotificacionesService, useValue: mockNotificacionesService },
         { provide: DataSource, useValue: mockDataSource },
+        { provide: PlanMejoramientoRol4TareaSyncService, useValue: mockRol4TareaSync },
       ],
     }).compile();
 

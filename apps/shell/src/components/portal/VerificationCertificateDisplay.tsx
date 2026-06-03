@@ -272,7 +272,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
       downloadBlobAsFile(pdfBlob);
 
-      toast.success('Certificado descargado exitosamente!', {
+      toast.success('¡Certificado descargado exitosamente!', {
         id: 'pdf-generation',
         description: `Archivo: Certificado_ESAP_${certificate.certificateNumber}.pdf`
       });
@@ -280,7 +280,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       console.error('Error al descargar certificado:', error);
       toast.error('Error al descargar certificado', {
         id: 'pdf-generation',
-        description: error.message || 'Por favor intenta de nuevo'
+        description: error.message || 'Por favor, intenta de nuevo'
       });
     } finally {
       setIsDownloading(false);
@@ -307,7 +307,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       lastEmailSentRef.current = certificate.certificateNumber;
       toast.success('Certificado enviado por correo', {
         id: 'auto-email-certificate',
-        description: `Se envio a ${destinatario}`,
+        description: `Se envió a ${destinatario}`,
         duration: 4000,
       });
     } catch (error: any) {
@@ -322,7 +322,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
-  // NOTA: El backend ya envia el correo automaticamente al crear el certificado
+  // NOTA: El backend ya envía el correo automáticamente al crear el certificado
   // en solicitarCertificadoLanding -> notifyCertificateDelivery
   // Por eso eliminamos el useEffect que llamaba a enviarCertificadoPorEmail()
   // para evitar enviar correos duplicados.

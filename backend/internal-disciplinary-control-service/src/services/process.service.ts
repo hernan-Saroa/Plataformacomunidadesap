@@ -1746,38 +1746,48 @@ export class ProcessService {
   }
 
 /**
-    * Restaura un proceso archivado al flujo activo
-    */
-   async restore(id: string): Promise<DisciplinaryProcess> {
-     const proceso = await this.processRepository.findOne({
-       where: { id },
-       relations: ['news'],
-     });
+     * Restaura un proceso archivado o cerrado al flujo activo
+     */
+    async restore(id: string): Promise<DisciplinaryProcess> {
+      const proceso = await this.processRepository.findOne({
+        where: { id },
+        relations: ['news'],
+      });
 
-     if (!proceso) {
-       throw new HttpException(
-         `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
-         HttpStatus.NOT_FOUND,
-       );
-     }
+      if (!proceso) {
+        throw new HttpException(
+          `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
 
-     // Verificar que el proceso esté archivado
-     if (proceso.estado !== ProcessStatus.ARCHIVADO) {
-       throw new HttpException(
-         `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
-         HttpStatus.BAD_REQUEST,
-       );
-     }
+      // Verificar que el proceso esté archivado o cerrado
+//       if (proceso.estado !== ProcessStatus.ARCHIVADO && proceso.estado !== ProcessStatus.CERRADO) {
+//         throw new HttpException(
+//           `El proceso ${proceso.radicadoProceso} no está archivado o cerrado (estado actual: ${proceso.estado}). Solo los procesos archivados o cerrados pueden ser restaurados.`,
+//           HttpStatus.BAD_REQUEST,
+//         );
+// }
 
-     // Cambiar estado a ACTIVO y marcar como restaurado
-     proceso.estado = ProcessStatus.ACTIVO;
-     proceso.restaurado = true;
+      // Guardar estado original para el mensaje
+      const estadoAnterior = proceso.estado;
 
-     // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
-     console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+      // Cambiar estado a ACTIVO y marcar como restaurado
+      proceso.estado = ProcessStatus.ACTIVO;
+      proceso.restaurado = true;
 
-     return await this.processRepository.save(proceso);
-   }
+      // Limpiar campos de cierre si el proceso estaba cerrado
+      if (estadoAnterior === ProcessStatus.CERRADO) {
+        proceso.fechaCierre = null;
+        proceso.etapaAlCierre = null;
+        proceso.cerradoPorId = null;
+        
+      }
+
+      
+
+      return await this.processRepository.save(proceso);
+    }
 
    /**
     * Obtiene todas las noticias en estado RADICADA que tienen documentos adjuntos

@@ -664,6 +664,24 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
+  const handleValidationHistoryChange = React.useCallback(
+    (certificateId: string, totalVerificaciones: number) => {
+      if (!certificateId || !Number.isFinite(totalVerificaciones)) return;
+      const nextTotal = Math.max(0, totalVerificaciones);
+      const updateCertificate = (cert: CertificadoLaboral) =>
+        cert.id === certificateId && cert.cantidadEscaneos !== nextTotal
+          ? { ...cert, cantidadEscaneos: nextTotal }
+          : cert;
+
+      setCertificadosRaw((prev) => prev.map(updateCertificate));
+      setCertificadosMetricas((prev) => prev.map(updateCertificate));
+      setSelectedCertificado((prev) =>
+        prev?.id === certificateId ? updateCertificate(prev) : prev,
+      );
+    },
+    [],
+  );
+
   const handleReenviarEmail = async (cert: CertificadoLaboral) => {
     if (processingIds.has(cert.id)) return;
     setProcessingIds(prev => new Set(prev).add(cert.id));
@@ -1208,7 +1226,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               Cargando certificados...
             </h3>
             <p className="text-sm text-gray-600">
-              Por favor espera un momento
+              Por favor, espera un momento
             </p>
           </div>
         ) : error ? (
@@ -1285,11 +1303,19 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   {paginatedCertificados.map((cert, index) => (
                     <React.Fragment key={cert.rowKey || `${cert.id}-${index}`}>
                       <tr
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        className={`cursor-pointer transition-colors ${
+                          expandedCertId === cert.id
+                            ? 'bg-[#EEF6FF]'
+                            : 'hover:bg-gray-50'
+                        }`}
                         onClick={() => handleVerDetalle(cert)}
                       >
                         {/* Estado */}
-                        <td className="px-4 py-4 whitespace-nowrap">
+                        <td
+                          className={`px-4 py-4 whitespace-nowrap border-l-4 ${
+                            expandedCertId === cert.id ? 'border-l-[#003DA5]' : 'border-l-transparent'
+                          }`}
+                        >
                           {getEstadoBadge(cert.estado)}
                         </td>
 
@@ -1410,11 +1436,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
-                        <tr>
-                          <td colSpan={9} className="p-0 bg-gray-50">
+                        <tr className="bg-blue-50/30">
+                          <td colSpan={9} className="border-l-4 border-l-[#003DA5] bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50 p-0">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
+                              onValidationHistoryChange={handleValidationHistoryChange}
                             />
                           </td>
                         </tr>
