@@ -70,7 +70,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
 
   const handleValidar = async () => {
     if (!codigoQR.trim()) {
-      toast.error('Por favor ingresa un código QR');
+      toast.error('Por favor, ingresa un código QR');
       return;
     }
 
@@ -688,7 +688,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                             >
                               {validationResult.certificado.estado === 'VENCIDO'
                                 ? 'Este certificado ha superado su fecha de vigencia. Para obtener un certificado actualizado, el empleado debe solicitarlo nuevamente.'
-                                : 'Este certificado ha sido anulado y no tiene validez. Por favor contacte con Talento Humano ESAP para más información.'}
+                                : 'Este certificado ha sido anulado y no tiene validez. Por favor, contacte con Talento Humano ESAP para más información.'}
                             </p>
                           </div>
                         </div>

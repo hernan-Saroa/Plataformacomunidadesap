@@ -84,7 +84,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
     link.click();
     document.body.removeChild(link);
 
-    toast.success('QR descargado exitosamente', {
+    toast.success('¡QR descargado exitosamente!', {
       description: link.download,
       duration: 3000
     });

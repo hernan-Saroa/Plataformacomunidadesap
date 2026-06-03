@@ -416,7 +416,7 @@ export function CertificadoDetallePanel({
     }
 
     if (!codigoVerificacion) {
-      setHistorialError('No hay un codigo de verificacion disponible para este certificado.');
+      setHistorialError('No hay un código de verificación disponible para este certificado.');
       setVerificaciones([]);
       setHistorialCargado(true);
       if (!silent) {
@@ -675,16 +675,16 @@ export function CertificadoDetallePanel({
 
   const handleCopiarCodigoQR = async () => {
     if (!codigoVerificacion) {
-      toast.error('No hay codigo QR disponible para copiar');
+      toast.error('No hay código QR disponible para copiar');
       return;
     }
     const copiado = await copiarAlPortapapeles(codigoVerificacion);
     if (copiado) {
-      toast.success('Codigo QR copiado', {
-        description: 'El codigo de verificacion completo fue copiado al portapapeles'
+      toast.success('Código QR copiado', {
+        description: 'El código de verificación completo fue copiado al portapapeles'
       });
     } else {
-      toast.error('No se pudo copiar el codigo QR');
+      toast.error('No se pudo copiar el código QR');
     }
   };
 
@@ -920,7 +920,7 @@ export function CertificadoDetallePanel({
                             <button
                               onClick={handleCopiarCodigoQR}
                               className="text-gray-400 hover:text-[#003DA5] transition-colors"
-                              title="Copiar codigo QR completo"
+                              title="Copiar código QR completo"
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>

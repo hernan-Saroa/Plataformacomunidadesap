@@ -135,7 +135,7 @@ const FALLBACK_CATEGORIES: PrimaTecnicaCategoriaConfig[] = [
     id: 'DIRECTIVOS',
     category: 'DIRECTIVOS',
     label: 'Directivos',
-    description: 'Gestion de porcentajes para directivos.',
+    description: 'Gestión de porcentajes para directivos.',
     template_text:
       'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
     default_template_text:
@@ -148,7 +148,7 @@ const FALLBACK_CATEGORIES: PrimaTecnicaCategoriaConfig[] = [
     id: 'COORDINADORES',
     category: 'COORDINADORES',
     label: 'Coordinadores',
-    description: 'Gestion de porcentajes para coordinadores.',
+    description: 'Gestión de porcentajes para coordinadores.',
     template_text:
       'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
     default_template_text:
@@ -314,7 +314,7 @@ const formatBulkServerMessage = (message?: string) => {
   if (!rawMessage) return 'No se pudo procesar la fila.';
   const normalized = rawMessage.toLowerCase();
   if (normalized.includes('certificate_requests')) {
-    return 'No se encontro la persona en la base de datos de solicitudes laborales (usuarios con contrato laboral).';
+    return 'No se encontró la persona en la base de datos de solicitudes laborales (usuarios con contrato laboral).';
   }
   return rawMessage;
 };
@@ -633,7 +633,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       id: activeCategory,
       category: activeCategory,
       label: formatCategoryLabel(activeCategory),
-      description: 'Gestion de porcentajes para esta prima.',
+      description: 'Gestión de porcentajes para esta prima.',
       template_text: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
       default_template_text: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
     };
@@ -1755,7 +1755,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-slate-700">
-                        Descripcion
+                        Descripción
                       </label>
                       <input
                         value={newCategoryDraft.description}
@@ -1766,7 +1766,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                           }))
                         }
                         className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                        placeholder="Gestion de porcentajes para esta prima."
+                        placeholder="Gestión de porcentajes para esta prima."
                         disabled={isCreatingCategory}
                       />
                     </div>
@@ -1836,7 +1836,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-slate-700">
-                        Descripcion
+                        Descripción
                       </label>
                       <input
                         value={editingCategoryDraft.description}
@@ -1963,7 +1963,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                             </span>
                           </div>
                           <p className="text-xs sm:text-sm text-slate-600 truncate">
-                            {meta.description || 'Gestion de porcentajes para esta prima.'}
+                            {meta.description || 'Gestión de porcentajes para esta prima.'}
                           </p>
                           <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
                             <span className="font-medium text-slate-500">
@@ -2990,7 +2990,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                             setConsultQuery(event.target.value);
                             setSelectedConsultId(null);
                           }}
-                          placeholder="Escribe nombre o numero de documento..."
+                          placeholder="Escribe nombre o número de documento..."
                           className="min-h-11 w-full rounded-lg border-2 border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:text-[15px]"
                           autoFocus
                         />
@@ -3373,7 +3373,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                           <p className="text-xs text-slate-600 sm:text-sm">
                             {bulkFileName
                               ? `${validatedBulkRows.length} fila(s), ${validBulkRows.length} valida(s), ${invalidBulkRows.length} con error`
-                              : 'Selecciona un archivo Excel para ver la validacion antes de cargar.'}
+                              : 'Selecciona un archivo Excel para ver la validación antes de cargar.'}
                           </p>
                         </div>
                       </div>
@@ -3463,7 +3463,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         </span>
                         <div className="min-w-0">
                           <h4 className="font-semibold text-slate-900">
-                            Vista previa y validacion del archivo
+                            Vista previa y validación del archivo
                           </h4>
                           <p className="truncate text-xs text-slate-500">
                             {bulkFileName || 'Archivo cargado'}
