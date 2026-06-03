@@ -266,6 +266,7 @@ export class CertificatesController {
     @Req() req: any,
   ) {
     const forwarded = req.headers?.['x-forwarded-for'];
+    const standardForwarded = req.headers?.forwarded;
     const realIp = req.headers?.['x-real-ip'];
     const cfConnectingIp = req.headers?.['cf-connecting-ip'];
     const clientIpHeader = req.headers?.['x-client-ip'];
@@ -279,6 +280,7 @@ export class CertificatesController {
 
     const ipCandidates = [
       ...parseIpHeader(forwarded),
+      ...parseIpHeader(standardForwarded),
       ...parseIpHeader(cfConnectingIp),
       ...parseIpHeader(realIp),
       ...parseIpHeader(clientIpHeader),
@@ -326,6 +328,18 @@ export class CertificatesController {
         'x-vercel-ip-timezone',
         'x-timezone',
         'x-geo-timezone',
+      ),
+      geoLatitude: pickHeader(
+        'x-vercel-ip-latitude',
+        'x-latitude',
+        'x-geo-latitude',
+        'x-client-latitude',
+      ),
+      geoLongitude: pickHeader(
+        'x-vercel-ip-longitude',
+        'x-longitude',
+        'x-geo-longitude',
+        'x-client-longitude',
       ),
     };
     return await this.certificatesService.registrarValidacion(codigo, ip, userAgent, geoContext);

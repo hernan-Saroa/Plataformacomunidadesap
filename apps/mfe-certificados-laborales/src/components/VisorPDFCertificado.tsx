@@ -713,7 +713,7 @@ export function VisorPDFCertificado({
     const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(
       normalizarCategoriaPrimaTecnica(prima.category),
     );
-    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignaciÃ³n bÃ¡sica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(prima.value)}) pesos m/cte.</p>`;
+    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(prima.value)}) pesos m/cte.</p>`;
   };
 
   const handleDescargar = async () => {

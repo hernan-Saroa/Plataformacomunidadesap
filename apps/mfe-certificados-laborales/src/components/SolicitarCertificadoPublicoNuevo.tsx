@@ -74,7 +74,7 @@ export function SolicitarCertificadoPublicoNuevo({ onBack }: Props) {
     console.log('📄 Documento:', documento);
 
     if (!documento || documento.length < 5) {
-      toast.error('Por favor ingresa un número de documento válido');
+      toast.error('Por favor, ingresa un número de documento válido');
       return;
     }
 
@@ -164,7 +164,7 @@ export function SolicitarCertificadoPublicoNuevo({ onBack }: Props) {
       console.error('Error al verificar documento:', error);
       setLoading(false);
       toast.error('❌ Error de conexión', {
-        description: 'No se pudo verificar el documento. Por favor intenta nuevamente.',
+        description: 'No se pudo verificar el documento. Por favor, intenta nuevamente.',
         duration: 5000
       });
     }

@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ✅ Hook para conexión con backend
-import { useConfiguracionKanban, type EtapaKanbanFrontend as EtapaKanban, type ConfiguracionGeneralKanban as ConfiguracionGeneral } from './services/useConfiguracionKanban';
+import { useConfiguracionKanban, TipoTablero, type EtapaKanbanFrontend as EtapaKanban, type ConfiguracionGeneralKanban as ConfiguracionGeneral } from './services/useConfiguracionKanban';
 
 // ✅ Notificar cambios al KanbanConfigContext
 import { notificarCambioConfigKanban, type EtapaSLAConfig } from './context/KanbanConfigContext';
@@ -69,6 +69,8 @@ function sincronizarEtapasTableroLocalStorage(etapas: EtapaKanban[]) {
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ConfiguracionKanbanModule() {
+  const [tipoTableroActual, setTipoTableroActual] = useState<TipoTablero>(TipoTablero.AUDITORIAS);
+
   // ✅ Usar hook para conectar con backend
   const {
     tableroId,
@@ -81,7 +83,7 @@ export function ConfiguracionKanbanModule() {
     eliminarEtapa,
     actualizarConfigGeneral,
     recargarDatos,
-  } = useConfiguracionKanban();
+  } = useConfiguracionKanban(tipoTableroActual);
 
   const [etapaEditando, setEtapaEditando] = useState<EtapaKanban | null>(null);
   const [mostrarModalEtapa, setMostrarModalEtapa] = useState(false);
@@ -222,6 +224,20 @@ export function ConfiguracionKanbanModule() {
         titulo="Configuración del Kanban"
         subtitulo="Personaliza etapas, SLA, límites WIP y reglas de transición"
       >
+        <div className="flex bg-gray-100 p-0.5 rounded-lg mr-2">
+          <button
+            onClick={() => setTipoTableroActual(TipoTablero.AUDITORIAS)}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${tipoTableroActual === TipoTablero.AUDITORIAS ? 'bg-white shadow-sm text-blue-700' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            Auditorías
+          </button>
+          <button
+            onClick={() => setTipoTableroActual(TipoTablero.PLANES_MEJORAMIENTO)}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${tipoTableroActual === TipoTablero.PLANES_MEJORAMIENTO ? 'bg-white shadow-sm text-blue-700' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            Planes de Mejora
+          </button>
+        </div>
         {tableroId && (
           <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
             Conectado
