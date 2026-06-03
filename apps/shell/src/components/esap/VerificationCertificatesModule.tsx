@@ -2156,10 +2156,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className={`overflow-hidden border-x border-b border-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                className={`overflow-hidden border-r border-b border-l-4 border-r-[#E5E7EB] border-b-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
                   expandedCertId === cert.id
-                    ? 'relative z-[1] bg-[#F8FBFF] shadow-sm ring-1 ring-blue-200'
-                    : 'hover:shadow-md'
+                    ? 'relative z-[1] border-l-[#003DA5] bg-[#F8FBFF]'
+                    : 'border-l-transparent hover:shadow-md'
                 }`}
               >
                 {/* Fila Principal */}
@@ -2177,7 +2177,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   }}
                   className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
                     expandedCertId === cert.id
-                      ? 'bg-gradient-to-r from-blue-50/80 via-white to-white'
+                      ? 'bg-gradient-to-r from-[#EFF6FF] via-white to-white'
                       : 'hover:bg-[#F8FBFF]'
                   }`}
                 >

@@ -1305,13 +1305,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                       <tr
                         className={`cursor-pointer transition-colors ${
                           expandedCertId === cert.id
-                            ? 'bg-blue-50/60 shadow-[inset_4px_0_0_#003DA5]'
+                            ? 'bg-[#EEF6FF]'
                             : 'hover:bg-gray-50'
                         }`}
                         onClick={() => handleVerDetalle(cert)}
                       >
                         {/* Estado */}
-                        <td className="px-4 py-4 whitespace-nowrap">
+                        <td
+                          className={`px-4 py-4 whitespace-nowrap border-l-4 ${
+                            expandedCertId === cert.id ? 'border-l-[#003DA5]' : 'border-l-transparent'
+                          }`}
+                        >
                           {getEstadoBadge(cert.estado)}
                         </td>
 
@@ -1433,7 +1437,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
                         <tr className="bg-blue-50/30">
-                          <td colSpan={9} className="border-y border-blue-100 bg-gradient-to-br from-blue-50/70 via-white to-slate-50 p-0">
+                          <td colSpan={9} className="border-l-4 border-l-[#003DA5] bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50 p-0">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
