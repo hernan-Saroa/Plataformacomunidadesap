@@ -186,6 +186,11 @@ export class ActividadPlanAnual5 {
     fechaLimite?: string;
     fechaCompletada?: string;
     completadaPor?: string;
+    puntoControlId?: string;
+    requiereAdjuntos?: boolean;
+    requiereObservaciones?: boolean;
+    observaciones?: string;
+    adjuntosTarea?: unknown[];
   }>;
 
   // Relación con adjuntos
