@@ -283,7 +283,7 @@ interface CargaActiva {
 }
 
 function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return '';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -3736,7 +3736,7 @@ export function ModalDetallesProceso({
             )}
             <div className="flex items-center gap-1 mt-0.5">
               <p className="text-[10px] text-gray-500">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
-              {archivo.firmante === 'Archivo de la noticia' && (
+              {archivo.firmante === 'Radicador' && (
                 <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-300">
                   De la noticia
                 </span>
