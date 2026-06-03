@@ -162,7 +162,7 @@ export interface AuditoriaUnificadaFormData {
   rolDecretoAsociado?: string;
   
   // 10. ESTADO KANBAN (para crear auditoria en columna correcta)
-  estadoKanban?: 'Plan Anual' | 'Planeación' | 'Trabajo de Campo' | 'Elaboración Informe' | 'Informe Final' | 'Seguimiento' | 'Cerrada';
+  estadoKanban?: 'Programa Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Finalizada';
 }
 
 interface FormularioAuditoriaUnificadoProps {
@@ -341,7 +341,7 @@ export function FormularioAuditoriaUnificado({
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
     rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
-    estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
+    estadoKanban: initialData?.estadoKanban || 'Programa Anual' // Por defecto crear en Plan Anual
   });
 
   useEffect(() => {

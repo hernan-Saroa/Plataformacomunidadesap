@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { DataSource } from 'typeorm';
 import { seedInformesLey } from './esap/informes-ley/seed-informes-ley';
 // import { seedPlanAnual5Roles } from './esap/plan-anual-5-roles/seed-plan-anual-5-roles';
+import { seedTablerosKanban } from './esap/tableros-kanban/seed-tableros-kanban';
 
 async function seed() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -17,6 +18,9 @@ async function seed() {
     // ==================== PLAN ANUAL 5 ROLES (RF001) ====================
     // Seed de plan anual 5 roles removido - los datos deben crearse manualmente
     // await seedPlanAnual5Roles(dataSource);
+
+    // ==================== TABLEROS KANBAN Y ETAPAS ====================
+    await seedTablerosKanban(dataSource);
 
     console.log('✅ Seed completado exitosamente!');
   } catch (error) {

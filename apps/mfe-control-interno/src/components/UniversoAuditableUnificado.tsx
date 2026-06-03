@@ -42,6 +42,8 @@ import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI,
 import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
 // ✅ HOOK DE EVALUACIONES DAFP (nueva funcionalidad)
 import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/useEvaluacionesProcesoData';
+// ✅ HOOK DE CONFIGURACIÓN DE KANBAN (dinámico)
+import { useKanbanConfig } from './context/KanbanConfigContext';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
 import { loadTipos, loadEspIds } from './ConfiguracionProcesosModule';
@@ -683,7 +685,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
               planAnualId: data.planAnualId ?? planAnualId,
               planAnualAño: data.planAnualAño ?? vigencia,
               rolDecretoAsociado: data.rolDecretoAsociado,
-              estadoKanban: data.estadoKanban || 'Plan Anual',
+              estadoKanban: data.estadoKanban || 'Programa Anual',
               incluirHallazgosPreliminares: data.incluirHallazgosPreliminares,
               hallazgos: data.hallazgos,
             };
@@ -857,15 +859,31 @@ function TabProgramaAnual({
   vigencia
 }: TabProgramaAnualProps) {
   const [vistaProgramaAnual, setVistaProgramaAnual] = useState<'lista' | 'cronograma'>('cronograma'); // 🆕 Estado para alternar vista
+  const { etapasKanban } = useKanbanConfig();
   
   const getColorEstado = (auditoria: AuditoriaProgramada) => {
-    const kanban = (auditoria.estadoKanban || '').toLowerCase().trim();
-    if (kanban === 'plan anual') return { bg: '#EDE9FE', text: '#5B21B6', icon: Clock, label: 'Plan Anual' };
+    const kanbanStr = (auditoria.estadoKanban || '').trim();
+    // 1. Buscar en las etapas dinámicas
+    const etapaConfig = etapasKanban.find(e => e.nombre.toLowerCase() === kanbanStr.toLowerCase());
+    
+    if (etapaConfig) {
+      return { 
+        bg: `${etapaConfig.color}20`, // Color con 20% de opacidad para fondo
+        text: etapaConfig.color, 
+        icon: Activity, // Podríamos hacer esto dinámico en el futuro
+        label: etapaConfig.nombre 
+      };
+    }
+
+    // 2. Fallback dinámico si no existe en la BD o BD no cargada
+    const kanban = kanbanStr.toLowerCase();
+    if (kanban === 'programa anual') return { bg: '#EDE9FE', text: '#5B21B6', icon: Clock, label: 'Programa Anual' };
     if (kanban === 'planeación' || kanban === 'planeacion') return { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' };
     if (kanban === 'ejecución' || kanban === 'ejecucion') return { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecución' };
     if (kanban === 'comunicación' || kanban === 'comunicacion') return { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Comunicación' };
     if (kanban === 'seguimiento') return { bg: '#E0F2FE', text: '#075985', icon: TrendingUp, label: 'Seguimiento' };
     if (kanban === 'finalizada') return { bg: '#F0FDF4', text: '#166534', icon: CheckCircle2, label: 'Finalizada' };
+    
     // Fallback por estado UI
     const colores: Record<string, { bg: string; text: string; icon: any; label: string }> = {
       'PROGRAMADA': { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' },
