@@ -2242,7 +2242,7 @@ export function ModalDetallesProceso({
         };
       });
 
-      // ═══ Incluir archivos adjuntos de la noticia ═══
+      // ═══ Incluir archivos adjuntos de la noticia ═══ no se lo trporque duplica la evidencia
       console.log('[ModalDetallesProceso] archivosAdjuntos recibidos:', proceso.archivosAdjuntos);
       const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
         const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
@@ -2267,7 +2267,7 @@ export function ModalDetallesProceso({
       });
 
       console.log('[ModalDetallesProceso] total archivos:', mapped.length, ' + noticia:', archivosNoticia.length);
-      setArchivosBackend(mapped.concat(archivosNoticia));
+      setArchivosBackend(mapped);
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
       setArchivosBackend([]);
