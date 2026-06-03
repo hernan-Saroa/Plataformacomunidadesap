@@ -626,20 +626,20 @@ export function ReviewRequestsModule({
     const currentTotal = existingApprovalFiles.length + approvalFiles.length;
     const availableSlots = MAX_APPROVAL_FILES - currentTotal;
     if (availableSlots <= 0) {
-      toast.error(`Ya alcanzaste el maximo de ${MAX_APPROVAL_FILES} archivos`);
+      toast.error(`Ya alcanzaste el máximo de ${MAX_APPROVAL_FILES} archivos`);
       return;
     }
 
     if (uniqueFiles.length > availableSlots) {
-      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) mas`, {
-        description: `La solicitud admite maximo ${MAX_APPROVAL_FILES} archivos en total.`,
+      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) más`, {
+        description: `La solicitud admite máximo ${MAX_APPROVAL_FILES} archivos en total.`,
       });
       return;
     }
 
     const invalidFile = uniqueFiles.find((file) => !isAllowedFile(file));
     if (invalidFile) {
-      toast.error('Solo se permiten archivos PDF, Word, Excel o imagenes', {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes', {
         description: invalidFile.name,
       });
       return;
@@ -648,7 +648,7 @@ export function ReviewRequestsModule({
     const oversizedFile = uniqueFiles.find((file) => file.size > MAX_APPROVAL_FILE_SIZE_BYTES);
     if (oversizedFile) {
       toast.error('El archivo es muy pesado', {
-        description: `El archivo "${oversizedFile.name}" supera el limite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
       });
       return;
     }
@@ -970,7 +970,7 @@ export function ReviewRequestsModule({
         setSeccionalBySede(territorialMap);
 
       } catch (error) {
-        console.error('Error cargando catalogos de aprobacion:', error);
+        console.error('Error cargando catálogos de aprobación:', error);
       }
     };
 
@@ -1419,13 +1419,13 @@ export function ReviewRequestsModule({
     if (!trimmedReviewNotes) {
       toast.error(
         reviewAction === 'approve'
-          ? 'Por favor ingresa notas de revision'
-          : 'Por favor ingresa la descripcion del rechazo',
+          ? 'Por favor ingresa notas de revisión'
+          : 'Por favor ingresa la descripción del rechazo',
       );
       return;
     }
     if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
-      toast.error(`Las notas de revision no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
+      toast.error(`Las notas de revisión no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
       return;
     }
 
@@ -1467,7 +1467,7 @@ export function ReviewRequestsModule({
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (trimmedEmail.length > EMAIL_MAX_LENGTH || !emailRegex.test(trimmedEmail)) {
-        toast.error('El email no tiene un formato valido');
+        toast.error('El email no tiene un formato válido');
         return;
       }
       if (!approvalForm.programName) {
@@ -1475,19 +1475,19 @@ export function ReviewRequestsModule({
         return;
       }
       if (!approvalForm.graduationDate) {
-        toast.error('Selecciona la fecha de graduacion');
+        toast.error('Selecciona la fecha de graduación');
         return;
       }
       if (!graduationDate) {
-        toast.error('La fecha de graduacion no tiene un formato valido');
+        toast.error('La fecha de graduación no tiene un formato válido');
         return;
       }
       if (graduationDate.getFullYear() < MIN_GRADUATION_YEAR) {
-        toast.error(`La fecha de graduacion no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
+        toast.error(`La fecha de graduación no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
         return;
       }
       if (graduationDate.getTime() > today.getTime()) {
-        toast.error('La fecha de graduacion no puede ser futura');
+        toast.error('La fecha de graduación no puede ser futura');
         return;
       }
       if (!approvalForm.campus) {
@@ -1499,15 +1499,15 @@ export function ReviewRequestsModule({
         return;
       }
       if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
-        toast.error('El numero de registro es obligatorio y debe tener maximo 10 digitos');
+        toast.error('El número de registro es obligatorio y debe tener máximo 10 dígitos');
         return;
       }
       if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
-        toast.error('El numero de folio es obligatorio y debe tener maximo 10 digitos');
+        toast.error('El número de folio es obligatorio y debe tener máximo 10 dígitos');
         return;
       }
       if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
-        toast.error('El numero de libro es obligatorio y debe tener maximo 10 digitos');
+        toast.error('El número de libro es obligatorio y debe tener máximo 10 dígitos');
         return;
       }
 
@@ -1549,9 +1549,9 @@ export function ReviewRequestsModule({
           reviewerId,
           reviewerEmail,
         );
-        toast.success('Solicitud marcada como en revision', {
+        toast.success('Solicitud marcada como en revisión', {
           description:
-            'Se envio un correo de actualizacion sobre el proceso al solicitante.',
+            'Se envió un correo de actualización sobre el proceso al solicitante.',
         });
       } else if (
         confirmAction.type === 'approve' ||
@@ -1591,7 +1591,7 @@ export function ReviewRequestsModule({
                 },
               );
             } catch (uploadError: any) {
-              console.error('Error subiendo archivo de revision:', uploadError);
+              console.error('Error subiendo archivo de revisión:', uploadError);
               if (isPayloadTooLargeError(uploadError)) {
                 toast.error('El archivo es muy pesado', {
                   description: `El archivo "${file.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
@@ -1616,17 +1616,17 @@ export function ReviewRequestsModule({
           confirmAction.request.id,
           {
             decision: confirmAction.type === 'approve' ? 'APPROVED' : 'REJECTED',
-            reason: confirmAction.notes || 'Concepto registrado por revision manual',
-            reviewNotes: confirmAction.notes || 'Concepto registrado por revision manual',
+            reason: confirmAction.notes || 'Concepto registrado por revisión manual',
+            reviewNotes: confirmAction.notes || 'Concepto registrado por revisión manual',
             reviewerName,
             reviewerId,
             reviewerEmail,
             ...(confirmAction.approvalDetails || {}),
           },
         );
-        toast.success('Concepto enviado a aprobacion final', {
+        toast.success('Concepto enviado a aprobación final', {
           description:
-            'El aprobador definira la respuesta definitiva antes de enviar correos o certificados.',
+            'El aprobador definirá la respuesta definitiva antes de enviar correos o certificados.',
         });
       }
 
@@ -1658,13 +1658,13 @@ export function ReviewRequestsModule({
 
   const reviewActionLabel =
     reviewAction === 'approve'
-      ? 'Cargar informacion revisada'
+      ? 'Cargar información revisada'
       : 'Registrar novedad de rechazo';
   const confirmActionLabel =
     confirmAction?.type === 'start_review'
       ? 'Enviar a revisión'
       : confirmAction?.type === 'approve'
-        ? 'Cargar informacion revisada'
+        ? 'Cargar información revisada'
         : 'Registrar novedad de rechazo';
 
   const formatTimelineActor = (
@@ -1740,7 +1740,7 @@ export function ReviewRequestsModule({
   const reviewDecisionLabel = (decision?: string | null) => {
     if (decision === 'APPROVED') return 'Aprobar';
     if (decision === 'REJECTED') return 'Rechazar';
-    if (decision === 'OBSERVATION') return 'Observacion';
+    if (decision === 'OBSERVATION') return 'Observación';
     return 'Sin concepto';
   };
 
@@ -1826,7 +1826,7 @@ export function ReviewRequestsModule({
                   {isMyReviewsScope ? myReturnedCount : displayStats.underReview}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Con observacion' : 'En proceso'}
+                  {isMyReviewsScope ? 'Con observación' : 'En proceso'}
                 </p>
               </div>
               <div
@@ -1855,7 +1855,7 @@ export function ReviewRequestsModule({
                   {isMyReviewsScope ? mySubmittedCount : displayStats.approved}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Esperando validacion' : 'Resueltas'}
+                  {isMyReviewsScope ? 'Esperando validación' : 'Resueltas'}
                 </p>
               </div>
               <div
@@ -2131,7 +2131,7 @@ export function ReviewRequestsModule({
                 : isMyReviewsScope
                   ? myReviewView === 'pending'
                     ? 'No hay solicitudes propias por revisar o corregir en este momento'
-                    : 'Todavia no tienes solicitudes propias enviadas o cerradas'
+                    : 'Todavía no tienes solicitudes propias enviadas o cerradas'
                   : 'No hay solicitudes en este momento'}
             </p>
             {hasActiveFilters && (
@@ -2263,12 +2263,12 @@ export function ReviewRequestsModule({
                         )}
                         {request.approvalStatus === 'OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Observacion aprobador
+                            Observación aprobador
                           </Badge>
                         )}
                         {request.approvalStatus === 'HEAD_OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Observacion jefe
+                            Observación jefe
                           </Badge>
                         )}
                       </div>
@@ -2339,7 +2339,7 @@ export function ReviewRequestsModule({
                             <>
                               <DropdownMenuItem disabled>
                                 <Clock className="w-4 h-4 mr-2" />
-                                Pendiente de validacion
+                                Pendiente de validación
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -2348,7 +2348,7 @@ export function ReviewRequestsModule({
                             <>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
-                                Cargar informacion revisada
+                                Cargar información revisada
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'reject')}>
                                 <XCircle className="w-4 h-4 mr-2" />
@@ -2799,7 +2799,7 @@ export function ReviewRequestsModule({
               {reviewActionLabel}
             </DialogTitle>
             <DialogDescription>
-              Registra el concepto del revisor para que el aprobador tome la decision final
+              Registra el concepto del revisor para que el aprobador tome la decisión final
             </DialogDescription>
           </DialogHeader>
 
@@ -2846,8 +2846,8 @@ export function ReviewRequestsModule({
                     <div className="text-sm">
                       <p className="font-semibold text-amber-900">
                         {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
-                          ? 'Observacion del jefe'
-                          : 'Observacion del aprobador'}
+                          ? 'Observación del jefe'
+                          : 'Observación del aprobador'}
                       </p>
                       <p className="mt-1 text-amber-800">
                         {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
@@ -2873,7 +2873,7 @@ export function ReviewRequestsModule({
                 onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
                 placeholder={
                   reviewAction === 'approve'
-                    ? 'Describe la informacion revisada y los soportes cargados...'
+                    ? 'Describe la información revisada y los soportes cargados...'
                     : 'Describe la novedad encontrada para que el aprobador la evalúe...'
                 }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
@@ -2886,7 +2886,7 @@ export function ReviewRequestsModule({
               <div className="review-approval-card space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-900">Datos del graduado</p>
-                  <span className="text-xs text-gray-500">Acta y diploma se generan automaticamente</span>
+                  <span className="text-xs text-gray-500">Acta y diploma se generan automáticamente</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -2947,7 +2947,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de registro<span className="text-red-500"> *</span>
+                      Número de registro<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2969,7 +2969,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de folio<span className="text-red-500"> *</span>
+                      Número de folio<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2991,7 +2991,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de libro<span className="text-red-500"> *</span>
+                      Número de libro<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -3031,7 +3031,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Fecha de graduacion<span className="text-red-500"> *</span>
+                      Fecha de graduación<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="date"
@@ -3138,10 +3138,10 @@ export function ReviewRequestsModule({
                         </span>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">
-                            Soportes de revision
+                            Soportes de revisión
                           </p>
                           <p className="text-xs text-gray-500">
-                            PDF, Word, Excel o imagenes hasta {MAX_APPROVAL_FILE_SIZE_LABEL}
+                            PDF, Word, Excel o imágenes hasta {MAX_APPROVAL_FILE_SIZE_LABEL}
                           </p>
                         </div>
                       </div>
@@ -3166,7 +3166,7 @@ export function ReviewRequestsModule({
                       <UploadCloud className="mb-2 h-7 w-7" />
                       <span className="text-sm font-semibold">
                         {isApprovalFilePickerDisabled
-                          ? 'Limite de archivos alcanzado'
+                          ? 'Límite de archivos alcanzado'
                           : 'Seleccionar o soltar archivos'}
                       </span>
                       <span className="mt-1 text-xs">
@@ -3210,8 +3210,8 @@ export function ReviewRequestsModule({
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-blue-800">
-                        Si un archivo estaba mal, quitalo y adjunta la version
-                        corregida. Los demas se conservaran.
+                        Si un archivo estaba mal, quítalo y adjunta la versión
+                        corregida. Los demás se conservarán.
                       </p>
                     </div>
                   )}
@@ -3264,9 +3264,9 @@ export function ReviewRequestsModule({
                 <div className="text-xs text-amber-800">
                   <p className="font-semibold mb-1">Al enviar el concepto:</p>
                   <ul className="list-disc list-inside space-y-0.5">
-                    <li>No se genera certificado ni correo final todavia</li>
-                    <li>La solicitud queda pendiente de aprobacion final</li>
-                    <li>Esta accion queda registrada en la linea de tiempo</li>
+                    <li>No se genera certificado ni correo final todavía</li>
+                    <li>La solicitud queda pendiente de aprobación final</li>
+                    <li>Esta acción queda registrada en la línea de tiempo</li>
                   </ul>
                 </div>
               </div>

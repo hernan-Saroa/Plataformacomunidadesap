@@ -16,7 +16,17 @@
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { AUDITORIA_KANBAN_ETAPAS } from '../config/auditoriaKanbanCatalog';
+import { useConfiguracionKanban } from '../services/useConfiguracionKanban';
+
+// Tipos base para SLA (migrados desde useConfiguracionKanban si es necesario o definidos aquí)
+export interface EtapaSLAConfig {
+  nombre: string;
+  slaDias: number;
+  alertaPrevia: number;
+  notificacionesActivas: boolean;
+  limiteWIP: number;
+  color: string;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -26,15 +36,6 @@ export interface KanbanVisualConfig {
   mostrarContadores: boolean;
   mostrarTiempos: boolean;
   compactarVista: boolean;
-}
-
-export interface EtapaSLAConfig {
-  nombre: string;
-  slaDias: number;
-  alertaPrevia: number; // Días antes de vencimiento para alertar
-  notificacionesActivas: boolean;
-  limiteWIP: number; // 999 = sin límite
-  color: string;
 }
 
 export interface EtapaKanbanTableroConfig {
@@ -77,33 +78,7 @@ const CONFIG_VISUAL_DEFAULT: KanbanVisualConfig = {
   compactarVista: false,
 };
 
-// SLA defaults (matching current hardcoded etapas in ConfiguracionKanbanModule)
-const SLA_DEFAULTS: Record<string, EtapaSLAConfig> = {
-  'Plan Anual':                { nombre: 'Plan Anual',             slaDias: 15, alertaPrevia: 3, notificacionesActivas: true,  limiteWIP: 999, color: '#3B82F6' },
-  'Planificación':             { nombre: 'Planificación',          slaDias: 15, alertaPrevia: 3, notificacionesActivas: true,  limiteWIP: 5,   color: '#3B82F6' },
-  'Planeación':                { nombre: 'Planeación',             slaDias: 15, alertaPrevia: 3, notificacionesActivas: true,  limiteWIP: 5,   color: '#3B82F6' },
-  'Ejecución':                 { nombre: 'Ejecución',              slaDias: 30, alertaPrevia: 5, notificacionesActivas: true,  limiteWIP: 5,   color: '#10B981' },
-  'Comunicación Preliminar':   { nombre: 'Comunicación Preliminar',slaDias: 10, alertaPrevia: 2, notificacionesActivas: true,  limiteWIP: 999, color: '#F59E0B' },
-  'Comunicación':              { nombre: 'Comunicación',           slaDias: 10, alertaPrevia: 2, notificacionesActivas: true,  limiteWIP: 999, color: '#F59E0B' },
-  'Respuesta del Auditado':    { nombre: 'Respuesta del Auditado', slaDias: 15, alertaPrevia: 3, notificacionesActivas: true,  limiteWIP: 999, color: '#8B5CF6' },
-  'Seguimiento':               { nombre: 'Seguimiento',            slaDias: 15, alertaPrevia: 3, notificacionesActivas: true,  limiteWIP: 999, color: '#8B5CF6' },
-  'Informe Final':             { nombre: 'Informe Final',          slaDias: 10, alertaPrevia: 2, notificacionesActivas: true,  limiteWIP: 999, color: '#EC4899' },
-  'Finalizada':                { nombre: 'Finalizada',             slaDias: 0,  alertaPrevia: 0, notificacionesActivas: false, limiteWIP: 999, color: '#6B7280' },
-};
-
 const STORAGE_KEY_VISUAL = 'kanban_config_general';
-const STORAGE_KEY_SLA = 'kanban_sla_config';
-const STORAGE_KEY_ETAPAS = 'kanban_etapas_config';
-
-const ETAPAS_TABLERO_DEFAULT: EtapaKanbanTableroConfig[] = AUDITORIA_KANBAN_ETAPAS.map(
-  (e, idx) => ({
-    id: e.id,
-    nombre: e.titulo,
-    orden: idx + 1,
-    color: e.accentColor,
-    slaDias: e.diasEstimados,
-  }),
-);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT
@@ -118,129 +93,80 @@ const KanbanConfigContext = createContext<KanbanConfigContextType | null>(null);
 export function KanbanConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<KanbanVisualConfig>(CONFIG_VISUAL_DEFAULT);
   const [slasPorEtapa, setSlasPorEtapa] = useState<Map<string, EtapaSLAConfig>>(new Map());
-  const [etapasKanban, setEtapasKanban] = useState<EtapaKanbanTableroConfig[]>(ETAPAS_TABLERO_DEFAULT);
+  const [etapasKanban, setEtapasKanban] = useState<EtapaKanbanTableroConfig[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Cargar configuración desde localStorage + backend
+  // Cargar configuración desde backend
+  const cargarDesdeBackend = useCallback(async () => {
+    try {
+      // Cargar tablero y etapas desde la API backend
+      const { tablerosKanbanService, TipoTablero } = await import('../../../../services/api/tablerosKanbanService');
+      const tablero = await tablerosKanbanService.getByTipo(TipoTablero.AUDITORIAS);
+
+      if (tablero) {
+        // Cargar config visual (si existe en BD)
+        if (tablero.configuracionVisual) {
+          setConfig(prev => ({ ...prev, ...tablero.configuracionVisual }));
+        }
+
+        if (tablero.etapas) {
+          const etapasOrdenadas = [...tablero.etapas].sort((a, b) => a.orden - b.orden);
+        
+        // Mapear al config de SLAs y Columnas
+        const nuevoSlas = new Map<string, EtapaSLAConfig>();
+        const nuevasColumnas: EtapaKanbanTableroConfig[] = [];
+
+        for (const e of etapasOrdenadas) {
+          if (e.visible === false) continue;
+
+          // Convertir decimal de vuelta a días
+          const slaDias = Math.floor(e.tiempoSLA);
+          
+          nuevoSlas.set(e.nombre, {
+            nombre: e.nombre,
+            slaDias: slaDias,
+            alertaPrevia: e.diasAnticipacionAlerta,
+            notificacionesActivas: e.notificarVencimiento,
+            limiteWIP: e.limiteWIP || 999,
+            color: e.color
+          });
+
+          nuevasColumnas.push({
+            id: e.id,
+            nombre: e.nombre,
+            orden: e.orden,
+            color: e.color,
+            slaDias: slaDias
+          });
+        }
+
+        setSlasPorEtapa(nuevoSlas);
+        setEtapasKanban(nuevasColumnas);
+        }
+      }
+    } catch (err) {
+      console.error('Error cargando KanbanConfigContext desde backend', err);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
-    // 1) Config visual
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_VISUAL);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setConfig({
-          mostrarContadores: parsed.mostrarContadores ?? CONFIG_VISUAL_DEFAULT.mostrarContadores,
-          mostrarTiempos: parsed.mostrarTiempos ?? CONFIG_VISUAL_DEFAULT.mostrarTiempos,
-          compactarVista: parsed.compactarVista ?? CONFIG_VISUAL_DEFAULT.compactarVista,
-        });
-      }
-    } catch {
-      // Usar defaults
-    }
+    cargarDesdeBackend();
 
-    // 2) SLA config — load from localStorage (backed by ConfiguracionKanbanModule saves)
-    try {
-      const rawSLA = localStorage.getItem(STORAGE_KEY_SLA);
-      if (rawSLA) {
-        const parsed = JSON.parse(rawSLA) as Record<string, EtapaSLAConfig>;
-        const map = new Map<string, EtapaSLAConfig>();
-        Object.entries(parsed).forEach(([key, val]) => map.set(key, val));
-        setSlasPorEtapa(map);
-      } else {
-        // Use defaults
-        const map = new Map<string, EtapaSLAConfig>();
-        Object.entries(SLA_DEFAULTS).forEach(([key, val]) => map.set(key, val));
-        setSlasPorEtapa(map);
-      }
-    } catch {
-      const map = new Map<string, EtapaSLAConfig>();
-      Object.entries(SLA_DEFAULTS).forEach(([key, val]) => map.set(key, val));
-      setSlasPorEtapa(map);
-    }
-
-    // 3) Etapas de tablero (ordenadas)
-    try {
-      const rawEtapas = localStorage.getItem(STORAGE_KEY_ETAPAS);
-      if (rawEtapas) {
-        const parsed = JSON.parse(rawEtapas) as EtapaKanbanTableroConfig[];
-        const etapasOrdenadas = [...parsed].sort((a, b) => a.orden - b.orden);
-        setEtapasKanban(etapasOrdenadas);
-      } else {
-        setEtapasKanban(ETAPAS_TABLERO_DEFAULT);
-      }
-    } catch {
-      setEtapasKanban(ETAPAS_TABLERO_DEFAULT);
-    }
-
-    setLoaded(true);
-
-    // Listen for storage changes from Config module
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY_VISUAL && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          setConfig(prev => ({ ...prev, ...parsed }));
-        } catch { /* ignore */ }
-      }
-      if (e.key === STORAGE_KEY_SLA && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue) as Record<string, EtapaSLAConfig>;
-          const map = new Map<string, EtapaSLAConfig>();
-          Object.entries(parsed).forEach(([key, val]) => map.set(key, val));
-          setSlasPorEtapa(map);
-        } catch { /* ignore */ }
-      }
-      if (e.key === STORAGE_KEY_ETAPAS && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue) as EtapaKanbanTableroConfig[];
-          setEtapasKanban([...parsed].sort((a, b) => a.orden - b.orden));
-        } catch { /* ignore */ }
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-
-    // Also listen for custom events (same-tab updates)
-    const handleCustom = () => {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY_VISUAL);
-        if (raw) setConfig(prev => ({ ...prev, ...JSON.parse(raw) }));
-      } catch { /* ignore */ }
-      try {
-        const rawSLA = localStorage.getItem(STORAGE_KEY_SLA);
-        if (rawSLA) {
-          const parsed = JSON.parse(rawSLA) as Record<string, EtapaSLAConfig>;
-          const map = new Map<string, EtapaSLAConfig>();
-          Object.entries(parsed).forEach(([key, val]) => map.set(key, val));
-          setSlasPorEtapa(map);
-        }
-      } catch { /* ignore */ }
-      try {
-        const rawEtapas = localStorage.getItem(STORAGE_KEY_ETAPAS);
-        if (rawEtapas) {
-          const parsed = JSON.parse(rawEtapas) as EtapaKanbanTableroConfig[];
-          setEtapasKanban([...parsed].sort((a, b) => a.orden - b.orden));
-        }
-      } catch { /* ignore */ }
-    };
-
+    // Refresh when config module broadcasts an update
+    const handleCustom = () => cargarDesdeBackend();
     window.addEventListener('kanban-config-updated', handleCustom);
-
+    
     return () => {
-      window.removeEventListener('storage', handleStorage);
       window.removeEventListener('kanban-config-updated', handleCustom);
     };
-  }, []);
+  }, [cargarDesdeBackend]);
 
   // Calcular semáforo SLA para una auditoría
   const calcularSemaforoSLA = useCallback((etapaNombre: string, diasEnEtapa: number): SemaforoSLA => {
-    // Normalizar el nombre buscando coincidencia parcial
-    let slaConfig: EtapaSLAConfig | undefined;
+    let slaConfig = slasPorEtapa.get(etapaNombre);
     
-    // Buscar exact match primero
-    slaConfig = slasPorEtapa.get(etapaNombre);
-    
-    // Si no hay match exacto, buscar por inclusión parcial
     if (!slaConfig) {
       for (const [key, val] of slasPorEtapa.entries()) {
         if (etapaNombre.toLowerCase().includes(key.toLowerCase()) ||
@@ -251,28 +177,18 @@ export function KanbanConfigProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Si no encontramos config, buscar en defaults
-    if (!slaConfig) {
-      slaConfig = SLA_DEFAULTS[etapaNombre];
-    }
-
-    // Sin config → verde por defecto
     if (!slaConfig || slaConfig.slaDias <= 0) return 'verde';
 
     const diasRestantes = slaConfig.slaDias - diasEnEtapa;
 
-    if (diasRestantes < 0) {
-      return 'rojo'; // SLA vencido
-    } else if (diasRestantes <= slaConfig.alertaPrevia) {
-      return 'amarillo'; // Dentro del período de alerta
-    }
+    if (diasRestantes < 0) return 'rojo'; // SLA vencido
+    if (diasRestantes <= slaConfig.alertaPrevia) return 'amarillo'; // Dentro del período de alerta
     return 'verde'; // Dentro del tiempo
   }, [slasPorEtapa]);
 
   // Verificar WIP
   const verificarWIP = useCallback((etapaNombre: string, cantidadActual: number) => {
-    let slaConfig: EtapaSLAConfig | undefined;
-    slaConfig = slasPorEtapa.get(etapaNombre);
+    let slaConfig = slasPorEtapa.get(etapaNombre);
     
     if (!slaConfig) {
       for (const [key, val] of slasPorEtapa.entries()) {
@@ -308,11 +224,10 @@ export function KanbanConfigProvider({ children }: { children: ReactNode }) {
 export function useKanbanConfig(): KanbanConfigContextType {
   const ctx = useContext(KanbanConfigContext);
   if (!ctx) {
-    // Fallback — return defaults when used outside provider
     return {
       config: CONFIG_VISUAL_DEFAULT,
-      slasPorEtapa: new Map(Object.entries(SLA_DEFAULTS)),
-      etapasKanban: ETAPAS_TABLERO_DEFAULT,
+      slasPorEtapa: new Map(),
+      etapasKanban: [],
       calcularSemaforoSLA: () => 'verde',
       verificarWIP: () => ({ excede: false, limite: 999, porcentaje: 0 }),
       loaded: false,

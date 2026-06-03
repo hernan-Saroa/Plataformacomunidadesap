@@ -1226,7 +1226,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               Cargando certificados...
             </h3>
             <p className="text-sm text-gray-600">
-              Por favor espera un momento
+              Por favor, espera un momento
             </p>
           </div>
         ) : error ? (

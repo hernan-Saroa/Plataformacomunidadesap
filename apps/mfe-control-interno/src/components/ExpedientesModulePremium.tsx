@@ -186,7 +186,7 @@ function mapEstadoAuditoria(fase: string, estadoKanban?: string): 'ABIERTO' | 'E
   if (estadoKanban === 'Finalizada' || fase === 'CIERRE' || fase === 'cierre') {
     return 'CERRADO';
   }
-  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Plan Anual' || estadoKanban === 'Planeación') {
+  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Programa Anual' || estadoKanban === 'Planeación') {
     return 'ABIERTO';
   }
   return 'EN_PROCESO';
@@ -198,7 +198,7 @@ function mapEtapaToFase(etapa: string): FaseAuditoria {
     'planificacion': 'PLANIFICACION',
     'PLANIFICACION': 'PLANIFICACION',
     'Planeación': 'PLANIFICACION',
-    'Plan Anual': 'PLANIFICACION',
+    'Programa Anual': 'PLANIFICACION',
     'ejecucion': 'EJECUCION',
     'EJECUCION': 'EJECUCION',
     'Ejecución': 'EJECUCION',

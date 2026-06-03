@@ -50,12 +50,7 @@ CREATE TABLE certification.certificate_requests (
     phone character varying(20),
     status character varying(50) DEFAULT 'PENDING'::character varying NOT NULL,
     request_date timestamp without time zone DEFAULT now(),
-    approval_date timestamp without time zone,
-    generation_date timestamp without time zone,
-    approved_by_id uuid,
-    approved_by_name character varying(255),
     observations text,
-    rejection_reason text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     validation_code character varying(10),
@@ -335,18 +330,12 @@ CREATE TABLE certification.certificates (
     campus character varying(100),
     issue_date date NOT NULL,
     issuance_timestamp timestamp without time zone DEFAULT now() NOT NULL,
-    valid_until date,
     signer_name character varying(255),
     signer_position character varying(255),
     signer_department character varying(255),
     pdf_url character varying(500),
-    pdf_filename character varying(255),
     status character varying(50) DEFAULT 'VALID'::character varying NOT NULL,
-    revocation_date timestamp without time zone,
-    revocation_reason text,
-    revoked_by_id uuid,
     validation_count integer DEFAULT 0,
-    last_validation timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     cod_cargo character varying(255),
@@ -412,7 +401,6 @@ CREATE TABLE certification.signers (
     "position" character varying(255) NOT NULL,
     department character varying(255),
     signature_url character varying(500),
-    signature_base64 text,
     is_active boolean DEFAULT true,
     is_primary boolean DEFAULT false,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -468,8 +456,7 @@ CREATE TABLE certification.template_config_changes (
     new_value text,
     metadata jsonb,
     changed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    changed_by character varying(255),
-    user_info jsonb
+    changed_by character varying(255)
 );
 
 
@@ -513,13 +500,6 @@ COMMENT ON COLUMN certification.template_config_changes.new_value IS 'Nuevo valo
 --
 
 COMMENT ON COLUMN certification.template_config_changes.metadata IS 'Información adicional en formato JSON';
-
-
---
--- Name: COLUMN template_config_changes.user_info; Type: COMMENT; Schema: certification; Owner: -
---
-
-COMMENT ON COLUMN certification.template_config_changes.user_info IS 'Información del usuario que realizó el cambio';
 
 
 --

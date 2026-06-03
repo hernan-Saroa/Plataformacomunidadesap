@@ -1,7 +1,7 @@
 /**
- * WRAPPER: VERIFICACION DE TITULOS
- * - Solicitudes de Revision: trabajo de revisor y correcciones.
- * - Aprobaciones Pendientes: preconcepto del aprobador o decision final del jefe.
+ * WRAPPER: VERIFICACIÓN DE TÍTULOS
+ * - Solicitudes de Revisión: trabajo de revisor y correcciones.
+ * - Aprobaciones Pendientes: preconcepto del aprobador o decisión final del jefe.
  * - Certificados Generados: certificados con QR ya generados y activos.
  */
 
@@ -95,14 +95,14 @@ export function GraduateCertificatesWrapper({
     {
       id: 'certificates' as const,
       label: 'Certificados Generados',
-      subtitle: 'Con QR unico',
+      subtitle: 'Con QR único',
       icon: Award,
       color: '#10B981',
       hasPermission: canViewCertificates,
     },
     {
       id: 'review' as const,
-      label: 'Solicitudes de Revision',
+      label: 'Solicitudes de Revisión',
       subtitle: 'Casos no encontrados',
       icon: AlertCircle,
       color: '#F59E0B',
@@ -118,7 +118,7 @@ export function GraduateCertificatesWrapper({
     },
     {
       id: 'approvals' as const,
-      label: isHeadRole ? 'Decision Final' : 'Aprobaciones Pendientes',
+      label: isHeadRole ? 'Decisión Final' : 'Aprobaciones Pendientes',
       subtitle: isHeadRole ? 'Preconceptos por definir' : 'Conceptos por definir',
       icon: ShieldCheck,
       color: '#0EA5E9',
@@ -147,10 +147,10 @@ export function GraduateCertificatesWrapper({
             </div>
             <div>
               <h1 className="text-2xl font-bold" style={{ color: '#1F2937' }}>
-                Verificacion de Titulos
+                Verificación de Títulos
               </h1>
               <p className="text-sm" style={{ color: '#6B7280' }}>
-                Gestiona solicitudes de revision y certificados generados
+                Gestiona solicitudes de revisión y certificados generados
               </p>
             </div>
           </div>

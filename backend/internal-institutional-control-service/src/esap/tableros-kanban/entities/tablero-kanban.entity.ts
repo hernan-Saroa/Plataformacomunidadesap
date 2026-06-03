@@ -45,6 +45,9 @@ export class TableroKanban {
   })
   etapas: EtapaKanban[];
 
+  @Column({ name: 'configuracion_visual', type: 'jsonb', nullable: true })
+  configuracionVisual?: Record<string, any>;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
