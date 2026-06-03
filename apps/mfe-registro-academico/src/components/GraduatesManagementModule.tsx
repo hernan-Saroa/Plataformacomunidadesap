@@ -244,9 +244,9 @@ export function GraduatesManagementModule() {
     if (value.length > PERSON_NAME_MAX_LENGTH) {
       return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
     }
-    if (/\d/.test(value)) return `${label} no puede contener numeros`;
+    if (/\d/.test(value)) return `${label} no puede contener números`;
     if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
-      return `${label} solo puede contener letras, espacios, apostrofes, puntos o guiones`;
+      return `${label} solo puede contener letras, espacios, apóstrofes, puntos o guiones`;
     }
     return '';
   };
@@ -700,7 +700,7 @@ export function GraduatesManagementModule() {
         saveBlobAsFile(blob, file.originalName || 'archivo');
         return;
       } catch (error) {
-        console.warn('Fallo la descarga por endpoint dedicado, se intentara ruta publica', error);
+      console.warn('Falló la descarga por endpoint dedicado, se intentará ruta pública', error);
       }
     }
 
@@ -859,7 +859,7 @@ export function GraduatesManagementModule() {
       } catch (error) {
         console.error('Error cargando graduados:', error);
         toast.error('No se pudieron cargar los graduados', {
-          description: 'Intenta recargar la pagina o verifica tu conexion.',
+          description: 'Intenta recargar la página o verifica tu conexión.',
         });
         if (isMounted) {
           setGraduates([]);
@@ -1143,7 +1143,7 @@ export function GraduatesManagementModule() {
   const handleVerifyTitle = (user?: GraduateRow) => {
     if (!canVerifyGraduateCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Verificar Certificado para abrir esta validacion.',
+        description: 'Necesitas el permiso Verificar Certificado para abrir esta validación.',
       });
       return;
     }
@@ -1209,31 +1209,31 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!/^\d+$/.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener numeros');
+      toast.error('El documento solo puede contener números');
       return;
     }
     if (
       trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
       trimmedDocument.length > DOCUMENT_MAX_LENGTH
     ) {
-      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} digitos`);
+      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
       return;
     }
     if (!trimmedEmail) {
-      toast.error('El correo electronico es obligatorio');
+      toast.error('El correo electrónico es obligatorio');
       return;
     }
     if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
-      toast.error(`El correo electronico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
+      toast.error(`El correo electrónico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      toast.error('El correo electronico no tiene un formato valido');
+      toast.error('El correo electrónico no tiene un formato válido');
       return;
     }
     if (!trimmedProgram) {
-      toast.error('El programa academico es obligatorio');
+      toast.error('El programa académico es obligatorio');
       return;
     }
     if (!trimmedLocation) {
@@ -1347,7 +1347,7 @@ export function GraduatesManagementModule() {
   const handleOpenExportModal = () => {
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1359,8 +1359,8 @@ export function GraduatesManagementModule() {
 
     toast.info('No hay graduados para exportar', {
       description: hasActiveFilters
-        ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-        : 'Aun no existen graduados registrados para exportacion.',
+        ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+        : 'Aún no existen graduados registrados para exportación.',
     });
   };
 
@@ -1368,7 +1368,7 @@ export function GraduatesManagementModule() {
     if (isExporting) return;
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1377,7 +1377,7 @@ export function GraduatesManagementModule() {
     const endDate = parseDateOnly(exportEndDate);
 
     if (startDate && endDate && startDate > endDate) {
-      toast.error('Rango de fechas invalido', {
+      toast.error('Rango de fechas inválido', {
         description: 'La fecha inicial no puede ser mayor que la fecha final.',
       });
       return;
@@ -1388,8 +1388,8 @@ export function GraduatesManagementModule() {
     if (filteredUsers.length === 0) {
       toast.info('No hay graduados para exportar', {
         description: hasActiveFilters
-          ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-          : 'Aun no existen graduados registrados para exportacion.',
+          ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+          : 'Aún no existen graduados registrados para exportación.',
       });
       setIsExporting(false);
       return;
@@ -1460,7 +1460,7 @@ export function GraduatesManagementModule() {
     link.click();
     URL.revokeObjectURL(url);
 
-    toast.success('Exportacion completada', {
+    toast.success('Exportación completada', {
       description: `Se exportaron ${rows.length} graduados.`,
     });
     setIsExportModalOpen(false);
@@ -1710,7 +1710,7 @@ export function GraduatesManagementModule() {
               Cargando graduados...
             </h3>
             <p className="text-sm text-[#6B7280]">
-              Estamos consultando la base de datos academica.
+              Estamos consultando la base de datos académica.
             </p>
           </div>
         ) : paginatedUsers.length === 0 ? (
@@ -2258,7 +2258,7 @@ export function GraduatesManagementModule() {
                   <div className="min-w-0">
                     <DialogTitle className="flex items-center gap-2">
                       <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
-                      Archivos del titulo
+                      Archivos del título
                     </DialogTitle>
                     <DialogDescription>
                       {filesModalUser
@@ -2295,7 +2295,7 @@ export function GraduatesManagementModule() {
                       {MAX_FILES_PER_GRADUATE}
                     </p>
                     <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
-                      Limite
+                      Límite
                     </p>
                   </div>
                 </div>
@@ -2318,14 +2318,14 @@ export function GraduatesManagementModule() {
                         {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE} espacios usados
                       </p>
                       <p className="mt-0.5 text-xs" style={{ color: '#92400E' }}>
-                        Peso maximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
+                        Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
                       </p>
                     </div>
                     <span
                       className="rounded-full px-3 py-1 text-xs font-semibold"
                       style={{ background: '#FEF3C7', color: '#92400E' }}
                     >
-                      Limite {MAX_FILES_PER_GRADUATE}
+                      Límite {MAX_FILES_PER_GRADUATE}
                     </span>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: '#FEF3C7' }}>
@@ -2350,7 +2350,7 @@ export function GraduatesManagementModule() {
                     Documentos del graduado
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {['PDF', 'Word', 'Excel', 'Imagenes'].map((type) => (
+                    {['PDF', 'Word', 'Excel', 'Imágenes'].map((type) => (
                       <span
                         key={type}
                         className="rounded-full border bg-white px-3 py-1 text-xs font-semibold"
@@ -2526,7 +2526,7 @@ export function GraduatesManagementModule() {
                     No hay archivos cargados
                   </p>
                   <p className="mt-1 text-xs" style={{ color: '#64748B' }}>
-                    Aqui se mostraran los documentos asociados al graduado.
+                    Aquí se mostrarán los documentos asociados al graduado.
                   </p>
                 </div>
               ) : (
