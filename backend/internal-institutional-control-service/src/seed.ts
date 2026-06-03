@@ -3,7 +3,6 @@ import { AppModule } from './app.module';
 import { DataSource } from 'typeorm';
 import { seedInformesLey } from './esap/informes-ley/seed-informes-ley';
 // import { seedPlanAnual5Roles } from './esap/plan-anual-5-roles/seed-plan-anual-5-roles';
-import { seedTablerosKanban } from './esap/tableros-kanban/seed-tableros-kanban';
 
 async function seed() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -20,7 +19,8 @@ async function seed() {
     // await seedPlanAnual5Roles(dataSource);
 
     // ==================== TABLEROS KANBAN Y ETAPAS ====================
-    await seedTablerosKanban(dataSource);
+    // Movido a db/migrations/328_seed_tableros_kanban_control_interno.sql
+    // para que se ejecute automaticamente en deploy.
 
     console.log('✅ Seed completado exitosamente!');
   } catch (error) {
