@@ -364,15 +364,51 @@ const getGeoContext = (req: Request): ValidationGeoContext => {
   };
 };
 
+const normalizeBaseUrl = (value?: string | null): string | undefined => {
+  const raw = String(value || '').trim();
+  if (!raw) return undefined;
+  try {
+    return new URL(raw).origin;
+  } catch (_) {
+    return undefined;
+  }
+};
+
+const getForwardedFrontendBaseUrl = (req: Request): string | undefined => {
+  const forwardedHost = pickHeader(req, 'x-forwarded-host', 'x-original-host');
+  if (!forwardedHost) return undefined;
+
+  const forwardedProto =
+    pickHeader(req, 'x-forwarded-proto', 'x-forwarded-protocol') ||
+    req.protocol ||
+    'http';
+  const host = forwardedHost.split(',')[0]?.trim();
+  const proto = forwardedProto.split(',')[0]?.trim() || 'http';
+
+  return normalizeBaseUrl(`${proto}://${host}`);
+};
+
 const getFrontendBaseUrl = (req: Request): string | undefined => {
-  const origin =
-    typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  const origin = normalizeBaseUrl(
+    typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
+  );
   const referer =
     typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
   if (origin) return origin;
-  if (!referer) return undefined;
+  if (referer) {
+    const refererOrigin = normalizeBaseUrl(referer);
+    if (refererOrigin) return refererOrigin;
+  }
+
+  const forwarded = getForwardedFrontendBaseUrl(req);
+  if (forwarded) return forwarded;
+
+  const host =
+    typeof req.headers.host === 'string' ? req.headers.host.trim() : undefined;
+  if (!host) return undefined;
+
   try {
-    return new URL(referer).origin;
+    return new URL(`${req.protocol || 'http'}://${host}`).origin;
   } catch (_) {
     return undefined;
   }
@@ -442,22 +478,9 @@ export class GraduationCertificatesController {
     @Body() body: LandingCertificateRequestDto,
     @Req() req: Request,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
     return await this.service.solicitarCertificadoLanding(
       body,
-      frontendBaseUrl,
+      getFrontendBaseUrl(req),
     );
   }
 
@@ -494,11 +517,13 @@ export class GraduationCertificatesController {
   @HttpCode(HttpStatus.OK)
   async validarCodigoYGenerarCertificado(
     @Body() body: { idNumber: string; idIssueDate?: string; codigo: string },
+    @Req() req: Request,
   ) {
     return await this.service.validarCodigoYGenerarCertificado(
       body.idNumber,
       body.idIssueDate,
       body.codigo,
+      getFrontendBaseUrl(req),
     );
   }
 
@@ -853,20 +878,7 @@ export class GraduationCertificatesController {
       'Se requiere permiso para aprobar solicitudes de revision.',
     );
 
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
-    return await this.service.aprobarSolicitud(id, body, frontendBaseUrl);
+    return await this.service.aprobarSolicitud(id, body, getFrontendBaseUrl(req));
   }
 
   /**
@@ -887,25 +899,12 @@ export class GraduationCertificatesController {
       'Se requiere permiso para rechazar solicitudes de revision.',
     );
 
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
     return await this.service.rechazarSolicitud(
       id,
       body.reason,
       body.reviewerName,
       body.reviewerId,
-      frontendBaseUrl,
+      getFrontendBaseUrl(req),
     );
   }
 
@@ -995,20 +994,10 @@ export class GraduationCertificatesController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
-    const pdfBuffer = await this.service.getCertificatePDF(id, frontendBaseUrl);
+    const pdfBuffer = await this.service.getCertificatePDF(
+      id,
+      getFrontendBaseUrl(req),
+    );
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
@@ -1038,19 +1027,6 @@ export class GraduationCertificatesController {
   @Post(':id/reenviar')
   @HttpCode(HttpStatus.OK)
   async reenviarCertificado(@Param('id') id: string, @Req() req: Request) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
-    return await this.service.reenviarCertificado(id, frontendBaseUrl);
+    return await this.service.reenviarCertificado(id, getFrontendBaseUrl(req));
   }
 }
