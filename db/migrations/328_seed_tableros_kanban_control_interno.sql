@@ -154,7 +154,8 @@ BEGIN
             ('Planeación', 'Definición de objetivos y alcance', 2, '#8B5CF6', 15, 5, true, 3, 'intermedia'),
             ('Ejecución', 'Recopilación de evidencias y pruebas', 3, '#10B981', 30, 5, true, 5, 'intermedia'),
             ('Comunicación', 'Elaboración y envío de informes', 4, '#F59E0B', 10, 999, true, 2, 'intermedia'),
-            ('Finalizada', 'Auditoría completada (requiere documento de cierre)', 5, '#6B7280', 0, 999, false, 0, 'final')
+            ('Seguimiento', 'Seguimiento a planes de mejoramiento y hallazgos', 5, '#06B6D4', 30, 999, true, 5, 'intermedia'),
+            ('Finalizada', 'Auditoría completada (requiere documento de cierre)', 6, '#6B7280', 0, 999, false, 0, 'final')
     ) AS seed(nombre, descripcion, orden, color, tiempo_sla, limite_wip, notificar_vencimiento, dias_anticipacion_alerta, estado)
     WHERE NOT EXISTS (
         SELECT 1
@@ -174,8 +175,27 @@ BEGIN
            'Planeación',
            'Ejecución',
            'Comunicación',
+           'Seguimiento',
            'Finalizada'
        );
+
+    -- Asegurar orden y visibilidad correcta para las etapas oficiales
+    UPDATE control_interno.etapa_kanban e
+       SET orden = s.orden,
+           visible = true,
+           updated_at = NOW()
+      FROM (
+          VALUES
+              ('Programa Anual', 1),
+              ('Planeación', 2),
+              ('Ejecución', 3),
+              ('Comunicación', 4),
+              ('Seguimiento', 5),
+              ('Finalizada', 6)
+      ) AS s(nombre, orden)
+     WHERE e.tablero_kanban_id = v_tablero_auditorias_id
+       AND e.nombre = s.nombre
+       AND e.deleted_at IS NULL;
 
     SELECT id
       INTO v_tablero_pm_id
