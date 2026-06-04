@@ -31,9 +31,15 @@ import graduadosService, {
   type CertificadoGraduado,
   type GraduateMatchSuggestion,
 } from "../../services/api/graduados.service";
+import { getPublicBaseUrl } from "../../config/environment";
 // import { simularEnvioCorreo } from '../../utils/emailTemplates';
 // import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
 // import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
+
+const getRuntimePublicBaseUrl = () =>
+  typeof window !== "undefined" && window.location?.origin
+    ? window.location.origin
+    : getPublicBaseUrl();
 
 interface PublicTitleVerificationProps {
   onBack: () => void;
@@ -283,7 +289,7 @@ export function PublicTitleVerification({
       id: certificado.id,
       certificateNumber: certificado.certificateNumber,
       qrCode: certificado.verificationCode,
-      qrUrl: `${window.location.origin}/verificar-certificado/${certificado.verificationCode}`,
+      qrUrl: `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificado.verificationCode}`,
       graduate: {
         documentNumber: certificado.idNumber,
         documentIssueDate: "",

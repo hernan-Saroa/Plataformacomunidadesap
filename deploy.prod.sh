@@ -101,6 +101,7 @@ BACKEND_ENV_SERVICES=(
 )
 
 compose_env() {
+    ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
     docker compose -f "$COMPOSE_FILE_ENV" --env-file "$ENV_FILE" "$@"
 }
 
@@ -112,6 +113,7 @@ compose_env_mfe() {
     FRONTEND_GATEWAY_PORT="${FRONTEND_GATEWAY_PORT:-8080}" \
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
     FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV}" \
+    ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
     docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" --env-file "$ENV_FILE" "$@"
 }
 
@@ -233,6 +235,7 @@ build_frontend_assets_once() {
     VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
     VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV}" \
     VITE_LOGIN_OPTIONS="${VITE_LOGIN_OPTIONS:-both}" \
+    ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
     FRONTEND_BUILD_PARALLELISM="${FRONTEND_BUILD_PARALLELISM:-2}" \
     npm run build
 }
@@ -290,8 +293,7 @@ cmd_rebuild_changed() {
     changed_files=$(git diff --name-only "$range")
 
     if [ -z "$changed_files" ]; then
-        echo -e "${YELLOW}No se detectaron archivos cambiados en ${range}.${NC}"
-        exit 0
+        echo -e "${YELLOW}No se detectaron archivos cambiados en ${range}; se reconstruirá frontend-shell para actualizar la fecha de build.${NC}"
     fi
 
     while IFS= read -r changed_file; do
@@ -376,6 +378,10 @@ cmd_rebuild_changed() {
 
     if [ $rebuild_all_frontend -eq 1 ]; then
         frontend_services=("${FRONTEND_MFE_SERVICES[@]}")
+    fi
+
+    if ! append_unique "frontend-shell" "${frontend_services[@]}"; then
+        frontend_services+=("frontend-shell")
     fi
 
     if [ ${#backend_services[@]} -eq 0 ] && [ ${#frontend_services[@]} -eq 0 ] && [ $run_migrations -eq 0 ]; then

@@ -30,11 +30,16 @@ import { Card } from '../ui/card';
 import graduadosService from '../../services/api/graduados.service';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { buildServiceAssetUrl } from '../../config/environment';
+import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { ESAPLogo } from '../assets/ESAPLogo';
+
+const getRuntimePublicBaseUrl = () =>
+  typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : getPublicBaseUrl();
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -328,7 +333,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   // para evitar enviar correos duplicados.
 
   const handleCopyVerificationUrl = async () => {
-    const shareUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
+    const shareUrl = `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificate.qrCode}`;
 
     try {
       const copied = await copyToClipboard(shareUrl);
@@ -349,7 +354,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
-  const verificationUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
+  const verificationUrl = `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificate.qrCode}`;
   const templateFechaExpedicion = formatDateLong(certificate.generatedAt);
   const templateLugarFecha = `Bogotá D.C. ${formatDateLong(certificate.graduate.graduationDate)}`;
   const templateRegistroFolio = certificate.graduate.diplomaNumber || 'N/A';
@@ -925,12 +930,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
             {/* Footer Actions */}
             <div className="bg-gradient-to-r from-emerald-50 via-blue-50 to-emerald-50 px-8 py-6 border-t-4 border-emerald-500">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <p className="text-xs font-semibold text-emerald-800">
-                  El PDF incluye firma digital certificada por ONAC
-                </p>
-              </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   onClick={handleDownload}

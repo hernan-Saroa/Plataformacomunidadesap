@@ -978,7 +978,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
             <p className="text-[12px] text-blue-100 text-center sm:text-left">© 2025 ESAP — Escuela Superior de Administración Pública. Todos los derechos reservados.</p>
             <div className="inline-flex items-center gap-1.5 h-6 px-2.5 bg-green-500/20 rounded-full text-green-300 text-[11px] flex-shrink-0">
               <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              Última actualización: 29 de abril de 2026
+              Última actualización: {__ESAP_BUILD_DATE__}
             </div>
           </div>
         </div>
