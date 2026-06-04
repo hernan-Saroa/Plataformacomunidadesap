@@ -78,7 +78,12 @@ import graduadosService, {
 import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
-import { buildServiceAssetUrl } from '../../config/environment';
+import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
+
+const getRuntimePublicBaseUrl = () =>
+  typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : getPublicBaseUrl();
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
@@ -1540,7 +1545,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const getPublicValidationUrl = (qrCode: string) => {
-    return `${window.location.origin}/verificar-certificado/${qrCode}`;
+    return `${getRuntimePublicBaseUrl()}/verificar-certificado/${qrCode}`;
   };
 
   const buildExportRows = (items: CertificateRecord[]) => {
@@ -1822,7 +1827,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         'Bolívar - Córdoba - Sucre - San Andrés 26 DE FEBRERO DE 2026',
       registry: '3213-79-28',
       validationCode: 'QR-GR-2026-0005-ao3uf5yrxp',
-      validationUrl: `${window.location.origin}/verificar-certificado/QR-GR-2026-0005-ao3uf5yrxp`,
+      validationUrl: getPublicValidationUrl('QR-GR-2026-0005-ao3uf5yrxp'),
     };
   }, [certificates]);
   const hasTemplateChanges = useMemo(() => {
