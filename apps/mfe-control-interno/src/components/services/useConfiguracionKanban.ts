@@ -53,6 +53,7 @@ export interface EtapaKanbanFrontend {
   esFinal: boolean;
   reglaTransicionAutomatica: boolean;
   condicionTransicion?: string;
+  visible: boolean;
 }
 
 export interface ConfiguracionGeneralKanban {
@@ -93,6 +94,7 @@ function mapearEtapaBackendAFrontend(etapa: EtapaKanbanBackend): EtapaKanbanFron
     esFinal: etapa.estado === EstadoEtapa.FINAL,
     reglaTransicionAutomatica: !etapa.permitirRetroceso,
     condicionTransicion: undefined, // El backend no tiene este campo aún
+    visible: etapa.visible,
   };
 }
 
@@ -168,6 +170,10 @@ function mapearEtapaFrontendABackendUpdate(etapa: Partial<EtapaKanbanFrontend>):
   
   if (etapa.reglaTransicionAutomatica !== undefined) {
     dto.permitirRetroceso = !etapa.reglaTransicionAutomatica;
+  }
+
+  if (etapa.visible !== undefined) {
+    dto.visible = etapa.visible;
   }
 
   return dto;

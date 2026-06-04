@@ -76,6 +76,7 @@ export function normalizarTextoEstadoAuditoria(raw: string | undefined): EstadoA
   if (n.includes('comunicacion') || n.includes('informe')) return 'Comunicación';
   if (n.includes('ejecucion')) return 'Ejecución';
   if (n.includes('planeacion') || n.includes('planificacion')) return 'Planeación';
+  if (n.includes('seguimiento')) return 'Seguimiento';
 
   return trimmed; // Si es dinámico nuevo, se retorna tal cual
 }

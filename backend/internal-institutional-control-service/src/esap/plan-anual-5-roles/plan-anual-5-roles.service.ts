@@ -832,7 +832,7 @@ export class PlanAnual5RolesService {
       TipoEventoPlanAnual.CAMBIO_ESTADO,
       'Eliminación de Plan Anual',
       `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
-      usuarioId || 1, 
+      usuarioId,
       JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
       'completado'
     );
@@ -957,6 +957,69 @@ export class PlanAnual5RolesService {
     });
   }
 
+  private readonly uuidRegexHistorial =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Resuelve auth.personas.id_person para historial_plan_anual.usuario_id (tipo UUID).
+   * Acepta JWT sub (auth.user.id_user), id_person directo o id_tercero numérico legacy.
+   */
+  private async resolverIdPersonParaHistorial(
+    usuarioId?: string | number,
+  ): Promise<string | null> {
+    if (usuarioId == null || usuarioId === '' || usuarioId === 'system') {
+      return null;
+    }
+
+    const raw = String(usuarioId).trim();
+    if (!this.uuidRegexHistorial.test(raw)) {
+      const num = parseInt(raw, 10);
+      if (Number.isNaN(num) || String(num) !== raw) {
+        return null;
+      }
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT id_person::text AS id_person
+           FROM auth.personas
+           WHERE id_tercero::text = $1
+           LIMIT 1`,
+          [raw],
+        );
+        return rows?.[0]?.id_person ? String(rows[0].id_person) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const porUser = await this.dataSource.query(
+        `SELECT u.id_person::text AS id_person
+         FROM auth."user" u
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [raw],
+      );
+      if (porUser?.[0]?.id_person) {
+        return String(porUser[0].id_person);
+      }
+
+      const porPersona = await this.dataSource.query(
+        `SELECT id_person::text AS id_person
+         FROM auth.personas
+         WHERE id_person::text = $1
+         LIMIT 1`,
+        [raw],
+      );
+      if (porPersona?.[0]?.id_person) {
+        return String(porPersona[0].id_person);
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   /**
    * Registra un evento en el historial del plan anual
    */
@@ -980,25 +1043,7 @@ export class PlanAnual5RolesService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      // Convertir usuarioId a número (bigint)
-      // La columna usuario_id es BIGINT NOT NULL y referencia auth.personas(id_tercero)
-      // Si viene como string (incluyendo 'system'), convertir a número o usar 1 como valor por defecto
-      // Si viene como número, usarlo directamente
-      if (typeof usuarioId === 'number') {
-        historial.usuarioId = usuarioId;
-      } else if (typeof usuarioId === 'string') {
-        // Intentar convertir string a número si es posible
-        // Si es 'system' o cualquier string no numérico, usar 1 como valor por defecto
-        const usuarioIdNum = parseInt(usuarioId, 10);
-        if (isNaN(usuarioIdNum) || usuarioId === 'system' || usuarioId.trim() === '') {
-          historial.usuarioId = 1; // Usar 1 como valor por defecto para sistema
-        } else {
-          historial.usuarioId = usuarioIdNum;
-        }
-      } else {
-        // Si no hay usuarioId, usar 1 como valor por defecto (sistema)
-        historial.usuarioId = 1;
-      }
+      historial.usuarioId = await this.resolverIdPersonParaHistorial(usuarioId);
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.estadoAnterior = estadoAnterior;

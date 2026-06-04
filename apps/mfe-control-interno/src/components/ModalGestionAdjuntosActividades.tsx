@@ -123,11 +123,14 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
     return [...base, ...extras];
   })();
 
-  const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(adjuntosIniciales);
-  
+  const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(modoEntradaCorte ? [] : adjuntosIniciales);
+  const adjuntosNuevosCorte = adjuntos.filter((a) => a.id.startsWith('adj-'));
+
   // 🔵 Sistema de tabs para navegar entre cortes
   const puntosControl = actividad.puntosControl || [];
-  const [tabActivo, setTabActivo] = useState<string>(puntoControl?.id || 'general');
+  const [tabActivo, setTabActivo] = useState<string>(
+    modoEntradaCorte && puntoControl ? puntoControl.id : puntoControl?.id || 'general',
+  );
 
   // Parsear observaciones: entradasSeguimiento es la ÚNICA fuente de verdad
   const obtenerObsIniciales = (): ObsLocal[] => {
@@ -146,7 +149,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       }));
   };
 
-  const [obsList, setObsList] = useState<ObsLocal[]>(obtenerObsIniciales());
+  const [obsList, setObsList] = useState<ObsLocal[]>(modoEntradaCorte ? [] : obtenerObsIniciales());
   const [nuevaObsTexto, setNuevaObsTexto] = useState('');
   const [cargando, setCargando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -175,12 +178,10 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
   const validarRequisitos = (): { valido: boolean; errores: string[] } => {
     const errores: string[] = [];
 
-    // En modo entrada de corte: basta con tener al menos 1 observación (nueva o pendiente en textarea) O 1 adjunto
+    // Modo corte: solo archivos nuevos (las notas se registran en el formulario del corte)
     if (modoEntradaCorte) {
-      const nuevasObs = obsList.filter(o => o.id.startsWith('obs-'));
-      const tieneTextoPendiente = nuevaObsTexto.trim().length > 0;
-      if (nuevasObs.length === 0 && !tieneTextoPendiente && adjuntos.length === 0) {
-        errores.push('Agrega al menos una observación o un archivo para registrar la entrada');
+      if (adjuntosNuevosCorte.length === 0) {
+        errores.push('Sube al menos un archivo para guardar');
       }
       return { valido: errores.length === 0, errores };
     }
@@ -238,7 +239,12 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       fechaCarga: new Date().toISOString(),
       cargadoPor: autorNombre,
       url: URL.createObjectURL(archivo), // En producción, esto vendría del backend
-      puntoControlId: tabActivo !== 'general' ? tabActivo : undefined // 🔵 Asociar al tab activo
+      puntoControlId:
+        modoEntradaCorte && puntoControl
+          ? puntoControl.id
+          : tabActivo !== 'general'
+            ? tabActivo
+            : undefined,
     }));
 
     setTimeout(() => {
@@ -253,9 +259,27 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
     toast.success('Archivo eliminado');
   };
 
+  const agregarObservacionALista = () => {
+    if (!nuevaObsTexto.trim()) return;
+    const nueva: ObsLocal = {
+      id: `obs-${Date.now()}`,
+      texto: nuevaObsTexto.trim(),
+      fechaRegistro: new Date().toISOString().split('T')[0],
+      autor: autorNombre,
+      puntoControlId:
+        modoEntradaCorte && puntoControl
+          ? puntoControl.id
+          : tabActivo !== 'general'
+            ? tabActivo
+            : undefined,
+    };
+    setObsList((prev) => [...prev, nueva]);
+    setNuevaObsTexto('');
+    toast.success('Observación añadida a la lista');
+  };
+
   const handleGuardar = () => {
-    // Si hay texto pendiente en el textarea, auto-agregarlo como observación
-    if (nuevaObsTexto.trim()) {
+    if (nuevaObsTexto.trim() && !modoEntradaCorte) {
       const nueva: ObsLocal = {
         id: `obs-${Date.now()}`,
         texto: nuevaObsTexto.trim(),
@@ -266,13 +290,6 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       const listaFinal = [...obsList, nueva];
       setObsList(listaFinal);
       setNuevaObsTexto('');
-
-      // Validar con la lista actualizada
-      const nuevasObs = listaFinal.filter(o => o.id.startsWith('obs-'));
-      if (modoEntradaCorte && nuevasObs.length === 0 && adjuntos.length === 0) {
-        toast.error('Agrega al menos una observación o un archivo para registrar la entrada');
-        return;
-      }
       onActualizar(adjuntos, JSON.stringify(listaFinal));
       onCerrar();
       return;
@@ -285,12 +302,12 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
       return;
     }
     
-    onActualizar(adjuntos, JSON.stringify(obsList));
+    onActualizar(adjuntos, modoEntradaCorte ? '[]' : JSON.stringify(obsList));
     onCerrar();
   };
 
   // Si no hay nada que mostrar (ambas NO_REQUERIDO), cerrar el modal
-  if (!mostrarAdjuntos && !mostrarObservaciones && !mostrarAmbas) {
+  if (!modoEntradaCorte && !mostrarAdjuntos && !mostrarObservaciones && !mostrarAmbas) {
     toast.info('Esta actividad no requiere evidencias');
     onCerrar();
     return null;
@@ -316,7 +333,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <h2 className="text-lg font-bold text-gray-900 truncate">
-                {modoEntradaCorte ? 'Registrar evidencia' : 'Gestión de evidencias'}
+                {modoEntradaCorte ? 'Subir evidencias del corte' : 'Gestión de evidencias'}
               </h2>
               <p className="text-xs text-gray-500 truncate mt-0.5">{actividad.nombre}</p>
             </div>
@@ -351,8 +368,16 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
         {/* ═══ CONTENT ═══ */}
         <div className="flex-1 overflow-y-auto">
 
+          {modoEntradaCorte && (
+            <div className="px-5 pt-3 pb-1">
+              <p className="text-[11px] text-gray-600 leading-snug">
+                Las notas de seguimiento ya se ven en el corte. Aquí solo subes <strong>archivos nuevos</strong>.
+              </p>
+            </div>
+          )}
+
           {/* ── TABS DE CORTES (compartidos para archivos y observaciones) ── */}
-          {puntosControl.length > 0 && (
+          {puntosControl.length > 0 && !modoEntradaCorte && (
             <div className="px-5 pt-4 pb-2 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-10">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Filtrar por corte</p>
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
@@ -448,9 +473,11 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
                     <div className="py-4 text-center border-2 border-dashed border-gray-200 rounded-lg">
                       <Paperclip className="w-6 h-6 text-gray-300 mx-auto mb-1" />
                       <p className="text-xs text-gray-500">
-                        {puntosControl.length > 0
-                          ? `Sin archivos en ${tabActivo === 'general' ? 'General' : puntosControl.find(p => p.id === tabActivo)?.nombre || 'este corte'}`
-                          : 'Sin archivos adjuntos'}
+                        {modoEntradaCorte
+                          ? 'Aún no has seleccionado archivos para subir'
+                          : puntosControl.length > 0
+                            ? `Sin archivos en ${tabActivo === 'general' ? 'General' : puntosControl.find(p => p.id === tabActivo)?.nombre || 'este corte'}`
+                            : 'Sin archivos adjuntos'}
                       </p>
                     </div>
                   );
@@ -497,7 +524,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
           )}
 
           {/* ── SECCIÓN 2: OBSERVACIONES (filtradas por tab activo) ── */}
-          {(mostrarObservaciones || mostrarAmbas || modoEntradaCorte) && (
+          {(mostrarObservaciones || mostrarAmbas) && !modoEntradaCorte && (
             <div className="px-5 py-4">
               {(() => {
                 const obsFiltradas = puntosControl.length > 0
@@ -573,18 +600,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
                         rows={2}
                       />
                       <button
-                        onClick={() => {
-                          if (!nuevaObsTexto.trim()) return;
-                          const nueva: ObsLocal = {
-                            id: `obs-${Date.now()}`,
-                            texto: nuevaObsTexto.trim(),
-                            fechaRegistro: new Date().toISOString().split('T')[0],
-                            autor: autorNombre,
-                            puntoControlId: tabActivo !== 'general' ? tabActivo : undefined,
-                          };
-                          setObsList(prev => [...prev, nueva]);
-                          setNuevaObsTexto('');
-                        }}
+                        onClick={agregarObservacionALista}
                         disabled={!nuevaObsTexto.trim()}
                         className={`px-4 py-2.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap border-2 ${
                           nuevaObsTexto.trim()
@@ -607,13 +623,15 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
         {/* ═══ FOOTER ═══ */}
         <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 text-xs text-gray-500">
-            {adjuntos.length > 0 && (
+            {(modoEntradaCorte ? adjuntosNuevosCorte.length : adjuntos.length) > 0 && (
               <span className="flex items-center gap-1">
                 <Paperclip className="w-3 h-3" />
-                {adjuntos.length} archivo{adjuntos.length !== 1 ? 's' : ''}
+                {modoEntradaCorte ? adjuntosNuevosCorte.length : adjuntos.length} archivo
+                {(modoEntradaCorte ? adjuntosNuevosCorte.length : adjuntos.length) !== 1 ? 's' : ''}{' '}
+                {modoEntradaCorte ? 'nuevo(s)' : ''}
               </span>
             )}
-            {obsList.filter(o => o.id.startsWith('obs-')).length > 0 && (
+            {!modoEntradaCorte && obsList.filter(o => o.id.startsWith('obs-')).length > 0 && (
               <span className="flex items-center gap-1">
                 <FileText className="w-3 h-3" />
                 {obsList.filter(o => o.id.startsWith('obs-')).length} nueva{obsList.filter(o => o.id.startsWith('obs-')).length !== 1 ? 's' : ''}
@@ -639,7 +657,7 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar, modoEn
               }`}
             >
               <Check className="w-4 h-4" />
-              {modoEntradaCorte ? 'Registrar entrada' : 'Guardar'}
+              {modoEntradaCorte ? 'Guardar archivos' : 'Guardar'}
             </button>
           </div>
         </div>
