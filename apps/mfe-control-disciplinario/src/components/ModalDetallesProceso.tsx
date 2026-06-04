@@ -283,7 +283,7 @@ interface CargaActiva {
 }
 
 function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return '';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -2242,7 +2242,7 @@ export function ModalDetallesProceso({
         };
       });
 
-      // ═══ Incluir archivos adjuntos de la noticia ═══
+      // ═══ Incluir archivos adjuntos de la noticia ═══ no se lo trporque duplica la evidencia
       console.log('[ModalDetallesProceso] archivosAdjuntos recibidos:', proceso.archivosAdjuntos);
       const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
         const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
@@ -2267,7 +2267,7 @@ export function ModalDetallesProceso({
       });
 
       console.log('[ModalDetallesProceso] total archivos:', mapped.length, ' + noticia:', archivosNoticia.length);
-      setArchivosBackend(mapped.concat(archivosNoticia));
+      setArchivosBackend(mapped);
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
       setArchivosBackend([]);
@@ -3736,7 +3736,7 @@ export function ModalDetallesProceso({
             )}
             <div className="flex items-center gap-1 mt-0.5">
               <p className="text-[10px] text-gray-500">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
-              {archivo.firmante === 'Archivo de la noticia' && (
+              {archivo.firmante === 'Radicador' && (
                 <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-300">
                   De la noticia
                 </span>
@@ -6290,7 +6290,7 @@ export function ModalDetallesProceso({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300]"
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100000]"
               onClick={(e) => e.target === e.currentTarget && setMostrarModalEnvioJuridica(false)}
             >
               <motion.div

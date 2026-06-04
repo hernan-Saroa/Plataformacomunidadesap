@@ -311,6 +311,15 @@ export class CorreosJuridicosService {
                         const entities = this.smartService.extractEntities(email.subject || '', email.bodyPreview || '');
 
                         // Create new record
+                        // Extraer body completo (HTML + texto). Si el sync no trae body (queries viejas),
+                        // se queda en NULL y se hidrata lazy desde getById() cuando el usuario abra el correo.
+                        const bodyHtmlFromGraph = (email as any).body?.content || '';
+                        const bodyContentType = (email as any).body?.contentType?.toLowerCase() || '';
+                        const cuerpoHtmlValue = bodyContentType === 'html' ? bodyHtmlFromGraph : '';
+                        const cuerpoTextoValue = bodyContentType === 'text'
+                            ? bodyHtmlFromGraph
+                            : (email.bodyPreview || '');
+
                         const newCorreo = this.correoRepo.create({
                             graphMessageId: email.id,
                             asunto: email.subject || '(Sin asunto)',
@@ -318,7 +327,8 @@ export class CorreosJuridicosService {
                             remitenteNombre: email.from?.emailAddress?.name || '',
                             destinatarios: JSON.stringify(email.toRecipients || []),
                             fechaRecepcion: new Date(email.receivedDateTime),
-                            cuerpoTexto: email.bodyPreview || '',
+                            cuerpoHtml: cuerpoHtmlValue || undefined,
+                            cuerpoTexto: cuerpoTextoValue,
                             tieneAdjuntos: email.hasAttachments || false,
                             leido: email.isRead || false,
                             archivado: false,
@@ -344,11 +354,37 @@ export class CorreosJuridicosService {
                         synced++;
                         this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
 
-                        // Sync attachments if email has any
+                        // Sync attachments if email has any — descargar y persistir a disco
+                        // para que el usuario pueda visualizarlos sin extra calls a Graph.
                         if (email.hasAttachments) {
                             try {
+                                const fs = require('fs');
+                                const path = require('path');
+                                const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+                                if (!fs.existsSync(uploadsDir)) {
+                                    fs.mkdirSync(uploadsDir, { recursive: true });
+                                }
+
                                 const attachments = await this.graphService.getAttachments(email.id);
                                 for (const att of attachments) {
+                                    let archivoLocalUrl: string | undefined;
+                                    let descargado = false;
+
+                                    // Guardar contentBytes a disco si Graph lo devolvió
+                                    if (att.contentBytes) {
+                                        try {
+                                            const buffer = Buffer.from(att.contentBytes, 'base64');
+                                            const safeName = (att.name || 'adjunto').replace(/[^a-zA-Z0-9.-]/g, '_');
+                                            const uniqueFilename = `recv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+                                            const filepath = path.join(uploadsDir, uniqueFilename);
+                                            fs.writeFileSync(filepath, buffer);
+                                            archivoLocalUrl = filepath;
+                                            descargado = true;
+                                        } catch (writeErr: any) {
+                                            this.logger.warn(`No se pudo persistir adjunto ${att.name} a disco: ${writeErr?.message}`);
+                                        }
+                                    }
+
                                     const adjunto = this.adjuntoRepo.create({
                                         correoId: savedCorreo.id,
                                         graphMessageId: email.id,
@@ -356,11 +392,12 @@ export class CorreosJuridicosService {
                                         nombre: att.name,
                                         contentType: att.contentType,
                                         tamanio: att.size,
-                                        descargado: false,
+                                        descargado,
+                                        archivoLocalUrl,
                                     });
                                     await this.adjuntoRepo.save(adjunto);
                                 }
-                                this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
+                                this.logger.log(`  -> Synced ${attachments.length} attachment(s) (descargados localmente)`);
                             } catch (attError) {
                                 this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
                             }

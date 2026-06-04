@@ -4908,7 +4908,16 @@ export class GraduationCertificatesService {
   }
 
   private normalizeGeoText(value?: string): string | undefined {
-    const normalized = String(value || '').trim();
+    const raw = String(value || '').trim();
+    if (!raw) return undefined;
+
+    let normalized = raw;
+    try {
+      normalized = decodeURIComponent(raw.replace(/\+/g, ' ')).trim();
+    } catch {
+      normalized = raw;
+    }
+
     if (!normalized) return undefined;
     if (
       /^(unknown|desconocido|n\/a|na|null|undefined|localhost|local|xx|t1)$/i.test(

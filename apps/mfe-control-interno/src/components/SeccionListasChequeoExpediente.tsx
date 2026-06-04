@@ -64,7 +64,7 @@ function extraerIdDocumentoSubido(archivoSubidoUrl?: string): string | null {
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type EtapaKanban = 'Plan Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
+type EtapaKanban = 'Programa Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
 
 interface ItemChequeo {
   id: string;
@@ -122,7 +122,7 @@ function mapApiListaToExpediente(
 ): ListaChequeo {
   // Preferir etapaNombreKanban del backend (viene del registro de la etapa real del Kanban).
   // Fallback: mapear desde el campo tipo para compatibilidad con datos anteriores.
-  const VALID_STAGES: EtapaKanban[] = ['Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'];
+  const VALID_STAGES: EtapaKanban[] = ['Programa Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'];
 
   const tipoToEtapa: Record<string, EtapaKanban> = {
     'planeacion': 'Planeación',
@@ -133,8 +133,8 @@ function mapApiListaToExpediente(
     'COMUNICACION': 'Comunicación',
     'seguimiento': 'Seguimiento',
     'SEGUIMIENTO': 'Seguimiento',
-    'plan_anual': 'Plan Anual',
-    'PLAN_ANUAL': 'Plan Anual'
+    'plan_anual': 'Programa Anual',
+    'PLAN_ANUAL': 'Programa Anual'
   };
 
   // etapaNombreKanban viene directamente del Kanban configurado
@@ -520,7 +520,7 @@ export function SeccionListasChequeoExpediente({
   };
 
   const etapaBorderColors: Record<EtapaKanban, string> = {
-    'Plan Anual': 'border-gray-200',
+    'Programa Anual': 'border-gray-200',
     'Planeación': 'border-blue-200',
     'Ejecución': 'border-amber-200',
     'Comunicación': 'border-green-200',

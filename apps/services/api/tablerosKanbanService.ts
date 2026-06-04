@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Servicio para Tableros Kanban
  * Conecta con el backend: /tableros-kanban
  */
@@ -54,6 +54,7 @@ export interface TableroKanban {
   tipo: TipoTablero;
   activo: boolean;
   etapas: EtapaKanban[];
+  configuracionVisual?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +80,7 @@ export interface CreateTableroKanbanDto {
   descripcion?: string;
   tipo: TipoTablero;
   activo?: boolean;
+  configuracionVisual?: Record<string, any>;
   etapas?: CreateEtapaKanbanDto[];
 }
 

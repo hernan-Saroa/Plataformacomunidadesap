@@ -586,8 +586,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </span>
           </div>
 
-          {/* ═══ Acciones ═══ */}
-          {/* Jefe con devuelta: todo deshabilitado */}
+          {/* Acciones */}
           {esJefe && noticia.estado === 'devuelta' ? (
             <div style={{ pointerEvents: 'none' }}>
               <KanbanActionSection>
@@ -601,6 +600,16 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 </KanbanActionRowPrimary>
               </KanbanActionSection>
             </div>
+          ) : tieneRemision ? (
+          
+              <KanbanActionSection>
+                <KanbanActionRowPrimary>
+                  {onVerDetalles && canViewDetail && (
+                    <KanbanButtonSecondary onClick={() => onVerDetalles(noticia)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles">Detalles</KanbanButtonSecondary>
+                  )}
+                </KanbanActionRowPrimary>
+              </KanbanActionSection>
+            
           ) : (
             <KanbanActionSection>
               <KanbanActionRowPrimary>
@@ -616,7 +625,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 )}
               </KanbanActionRowPrimary>
 
-              {/* Botones secundarios del Jefe — solo cuando NO está devuelta */}
+              {/* Botones secundarios del Jefe */}
               {esJefe && (
                 <KanbanActionRowTertiary>
                   {onEditarNoticia && canEdit && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
@@ -634,7 +643,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 </KanbanActionRowTertiary>
               )}
 
-              {/* Badge "Noticia Devuelta" para el Profesional — hover convierte en Reenviar */}
+              {/* Badge "Noticia Devuelta" para el Profesional */}
               {!esJefe && noticia.estado === 'devuelta' && (
                 <div
                   className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg mt-1 cursor-pointer transition-all select-none ${
@@ -2341,6 +2350,8 @@ function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobi
 
   // Function to check if user can restore a specific item
   const canRestoreItem = (item: any): boolean => {
+    const tieneRemision = !!(item.numeroRC || item.entidadRemision || item.estado === 'remitida');
+    if (tieneRemision) return false;
     if (item.tipo === 'proceso') {
       return canRestoreProcesos;
     } else if (item.tipo === 'noticia') {
@@ -4777,11 +4788,11 @@ export function DashboardKanbanOperativo({
     const toastId = toast.loading('Apelando proceso a segunda instancia...');
 
     try {
-      // First restore the process from archived state
-      await disciplinaryService.restoreProcess(item.id);
-
-      // Then change the stage to second instance
+      // First change the stage to second instance (process is still archived, so stage validation is skipped)
       const updatedProcess = await disciplinaryService.cambiarEtapa(item.id, backendStage);
+
+      // Then restore the process from archived state
+      await disciplinaryService.restoreProcess(item.id);
 
       setItems(prev => [
         ...prev,

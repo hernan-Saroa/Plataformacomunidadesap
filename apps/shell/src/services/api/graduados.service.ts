@@ -153,8 +153,6 @@ export interface CertificadoGraduado {
   status: "VALID" | "REVOKED" | "EXPIRED";
   issueDate: string;
   expiryDate?: string;
-  revocationDate?: string;
-  revocationReason?: string;
 }
 
 export interface UpdateCertificadoPayload extends Partial<CertificadoGraduado> {

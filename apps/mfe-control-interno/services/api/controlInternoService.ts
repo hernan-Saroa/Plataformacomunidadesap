@@ -131,6 +131,10 @@ export interface EvaluacionProceso {
   decisionFinal?: string;
   motivoDecision?: string;
   prioridadRegla?: number;
+  /** Calculado al guardar DAFP desde ciclo de rotación */
+  auditableCalculado?: boolean;
+  /** null = usar calculado; true/false = override desde tabla */
+  auditableManual?: boolean | null;
   // Metadatos
   creadoPor?: string;
   activo: boolean;
@@ -165,6 +169,8 @@ export interface CreateEvaluacionProcesoDTO {
   decisionFinal?: string;
   motivoDecision?: string;
   prioridadRegla?: number;
+  auditableCalculado?: boolean;
+  auditableManual?: boolean | null;
 }
 
 export interface AuditoriaProgramada {
@@ -631,6 +637,16 @@ class ControlInternoService {
    */
   async deleteEvaluacion(id: string): Promise<void> {
     return client.delete(`/universo-auditorias/evaluaciones/${id}`);
+  }
+
+  /**
+   * Override manual de priorización auditable (columna Aud.)
+   * auditableManual = null restaura el valor calculado por DAFP
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    return client.patch<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}/auditable`, {
+      auditableManual,
+    });
   }
 
   // ==========================================================================

@@ -593,8 +593,8 @@ const coloresDisponibles = [
 
 const descripcionVariables: Record<string, string> = {
   '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
-  '[DOCUMENTO]': 'Numero de documento',
-  '[CARGO]': 'Cargo calculado (categoria + palabra Codigo + codigo + grado)',
+  '[DOCUMENTO]': 'Número de documento',
+  '[CARGO]': 'Cargo calculado (categoría + palabra Código + código + grado)',
   '[GRUPO]': 'Grupo (position_location de la solicitud)',
   '[TIPO_DATO]': 'Tipo de vinculación',
   '[DEPENDENCIA]': 'Dependencia',
@@ -605,11 +605,11 @@ const descripcionVariables: Record<string, string> = {
   '[DATO6]': 'Dato 6 (dato adicional)',
   '[DATO8]': 'Dato 8 (salario en letras)',
   '[FECHA_INICIO]': 'Fecha de inicio del contrato',
-  '[FECHA_FIN]': 'Fecha de finalizacion',
-  '[SALARIO]': 'Salario mensual (numero)',
+  '[FECHA_FIN]': 'Fecha de finalización',
+  '[SALARIO]': 'Salario mensual (número)',
   '[SALARIO_LETRAS]': 'Salario en letras',
-  '[FECHA_EXPEDICION_COMPLETA]': 'Fecha completa de expedicion (ej: 11 de diciembre de 2025)',
-  '[CIUDAD_EXPEDICION]': 'Ciudad de expedicion',
+  '[FECHA_EXPEDICION_COMPLETA]': 'Fecha completa de expedición (ej: 11 de diciembre de 2025)',
+  '[CIUDAD_EXPEDICION]': 'Ciudad de expedición',
 };
 
 const ordenVariablesPlantilla = [
@@ -1782,15 +1782,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        console.error('Error al cargar configuracion:', error);
+        console.error('Error al cargar configuración:', error);
 
 
 
-        toast.error('Error al cargar configuracion', {
+        toast.error('Error al cargar configuración', {
 
 
 
-          description: 'No se pudo cargar la configuracion de la plantilla'
+          description: 'No se pudo cargar la configuración de la plantilla'
 
 
 
@@ -2154,7 +2154,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          <p className="text-gray-600">Cargando configuracion...</p>
+          <p className="text-gray-600">Cargando configuración...</p>
 
 
 
@@ -2298,7 +2298,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
+        description: 'Por favor, selecciona una imagen válida (PNG, JPG, etc.)'
 
 
 
@@ -2507,7 +2507,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
+        description: 'Por favor, selecciona una imagen válida (PNG, JPG, etc.)'
 
 
 
@@ -3018,7 +3018,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       setHasChanges(false);
       await recargarHistorial();
       toast.success('Cambio revertido', {
-        description: `Se restauro: ${log.accion}`,
+        description: `Se restauró: ${log.accion}`,
       });
     } catch (error) {
       console.error('Error al revertir cambio:', error);
@@ -3722,7 +3722,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      description: 'Se restauro la plantilla publicada'
+      description: 'Se restauró la plantilla publicada'
 
 
 
@@ -3750,7 +3750,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'Esta version no tiene datos disponibles para restaurar'
+        description: 'Esta versión no tiene datos disponibles para restaurar'
 
 
 
@@ -3794,7 +3794,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    toast.loading('Restaurando version...', { id: 'restaurar' });
+    toast.loading('Restaurando versión...', { id: 'restaurar' });
 
 
 
@@ -3826,7 +3826,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        accion: `Restauracion a version ${versionARestaurar.versionNueva}`,
+        accion: `Restauración a versión ${versionARestaurar.versionNueva}`,
 
 
 
@@ -3834,11 +3834,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          `Version restaurada: ${versionARestaurar.versionNueva}`,
+          `Versión restaurada: ${versionARestaurar.versionNueva}`,
 
 
 
-          `Fecha de la version: ${new Date(versionARestaurar.fecha).toLocaleDateString('es-CO')}`,
+          `Fecha de la versión: ${new Date(versionARestaurar.fecha).toLocaleDateString('es-CO')}`,
 
 
 
@@ -3962,7 +3962,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      toast.success('Version restaurada!', {
+      toast.success('¡Versión restaurada!', {
 
 
 
@@ -3970,7 +3970,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: `La plantilla ahora usa la configuracion de la version ${versionARestaurar.versionNueva}`
+        description: `La plantilla ahora usa la configuración de la versión ${versionARestaurar.versionNueva}`
 
 
 
@@ -6125,7 +6125,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                Asi se vera el certificado con la configuracion actual
+                Así se verá el certificado con la configuración actual
 
 
 

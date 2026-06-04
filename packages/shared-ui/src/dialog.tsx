@@ -53,6 +53,8 @@ function DialogContent({
   children,
   hideCloseButton,
   size,
+  onInteractOutside,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { hideCloseButton?: boolean; size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full' }) {
   const descriptionId = React.useId();
@@ -69,6 +71,14 @@ function DialogContent({
           className,
         )}
         aria-describedby={props['aria-describedby'] || descriptionId}
+        onInteractOutside={(event) => {
+          onInteractOutside?.(event);
+          event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          onPointerDownOutside?.(event);
+          event.preventDefault();
+        }}
         {...props}
       >
         {children}
