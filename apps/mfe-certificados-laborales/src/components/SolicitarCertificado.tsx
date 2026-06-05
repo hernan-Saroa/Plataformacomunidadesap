@@ -65,7 +65,7 @@ export function SolicitarCertificado() {
     e.preventDefault();
 
     if (!documento.trim()) {
-      toast.error('Por favor ingresa tu número de documento');
+      toast.error('Por favor, ingresa tu número de documento');
       return;
     }
 
@@ -129,7 +129,7 @@ export function SolicitarCertificado() {
     e.preventDefault();
 
     if (!codigo.trim()) {
-      toast.error('Por favor ingresa el código de validación');
+      toast.error('Por favor, ingresa el código de validación');
       return;
     }
 
@@ -182,7 +182,7 @@ export function SolicitarCertificado() {
       observations: cert.request?.observations || cert.observations,
       templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
     const incluyeSalario = normalizarBoolean(
       cert.include_salary ?? cert.includeSalary ?? cert.incluyeSalario,

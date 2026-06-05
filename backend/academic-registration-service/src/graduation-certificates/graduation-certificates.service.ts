@@ -1105,7 +1105,7 @@ export class GraduationCertificatesService {
     request.status = 'VALIDATED';
     await this.requestRepository.save(request);
 
-    const certificate = await this.generateCertificate(request);
+    const certificate = await this.generateCertificate(request, frontendBaseUrl);
 
     request.status = 'COMPLETED';
     request.completionDate = new Date();
@@ -1250,6 +1250,7 @@ export class GraduationCertificatesService {
     idNumber: string,
     idIssueDate: string | undefined,
     codigo: string,
+    frontendBaseUrl?: string,
   ) {
     // Buscar solicitud pendiente
     const request = await this.requestRepository.findOne({
@@ -1283,7 +1284,7 @@ export class GraduationCertificatesService {
     await this.requestRepository.save(request);
 
     // Generar certificado
-    const certificate = await this.generateCertificate(request);
+    const certificate = await this.generateCertificate(request, frontendBaseUrl);
 
     // Marcar solicitud como completada
     request.status = 'COMPLETED';
@@ -1445,7 +1446,10 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Certificado no encontrado');
     }
 
-    let shouldRegenerate = false;
+    let shouldRegenerate = this.shouldRegenerateCertificatePdfForBaseUrl(
+      certificate,
+      frontendBaseUrl,
+    );
     const registroFolioLibro = this.buildRegistroFolioLibro(
       certificate.graduate,
     );
@@ -1455,27 +1459,13 @@ export class GraduationCertificatesService {
       shouldRegenerate = true;
     }
 
-    const pdfFilename =
-      certificate.pdfFilename ||
-      (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : undefined);
-
-    if (pdfFilename && !shouldRegenerate) {
-      const storedPdf = this.getStoredCertificatePdf(certificate);
-      if (storedPdf) {
-        return storedPdf.content;
-      }
-
-      this.logger.warn(
-        `PDF no encontrado en disco para certificado ${certificate.id} (filename=${pdfFilename})`,
-      );
-    }
-
-    // Si no existe el PDF o se requiere actualizarlo, generarlo en tiempo real
     try {
-      return await this.pdfGeneratorService.generateCertificatePDF(
+      const resolvedPdf = await this.resolveCertificatePdf(
         certificate,
         frontendBaseUrl,
+        shouldRegenerate,
       );
+      return resolvedPdf.content;
     } catch (error) {
       this.logger.error(
         `Error generando PDF en tiempo real para certificado ${certificate.id}`,
@@ -2264,12 +2254,23 @@ export class GraduationCertificatesService {
   private async resolveCertificatePdf(
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
+    forceRegenerate = false,
   ) {
+    const shouldRegenerate =
+      forceRegenerate ||
+      this.shouldRegenerateCertificatePdfForBaseUrl(
+        certificate,
+        frontendBaseUrl,
+      );
     const storedPdf = this.getStoredCertificatePdf(certificate);
-    if (storedPdf) {
+    if (storedPdf && !shouldRegenerate) {
       return storedPdf;
     }
 
+    const snapshotChanged = this.applyCertificateValidationBaseUrl(
+      certificate,
+      frontendBaseUrl,
+    );
     const buffer = await this.pdfGeneratorService.generateCertificatePDF(
       certificate,
       frontendBaseUrl,
@@ -2289,7 +2290,11 @@ export class GraduationCertificatesService {
       const pdfFilePath = path.join(storagePath, filename);
       fs.writeFileSync(pdfFilePath, buffer);
 
-      if (certificate.pdfFilename !== filename || !certificate.pdfUrl) {
+      if (
+        certificate.pdfFilename !== filename ||
+        !certificate.pdfUrl ||
+        snapshotChanged
+      ) {
         certificate.pdfFilename = filename;
         certificate.pdfUrl = `/uploads/graduation-certificates/${filename}`;
         await this.certificateRepository.save(certificate);
@@ -2644,19 +2649,46 @@ export class GraduationCertificatesService {
     return actor || 'Sistema';
   }
 
-  private resolveCertificatePublicBaseUrl(frontendBaseUrl?: string): string {
-    const raw =
-      String(frontendBaseUrl || '').trim() ||
-      String(process.env.FRONTEND_URL || '').trim() ||
-      'https://certificados.esap.edu.co';
+  private normalizePublicBaseUrl(value?: string | null): string | null {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
 
-    return raw.replace(/\/$/, '');
+    try {
+      return new URL(raw).origin.replace(/\/$/, '');
+    } catch (_) {
+      return raw.replace(/\/$/, '');
+    }
+  }
+
+  private resolveExplicitCertificatePublicBaseUrl(
+    frontendBaseUrl?: string,
+  ): string | null {
+    return (
+      this.normalizePublicBaseUrl(frontendBaseUrl) ||
+      this.normalizePublicBaseUrl(process.env.PUBLIC_FRONTEND_URL) ||
+      this.normalizePublicBaseUrl(process.env.FRONTEND_PUBLIC_URL) ||
+      this.normalizePublicBaseUrl(process.env.VITE_PUBLIC_FRONTEND_URL) ||
+      this.normalizePublicBaseUrl(process.env.FRONTEND_URL)
+    );
+  }
+
+  private resolveCertificatePublicBaseUrl(frontendBaseUrl?: string): string {
+    return (
+      this.resolveExplicitCertificatePublicBaseUrl(frontendBaseUrl) ||
+      'http://localhost:3000'
+    );
   }
 
   private resolveCertificateValidationBaseUrl(
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
   ): string {
+    const runtimeBaseUrl =
+      this.resolveExplicitCertificatePublicBaseUrl(frontendBaseUrl);
+    if (runtimeBaseUrl) {
+      return runtimeBaseUrl;
+    }
+
     const snapshot = parseGraduationCertificateTemplateSnapshot(
       certificate.templateSnapshot,
     );
@@ -2665,6 +2697,50 @@ export class GraduationCertificatesService {
       snapshot?.validationBaseUrl ||
       this.resolveCertificatePublicBaseUrl(frontendBaseUrl)
     );
+  }
+
+  private getCertificateSnapshotValidationBaseUrl(
+    certificate: GraduationCertificate,
+  ): string | null {
+    const snapshot = parseGraduationCertificateTemplateSnapshot(
+      certificate.templateSnapshot,
+    );
+    return this.normalizePublicBaseUrl(snapshot?.validationBaseUrl);
+  }
+
+  private shouldRegenerateCertificatePdfForBaseUrl(
+    certificate: GraduationCertificate,
+    frontendBaseUrl?: string,
+  ): boolean {
+    const desiredBaseUrl =
+      this.resolveExplicitCertificatePublicBaseUrl(frontendBaseUrl);
+    if (!desiredBaseUrl) return false;
+
+    const snapshotBaseUrl =
+      this.getCertificateSnapshotValidationBaseUrl(certificate);
+    return !snapshotBaseUrl || snapshotBaseUrl !== desiredBaseUrl;
+  }
+
+  private applyCertificateValidationBaseUrl(
+    certificate: GraduationCertificate,
+    frontendBaseUrl?: string,
+  ): boolean {
+    const desiredBaseUrl =
+      this.resolveExplicitCertificatePublicBaseUrl(frontendBaseUrl);
+    if (!desiredBaseUrl) return false;
+
+    const snapshot = parseGraduationCertificateTemplateSnapshot(
+      certificate.templateSnapshot,
+    );
+    if (!snapshot || snapshot.validationBaseUrl === desiredBaseUrl) {
+      return false;
+    }
+
+    certificate.templateSnapshot = {
+      ...snapshot,
+      validationBaseUrl: desiredBaseUrl,
+    };
+    return true;
   }
 
   private buildCertificateTemplateSnapshot(
@@ -2679,7 +2755,8 @@ export class GraduationCertificatesService {
       id: config.id,
       version: config.version,
       updatedAt: config.updatedAt,
-      validationBaseUrl: this.resolveCertificatePublicBaseUrl(frontendBaseUrl),
+      validationBaseUrl:
+        this.resolveExplicitCertificatePublicBaseUrl(frontendBaseUrl),
       typographyFont: config.typographyFont,
       signerId: config.signerId,
       institutionLogoUrl: config.institutionLogoUrl,
@@ -4748,10 +4825,7 @@ export class GraduationCertificatesService {
 
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/send`;
-    const portalUrl =
-      frontendBaseUrl ||
-      process.env.FRONTEND_URL ||
-      'https://certificados.esap.edu.co';
+    const portalUrl = this.resolveCertificatePublicBaseUrl(frontendBaseUrl);
 
     const subject = `Solicitud de certificado rechazada - ${request.requestNumber}`;
     const text =
@@ -4908,7 +4982,16 @@ export class GraduationCertificatesService {
   }
 
   private normalizeGeoText(value?: string): string | undefined {
-    const normalized = String(value || '').trim();
+    const raw = String(value || '').trim();
+    if (!raw) return undefined;
+
+    let normalized = raw;
+    try {
+      normalized = decodeURIComponent(raw.replace(/\+/g, ' ')).trim();
+    } catch {
+      normalized = raw;
+    }
+
     if (!normalized) return undefined;
     if (
       /^(unknown|desconocido|n\/a|na|null|undefined|localhost|local|xx|t1)$/i.test(

@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryBehavior } from '../../../../shell/src/services/api/disciplinary.service';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 
 // Tipos locales
 interface ConductaFormData {
@@ -402,24 +403,19 @@ export function ConfiguracionConductasDisciplinarias() {
 
       {/* Modal de creación/edición */}
       {modalAbierto && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-          >
+        <Dialog open={modalAbierto} onOpenChange={cerrarModal}>
+          <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-gray-900">
                   {editandoConducta ? 'Editar Conducta' : 'Nueva Conducta'}
                 </h3>
-                <button
+                {/* <button
                   onClick={cerrarModal}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
-                </button>
+                </button> */}
               </div>
 
               <div className="space-y-4">
@@ -535,8 +531,8 @@ export function ConfiguracionConductasDisciplinarias() {
                 </button>
               </div>
             </div>
-          </motion.div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

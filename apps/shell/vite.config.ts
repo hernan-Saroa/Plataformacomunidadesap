@@ -10,6 +10,17 @@ const devExternalRedirects: Record<string, string> = {
   '/externos/arca': 'https://arca.esap.edu.co',
 };
 
+const buildDateSource = process.env.ESAP_BUILD_DATE
+  ? new Date(process.env.ESAP_BUILD_DATE)
+  : new Date();
+const buildDateValue = Number.isNaN(buildDateSource.getTime()) ? new Date() : buildDateSource;
+const buildDate = new Intl.DateTimeFormat('es-CO', {
+  timeZone: 'America/Bogota',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+}).format(buildDateValue);
+
 const externalRedirectPlugin = () => ({
   name: 'esap-dev-external-redirects',
   configureServer(server: { middlewares: { use: (handler: (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => void) => void } }) {
@@ -31,6 +42,9 @@ const externalRedirectPlugin = () => ({
 
 export default defineConfig(({ command }) => ({
   root: __dirname,
+  define: {
+    __ESAP_BUILD_DATE__: JSON.stringify(buildDate),
+  },
   plugins: [
     react(),
     cspNonceBootstrap(shellApp.appDir),

@@ -644,7 +644,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const handleCodigoExpirado = useCallback(() => {
     setCodigoExpirado(true);
     toast.error('El código ha expirado', {
-      description: 'Por favor solicita un nuevo código',
+      description: 'Por favor, solicita un nuevo código',
       duration: 5000,
     });
   }, []);
@@ -808,7 +808,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
 
     if (!tipoDocumento) {
-      toast.error('Por favor selecciona el tipo de documento');
+      toast.error('Por favor, selecciona el tipo de documento');
       return;
     }
     if (tipoDocumento !== 'CC') {
@@ -819,7 +819,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       return;
     }
     if (!documentoIngresado) {
-      toast.error('Por favor ingresa tu número de documento');
+      toast.error('Por favor, ingresa tu número de documento');
       return;
     }
 
@@ -859,7 +859,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         setBuscandoEmpleado(false);
         setEstadoLaboral('inactivo');
         toast.error('Certificado no disponible', {
-          description: 'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
+          description: 'Si tu certificado no se encuentra disponible o tienes inquietudes, escríbenos a talento.humano@esap.edu.co.',
           duration: 7000,
         });
         return;
@@ -1272,7 +1272,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
       toast.success('Copia enviada al correo', {
         id: 'auto-email-cert',
-        description: `Se envio a ${response?.email || destinatario}`,
+        description: `Se envió a ${response?.email || destinatario}`,
         duration: 4000,
       });
     } catch (error: any) {
@@ -1623,7 +1623,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                             <div className="text-sm text-red-900">
                               <p className="font-semibold">Certificado no disponible</p>
                               <p className="mt-1 leading-relaxed text-red-800">
-                                Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a{' '}
+                                Si tu certificado no se encuentra disponible o tienes inquietudes, escríbenos a{' '}
                                 <a
                                   href="mailto:talento.humano@esap.edu.co"
                                   className="font-semibold text-red-900 underline decoration-red-400 underline-offset-2 hover:text-red-700"
@@ -1859,7 +1859,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                               : 'tu correo registrado';
                           const titulo = certificadoExistente
                             ? 'Ya tienes un certificado vigente'
-                            : '¡Certificado Generado Exitosamente!';
+                            : '¡Certificado generado exitosamente!';
                           const descripcion = certificadoExistente
                             ? `Este certificado ya estaba generado y se mantiene vigente. Puedes descargarlo, imprimirlo o compartirlo. También se encuentra disponible en ${correoDestino}.`
                             : `Tu certificado laboral ha sido generado y está listo para descargar. Se ha enviado una copia a ${correoDestino}.`;

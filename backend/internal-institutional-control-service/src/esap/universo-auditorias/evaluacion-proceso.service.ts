@@ -9,12 +9,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { Injectable, NotFoundException, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { ProcesoAuditable } from './entities/proceso-auditable.entity';
 import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto } from './dto/evaluacion-proceso.dto';
+import { EvaluacionRol4TareaSyncService } from './evaluacion-rol4-tarea-sync.service';
+import { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
+
+export { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
 
 @Injectable()
 export class EvaluacionProcesoService implements OnModuleInit {
@@ -25,7 +29,15 @@ export class EvaluacionProcesoService implements OnModuleInit {
     private readonly evaluacionRepository: Repository<EvaluacionProceso>,
     @InjectRepository(ProcesoAuditable)
     private readonly procesoRepository: Repository<ProcesoAuditable>,
+    private readonly rol4TareaSync: EvaluacionRol4TareaSyncService,
   ) {}
+
+  private async syncTareaRol4(evaluacion: EvaluacionProceso): Promise<void> {
+    const conProceso = evaluacion.proceso
+      ? evaluacion
+      : await this.findOne(evaluacion.id);
+    await this.rol4TareaSync.sincronizarDesdeEvaluacion(conProceso);
+  }
 
   async onModuleInit() {
     try {
@@ -218,10 +230,15 @@ export class EvaluacionProcesoService implements OnModuleInit {
       prioridadRegla: dto.prioridadRegla,
       creadoPor: dto.creadoPor,
       activo: true,
+      auditableCalculado: calcularAuditableDesdeCiclo(dto.cicloRotacionDafp),
+      auditableManual: dto.auditableManual ?? null,
     });
 
     try {
-      return await this.evaluacionRepository.save(evaluacion);
+      const saved = await this.evaluacionRepository.save(evaluacion);
+      const conProceso = await this.findOne(saved.id);
+      await this.syncTareaRol4(conProceso);
+      return conProceso;
     } catch (error) {
       this.logger.error(`Error guardando evaluación: ${error.message}`, error.stack);
       if (error.code === '23505') { // Postgres unique violation
@@ -295,6 +312,13 @@ export class EvaluacionProcesoService implements OnModuleInit {
     if (dto.motivoDecision !== undefined) evaluacion.motivoDecision = dto.motivoDecision;
     if (dto.prioridadRegla !== undefined) evaluacion.prioridadRegla = dto.prioridadRegla;
     if (dto.activo !== undefined) evaluacion.activo = dto.activo;
+    if (dto.auditableManual !== undefined) evaluacion.auditableManual = dto.auditableManual;
+
+    if (dto.cicloRotacionDafp !== undefined) {
+      evaluacion.auditableCalculado = calcularAuditableDesdeCiclo(dto.cicloRotacionDafp);
+    } else if (dto.auditableCalculado !== undefined) {
+      evaluacion.auditableCalculado = dto.auditableCalculado;
+    }
 
     // Recalcular totales si cambiaron los riesgos individuales
     evaluacion.totalRiesgos = 
@@ -308,7 +332,10 @@ export class EvaluacionProcesoService implements OnModuleInit {
     ));
 
     try {
-      return await this.evaluacionRepository.save(evaluacion);
+      const saved = await this.evaluacionRepository.save(evaluacion);
+      const conProceso = await this.findOne(saved.id);
+      await this.syncTareaRol4(conProceso);
+      return conProceso;
     } catch (error) {
       this.logger.error(`Error actualizando evaluación: ${error.message}`, error.stack);
       if (error.code === '23505') {
@@ -319,12 +346,33 @@ export class EvaluacionProcesoService implements OnModuleInit {
   }
 
   /**
+   * Override manual de priorización auditable (columna Aud. en tabla).
+   * auditableManual = null restaura el valor calculado por DAFP.
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    const evaluacion = await this.findOne(id);
+
+    if (!evaluacion.ponderacionFinalDafp && evaluacion.ponderacionFinalDafp !== 0) {
+      throw new BadRequestException(
+        'Complete la evaluación DAFP antes de definir la priorización auditable.',
+      );
+    }
+
+    evaluacion.auditableManual = auditableManual;
+    const saved = await this.evaluacionRepository.save(evaluacion);
+    const conProceso = await this.findOne(saved.id);
+    await this.syncTareaRol4(conProceso);
+    return conProceso;
+  }
+
+  /**
    * Elimina una evaluación (soft delete - inactivar)
    */
   async delete(id: string): Promise<void> {
     const evaluacion = await this.findOne(id);
     evaluacion.activo = false;
-    await this.evaluacionRepository.save(evaluacion);
+    const saved = await this.evaluacionRepository.save(evaluacion);
+    await this.syncTareaRol4(saved);
   }
 
   /**
@@ -332,6 +380,8 @@ export class EvaluacionProcesoService implements OnModuleInit {
    */
   async hardDelete(id: string): Promise<void> {
     const evaluacion = await this.findOne(id);
+    evaluacion.activo = false;
+    await this.syncTareaRol4(evaluacion);
     await this.evaluacionRepository.remove(evaluacion);
   }
 

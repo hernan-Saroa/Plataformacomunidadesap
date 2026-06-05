@@ -1,8 +1,8 @@
-import { IsUUID, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class ChangeStageDto {
-    @IsUUID()
-    stageId: string; // Stage configuration ID
+    @IsString()
+    stageId: string;
 
     @IsOptional()
     @IsString()

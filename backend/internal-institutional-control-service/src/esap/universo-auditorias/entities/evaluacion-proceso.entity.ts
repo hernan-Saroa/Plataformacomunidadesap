@@ -186,6 +186,17 @@ export class EvaluacionProceso {
   prioridadRegla?: number; // 1-5, qué regla DAFP aplicó
 
   // ═══════════════════════════════════════════════════════════════════════
+  // PRIORIZACIÓN AUDITABLE (columna Aud. — calculado + override manual)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Column({ name: 'auditable_calculado', type: 'boolean', default: false })
+  auditableCalculado: boolean;
+
+  /** null = usar auditableCalculado; true/false = decisión manual en tabla */
+  @Column({ name: 'auditable_manual', type: 'boolean', nullable: true })
+  auditableManual?: boolean | null;
+
+  // ═══════════════════════════════════════════════════════════════════════
   // METADATOS
   // ═══════════════════════════════════════════════════════════════════════
 

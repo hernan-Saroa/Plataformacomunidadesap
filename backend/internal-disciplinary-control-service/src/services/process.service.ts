@@ -964,6 +964,10 @@ export class ProcessService {
   /**
    * Cambia la etapa del proceso (US-009)
    */
+  private isUUID(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  }
+
   async changeStage(
     id: string,
     stageId: string,
@@ -972,20 +976,28 @@ export class ProcessService {
     try {
       const proceso = await this.findById(id, false);
 
-      if (proceso.estado === ProcessStatus.CERRADO) {
-        throw new HttpException(
-          'No se puede cambiar la etapa de un proceso CERRADO',
-          HttpStatus.FORBIDDEN,
-        );
+      // if (proceso.estado === ProcessStatus.CERRADO) {
+      //   throw new HttpException(
+      //     'No se puede cambiar la etapa de un proceso CERRADO',
+      //     HttpStatus.FORBIDDEN,
+      //   );
+      // }
+
+      let newStageConfig: StageConfiguration | null;
+
+      if (this.isUUID(stageId)) {
+        newStageConfig = await this.stageConfigurationRepository.findOne({
+          where: { id: stageId, activo: true },
+        });
+      } else {
+        newStageConfig = await this.stageConfigurationRepository.findOne({
+          where: { etapa: stageId, activo: true },
+        });
       }
 
-      // Get the new stage configuration
-      const newStageConfig = await this.stageConfigurationRepository.findOne({
-        where: { id: stageId, activo: true },
-      });
       if (!newStageConfig) {
         throw new HttpException(
-          `Stage configuration with id ${stageId} not found`,
+          `Stage configuration not found for identifier: ${stageId}`,
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -1006,8 +1018,9 @@ export class ProcessService {
       }
 
       if (proceso.etapaActual !== newStageConfig.etapa) {
-        // Validar transicion de etapa using orden
-        this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+        if (proceso.estado === ProcessStatus.ACTIVO) {
+          this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+        }
 
         // Calcular nuevo vencimiento
         const { fechaVencimiento } =
@@ -1746,38 +1759,48 @@ export class ProcessService {
   }
 
 /**
-    * Restaura un proceso archivado al flujo activo
-    */
-   async restore(id: string): Promise<DisciplinaryProcess> {
-     const proceso = await this.processRepository.findOne({
-       where: { id },
-       relations: ['news'],
-     });
+     * Restaura un proceso archivado o cerrado al flujo activo
+     */
+    async restore(id: string): Promise<DisciplinaryProcess> {
+      const proceso = await this.processRepository.findOne({
+        where: { id },
+        relations: ['news'],
+      });
 
-     if (!proceso) {
-       throw new HttpException(
-         `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
-         HttpStatus.NOT_FOUND,
-       );
-     }
+      if (!proceso) {
+        throw new HttpException(
+          `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
 
-     // Verificar que el proceso esté archivado
-     if (proceso.estado !== ProcessStatus.ARCHIVADO) {
-       throw new HttpException(
-         `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
-         HttpStatus.BAD_REQUEST,
-       );
-     }
+      // Verificar que el proceso esté archivado o cerrado
+//       if (proceso.estado !== ProcessStatus.ARCHIVADO && proceso.estado !== ProcessStatus.CERRADO) {
+//         throw new HttpException(
+//           `El proceso ${proceso.radicadoProceso} no está archivado o cerrado (estado actual: ${proceso.estado}). Solo los procesos archivados o cerrados pueden ser restaurados.`,
+//           HttpStatus.BAD_REQUEST,
+//         );
+// }
 
-     // Cambiar estado a ACTIVO y marcar como restaurado
-     proceso.estado = ProcessStatus.ACTIVO;
-     proceso.restaurado = true;
+      // Guardar estado original para el mensaje
+      const estadoAnterior = proceso.estado;
 
-     // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
-     console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+      // Cambiar estado a ACTIVO y marcar como restaurado
+      proceso.estado = ProcessStatus.ACTIVO;
+      proceso.restaurado = true;
 
-     return await this.processRepository.save(proceso);
-   }
+      // Limpiar campos de cierre si el proceso estaba cerrado
+      if (estadoAnterior === ProcessStatus.CERRADO) {
+        proceso.fechaCierre = null;
+        proceso.etapaAlCierre = null;
+        proceso.cerradoPorId = null;
+        
+      }
+
+      
+
+      return await this.processRepository.save(proceso);
+    }
 
    /**
     * Obtiene todas las noticias en estado RADICADA que tienen documentos adjuntos

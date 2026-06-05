@@ -81,8 +81,6 @@ import { useKanbanConfig } from './context/KanbanConfigContext';
 
 import {
   type EstadoAuditoria,
-  construirEtapasKanbanAuditoria,
-  columnasKanbanDesdeCatalogo,
   iconoParaEstadoAuditoria,
 } from './config/auditoriaKanbanCatalog';
 
@@ -774,9 +772,14 @@ const AUDITORIAS_MOCK: Auditoria[] = [
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
 
-type KanbanColumna = ReturnType<typeof columnasKanbanDesdeCatalogo>[number];
-
-const COLUMNAS_KANBAN_FALLBACK: KanbanColumna[] = columnasKanbanDesdeCatalogo();
+export interface KanbanColumna {
+  id: string;
+  titulo: string;
+  count: number;
+  icono: JSX.Element;
+  diasEstimados: number;
+  accentColor: string;
+}
 
 // ============ COMPONENTE DE TARJETA ============
 
@@ -1375,24 +1378,24 @@ function TarjetaAuditoria({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual') {
+                  if (auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual') {
                     onExportar(auditoria);
                   }
                 }}
-                disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
+                disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'}
+                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'
                     ? 'hover:bg-white cursor-pointer'
                     : 'opacity-40 cursor-not-allowed'
                   }`}
                 title={
-                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
+                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'
                     ? 'Exportar informe PDF'
                     : 'Solo disponible desde Ejecución'
                 }
               >
-                <FileDown className={`w-3.5 h-3.5 ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual' ? 'text-blue-600' : 'text-gray-400'
+                <FileDown className={`w-3.5 h-3.5 ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual' ? 'text-blue-600' : 'text-gray-400'
                   }`} />
-                <span className={`text-[9px] font-medium ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual' ? 'text-blue-600' : 'text-gray-400'
+                <span className={`text-[9px] font-medium ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual' ? 'text-blue-600' : 'text-gray-400'
                   }`}>Export</span>
               </button>
 
@@ -1428,24 +1431,24 @@ function TarjetaAuditoria({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual') {
+                    if (auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual') {
                       onEliminar(auditoria);
                     }
                   }}
-                  disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'}
-                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
+                  disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'}
+                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'
                       ? 'hover:bg-white cursor-pointer'
                       : 'opacity-40 cursor-not-allowed'
                     }`}
                   title={
-                    auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
+                    auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'
                       ? 'Eliminar auditoría en etapa inicial'
                       : 'Solo se puede eliminar en Planeación'
                   }
                 >
-                  <Trash2 className={`w-3.5 h-3.5 ${auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
+                  <Trash2 className={`w-3.5 h-3.5 ${auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual' ? 'text-red-600' : 'text-gray-400'
                     }`} />
-                  <span className={`text-[9px] font-medium ${auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
+                  <span className={`text-[9px] font-medium ${auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual' ? 'text-red-600' : 'text-gray-400'
                     }`}>Eliminar</span>
                 </button>
               )}
@@ -1824,21 +1827,16 @@ export function GestionAuditoriasKanbanSimple() {
   // Config Kanban centralizada (incluye etapas dinámicas sincronizadas con backend)
   const kanbanConfig = useKanbanConfig();
   const columnasKanban = useMemo<KanbanColumna[]>(() => {
-    const etapasEfectivas = construirEtapasKanbanAuditoria(
-      kanbanConfig.loaded ? kanbanConfig.etapasKanban : undefined,
-    );
+    if (!kanbanConfig.loaded || !kanbanConfig.etapasKanban) return [];
 
-    const columnasConfiguradas = etapasEfectivas
-      .map((etapa) => ({
-        id: etapa.id,
-        titulo: etapa.titulo,
-        count: 0,
-        icono: iconoParaEstadoAuditoria(etapa.id, etapa.accentColor),
-        diasEstimados: etapa.diasEstimados,
-        accentColor: etapa.accentColor,
-      }));
-
-    return columnasConfiguradas.length > 0 ? columnasConfiguradas : COLUMNAS_KANBAN_FALLBACK;
+    return kanbanConfig.etapasKanban.map((etapa) => ({
+      id: etapa.nombre,
+      titulo: etapa.nombre,
+      count: 0,
+      icono: iconoParaEstadoAuditoria(etapa.nombre, etapa.color || '#6366F1'),
+      diasEstimados: etapa.slaDias,
+      accentColor: etapa.color || '#6366F1',
+    }));
   }, [kanbanConfig.loaded, kanbanConfig.etapasKanban]);
 
   // ✅ OBTENER USUARIO ACTUAL PARA FILTROS
@@ -2147,7 +2145,7 @@ export function GestionAuditoriasKanbanSimple() {
           codigo: audProg.codigo,
           titulo: audProg.titulo,
           descripcion: audProg.descripcion,
-          estado: 'Plan Anual', // ← Comienzan en Plan Anual
+          estado: 'Programa Anual', // ← Comienzan en Plan Anual
           riesgo: 'Medio',
           semaforo: 'verde',
           territorial: audProg.territorial,
@@ -2298,7 +2296,7 @@ export function GestionAuditoriasKanbanSimple() {
 
     // Si la auditoría está en Planeación, abrimos el wizard de inicio (RF004)
     // De lo contrario, abrimos el expediente completo
-    if (auditoria.estado === 'Plan Anual') {
+    if (auditoria.estado === 'Programa Anual') {
       setModalInicioAuditoriaOpen(true);
     } else {
       setModalExpedienteOpen(true);
@@ -2441,7 +2439,6 @@ export function GestionAuditoriasKanbanSimple() {
         riesgosIdentificados: data.riesgosIdentificados || [],
         controlesAplicar: data.controlesAplicar || [],
         auditorLiderId: data.auditorLider || undefined,
-        auditorAsignadoId: data.auditorAsignado || undefined,
         supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
         // Responsable del Área Auditada (Paso 2 del formulario). Se envía en campos
@@ -2462,7 +2459,7 @@ export function GestionAuditoriasKanbanSimple() {
         // Etapa 3: Comunicación
         ...(fechaInicioComunicacionCalculada && { fechaInicioComunicacion: fechaInicioComunicacionCalculada }),
         // ✅ Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
-        estadoKanban: 'Plan Anual',
+        estadoKanban: 'Programa Anual',
         // ✅ Vinculación con Plan Anual
         planAnualId: data.planAnualId || vigenciaCtx?.planActivoId || undefined,
         planAnualAño: data.planAnualAño || vigenciaActiva || undefined,
@@ -2733,7 +2730,7 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
-      'Plan Anual': null,
+      'Programa Anual': null,
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
       'Comunicación': 'Comunicación',
@@ -2823,7 +2820,7 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // ✅ MEJORADO: Ahora envía el estado Kanban directamente al backend
-  // El backend soporta todos los estados: 'Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
+  // El backend soporta todos los estados: 'Programa Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
   const mapearEstadoAFaseBackend = (estado: string): string => {
     // Ahora enviamos el estado Kanban directamente, el backend lo normaliza
     return estado;
@@ -2859,7 +2856,7 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
-      'Plan Anual': null,
+      'Programa Anual': null,
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
       'Comunicación': 'Comunicación',
@@ -3723,12 +3720,12 @@ export function GestionAuditoriasKanbanSimple() {
 
                         <Badge
                           style={{
-                            background: auditoria.estado === 'Plan Anual' ? '#EEF2FF' :
+                            background: auditoria.estado === 'Programa Anual' ? '#EEF2FF' :
                               auditoria.estado === 'Planeación' ? '#EFF6FF' :
                                 auditoria.estado === 'Ejecución' ? '#FEF3C7' :
                                   auditoria.estado === 'Comunicación' ? '#DBEAFE' :
                                     auditoria.estado === 'Seguimiento' ? '#E0E7FF' : '#D1FAE5',
-                            color: auditoria.estado === 'Plan Anual' ? '#3730A3' :
+                            color: auditoria.estado === 'Programa Anual' ? '#3730A3' :
                               auditoria.estado === 'Planeación' ? '#1E40AF' :
                                 auditoria.estado === 'Ejecución' ? '#B45309' :
                                   auditoria.estado === 'Comunicación' ? '#1E3A8A' :

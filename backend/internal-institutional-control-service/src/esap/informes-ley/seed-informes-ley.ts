@@ -370,6 +370,13 @@ export async function seedInformesLey(dataSource: DataSource): Promise<void> {
 
   console.log('📊 Creando 20 Informes de Ley obligatorios...');
 
+  try {
+    await dataSource.query(`ALTER TABLE control_interno.informe_ley DROP CONSTRAINT IF EXISTS informe_ley_periodicidad_check`);
+    console.log('✅ Restricción "informe_ley_periodicidad_check" eliminada para permitir nuevas periodicidades.');
+  } catch (err: any) {
+    console.warn(`⚠️ Omitiendo eliminación de restricción (puede que no exista): ${err.message}`);
+  }
+
   for (const informeData of INFORMES_LEY_SEED) {
     const existente = await repository.findOne({ where: { codigo: informeData.codigo } });
 

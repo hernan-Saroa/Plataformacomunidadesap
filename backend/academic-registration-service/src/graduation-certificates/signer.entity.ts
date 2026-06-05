@@ -21,15 +21,9 @@ export class Signer {
   @Column({ length: 255, nullable: true })
   department: string;
 
-  @Column({ length: 255, nullable: true })
-  email: string;
-
   // Firma digital
   @Column({ name: 'signature_url', type: 'text', nullable: true })
   signatureUrl: string;
-
-  @Column({ name: 'signature_filename', length: 255, nullable: true })
-  signatureFilename: string;
 
   // Estado
   @Column({ name: 'is_active', type: 'boolean', default: true })
