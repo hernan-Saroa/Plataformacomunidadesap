@@ -102,9 +102,20 @@ export async function seedTablerosKanban(dataSource: DataSource) {
       estado: EstadoEtapa.INTERMEDIA,
     },
     {
+      nombre: 'Seguimiento',
+      descripcion: 'Seguimiento a planes de mejoramiento y hallazgos',
+      orden: 5,
+      color: '#06B6D4',
+      tiempoSLA: 30,
+      limiteWIP: 999,
+      notificarVencimiento: true,
+      diasAnticipacionAlerta: 5,
+      estado: EstadoEtapa.INTERMEDIA,
+    },
+    {
       nombre: 'Finalizada',
       descripcion: 'Auditoría completada (requiere documento de cierre)',
-      orden: 5,
+      orden: 6,
       color: '#6B7280',
       tiempoSLA: 0,
       limiteWIP: 999,
@@ -132,10 +143,24 @@ export async function seedTablerosKanban(dataSource: DataSource) {
       await etapaRepo.save(etapa);
       console.log(`✅ Etapa agregada: ${config.nombre}`);
     } else {
-      // ⚠️ IMPORTANTE: No usamos Object.assign(etapa, config) aquí.
-      // Si la etapa ya existe, respetamos la configuración que esté guardada
-      // en la base de datos (por si un usuario la modificó desde la UI).
-      console.log(`⏭️ Etapa "${config.nombre}" ya existe, se omite sobrescritura.`);
+      // ⚠️ IMPORTANTE: No sobrescribimos toda la etapa para respetar SLA/WIP de la UI,
+      // pero ASEGURAMOS que sea visible y tenga el orden correcto, por si estaba oculta.
+      let needsSave = false;
+      if (etapa.visible === false) {
+        etapa.visible = true;
+        needsSave = true;
+      }
+      if (etapa.orden !== config.orden) {
+        etapa.orden = config.orden;
+        needsSave = true;
+      }
+      
+      if (needsSave) {
+        await etapaRepo.save(etapa);
+        console.log(`🔄 Etapa actualizada (visible/orden): ${config.nombre}`);
+      } else {
+        console.log(`⏭️ Etapa "${config.nombre}" ya existe y está correcta, se omite sobrescritura.`);
+      }
     }
   }
 

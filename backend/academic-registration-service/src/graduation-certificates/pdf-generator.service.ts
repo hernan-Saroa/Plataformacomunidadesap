@@ -53,6 +53,32 @@ export class PdfGeneratorService {
     return candidates[0];
   }
 
+  private normalizePublicBaseUrl(value?: string | null): string | null {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    try {
+      return new URL(raw).origin.replace(/\/$/, '');
+    } catch (_) {
+      return raw.replace(/\/$/, '');
+    }
+  }
+
+  private resolveValidationBaseUrl(
+    snapshotBaseUrl?: string | null,
+    frontendBaseUrl?: string,
+  ): string {
+    return (
+      this.normalizePublicBaseUrl(frontendBaseUrl) ||
+      this.normalizePublicBaseUrl(process.env.PUBLIC_FRONTEND_URL) ||
+      this.normalizePublicBaseUrl(process.env.FRONTEND_PUBLIC_URL) ||
+      this.normalizePublicBaseUrl(process.env.VITE_PUBLIC_FRONTEND_URL) ||
+      this.normalizePublicBaseUrl(process.env.FRONTEND_URL) ||
+      this.normalizePublicBaseUrl(snapshotBaseUrl) ||
+      'http://localhost:3000'
+    );
+  }
+
   /**
    * Generar PDF del certificado de graduado
    */
@@ -72,11 +98,10 @@ export class PdfGeneratorService {
     const headerImg = this.loadImageDataUrl('img_primera.png');
     const footerImg = this.loadImageDataUrl('img_segunda.png');
 
-    const baseUrl =
-      templateSnapshot?.validationBaseUrl ||
-      frontendBaseUrl ||
-      process.env.FRONTEND_URL ||
-      'https://certificados.esap.edu.co';
+    const baseUrl = this.resolveValidationBaseUrl(
+      templateSnapshot?.validationBaseUrl,
+      frontendBaseUrl,
+    );
     const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
 
     const qrCodeDataUrl = await this.generateQRCode(validationUrl);
