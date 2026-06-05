@@ -22,7 +22,14 @@ import { motion, AnimatePresence } from 'motion/react';
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
-import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi, invalidatePlanAnualListCache } from './services/plan-anual';
+import {
+  usePlanAnualCompleto,
+  useCreatePlanAnual,
+  actividadesApi,
+  planAnualApi,
+  invalidatePlanAnualListCache,
+  normalizarAdjuntosTareaDesdeBackend,
+} from './services/plan-anual';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { esUuidPersona, idPersonaParaPlanAnual } from '../utils/persona-id-plan-anual';
@@ -1446,7 +1453,7 @@ function mapTareasSeguimientoDesdeBackend(
     requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
     requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
     observaciones: t.observaciones || '',
-    adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+    adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
     puntoControlId: t.puntoControlId,
   }));
 }
