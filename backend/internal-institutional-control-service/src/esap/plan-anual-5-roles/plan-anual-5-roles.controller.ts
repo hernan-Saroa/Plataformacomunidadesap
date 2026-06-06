@@ -13,8 +13,27 @@ import {
   BadRequestException,
   UseGuards,
   Req,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, resolve as pathResolve } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import type { Response } from 'express';
+import { Public } from '../../auth/decorators/public.decorator';
+
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination: string;
+  filename: string;
+  path: string;
+  buffer: Buffer;
+}
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { UpdateRolPlanAnual5Dto } from './dto/update-rol-plan-anual-5.dto';
@@ -405,6 +424,101 @@ export class PlanAnual5RolesController {
       throw new BadRequestException('actividadId es requerido');
     }
     return this.service.addAdjunto(actividadId, createDto);
+  }
+
+  /**
+   * Sube un archivo real al servidor y devuelve metadatos para adjuntosTarea.
+   * POST /plan-anual-5-roles/actividades/:actividadId/adjuntos/upload
+   */
+  @Post('actividades/:actividadId/adjuntos/upload')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_FOLLOW_UP)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = process.env.PLAN_ANUAL_UPLOAD_PATH
+            || process.env.UPLOAD_PATH
+            || './uploads/plan-anual/temp';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async uploadAdjuntoArchivo(
+    @Param('actividadId') actividadId: string,
+    @UploadedFile() file: MulterFile,
+    @Body() body: { tareaId?: string },
+    @Req() req: { user?: { username?: string; userId?: string } },
+  ) {
+    if (!actividadId || actividadId === 'undefined') {
+      throw new BadRequestException('actividadId es requerido');
+    }
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+    return this.service.uploadAdjuntoArchivo(actividadId, file, {
+      tareaId: body?.tareaId,
+      cargadoPor: req.user?.username,
+    });
+  }
+
+  @Get('adjuntos/:adjuntoId/download')
+  @Public()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_FOLLOW_UP)
+  async downloadAdjunto(@Param('adjuntoId') adjuntoId: string, @Res() res: Response) {
+    if (!adjuntoId || adjuntoId === 'undefined') {
+      throw new BadRequestException('adjuntoId es requerido');
+    }
+    const adjunto = await this.service.obtenerAdjuntoParaDescarga(adjuntoId);
+    const mime = (adjunto.tipo || 'application/octet-stream').trim();
+    const encodedFilename = encodeURIComponent(adjunto.nombre);
+    res.setHeader('Content-Type', `${mime}; charset=utf-8`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${adjunto.nombre}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    if (adjunto.tamanio) {
+      res.setHeader('Content-Length', String(adjunto.tamanio));
+    }
+    return res.sendFile(pathResolve(adjunto.rutaArchivo));
+  }
+
+  @Get('adjuntos/:adjuntoId/preview')
+  @Public()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_FOLLOW_UP)
+  async previewAdjunto(@Param('adjuntoId') adjuntoId: string, @Res() res: Response) {
+    if (!adjuntoId || adjuntoId === 'undefined') {
+      throw new BadRequestException('adjuntoId es requerido');
+    }
+    const adjunto = await this.service.obtenerAdjuntoParaDescarga(adjuntoId);
+    const mime = (adjunto.tipo || '').trim().toLowerCase();
+    const esImagen = mime.startsWith('image/');
+    const esPdf = mime === 'application/pdf' || mime.startsWith('application/pdf');
+    if (!esImagen && !esPdf) {
+      throw new BadRequestException('Este tipo de archivo no se puede previsualizar');
+    }
+    const encodedFilename = encodeURIComponent(adjunto.nombre);
+    res.setHeader('Content-Type', `${adjunto.tipo}; charset=utf-8`);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${adjunto.nombre}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    return res.sendFile(pathResolve(adjunto.rutaArchivo));
   }
 
   @Delete('adjuntos/:adjuntoId')

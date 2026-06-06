@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { existsSync, mkdirSync, unlinkSync, renameSync } from 'fs';
+import { extname, resolve as pathResolve } from 'path';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
@@ -1718,10 +1720,106 @@ export class PlanAnual5RolesService {
     return this.adjuntoRepository.save(adjunto);
   }
 
+  private static readonly EXTENSIONES_ADJUNTO_PERMITIDAS = new Set([
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.zip',
+  ]);
+
+  async uploadAdjuntoArchivo(
+    actividadId: string,
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      path: string;
+    },
+    meta?: { tareaId?: string; cargadoPor?: string },
+  ): Promise<{
+    id: string;
+    nombre: string;
+    tipo: string;
+    tamanio: number;
+    fecha: string;
+    urlDownload: string;
+    urlPreview: string;
+    tareaId?: string;
+  }> {
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    const ext = extname(file.originalname || '').toLowerCase();
+    if (!PlanAnual5RolesService.EXTENSIONES_ADJUNTO_PERMITIDAS.has(ext)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido (${ext || 'sin extensión'}). Use PDF, Word, Excel, imágenes o ZIP.`,
+      );
+    }
+
+    const uploadBase = process.env.PLAN_ANUAL_UPLOAD_PATH
+      || process.env.UPLOAD_PATH
+      || './uploads/plan-anual';
+    const dir = `${uploadBase}/${actividadId}`.replace(/\\/g, '/');
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const storedRelative = `${actividadId}/${randomName}${ext}`;
+    const rutaFinal = `${uploadBase}/${storedRelative}`.replace(/\\/g, '/');
+
+    renameSync(file.path, rutaFinal);
+
+    const adjunto = this.adjuntoRepository.create({
+      actividadId,
+      nombre: file.originalname,
+      tipo: file.mimetype,
+      tamanio: file.size,
+      rutaArchivo: rutaFinal,
+      cargadoPor: meta?.cargadoPor,
+      url: `/plan-anual-5-roles/adjuntos/{id}/download`,
+    });
+    const saved = await this.adjuntoRepository.save(adjunto);
+    saved.url = `/plan-anual-5-roles/adjuntos/${saved.id}/download`;
+    await this.adjuntoRepository.save(saved);
+
+    return {
+      id: saved.id,
+      nombre: saved.nombre,
+      tipo: saved.tipo,
+      tamanio: Number(saved.tamanio) || file.size,
+      fecha: (saved.fechaCarga || new Date()).toISOString(),
+      urlDownload: `/plan-anual-5-roles/adjuntos/${saved.id}/download`,
+      urlPreview: `/plan-anual-5-roles/adjuntos/${saved.id}/preview`,
+      tareaId: meta?.tareaId,
+    };
+  }
+
+  async obtenerAdjuntoParaDescarga(adjuntoId: string): Promise<AdjuntoActividadPlanAnual5> {
+    const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
+    if (!adjunto) {
+      throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+    if (!adjunto.rutaArchivo || !existsSync(adjunto.rutaArchivo)) {
+      throw new BadRequestException('El archivo no existe en el servidor');
+    }
+    return adjunto;
+  }
+
   async deleteAdjunto(adjuntoId: string): Promise<void> {
     const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
     if (!adjunto) {
       throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+
+    if (adjunto.rutaArchivo && existsSync(adjunto.rutaArchivo)) {
+      try {
+        unlinkSync(adjunto.rutaArchivo);
+      } catch {
+        // No bloquear borrado en BD si el archivo ya no está en disco
+      }
     }
 
     await this.adjuntoRepository.remove(adjunto);
