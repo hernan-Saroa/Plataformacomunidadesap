@@ -1199,7 +1199,11 @@ export class ProcessController {
     status: 200,
     description: 'Lista de noticias radicadas con documentos',
   })
-  async getRadicatedNewsWithDocuments() {
+  async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
+    const access = await this.getSensitiveAccessContext(req);
+    if (!access.fullAccess) {
+      return [];
+    }
     return await this.processService.findRadicatedNewsWithDocuments();
   }
 
