@@ -15,6 +15,17 @@ import {
 import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
 import { SemaforoSeguimientoPAI } from '../plan-anual-auditoria/components/SemaforoSeguimientoPAI';
+import {
+  calcularAvanceActividad,
+  calcularAvancePromedioActividades,
+  calcularPorcentajeCortes,
+  corteEstaCumplido,
+  normalizarTareasConCortes,
+  estadoActividadDesdePorcentaje,
+  estadoBackendDesdePorcentaje,
+  textoEvaluacionDesdeAvance,
+  resumenEvidenciasObservacionesTareas,
+} from '../utils/avancePlanAnual';
 import { ConfiguracionEvidencias, CONFIGURACIONES_PREDEFINIDAS } from './SistemaEvidenciasActividades';
 import { 
   ModalConfiguracionPuntosControl, 
@@ -27,7 +38,16 @@ import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
-import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
+import {
+  useSaveEvidencias,
+  actividadesApi,
+  planAnualApi,
+  adjuntosApi,
+  descargarAdjuntoTareaPlanAnual,
+  normalizarAdjuntosTareaDesdeBackend,
+  type CreateActividadDto,
+} from './services/plan-anual';
+import { VisorEvidenciaPlanAnualModal } from './VisorEvidenciaPlanAnualModal';
 import { configuracionesProfesionalesOCIApi } from './services/api';
 // Servicio para vinculación de auditorías con Rol 4
 import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -213,7 +233,7 @@ interface TareaSeguimiento {
   // S& Requisitos por tarea (antes estaban al nivel de actividad)
   requiereObservaciones?: boolean;
   requiereAdjuntos?: boolean;
-  adjuntosTarea?: { nombre: string; url: string; fecha: string }[];
+  adjuntosTarea?: { id?: string; nombre: string; url: string; fecha: string }[];
   // S& Fecha de entrega opcional
   fechaEntrega?: string;
   // S& Evaluación por el responsable
@@ -268,6 +288,11 @@ interface Actividad {
 
   // Soft delete
   activo?: boolean;
+
+  /** Origen del %: manual, auditorías (backend) o planes de mejoramiento */
+  tipoCalculo?: 'manual' | 'auditorias' | 'planes_mejoramiento';
+  totalAuditoriasProgramadas?: number;
+  totalAuditoriasFinalizadas?: number;
 }
 
 interface EntradaSeguimiento {
@@ -333,27 +358,6 @@ function contarObservaciones(obs: ObservacionCumplimiento[] | string | undefined
  */
 function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined): boolean {
   return contarObservaciones(obs) > 0;
-}
-
-/**
- * Calcula el % de avance basado en cortes de seguimiento.
- * Solo cuenta los cortes cuya fechaProgramada <= hoy.
- * Un corte se considera cumplido si tiene 01 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
- */
-function calcularPorcentajeCortes(actividad: Actividad): number {
-  const cortes = actividad.puntosControl;
-  const entradas = actividad.entradasSeguimiento || [];
-  if (!cortes || cortes.length === 0) return actividad.porcentajeAvance;
-
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-
-  // Cumplido = tiene al menos una entrada, sin importar si la fecha ya venció o es futura
-  const cumplidos = cortes.filter(corte =>
-    entradas.some(e => e.puntoControlId === corte.id)
-  );
-
-  return Math.round((cumplidos.length / cortes.length) * 100);
 }
 
 /** Días restantes hasta una fecha (negativo = ya venció) */
@@ -544,17 +548,120 @@ const WRAPPER_PASOS_SOLO_LECTURA =
   '[&_.text-orange-600]:!text-gray-500 [&_.text-orange-900]:!text-gray-700 ' +
   '[&_.text-red-700]:!text-gray-600 [&_.border-red-200]:!border-gray-300 [&_.bg-green-100]:!bg-gray-200';
 
+async function descargarEvidenciaTarea(adj: { id?: string; nombre: string; url?: string }) {
+  try {
+    await descargarAdjuntoTareaPlanAnual(adj);
+  } catch (err) {
+    console.error('Error descargando evidencia:', err);
+    toast.error(err instanceof Error ? err.message : 'No se pudo descargar el archivo');
+  }
+}
+
+function truncarNombreArchivo(nombre: string, maxLen = 42): string {
+  const n = (nombre || '').trim() || 'Archivo';
+  if (n.length <= maxLen) return n;
+  const dot = n.lastIndexOf('.');
+  if (dot > 0 && n.length - dot <= 10) {
+    const ext = n.slice(dot);
+    const base = n.slice(0, dot);
+    const keep = Math.max(maxLen - ext.length - 1, 10);
+    return `${base.slice(0, keep)}…${ext}`;
+  }
+  return `${n.slice(0, maxLen - 1)}…`;
+}
+
+function ListaEvidenciasTarea({
+  adjuntos,
+  className = 'ml-7',
+  puedeEliminar = false,
+  onEliminar,
+}: {
+  adjuntos: Array<{ id?: string; nombre: string; url?: string }>;
+  className?: string;
+  puedeEliminar?: boolean;
+  onEliminar?: (adj: { id?: string; nombre: string; url?: string }) => void;
+}) {
+  const [previewAdj, setPreviewAdj] = useState<{
+    id?: string;
+    nombre: string;
+    url?: string;
+  } | null>(null);
+
+  if (!adjuntos.length) return null;
+  return (
+    <>
+      <div className={`${className} mt-1.5 rounded-md border border-slate-200 bg-slate-50 overflow-hidden`}>
+        <p className="px-2 py-1 text-[9px] font-semibold text-slate-600 border-b border-slate-200 bg-white/60">
+          {adjuntos.length} evidencia{adjuntos.length !== 1 ? 's' : ''}
+        </p>
+        <ul className="max-h-36 overflow-y-auto overscroll-contain">
+          {adjuntos.map((adj, i) => (
+            <li
+              key={adj.id || `${adj.nombre}-${i}`}
+              className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-100 last:border-b-0 min-w-0 hover:bg-white"
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden />
+              <span className="flex-1 min-w-0 text-[11px] text-gray-800 truncate" title={adj.nombre}>
+                {truncarNombreArchivo(adj.nombre)}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewAdj(adj);
+                }}
+                className="shrink-0 p-1 rounded-md hover:bg-indigo-100 text-indigo-700"
+                title="Ver evidencia"
+                aria-label={`Ver ${adj.nombre}`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  descargarEvidenciaTarea(adj);
+                }}
+                className="shrink-0 p-1 rounded-md hover:bg-blue-100 text-blue-700"
+                title="Descargar archivo"
+                aria-label={`Descargar ${adj.nombre}`}
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              {puedeEliminar && adj.id && onEliminar && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEliminar(adj);
+                  }}
+                  className="shrink-0 p-1 rounded-md hover:bg-red-100 text-red-600"
+                  title="Eliminar evidencia"
+                  aria-label={`Eliminar ${adj.nombre}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <VisorEvidenciaPlanAnualModal
+        adj={previewAdj}
+        onCerrar={() => setPreviewAdj(null)}
+        onDescargar={(adj) => descargarEvidenciaTarea(adj)}
+      />
+    </>
+  );
+}
+
 function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
-  const tareasConCorte = tareasOriginales.map((t: any, tIdx: number) => ({
+  const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
     responsables: normalizarResponsablesTarea(t.responsables),
-    puntoControlId:
-      t.puntoControlId
-      || t.punto_control_id
-      || puntosControlActividad[tIdx % Math.max(puntosControlActividad.length, 1)]?.id
-      || null,
+    adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
   const actBase = act as ActividadBase & { fecha_corte?: string };
   const reqAuth = leerRequiereAutorizacionJefeOCIDesdeActividad(act);
@@ -5690,13 +5797,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     const completadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'COMPLETADA').length, 0);
     const enEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length, 0);
     
-    const avance = total > 0 
-      ? Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => {
-          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
-                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
-          return s + pct;
-        }, 0), 0) / total) 
-      : 0;
+    const todasActividades = plan.roles.flatMap((rol) => rol.actividades.filter((a) => a.activo !== false));
+    const avance = calcularAvancePromedioActividades(todasActividades);
 
     return { totalActividades: total, actividadesAsignadas: asignadas, actividadesCompletadas: completadas, actividadesEnEjecucion: enEjecucion, avancePromedio: avance };
   }, [plan.roles]);
@@ -5936,8 +6038,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol) => {
         rol.actividades.forEach((act, actIdx) => {
           totalActividadesCount++;
-          const pctActividad = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
-                             : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          const pctActividad = calcularAvanceActividad(act).porcentaje;
           totalAvanceSuma += pctActividad;
 
           const fInicio = act.fechaInicio ? formatearFechaExportacion(act.fechaInicio) : '';
@@ -6038,19 +6139,17 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         currentY += 7;
 
         // Calcular avance promedio del rol
-        const sumaAvanceRol = rol.actividades.reduce((s, a) => {
-          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
-                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
-          return s + pct;
-        }, 0);
+        const sumaAvanceRol = rol.actividades.reduce(
+          (s, a) => s + calcularAvanceActividad(a).porcentaje,
+          0,
+        );
         const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
 
         sumaAvanceTotal += sumaAvanceRol;
         totalActividadesCount += rol.actividades.length;
 
         const actividadesData = rol.actividades.map((act, idx) => {
-          const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
-                    : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          const pctFinal = calcularAvanceActividad(act).porcentaje;
           // Responsable: prioridad responsables[]   responsable   'No asignado'
           const actX = act as any;
           let responsablePdf = '';
@@ -6613,6 +6712,7 @@ function SeccionGestionYSeguimiento({
   // TAREAS DE SEGUIMIENTO  Monitoreo (no modifica el plan)
   // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const [formTareaActividadId, setFormTareaActividadId] = useState<string | number | null>(null);
+  const [formTareaCorteKey, setFormTareaCorteKey] = useState<string | null>(null);
   const [nuevaTarea, setNuevaTarea] = useState({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
   const [guardandoTarea, setGuardandoTarea] = useState(false);
   const [comentarioTareaId, setComentarioTareaId] = useState<string | null>(null);
@@ -6630,7 +6730,16 @@ function SeccionGestionYSeguimiento({
       requiereAdjuntos: !!t.requiereAdjuntos,
       requiereObservaciones: !!t.requiereObservaciones,
       observaciones: t.observaciones || '',
-      adjuntosTarea: t.adjuntosTarea || [],
+      adjuntosTarea: (t.adjuntosTarea || [])
+        .filter((a) => a.id || (a.url && !a.url.startsWith('blob:')))
+        .map((a) => ({
+          id: a.id,
+          nombre: a.nombre,
+          url: a.url?.startsWith('blob:') ? undefined : a.url,
+          fecha: a.fecha,
+        }))
+        .filter((a) => a.id && a.url),
+      puntoControlId: t.puntoControlId || null,
     }));
 
   // Verificar si el usuario actual puede gestionar tareas de seguimiento
@@ -6648,7 +6757,11 @@ function SeccionGestionYSeguimiento({
   };
 
   // Agregar nueva tarea de seguimiento a una actividad
-  const agregarTareaSeguimiento = async (rolNumero: number, actividadId: string | number) => {
+  const agregarTareaSeguimiento = async (
+    rolNumero: number,
+    actividadId: string | number,
+    puntoControlId?: string,
+  ) => {
     if (!nuevaTarea.descripcion.trim()) {
       toast.error('La descripción de la tarea es obligatoria');
       return;
@@ -6667,6 +6780,7 @@ function SeccionGestionYSeguimiento({
         observaciones: '',
         requiereAdjuntos: nuevaTarea.requiereAdjuntos,
         requiereObservaciones: nuevaTarea.requiereObservaciones,
+        ...(puntoControlId ? { puntoControlId } : {}),
       };
       const tareasActualizadas = [...tareasActuales, nuevaTareaObj];
       // Actualizar en el plan local
@@ -6690,6 +6804,7 @@ function SeccionGestionYSeguimiento({
       toast.success('Tarea de seguimiento agregada');
       setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
       setFormTareaActividadId(null);
+      setFormTareaCorteKey(null);
     } catch (err) {
       console.error('Error al agregar tarea:', err);
       toast.error('Error al agregar la tarea');
@@ -6718,12 +6833,42 @@ function SeccionGestionYSeguimiento({
     const tareasActualizadas = tareasActuales.map(t => 
       t.id === tareaId ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString() : undefined } : t
     );
+
+    const actividadConTareas = { ...actividadActual, tareasSeguimiento: tareasActualizadas } as Actividad;
+    const avanceRes = calcularAvanceActividad(actividadConTareas, opcionesCalculoAvance);
+    let pctActividad = avanceRes.porcentaje;
+    let estadoActividad = estadoActividadDesdePorcentaje(pctActividad);
+    if (
+      pctActividad >= 100 &&
+      actividadActual.requiereAutorizacionJefeOCI &&
+      !actividadActual.autorizadaPorJefeOCI
+    ) {
+      pctActividad = 99;
+      estadoActividad = 'EN_EJECUCION';
+    }
+    const evaluacionTexto =
+      avanceRes.fuente === 'tareas' || avanceRes.fuente === 'cortes'
+        ? textoEvaluacionDesdeAvance(pctActividad, avanceRes.fuente)
+        : actividadActual.evaluacion;
+
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
         if (rol.numero === rolNumero) {
           return { ...rol, actividades: rol.actividades.map(act => 
-            act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+            act.id === actividadId
+              ? {
+                  ...act,
+                  tareasSeguimiento: tareasActualizadas,
+                  ...(avanceRes.fuente === 'tareas' || avanceRes.fuente === 'cortes'
+                    ? {
+                        porcentajeAvance: pctActividad,
+                        evaluacion: evaluacionTexto,
+                        estado: estadoActividad,
+                      }
+                    : {}),
+                }
+              : act
           )};
         }
         return rol;
@@ -6733,10 +6878,90 @@ function SeccionGestionYSeguimiento({
     // Persistir
     if (typeof actividadId === 'string' && actividadId.length >= 32) {
       const backendTareas = mapTareasParaBackend(tareasActualizadas);
-      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
+      const payload: Record<string, unknown> = { tareas_seguimiento: backendTareas };
+      if (
+        (avanceRes.fuente === 'tareas' || avanceRes.fuente === 'cortes') &&
+        avanceRes.puedePersistirDesdeFront
+      ) {
+        payload.porcentaje_avance = pctActividad;
+        payload.evaluacion = evaluacionTexto;
+        payload.estado = estadoBackendDesdePorcentaje(pctActividad);
+      }
+      actividadesApi.update(String(actividadId), payload as any)
         .catch(e => console.error('Error persistiendo tarea:', e));
     }
     toast.success(tareasActualizadas.find(t => t.id === tareaId)?.completada ? 'Tarea completada' : 'Tarea reabierta');
+  };
+
+  const persistirTareasYRecalcularAvance = async (
+    rolNumero: number,
+    actividadId: string | number,
+    tareasActualizadas: TareaSeguimiento[],
+  ) => {
+    const actividadActual = plan.roles
+      .find((r) => r.numero === rolNumero)
+      ?.actividades.find((a) => a.id === actividadId);
+    if (!actividadActual) return;
+
+    const actividadConTareas = { ...actividadActual, tareasSeguimiento: tareasActualizadas } as Actividad;
+    const avanceRes = calcularAvanceActividad(actividadConTareas, opcionesCalculoAvance);
+    let pctActividad = avanceRes.porcentaje;
+    let estadoActividad = estadoActividadDesdePorcentaje(pctActividad);
+    if (
+      pctActividad >= 100 &&
+      actividadActual.requiereAutorizacionJefeOCI &&
+      !actividadActual.autorizadaPorJefeOCI
+    ) {
+      pctActividad = 99;
+      estadoActividad = 'EN_EJECUCION';
+    }
+    const evaluacionTexto =
+      avanceRes.fuente === 'tareas' || avanceRes.fuente === 'cortes'
+        ? textoEvaluacionDesdeAvance(pctActividad, avanceRes.fuente)
+        : actividadActual.evaluacion;
+
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map((rol) => {
+        if (rol.numero !== rolNumero) return rol;
+        return {
+          ...rol,
+          actividades: rol.actividades.map((act) =>
+            act.id === actividadId
+              ? {
+                  ...act,
+                  tareasSeguimiento: tareasActualizadas,
+                  ...(avanceRes.fuente === 'tareas' || avanceRes.fuente === 'cortes'
+                    ? {
+                        porcentajeAvance: pctActividad,
+                        evaluacion: evaluacionTexto,
+                        estado: estadoActividad,
+                      }
+                    : {}),
+                }
+              : act,
+          ),
+        };
+      }),
+    };
+    onActualizar(planActualizado);
+
+    if (typeof actividadId === 'string' && actividadId.length >= 32) {
+      const payload: Record<string, unknown> = {
+        tareas_seguimiento: mapTareasParaBackend(tareasActualizadas),
+      };
+      if (
+        (avanceRes.fuente === 'tareas' || avanceRes.fuente === 'cortes') &&
+        avanceRes.puedePersistirDesdeFront
+      ) {
+        payload.porcentaje_avance = pctActividad;
+        payload.evaluacion = evaluacionTexto;
+        payload.estado = estadoBackendDesdePorcentaje(pctActividad);
+      }
+      await actividadesApi.update(String(actividadId), payload as any).catch((e) =>
+        console.error('Error persistiendo tarea:', e),
+      );
+    }
   };
 
   // Agregar comentario/observación a una tarea
@@ -6745,27 +6970,19 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
-    const tareasActualizadas = tareasActuales.map(t => 
-      t.id === tareaId ? { ...t, observaciones: comentario.trim(), evaluada: true, fechaEvaluacion: new Date().toISOString() } : t
-    );
-    const planActualizado = {
-      ...plan,
-      roles: plan.roles.map(rol => {
-        if (rol.numero === rolNumero) {
-          return { ...rol, actividades: rol.actividades.map(act => 
-            act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
-          )};
-        }
-        return rol;
-      })
-    };
-    onActualizar(planActualizado);
-    if (typeof actividadId === 'string' && actividadId.length >= 32) {
-      const backendTareas = mapTareasParaBackend(tareasActualizadas);
-      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
-        .catch(e => console.error('Error persistiendo comentario:', e));
-    }
-    toast.success('Comentario agregado a la tarea');
+    const lineaNueva = `[${new Date().toLocaleString('es-CO')}] ${comentario.trim()}`;
+    const tareasActualizadas = tareasActuales.map((t) => {
+      if (t.id !== tareaId) return t;
+      const prev = (t.observaciones || '').trim();
+      return {
+        ...t,
+        observaciones: prev ? `${prev}\n\n${lineaNueva}` : lineaNueva,
+        evaluada: true,
+        fechaEvaluacion: new Date().toISOString(),
+      };
+    });
+    await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
+    toast.success('Observación agregada a la tarea');
     setComentarioTareaId(null);
     setTextoComentarioTarea('');
   };
@@ -6779,39 +6996,94 @@ function SeccionGestionYSeguimiento({
     if (!files || files.length === 0) return;
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
-    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
-    const nuevosAdjuntos = Array.from(files).map(file => ({
-      nombre: file.name,
-      url: URL.createObjectURL(file),
-      fecha: new Date().toISOString(),
-    }));
-    const tareasActualizadas = tareasActuales.map(t =>
-      t.id === tareaId
-        ? { ...t, adjuntosTarea: [...(t.adjuntosTarea || []), ...nuevosAdjuntos] }
-        : t
-    );
-    const planActualizado = {
-      ...plan,
-      roles: plan.roles.map(rol => {
-        if (rol.numero === rolNumero) {
-          return {
-            ...rol,
-            actividades: rol.actividades.map(act =>
-              act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
-            )
-          };
-        }
-        return rol;
-      })
-    };
-    onActualizar(planActualizado);
-    if (typeof actividadId === 'string' && actividadId.length >= 32) {
-      const backendTareas = mapTareasParaBackend(tareasActualizadas);
-      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
-        .catch(e => console.error('Error persistiendo adjuntos de tarea:', e));
+
+    if (typeof actividadId !== 'string' || actividadId.length < 32) {
+      toast.error('La actividad debe estar guardada en el servidor antes de subir evidencias');
+      return;
     }
-    toast.success(`${nuevosAdjuntos.length} adjunto(s) agregado(s) a la tarea`);
+
+    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    const nuevosAdjuntos: { id: string; nombre: string; url: string; fecha: string }[] = [];
+
+    const toastId = toast.loading(`Subiendo ${files.length} archivo(s)...`);
+    try {
+      for (const file of Array.from(files)) {
+        const resultado = await adjuntosApi.uploadTarea(String(actividadId), file, tareaId);
+        if (!resultado.success || !resultado.data) {
+          throw new Error(resultado.error || `No se pudo subir ${file.name}`);
+        }
+        nuevosAdjuntos.push({
+          id: resultado.data.id,
+          nombre: resultado.data.nombre,
+          url: resultado.data.urlDownload,
+          fecha: resultado.data.fecha,
+        });
+      }
+
+      const tareasActualizadas = tareasActuales.map(t =>
+        t.id === tareaId
+          ? { ...t, adjuntosTarea: [...(t.adjuntosTarea || []), ...nuevosAdjuntos] }
+          : t
+      );
+      await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
+      toast.success(`${nuevosAdjuntos.length} evidencia(s) guardada(s) en el servidor`, { id: toastId });
+    } catch (err) {
+      console.error('Error subiendo evidencias:', err);
+      toast.error(err instanceof Error ? err.message : 'Error al subir evidencias', { id: toastId });
+    }
   };
+
+  const eliminarAdjuntoTarea = async (
+    rolNumero: number,
+    actividadId: string | number,
+    tareaId: string,
+    adjunto: { id?: string; nombre: string },
+  ) => {
+    if (!adjunto.id) {
+      toast.error('No se puede eliminar: el archivo no está vinculado al servidor');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar la evidencia "${adjunto.nombre}"?`)) return;
+
+    const actividadActual = plan.roles
+      .find((r) => r.numero === rolNumero)
+      ?.actividades.find((a) => a.id === actividadId);
+    if (!actividadActual) return;
+
+    const toastId = toast.loading('Eliminando evidencia...');
+    try {
+      const resultado = await adjuntosApi.delete(adjunto.id);
+      if (!resultado.success) {
+        throw new Error(resultado.error || 'No se pudo eliminar el archivo');
+      }
+
+      const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+      const tareasActualizadas = tareasActuales.map((t) =>
+        t.id === tareaId
+          ? {
+              ...t,
+              adjuntosTarea: (t.adjuntosTarea || []).filter((a) => a.id !== adjunto.id),
+              ...(t.completada &&
+              t.requiereAdjuntos &&
+              (t.adjuntosTarea || []).filter((a) => a.id !== adjunto.id).length === 0
+                ? { completada: false, fechaCompletado: undefined }
+                : {}),
+            }
+          : t,
+      );
+
+      await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
+      toast.success('Evidencia eliminada', { id: toastId });
+    } catch (err) {
+      console.error('Error eliminando evidencia:', err);
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar evidencia', { id: toastId });
+    }
+  };
+
+  const puedeGestionarEvidenciasTarea = (rol: { numero: number }) =>
+    plan.estado !== 'BORRADOR' &&
+    plan.estado !== 'EN_REVISION' &&
+    puedeGestionarTareas(rol);
 
   
   const asignarResponsableInline = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
@@ -6915,8 +7187,11 @@ function SeccionGestionYSeguimiento({
   const [corteConFormAbierto, setCorteConFormAbierto] = useState<string | null>(null);
   const [formEntrada, setFormEntrada] = useState<{ texto: string; tipo: 'seguimiento' | 'hallazgo' | 'cierre' }>({ texto: '', tipo: 'seguimiento' });
   const [guardandoEntrada, setGuardandoEntrada] = useState(false);
-  const [futuroExpandido, setFuturoExpandido] = useState<Record<string, boolean>>({});
-  const [modalCorteId, setModalCorteId] = useState<string | null>(null);
+  const [modalEntradaCorte, setModalEntradaCorte] = useState<{
+    rolNumero: number;
+    actividadId: number | string;
+    puntoControlId: string;
+  } | null>(null);
 
   // Modal de confirmación para desactivar/activar actividades
   const [modalConfirmacion, setModalConfirmacion] = useState<{
@@ -7029,8 +7304,76 @@ function SeccionGestionYSeguimiento({
     totalFinalizadas: 0,
     porcentajeCumplimiento: 0,
     desglosePorTipo: {},
+    actividadId: undefined,
     cargando: true
   });
+
+  const opcionesCalculoAvance = useMemo(
+    () =>
+      cumplimientoAuditorias.cargando
+        ? undefined
+        : {
+            cumplimientoAuditorias: {
+              porcentajeCumplimiento: cumplimientoAuditorias.porcentajeCumplimiento,
+              totalProgramadas: cumplimientoAuditorias.totalProgramadas,
+              totalFinalizadas: cumplimientoAuditorias.totalFinalizadas,
+              actividadId: cumplimientoAuditorias.actividadId,
+            },
+          },
+    [cumplimientoAuditorias],
+  );
+
+  const avanceSincronizadoRef = useRef<string | null>(null);
+
+  // Alinear % guardado en BD con el cálculo por cortes/tareas (evita 0% obsoleto en pantalla)
+  useEffect(() => {
+    if (plan.estado === 'BORRADOR') return;
+    const firma = `${plan.id ?? ''}-${plan.roles.reduce((n, r) => n + r.actividades.length, 0)}`;
+    if (avanceSincronizadoRef.current === firma) return;
+
+    let huboCambio = false;
+    const rolesActualizados = plan.roles.map((rol) => ({
+      ...rol,
+      actividades: rol.actividades.map((act) => {
+        if (act.activo === false) return act;
+        const av = calcularAvanceActividad(act, opcionesCalculoAvance);
+        if (!av.puedePersistirDesdeFront) return act;
+        const guardado = act.porcentajeAvance ?? 0;
+        if (av.porcentaje === guardado) return act;
+        huboCambio = true;
+        return {
+          ...act,
+          porcentajeAvance: av.porcentaje,
+          evaluacion: textoEvaluacionDesdeAvance(av.porcentaje, av.fuente),
+          estado: estadoActividadDesdePorcentaje(av.porcentaje),
+        };
+      }),
+    }));
+
+    if (huboCambio) {
+      onActualizar({ ...plan, roles: rolesActualizados });
+      rolesActualizados.forEach((rol) => {
+        rol.actividades.forEach((act) => {
+          const av = calcularAvanceActividad(act, opcionesCalculoAvance);
+          if (
+            typeof act.id === 'string' &&
+            act.id.length >= 32 &&
+            av.puedePersistirDesdeFront &&
+            (act.porcentajeAvance ?? 0) === av.porcentaje
+          ) {
+            actividadesApi
+              .update(String(act.id), {
+                porcentaje_avance: av.porcentaje,
+                evaluacion: textoEvaluacionDesdeAvance(av.porcentaje, av.fuente),
+                estado: estadoBackendDesdePorcentaje(av.porcentaje),
+              } as any)
+              .catch(() => undefined);
+          }
+        });
+      });
+    }
+    avanceSincronizadoRef.current = firma;
+  }, [plan, opcionesCalculoAvance, onActualizar]);
 
   // Vigencia con fallback (plan puede tener vigencia o año)
   const vigenciaPlan = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
@@ -7444,79 +7787,174 @@ function SeccionGestionYSeguimiento({
     toast.success('Responsable de apoyo eliminado');
   };
 
-  const agregarEntrada = async (rolNumero: number, actividadId: number | string, puntoControlId: string) => {
-    if (!formEntrada.texto.trim()) {
-      toast.error('Observación requerida', { description: 'Escribe al menos una observación para registrar la entrada.' });
-      return;
+  const claveFormCorte = (actividadId: number | string, puntoControlId: string) =>
+    `${actividadId}:${puntoControlId}`;
+
+  const registrarEntradaCorte = async (
+    rolNumero: number,
+    actividadId: number | string,
+    puntoControlId: string,
+    datos: {
+      texto: string;
+      tipo?: 'seguimiento' | 'hallazgo' | 'cierre';
+      archivos?: EntradaSeguimiento['archivos'];
+    },
+  ) => {
+    const texto = datos.texto.trim();
+    const tieneArchivos = (datos.archivos?.length ?? 0) > 0;
+    if (!texto && !tieneArchivos) {
+      toast.error('Registro requerido', {
+        description: 'Escribe una observación o adjunta al menos un archivo para cerrar el corte.',
+      });
+      return false;
     }
+
+    const actividadActual = plan.roles
+      .find((r) => r.numero === rolNumero)
+      ?.actividades.find((a) => a.id === actividadId);
+
+    if (!actividadActual) {
+      toast.error('Actividad no encontrada');
+      return false;
+    }
+
     setGuardandoEntrada(true);
     try {
-      const actividadActual = plan.roles
-        .find(r => r.numero === rolNumero)
-        ?.actividades.find(a => a.id === actividadId);
-
-      // Usar el usuario logueado actual, no el Jefe OCI
-      const nombreUsuarioActual = currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
+      const nombreUsuarioActual =
+        currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
       const nuevaEntrada: EntradaSeguimiento = {
         id: crypto.randomUUID(),
         puntoControlId,
         fechaRegistro: new Date().toISOString().split('T')[0],
         registradoPor: nombreUsuarioActual,
         usuarioId: currentUser?.id || currentUser?.userId || plan.jefeOCI?.id,
-        texto: formEntrada.texto.trim(),
-        tipo: formEntrada.tipo,
+        texto: texto || 'Evidencia adjunta al corte',
+        tipo: datos.tipo || 'seguimiento',
+        ...(tieneArchivos ? { archivos: datos.archivos } : {}),
       };
 
-      const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), nuevaEntrada];
-      const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
-      const nuevoPct = calcularPorcentajeCortes(actividadConEntradas);
+      const entradasActualizadas = [...(actividadActual.entradasSeguimiento || []), nuevaEntrada];
+      const actividadConEntradas = {
+        ...actividadActual,
+        entradasSeguimiento: entradasActualizadas,
+      } as Actividad;
+      let nuevoPct = calcularPorcentajeCortes(actividadConEntradas) ?? actividadActual.porcentajeAvance ?? 0;
 
-      const nuevoEstado: EstadoActividad =
-        nuevoPct === 100 ? 'COMPLETADA' :
-        nuevoPct > 0 ? 'EN_EJECUCION' :
-        'PENDIENTE';
-      const estadoBackend =
-        nuevoEstado === 'COMPLETADA' ? 'completada' :
-        nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
-        'pendiente';
+      let nuevoEstado: EstadoActividad = estadoActividadDesdePorcentaje(nuevoPct);
+      if (
+        nuevoPct >= 100 &&
+        actividadActual.requiereAutorizacionJefeOCI &&
+        !actividadActual.autorizadaPorJefeOCI
+      ) {
+        nuevoPct = 99;
+        nuevoEstado = 'EN_EJECUCION';
+      }
+
+      const evaluacionTexto = textoEvaluacionDesdeAvance(nuevoPct, 'cortes');
+      const estadoBackend = estadoBackendDesdePorcentaje(nuevoPct);
 
       const response = await actividadesApi.update(String(actividadId), {
         entradas_seguimiento: entradasActualizadas,
         porcentaje_avance: nuevoPct,
+        evaluacion: evaluacionTexto,
         estado: estadoBackend as any,
       });
 
       if (!response.success) {
         toast.error('Error al guardar', { description: response.error || 'No se pudo guardar la entrada.' });
-        return;
+        return false;
       }
 
       const planActualizado = {
         ...plan,
-        roles: plan.roles.map(rol => {
+        roles: plan.roles.map((rol) => {
           if (rol.numero === rolNumero) {
             return {
               ...rol,
-              actividades: rol.actividades.map(act => {
+              actividades: rol.actividades.map((act) => {
                 if (act.id === actividadId) {
-                  return { ...act, entradasSeguimiento: entradasActualizadas, porcentajeAvance: nuevoPct, estado: nuevoEstado };
+                  return {
+                    ...act,
+                    entradasSeguimiento: entradasActualizadas,
+                    porcentajeAvance: nuevoPct,
+                    evaluacion: evaluacionTexto,
+                    estado: nuevoEstado,
+                  };
                 }
                 return act;
-              })
+              }),
             };
           }
           return rol;
-        })
+        }),
       };
       onActualizar(planActualizado);
       setCorteConFormAbierto(null);
+      setModalEntradaCorte(null);
       setFormEntrada({ texto: '', tipo: 'seguimiento' });
-      toast.success('Entrada registrada', { description: 'El seguimiento del corte fue guardado.' });
+      toast.success('Corte registrado', {
+        description: `Avance actualizado a ${nuevoPct}% según cortes de seguimiento.`,
+      });
+      try {
+        await onRefetchPlan?.();
+      } catch {
+        /* opcional */
+      }
+      return true;
     } catch (e: any) {
       toast.error('Error inesperado', { description: e?.message || 'Intenta de nuevo.' });
+      return false;
     } finally {
       setGuardandoEntrada(false);
     }
+  };
+
+  const agregarEntrada = async (
+    rolNumero: number,
+    actividadId: number | string,
+    puntoControlId: string,
+  ) => {
+    await registrarEntradaCorte(rolNumero, actividadId, puntoControlId, {
+      texto: formEntrada.texto,
+      tipo: formEntrada.tipo,
+    });
+  };
+
+  const guardarEntradaCorteDesdeModal = async (
+    adjuntos: ArchivoAdjunto[],
+    observacionesRaw: string,
+  ) => {
+    if (!modalEntradaCorte) return;
+    const { rolNumero, actividadId, puntoControlId } = modalEntradaCorte;
+
+    let parsed: Array<{ id?: string; texto?: string }> = [];
+    try {
+      const p = JSON.parse(observacionesRaw);
+      if (Array.isArray(p)) parsed = p;
+    } catch {
+      if (observacionesRaw.trim()) parsed = [{ id: 'obs-legacy', texto: observacionesRaw.trim() }];
+    }
+
+    const archivos = adjuntos
+      .filter((a) => a.id.startsWith('adj-'))
+      .filter((a) => !a.puntoControlId || a.puntoControlId === puntoControlId)
+      .map((a) => ({
+        nombre: a.nombre,
+        url: a.url,
+        tipo: a.tipo,
+        tamanio: a.tamaño,
+      }));
+
+    if (archivos.length === 0) {
+      toast.error('Sube al menos un archivo');
+      return;
+    }
+
+    await registrarEntradaCorte(rolNumero, actividadId, puntoControlId, {
+      texto: '',
+      tipo: 'seguimiento',
+      archivos,
+    });
   };
 
   const guardarSeguimiento = async (rolNumero: number, actividadId: number | string) => {
@@ -7536,9 +7974,11 @@ function SeccionGestionYSeguimiento({
     }
 
     // Si tiene cortes configurados, el % se calcula automáticamente; si no, conservar el actual
-    const pctFinal = actividadActual?.puntosControl && actividadActual.puntosControl.length > 0
-      ? calcularPorcentajeCortes(actividadActual)
-      : actividadActual?.porcentajeAvance ?? 0;
+    const pctCortes = actividadActual ? calcularPorcentajeCortes(actividadActual) : null;
+    const avanceCalc = actividadActual
+      ? calcularAvanceActividad(actividadActual)
+      : { porcentaje: 0, fuente: 'manual' as const, etiqueta: '', desglose: {}, puedePersistirDesdeFront: true };
+    const pctFinal = pctCortes !== null ? pctCortes : avanceCalc.porcentaje;
 
     const nuevoEstado: EstadoActividad = 
       pctFinal === 100 ? 'COMPLETADA' :
@@ -8001,9 +8441,7 @@ function SeccionGestionYSeguimiento({
         const asignadas = actividadesVisibles.filter(a => a.responsable !== null).length;
         const completadas = actividadesVisibles.filter(a => a.estado === 'COMPLETADA').length;
         const enProgreso = actividadesVisibles.filter(a => a.estado === 'EN_EJECUCION').length;
-        const avance = totalActividades > 0 
-          ? Math.round(actividadesVisibles.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades) 
-          : 0;
+        const avance = calcularAvancePromedioActividades(actividadesVisibles, opcionesCalculoAvance);
         const estaColapsado = rolesColapsados[rol.numero] || false;
         const isExpanded = rolExpandido === rol.numero;
         
@@ -8068,6 +8506,12 @@ function SeccionGestionYSeguimiento({
                 }}>
                   {Math.round((asignadas / (rol.actividades.length || 1)) * 100)}% asignado
                 </span>
+                <span
+                  className="px-3 py-1 rounded-lg text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                  title="Promedio de cumplimiento de actividades visibles"
+                >
+                  {avance}% cumplimiento
+                </span>
                 <motion.div
                   animate={{ rotate: isExpanded ? 180 : 0 }}
                   transition={{ duration: 0.2 }}
@@ -8095,7 +8539,15 @@ function SeccionGestionYSeguimiento({
                         No hay actividades en este rol.{plan.estado === 'BORRADOR' ? ' Haz clic en "Agregar actividad" para crear una.' : ''}
                       </div>
                     ) : (
-                      rol.actividades.map((actividad, index) => (
+                      rol.actividades.map((actividad, index) => {
+                        const avanceActividad = calcularAvanceActividad(actividad, opcionesCalculoAvance);
+                        const resumenTareas = resumenEvidenciasObservacionesTareas(actividad);
+                        const evaluacionNotaLibre =
+                          actividad.evaluacion &&
+                          !/^\d+\s*%/.test(actividad.evaluacion.trim())
+                            ? actividad.evaluacion
+                            : null;
+                        return (
                         <div 
                           key={`${rol.numero}-${index}-${actividad.id}`} 
                           style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
@@ -8133,36 +8585,59 @@ function SeccionGestionYSeguimiento({
                                 {actividad.fecha_corte && (
                                   <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
                                 )}
-                                {typeof actividad.porcentajeAvance === 'number' && actividad.porcentajeAvance > 0 && (
-                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">{actividad.porcentajeAvance}% avance</span>
+                              </div>
+                              <div className="mt-2 max-w-md">
+                                <SemaforoSeguimientoPAI
+                                  porcentaje={avanceActividad.porcentaje}
+                                  variant="bar"
+                                  size="sm"
+                                  showLabel
+                                  showIcon
+                                />
+                                <p className="text-[10px] text-gray-500 mt-1 leading-snug" title="Origen del porcentaje de cumplimiento">
+                                  {avanceActividad.etiqueta}
+                                </p>
+                                {avanceActividad.fuente === 'auditorias' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRefrescarCumplimiento();
+                                    }}
+                                    className="mt-1 text-[10px] font-semibold text-purple-700 hover:text-purple-900 underline"
+                                  >
+                                    Sincronizar con programa de auditorías
+                                  </button>
                                 )}
                               </div>
-                              {/* Indicadores de adjuntos y observaciones  SIEMPRE visibles */}
+                              {/* Resumen evidencias/observaciones (en tareas del plan) */}
                               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                {/* 📎 Adjuntos */}
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                  actividad.adjuntos && actividad.adjuntos.length > 0 
-                                    ? 'bg-purple-50 text-purple-700 border border-purple-200' 
-                                    : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
-                                }`}>
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                                  {actividad.adjuntos && actividad.adjuntos.length > 0 
-                                    ? `${actividad.adjuntos.length} adjunto${actividad.adjuntos.length !== 1 ? 's' : ''}` 
-                                    : 'Sin adjuntos'}
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                    resumenTareas.totalEvidenciasTareas > 0
+                                      ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                      : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                  }`}
+                                  title="Evidencias subidas en las tareas de cada corte"
+                                >
+                                  <Paperclip className="w-3 h-3" />
+                                  {resumenTareas.totalEvidenciasTareas > 0
+                                    ? `${resumenTareas.totalEvidenciasTareas} evidencia${resumenTareas.totalEvidenciasTareas !== 1 ? 's' : ''} en tareas`
+                                    : 'Sin evidencias en tareas'}
                                 </span>
-                                {/* 📝 Observaciones */}
-                                {(() => {
-                                  const obs = actividad.observacionesCumplimiento;
-                                  const count = Array.isArray(obs) ? obs.length : (typeof obs === 'string' && obs.trim() ? 1 : 0);
-                                  return (
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                      count > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
-                                    }`}>
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                      {count > 0 ? `${count} observación${count !== 1 ? 'es' : ''}` : 'Sin observaciones'}
-                                    </span>
-                                  );
-                                })()}
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                    resumenTareas.tareasConObservacion > 0
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                  }`}
+                                  title="Observaciones escritas en las tareas"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  {resumenTareas.tareasConObservacion > 0
+                                    ? `Observaciones en ${resumenTareas.tareasConObservacion} tarea${resumenTareas.tareasConObservacion !== 1 ? 's' : ''}`
+                                    : 'Sin observaciones en tareas'}
+                                </span>
                                 {/* S& Tareas */}
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                                   actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 
@@ -8283,12 +8758,18 @@ function SeccionGestionYSeguimiento({
                                       <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.control}</p>
                                     </div>
                                   )}
-                                  {actividad.evaluacion && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Evaluación</span>
-                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.evaluacion}</p>
-                                    </div>
-                                  )}
+                                  <div>
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Evaluación (cumplimiento)</span>
+                                    <p className="text-sm font-semibold text-gray-800 mt-1">
+                                      {avanceActividad.porcentaje}% cumplimiento
+                                    </p>
+                                    <p className="text-[10px] text-gray-500">{avanceActividad.etiqueta}</p>
+                                    {evaluacionNotaLibre && (
+                                      <p className="text-xs text-gray-700 leading-relaxed mt-1 border-t border-gray-100 pt-1">
+                                        {evaluacionNotaLibre}
+                                      </p>
+                                    )}
+                                  </div>
                                   {actividad.seguimiento && (
                                     <div>
                                       <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Seguimiento</span>
@@ -8333,17 +8814,323 @@ function SeccionGestionYSeguimiento({
                                 </div>
                               );
                             })()}
+
+                            {/* Cortes de seguimiento (puntos de control) */}
+                            {actividad.puntosControl && actividad.puntosControl.length > 0 && (
+                              <div className="border border-orange-200 rounded-lg overflow-hidden">
+                                <div className="bg-orange-50 px-3 py-2 border-b border-orange-200 flex items-center justify-between gap-2">
+                                  <p className="text-xs font-bold text-orange-900 uppercase tracking-wider flex items-center gap-1.5">
+                                    <CalendarClock className="w-3.5 h-3.5" />
+                                    Cortes de seguimiento ({actividad.puntosControl.filter((pc) => corteEstaCumplido(actividad, pc.id)).length}/{actividad.puntosControl.length})
+                                  </p>
+                                  {avanceActividad.fuente === 'cortes' && (
+                                    <span className="text-[10px] font-semibold text-orange-800 bg-white/80 px-2 py-0.5 rounded-full border border-orange-200">
+                                      Avance por cortes
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="p-3 bg-white space-y-2">
+                                  {actividad.frecuenciaPuntosControl && (
+                                    <p className="text-[10px] text-gray-500 mb-1">
+                                      Periodicidad: <span className="font-semibold text-gray-700">{obtenerTextoPeriodicidad(actividad.frecuenciaPuntosControl)}</span>
+                                    </p>
+                                  )}
+                                  {actividad.puntosControl.map((pc, pcIdx) => {
+                                    const hoyDate = new Date();
+                                    hoyDate.setHours(0, 0, 0, 0);
+                                    const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
+                                    const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
+                                    const cumplido = corteEstaCumplido(actividad, pc.id);
+                                    const enSeguimiento = !cumplido && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
+                                    const esVencido = !cumplido && !enSeguimiento && fechaCorte < hoyDate;
+                                    const tareasDelCorte = (actividad.tareasSeguimiento || []).filter(
+                                      (t) => t.puntoControlId === pc.id,
+                                    );
+                                    const tareasHechas = tareasDelCorte.filter((t) => t.completada).length;
+                                    const formKey = claveFormCorte(actividad.id, pc.id);
+                                    return (
+                                      <div
+                                        key={pc.id}
+                                        className={`rounded-lg border p-2.5 ${
+                                          cumplido
+                                            ? 'border-green-200 bg-green-50/50'
+                                            : esVencido
+                                              ? 'border-red-200 bg-red-50/30'
+                                              : enSeguimiento
+                                                ? 'border-purple-200 bg-purple-50/40'
+                                                : 'border-gray-200 bg-gray-50/50'
+                                        }`}
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <div
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                              cumplido
+                                                ? 'bg-green-500 text-white'
+                                                : esVencido
+                                                  ? 'bg-red-100 text-red-700 border border-red-300'
+                                                  : 'bg-orange-100 text-orange-800 border border-orange-300'
+                                            }`}
+                                          >
+                                            {cumplido ? <Check className="w-3.5 h-3.5" /> : pcIdx + 1}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                                              <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                              <span
+                                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                                  cumplido
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : esVencido
+                                                      ? 'bg-red-100 text-red-700'
+                                                      : enSeguimiento
+                                                        ? 'bg-purple-100 text-purple-700'
+                                                        : 'bg-gray-100 text-gray-600'
+                                                }`}
+                                              >
+                                                {cumplido
+                                                  ? 'Cumplido'
+                                                  : esVencido
+                                                    ? 'Vencido'
+                                                    : enSeguimiento
+                                                      ? 'En seguimiento'
+                                                      : 'Pendiente'}
+                                              </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-3 text-[10px] text-gray-600">
+                                              <span className="flex items-center gap-1">
+                                                <Calendar className="w-3 h-3 text-orange-500" />
+                                                Corte: {fechaCorte.toLocaleDateString('es-CO')}
+                                              </span>
+                                              {fechaSeg && (
+                                                <span className="flex items-center gap-1">
+                                                  <Clock className="w-3 h-3 text-purple-500" />
+                                                  Seguimiento hasta: {fechaSeg.toLocaleDateString('es-CO')}
+                                                </span>
+                                              )}
+                                              {tareasDelCorte.length > 0 && (
+                                                <span className="text-indigo-700 font-medium">
+                                                  Tareas del corte: {tareasHechas}/{tareasDelCorte.length}
+                                                  {tareasHechas === tareasDelCorte.length && tareasDelCorte.length > 0 && !cumplido && (
+                                                    <span className="text-amber-700 ml-1">(marca todas completadas)</span>
+                                                  )}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Tareas del corte: observaciones y evidencias por tarea */}
+                                        <div className="mt-2 pt-2 border-t border-dashed border-indigo-100 space-y-2">
+                                          <p className="text-[10px] font-bold text-indigo-700 uppercase">
+                                            Tareas del corte ({tareasHechas}/{tareasDelCorte.length})
+                                          </p>
+                                          {tareasDelCorte.length === 0 && (
+                                            <p className="text-[10px] text-gray-500 italic">Sin tareas. Usa «+ Agregar tarea».</p>
+                                          )}
+                                          {tareasDelCorte.map((tarea) => {
+                                            const cantAdj = tarea.adjuntosTarea?.length || 0;
+                                            const tieneObs = !!(tarea.observaciones || '').trim();
+                                            return (
+                                              <div
+                                                key={tarea.id}
+                                                className={`p-2.5 rounded-lg border ${
+                                                  tarea.completada ? 'bg-green-50/70 border-green-200' : 'bg-white border-gray-200'
+                                                }`}
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <div className="flex items-start gap-2">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      puedeGestionarTareas(rol) &&
+                                                      toggleCompletarTarea(rol.numero, actividad.id, tarea.id)
+                                                    }
+                                                    disabled={!puedeGestionarTareas(rol)}
+                                                    className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${
+                                                      tarea.completada
+                                                        ? 'bg-green-500 border-green-500 text-white'
+                                                        : 'border-gray-300 bg-white'
+                                                    }`}
+                                                  >
+                                                    {tarea.completada && <Check className="w-3 h-3" />}
+                                                  </button>
+                                                  <p
+                                                    className={`text-xs font-medium flex-1 ${
+                                                      tarea.completada ? 'line-through text-gray-500' : 'text-gray-900'
+                                                    }`}
+                                                  >
+                                                    {tarea.descripcion}
+                                                  </p>
+                                                </div>
+                                                <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const input = document.createElement('input');
+                                                      input.type = 'file';
+                                                      input.multiple = true;
+                                                      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip';
+                                                      input.onchange = () =>
+                                                        agregarAdjuntosTarea(
+                                                          rol.numero,
+                                                          actividad.id,
+                                                          tarea.id,
+                                                          input.files,
+                                                        );
+                                                      input.click();
+                                                    }}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                                                      cantAdj > 0
+                                                        ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium'
+                                                        : 'bg-gray-50 text-gray-600 border-dashed border-gray-300'
+                                                    }`}
+                                                  >
+                                                    <Upload className="w-3 h-3" />
+                                                    {cantAdj > 0 ? `${cantAdj} evidencia(s)` : 'Subir evidencia'}
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setComentarioTareaId(tarea.id);
+                                                      setTextoComentarioTarea('');
+                                                    }}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                                                      tieneObs
+                                                        ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
+                                                        : 'bg-gray-50 text-gray-600 border-dashed border-gray-300'
+                                                    }`}
+                                                  >
+                                                    {tieneObs ? 'Añadir otra observación' : 'Observación'}
+                                                  </button>
+                                                </div>
+                                                <ListaEvidenciasTarea
+                                                  adjuntos={tarea.adjuntosTarea || []}
+                                                  puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                                  onEliminar={(adj) =>
+                                                    eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
+                                                  }
+                                                />
+                                                {tieneObs && (
+                                                  <div className="ml-7 mt-1.5 rounded-md border border-amber-100 bg-amber-50/50 overflow-hidden">
+                                                    <p className="px-2 py-0.5 text-[9px] font-semibold text-amber-800 border-b border-amber-100">
+                                                      Observaciones
+                                                    </p>
+                                                    <p className="px-2 py-1.5 text-[11px] text-gray-700 whitespace-pre-wrap max-h-28 overflow-y-auto">
+                                                      {tarea.observaciones}
+                                                    </p>
+                                                  </div>
+                                                )}
+                                                {comentarioTareaId === tarea.id && (
+                                                  <div className="ml-7 mt-2 space-y-1">
+                                                    <textarea
+                                                      value={textoComentarioTarea}
+                                                      onChange={(e) => setTextoComentarioTarea(e.target.value)}
+                                                      rows={2}
+                                                      placeholder="Nueva observación (se añade al historial)..."
+                                                      className="w-full px-2 py-1 text-xs border border-amber-300 rounded"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          agregarComentarioTarea(
+                                                            rol.numero,
+                                                            actividad.id,
+                                                            tarea.id,
+                                                            textoComentarioTarea,
+                                                          )
+                                                        }
+                                                        className="px-2 py-1 text-[10px] font-bold bg-amber-600 text-white rounded"
+                                                      >
+                                                        Guardar
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setComentarioTareaId(null);
+                                                          setTextoComentarioTarea('');
+                                                        }}
+                                                        className="px-2 py-1 text-[10px] border rounded"
+                                                      >
+                                                        Cancelar
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+
+                                        {puedeGestionarTareas(rol) && plan.estado !== 'BORRADOR' && (
+                                          formTareaCorteKey === formKey ? (
+                                            <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg space-y-2" onClick={(e) => e.stopPropagation()}>
+                                              <input
+                                                type="text"
+                                                value={nuevaTarea.descripcion}
+                                                onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
+                                                placeholder="Descripción de la tarea *"
+                                                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md"
+                                              />
+                                              <div className="flex justify-end gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setFormTareaCorteKey(null);
+                                                    setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
+                                                  }}
+                                                  className="px-2 py-1 text-xs border border-gray-300 rounded"
+                                                >
+                                                  Cancelar
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  disabled={guardandoTarea}
+                                                  onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id, pc.id)}
+                                                  className="px-2 py-1 text-xs font-bold text-white bg-teal-600 rounded disabled:opacity-50"
+                                                >
+                                                  {guardandoTarea ? 'Guardando...' : 'Guardar tarea'}
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setFormTareaCorteKey(formKey);
+                                                setFormTareaActividadId(null);
+                                              }}
+                                              className="mt-2 text-[10px] font-semibold text-teal-700 hover:text-teal-900"
+                                            >
+                                              + Agregar tarea a este corte
+                                            </button>
+                                          )
+                                        )}
+
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
 
 
-                          {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 && (
+                          {(() => {
+                            const tieneCortes = actividad.puntosControl && actividad.puntosControl.length > 0;
+                            // Con cortes, las tareas solo se muestran dentro de cada corte
+                            if (tieneCortes) return null;
+                            const tareasVisibles = actividad.tareasSeguimiento || [];
+                            if (tareasVisibles.length === 0) return null;
+                            return (
                             <div className="mt-3 ml-11 border-t border-dashed border-gray-200 pt-3">
                               <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                                Tareas ({actividad.tareasSeguimiento.filter(t => t.completada).length}/{actividad.tareasSeguimiento.length} completadas)
+                                Tareas ({tareasVisibles.filter(t => t.completada).length}/{tareasVisibles.length} completadas)
                               </p>
                               <div className="space-y-1.5">
-                                {actividad.tareasSeguimiento.map((tarea) => {
+                                {tareasVisibles.map((tarea) => {
                                   const fechaTarea = tarea.fechaEntrega || (tarea as any).fechaLimite || null;
                                   const fechaLimite = fechaTarea ? new Date(fechaTarea) : null;
                                   const hoy = new Date();
@@ -8434,28 +9221,28 @@ function SeccionGestionYSeguimiento({
                                               ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium hover:bg-purple-100'
                                               : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
                                           }`}
-                                          title="Clic para adjuntar evidencia"
+                                          title="Subir archivos de evidencia para esta tarea"
                                         >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                                          {cantAdjuntos > 0 ? `${cantAdjuntos} archivo${cantAdjuntos !== 1 ? 's' : ''}` : 'Sin adjuntos'}
+                                          {cantAdjuntos > 0 ? `${cantAdjuntos} evidencia${cantAdjuntos !== 1 ? 's' : ''}` : 'Adjuntar evidencia'}
                                         </button>
 
-                                        {/* x Comentario  SIEMPRE visible */}
+                                        {/* Observación de la tarea */}
                                         <button
                                           type="button"
                                           onClick={() => {
                                             setComentarioTareaId(tarea.id);
-                                            setTextoComentarioTarea((tarea.observaciones || '').trim());
+                                            setTextoComentarioTarea('');
                                           }}
                                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
                                             tieneObservacion
                                               ? 'bg-amber-50 text-amber-700 border-amber-200 font-medium hover:bg-amber-100'
                                               : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
                                           }`}
-                                          title="Clic para agregar o editar comentario"
+                                          title="Escribir observación de esta tarea"
                                         >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                          {tieneObservacion ? 'Con comentario' : 'Sin comentarios'}
+                                          {tieneObservacion ? 'Añadir otra observación' : 'Observación'}
                                         </button>
 
                                         {/* S& Completada */}
@@ -8472,7 +9259,7 @@ function SeccionGestionYSeguimiento({
                                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
                                                 cantAdjuntos > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
                                               }`}>
-                                                📎 {cantAdjuntos > 0 ? '✅ Adjunto OK' : 'Adjunto requerido'}
+                                                📎 {cantAdjuntos > 0 ? '✅ Evidencia OK' : 'Evidencia requerida'}
                                               </span>
                                             )}
                                             {tarea.requiereObservaciones && (
@@ -8486,18 +9273,26 @@ function SeccionGestionYSeguimiento({
                                         )}
                                       </div>
 
-                                      {/* Fila 3: Texto del comentario si existe */}
+                                      <ListaEvidenciasTarea
+                                        adjuntos={tarea.adjuntosTarea || []}
+                                        puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                        onEliminar={(adj) =>
+                                          eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
+                                        }
+                                      />
+
+                                      {/* Observaciones registradas */}
                                       {tieneObservacion && (
-                                        <div className="ml-7 mt-2 px-3 py-2 bg-white border border-gray-200 rounded-lg">
-                                          <p className="text-[11px] font-bold text-gray-500 mb-0.5 flex items-center gap-1 uppercase tracking-wider">
+                                        <div className="ml-7 mt-2 px-3 py-2 bg-white border border-gray-200 rounded-lg max-h-32 overflow-y-auto">
+                                          <p className="text-[11px] font-bold text-gray-500 mb-0.5 flex items-center gap-1 uppercase tracking-wider sticky top-0 bg-white">
                                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                            Comentario
+                                            Observaciones
                                           </p>
-                                          <p className="text-xs text-gray-700 leading-relaxed">{tarea.observaciones}</p>
+                                          <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{tarea.observaciones}</p>
                                         </div>
                                       )}
 
-                                      {/* Editor rápido de comentario de tarea */}
+                                      {/* Nueva observación de tarea */}
                                       {comentarioTareaId === tarea.id && (
                                         <div className="ml-7 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                                           <textarea
@@ -8505,7 +9300,7 @@ function SeccionGestionYSeguimiento({
                                             onChange={(e) => setTextoComentarioTarea(e.target.value)}
                                             className="w-full px-2 py-1.5 border border-amber-300 rounded text-xs resize-none"
                                             rows={2}
-                                            placeholder="Escribe un comentario para la tarea..."
+                                            placeholder="Nueva observación de cumplimiento..."
                                           />
                                           <div className="mt-2 flex items-center gap-2">
                                             <button
@@ -8513,7 +9308,7 @@ function SeccionGestionYSeguimiento({
                                               onClick={() => agregarComentarioTarea(rol.numero, actividad.id, tarea.id, textoComentarioTarea)}
                                               className="px-2 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
                                             >
-                                              Guardar comentario
+                                              Guardar observación
                                             </button>
                                             <button
                                               type="button"
@@ -8533,7 +9328,7 @@ function SeccionGestionYSeguimiento({
                                 })}
                               </div>
 
-                              {/* """ Botón + Agregar tarea de seguimiento """ */}
+                              {/* Botón + Agregar tarea de seguimiento (solo nivel actividad, sin cortes) */}
                               {puedeGestionarTareas(rol) && (
                                 formTareaActividadId === actividad.id ? (
                                   <div className="mt-3 p-3 bg-teal-50 border-2 border-teal-300 rounded-lg" onClick={(e) => e.stopPropagation()}>
@@ -8631,8 +9426,9 @@ function SeccionGestionYSeguimiento({
                                 )
                               )}
                             </div>
-                          )}
-                          {(!actividad.tareasSeguimiento || actividad.tareasSeguimiento.length === 0) && puedeGestionarTareas(rol) && (
+                            );
+                          })()}
+                          {(!actividad.tareasSeguimiento || actividad.tareasSeguimiento.length === 0) && puedeGestionarTareas(rol) && !(actividad.puntosControl && actividad.puntosControl.length > 0) && plan.estado !== 'BORRADOR' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
                               className="mt-3 ml-11 w-[calc(100%-2.75rem)] py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
@@ -8642,7 +9438,8 @@ function SeccionGestionYSeguimiento({
                             </button>
                           )}
                         </div>
-                      ))
+                      );
+                      })
                     )}
 
                     {/* Formulario para nueva actividad  SOLO en BORRADOR */}
@@ -8708,6 +9505,7 @@ function SeccionGestionYSeguimiento({
       })}
         </>
       )}
+
     </motion.div>
   );
 }

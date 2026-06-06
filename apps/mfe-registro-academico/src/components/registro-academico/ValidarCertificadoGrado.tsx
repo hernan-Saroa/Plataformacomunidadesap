@@ -54,8 +54,6 @@ interface CertificadoVista {
   acta: string;
   diploma: string;
   fechaEmision: string;
-  motivoRevocatoria?: string;
-  fechaRevocatoria?: string;
 }
 
 function DetalleCertificado({
@@ -177,10 +175,6 @@ const mapCertificado = (
   acta: certificado.actaNumber || 'No especificado',
   diploma: certificado.diplomaNumber || 'No especificado',
   fechaEmision: formatDateOnly(certificado.issueDate),
-  motivoRevocatoria: certificado.revocationReason,
-  fechaRevocatoria: certificado.revocationDate
-    ? formatDateOnly(certificado.revocationDate)
-    : undefined,
 });
 
 const statusMetaByResult: Record<
@@ -196,7 +190,7 @@ const statusMetaByResult: Record<
     badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     cardClassName: 'border-emerald-200 bg-emerald-50/70',
     iconClassName: 'text-emerald-600',
-    title: 'Certificado valido',
+    title: 'Certificado válido',
   },
   REVOKED: {
     badgeClassName: 'border-red-200 bg-red-50 text-red-700',
@@ -261,7 +255,7 @@ export function ValidarCertificadoGrado({
     const normalizedValue = normalizeLookupValue(lookupValue);
 
     if (!normalizedValue) {
-      toast.error('Ingresa un codigo QR, enlace o numero de certificado.');
+      toast.error('Ingresa un código QR, enlace o número de certificado.');
       return;
     }
 
@@ -284,7 +278,7 @@ export function ValidarCertificadoGrado({
       console.error('Error al validar certificado de grado:', error);
       setResponse({
         valido: false,
-        mensaje: 'Se presento un error al consultar la validacion del certificado.',
+        mensaje: 'Se presentó un error al consultar la validación del certificado.',
         resultado: 'NOT_FOUND',
       });
       toast.error('Error al validar el certificado. Intenta nuevamente.');
@@ -310,7 +304,7 @@ export function ValidarCertificadoGrado({
             mode === 'landing' ? 'mb-2 sm:mb-3 text-sm sm:text-base' : 'mb-2 text-sm'
           } text-slate-900`}
         >
-          Codigo QR, enlace de verificacion o numero de certificado
+          Código QR, enlace de verificación o número de certificado
         </label>
 
         <div className="relative">
@@ -341,8 +335,8 @@ export function ValidarCertificadoGrado({
         </div>
 
         <p className={`mt-2 text-sm ${mode === 'landing' ? '' : 'text-slate-600'}`} style={{ color: '#6B7280' }}>
-          Si copiaste el enlace completo del QR, el sistema extrae automaticamente el codigo de
-          validacion.
+          Si copiaste el enlace completo del QR, el sistema extrae automáticamente el código de
+          validación.
         </p>
       </div>
 
@@ -358,10 +352,10 @@ export function ValidarCertificadoGrado({
             <div className="flex items-start gap-3">
               <Shield className="mt-0.5 h-5 w-5 text-[#003DA5]" />
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-slate-900">Sistema de verificacion seguro</p>
+                <p className="text-sm font-semibold text-slate-900">Sistema de verificación seguro</p>
                 <p className="text-sm text-slate-600">
-                  Todos los certificados de grado emitidos por la ESAP incluyen un codigo QR unico y
-                  un numero de certificado irrepetible para validar su autenticidad en tiempo real.
+                  Todos los certificados de grado emitidos por la ESAP incluyen un código QR único y
+                  un número de certificado irrepetible para validar su autenticidad en tiempo real.
                 </p>
               </div>
             </div>
@@ -445,20 +439,20 @@ export function ValidarCertificadoGrado({
               <CardContent className="space-y-5 pt-6">
                 <div className="flex items-center gap-2">
                   <GraduationCap className="h-5 w-5 text-[#003DA5]" />
-                  <p className="text-base font-semibold text-slate-900">Informacion del certificado</p>
+                  <p className="text-base font-semibold text-slate-900">Información del certificado</p>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <DetalleCertificado label="Numero de certificado" value={certificado.numeroCertificado} mono />
-                  <DetalleCertificado label="Codigo de verificacion" value={certificado.codigoVerificacion} mono />
+                  <DetalleCertificado label="Número de certificado" value={certificado.numeroCertificado} mono />
+                  <DetalleCertificado label="Código de verificación" value={certificado.codigoVerificacion} mono />
                   <DetalleCertificado label="Graduado" value={certificado.nombreGraduado} />
                   <DetalleCertificado label="Documento" value={certificado.documento} />
-                  <DetalleCertificado label="Programa academico" value={certificado.programa} />
-                  <DetalleCertificado label="Titulo otorgado" value={certificado.titulo} />
+                  <DetalleCertificado label="Programa académico" value={certificado.programa} />
+                  <DetalleCertificado label="Título otorgado" value={certificado.titulo} />
                   <DetalleCertificado label="Territorial / campus" value={certificado.territorial} />
                   <DetalleCertificado label="Acta" value={certificado.acta} />
                   <DetalleCertificado label="Fecha de grado" value={certificado.fechaGrado} />
-                  <DetalleCertificado label="Fecha de emision" value={certificado.fechaEmision} />
+                  <DetalleCertificado label="Fecha de emisión" value={certificado.fechaEmision} />
                   <DetalleCertificado label="Diploma" value={certificado.diploma} />
                   <DetalleCertificado label="Estado" value={certificado.estado} />
                 </div>
@@ -475,25 +469,12 @@ export function ValidarCertificadoGrado({
                         Este certificado no se encuentra vigente
                       </p>
                       <p className="text-sm text-amber-800">
-                        Verifica con Registro Academico antes de usar este documento como soporte
+                        Verifica con Registro Académico antes de usar este documento como soporte
                         oficial.
                       </p>
                     </div>
                   </div>
 
-                  {certificado.motivoRevocatoria ? (
-                    <DetalleCertificado
-                      label="Motivo de revocatoria"
-                      value={certificado.motivoRevocatoria}
-                    />
-                  ) : null}
-
-                  {certificado.fechaRevocatoria ? (
-                    <DetalleCertificado
-                      label="Fecha de revocatoria"
-                      value={certificado.fechaRevocatoria}
-                    />
-                  ) : null}
                 </CardContent>
               </Card>
             ) : null}
@@ -504,10 +485,10 @@ export function ValidarCertificadoGrado({
               <FileText className="mt-0.5 h-5 w-5 text-slate-500" />
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-slate-900">
-                  No se encontro informacion del certificado
+                  No se encontró información del certificado
                 </p>
                 <p className="text-sm text-slate-600">
-                  Revisa el codigo ingresado o intenta con el numero del certificado en el formato
+                  Revisa el código ingresado o intenta con el número del certificado en el formato
                   `CERT-GR-AAAA-0000`.
                 </p>
               </div>
@@ -585,8 +566,8 @@ export function ValidarCertificadoGrado({
                 color: '#6B7280',
               }}
             >
-              Verifica la autenticidad de un certificado academico emitido por la ESAP ingresando el
-              codigo QR, el enlace del QR o el consecutivo.
+              Verifica la autenticidad de un certificado académico emitido por la ESAP ingresando el
+              código QR, el enlace del QR o el consecutivo.
             </p>
           </div>
 
@@ -601,7 +582,7 @@ export function ValidarCertificadoGrado({
             <Card className="inline-flex items-center gap-2 border-2 bg-white/80 px-6 py-3 backdrop-blur-sm">
               <Shield className="h-5 w-5 text-[#003DA5]" />
               <span className="font-medium text-slate-900">
-                Sistema oficial de validacion - Escuela Superior de Administracion Publica
+                Sistema oficial de validación - Escuela Superior de Administración Pública
               </span>
             </Card>
           </div>
@@ -642,11 +623,11 @@ export function ValidarCertificadoGrado({
                 </div>
                 <div className="space-y-1">
                   <DialogTitle className="text-xl text-slate-900">
-                    Validacion de certificados de grado
+                    Validación de certificados de grado
                   </DialogTitle>
                   <DialogDescription id={descriptionId} className="max-w-2xl text-sm text-slate-600">
-                    Verifica certificados academicos y titulos emitidos por Registro Academico usando el
-                    codigo QR, el enlace del QR o el numero del certificado.
+                    Verifica certificados académicos y títulos emitidos por Registro Académico usando el
+                    código QR, el enlace del QR o el número del certificado.
                   </DialogDescription>
                 </div>
               </div>
@@ -667,32 +648,32 @@ export function ValidarCertificadoGrado({
                         <Shield className="mt-0.5 h-5 w-5 text-[#003DA5]" />
                         <div className="space-y-1">
                           <p className="text-sm font-semibold text-slate-900">
-                            Informacion disponible en la validacion
+                            Información disponible en la validación
                           </p>
                           <p className="text-sm text-slate-600">
                             El sistema consulta el certificado en tiempo real y devuelve estado, programa,
-                            datos del graduado, acta y fecha de emision.
+                            datos del graduado, acta y fecha de emisión.
                           </p>
                         </div>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-lg border border-slate-200 bg-white p-3.5">
-                          <p className="mb-1 text-sm font-semibold text-slate-900">Titulo academico</p>
+                          <p className="mb-1 text-sm font-semibold text-slate-900">Título académico</p>
                           <p className="text-sm text-slate-600">
-                            Confirmacion del programa y del titulo emitido.
+                            Confirmación del programa y del título emitido.
                           </p>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white p-3.5">
-                          <p className="mb-1 text-sm font-semibold text-slate-900">Codigo QR</p>
+                          <p className="mb-1 text-sm font-semibold text-slate-900">Código QR</p>
                           <p className="text-sm text-slate-600">
-                            Validacion por codigo unico o por el enlace generado en el certificado.
+                            Validación por código único o por el enlace generado en el certificado.
                           </p>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white p-3.5 sm:col-span-2">
                           <p className="mb-1 text-sm font-semibold text-slate-900">Programa y acta</p>
                           <p className="text-sm text-slate-600">
-                            Visualizacion del programa academico, territorial y numero de acta.
+                            Visualización del programa académico, territorial y número de acta.
                           </p>
                         </div>
                       </div>

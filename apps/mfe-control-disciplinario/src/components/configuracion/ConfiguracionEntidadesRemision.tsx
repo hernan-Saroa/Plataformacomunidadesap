@@ -335,7 +335,7 @@ export function ConfiguracionEntidadesRemision() {
 
       {/* Modal para agregar/editar entidad */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ zIndex: 1000 }}>
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-bold text-gray-900">

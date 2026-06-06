@@ -84,7 +84,7 @@ export function ValidarCertificadoPublico() {
   const handleValidar = () => {
     if (!codigoIngresado.trim()) {
       toast.error('Campo requerido', {
-        description: 'Por favor ingresa el código del certificado'
+        description: 'Por favor, ingresa el código del certificado'
       });
       return;
     }

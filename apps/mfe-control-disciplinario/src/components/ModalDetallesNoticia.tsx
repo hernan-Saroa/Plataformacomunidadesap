@@ -316,7 +316,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
           padding: '2vh 2vw',
           zIndex: 10000
         }}
-        onClick={(e) => e.target === e.currentTarget && setFileToView(null)}
+        onClick={(e) => e.target === e.currentTarget && closeFileViewer()}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -352,52 +352,55 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             </div>
           </div>
           <div className="flex-1 overflow-hidden p-4">
-            {tipo.includes('pdf') ? (
-              <embed
-                src={fileBlobUrl}
-                type="application/pdf"
-                width="100%"
-                height="100%"
-                style={{ border: 'none' }}
-              />
-            ) : tipo.includes('image') ? (
-              <img
-                src={fileBlobUrl}
-                alt={nombre}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-              />
-            ) : tipo.includes('video') ? (
-              <video
-                src={fileBlobUrl}
-                controls
-                style={{ maxWidth: '100%', maxHeight: '100%' }}
-              />
-            ) : (nombre || '').toLowerCase().match(/\.(docx?|doc|html?)$/i) || tipo.includes('html') || tipo.includes('word') ? (
-              // Soporte DOCX/DOC convertido a HTML o HTML directo (iframe sandboxed como en evidencias)
-              <iframe
-                src={fileBlobUrl}
-                className="w-full h-full border-0 bg-white"
-                title={`Vista previa de ${nombre}`}
-                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <FileText className="w-16 h-16 text-gray-300 mb-4" />
-                <p className="text-lg font-bold text-gray-600 mb-2">No se puede previsualizar este tipo de archivo</p>
-                <p className="text-sm text-gray-500 mb-4">Formato no soportado: {tipo}</p>
-                {onDownload && (
-                <button
-                  onClick={() => {
-                    closeFileViewer();
-                    onDownload(viewingFile.url, nombre);
-                  }}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
-                >
-                  Descargar
-                </button>
-                )}
-              </div>
-            )}
+{fileBlobUrl && (
+            <>
+              {tipo.includes('pdf') || (nombre || '').toLowerCase().endsWith('.pdf') ? (
+                <embed
+                  src={fileBlobUrl}
+                  type="application/pdf"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                />
+              ) : tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(nombre || '') ? (
+                <img
+                  src={fileBlobUrl}
+                  alt={nombre}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
+              ) : tipo.includes('video') || /\.(mp4|webm|ogg|mov)$/i.test(nombre || '') ? (
+                <video
+                  src={fileBlobUrl}
+                  controls
+                  style={{ maxWidth: '100%', maxHeight: '100%' }}
+                />
+              ) : (nombre || '').toLowerCase().endsWith('.docx') || (nombre || '').toLowerCase().endsWith('.doc') || tipo.includes('html') || tipo.includes('word') ? (
+                <iframe
+                  src={fileBlobUrl}
+                  className="w-full h-full border-0 bg-white"
+                  title={`Vista previa de ${nombre}`}
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <FileText className="w-16 h-16 text-gray-300 mb-4" />
+                  <p className="text-lg font-bold text-gray-600 mb-2">No se puede previsualizar este tipo de archivo</p>
+                  <p className="text-sm text-gray-500 mb-4">Formato no soportado: {tipo || 'desconocido'}</p>
+                  {onDownload && (
+                  <button
+                    onClick={() => {
+                      closeFileViewer();
+                      onDownload(viewingFile.url, nombre);
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    Descargar
+                  </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           </div>
         </motion.div>
       </motion.div>,
@@ -418,15 +421,15 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     setFileBlobUrl(null);
     try {
       const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(archivo.url || (archivo as any).fullUrl || '');
-      const requestUrl = absoluteUrl.includes('?') ? `${absoluteUrl}&view=true` : `${absoluteUrl}?view=true`;
-      const response = await fetch(requestUrl, {
+      const response = await fetch(absoluteUrl, {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load file');
       let blob = await response.blob();
+      const tipo = archivo.tipo || '';
 
       // Soporte para previsualización de DOCX igual que evidencias (usando mammoth)
-      const isDocx = (archivo.nombre || '').toLowerCase().endsWith('.docx') || (archivo.tipo || '').includes('word') || (archivo.tipo || '').includes('docx');
+      const isDocx = (archivo.nombre || '').toLowerCase().endsWith('.docx') || tipo.includes('word') || tipo.includes('docx');
       if (isDocx) {
         try {
           const arrayBuffer = await blob.arrayBuffer();
@@ -451,7 +454,24 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
           blob = new Blob([docxHtml], { type: 'text/html' });
         } catch (convErr) {
           console.error('Error convirtiendo DOCX para preview en noticia:', convErr);
-          // fallback: usa el blob original (puede no renderizar bien)
+        }
+      } else {
+        // Asignar tipo MIME explícito para PDFs e imágenes
+        const isPdf = tipo.includes('pdf') || (archivo.nombre || '').toLowerCase().endsWith('.pdf');
+        const isImage = tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(archivo.nombre || '');
+        if (isPdf && blob.type !== 'application/pdf') {
+          blob = blob.slice(0, blob.size, 'application/pdf');
+        } else if (isImage && blob.type.startsWith('application/')) {
+          const ext = (archivo.nombre || '').split('.').pop()?.toLowerCase() || '';
+          const mimeMap: Record<string, string> = {
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            png: 'image/png',
+            gif: 'image/gif',
+            webp: 'image/webp',
+            svg: 'image/svg+xml'
+          };
+          blob = blob.slice(0, blob.size, mimeMap[ext] || 'image/png');
         }
       }
 
@@ -593,7 +613,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
              </span>
           </div>
           <div className="flex items-center gap-2">
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida') && (
               <button
                 onClick={() => { onClose(); onEditar(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg border text-gray-700 hover:bg-gray-100 transition-all"
@@ -603,7 +623,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 Editar
               </button>
             )}
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida') && (
               <button
                 onClick={() => { onClose(); onConvertir(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"

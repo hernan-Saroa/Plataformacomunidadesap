@@ -854,7 +854,7 @@ function SeguimientoView({
   fetchPlanes,
   actualizarEstadoPlan,
 }: SeguimientoViewProps) {
-  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista');
+  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('kanban');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
@@ -1141,93 +1141,6 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
 
   return (
     <>
-      <style>{`
-        /* Scroll horizontal personalizado ESAP para Planes de Mejoramiento - MEJORADO */
-        .kanban-scroll-container {
-          scrollbar-width: auto;
-          scrollbar-color: #2962FF #E5E7EB;
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar {
-          height: 16px;
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar-track {
-          background: linear-gradient(to bottom, #F9FAFB, #F3F4F6);
-          border-radius: 10px;
-          border: 1px solid #E5E7EB;
-          box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar-thumb {
-          background: linear-gradient(to right, #2962FF, #003DA5);
-          border-radius: 10px;
-          border: 3px solid #F3F4F6;
-          box-shadow: 0 2px 4px rgba(41, 98, 255, 0.2);
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to right, #003DA5, #002D7A);
-          box-shadow: 0 2px 6px rgba(41, 98, 255, 0.4);
-        }
-
-        .kanban-scroll-container::-webkit-scrollbar-thumb:active {
-          background: linear-gradient(to right, #002D7A, #001F5A);
-        }
-
-        /* Fallback para otros elementos con overflow-x */
-        .overflow-x-auto {
-          scrollbar-width: thin;
-          scrollbar-color: #2962FF #E5E7EB;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar {
-          height: 12px;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar-track {
-          background: #F3F4F6;
-          border-radius: 8px;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar-thumb {
-          background: linear-gradient(to right, #2962FF, #003DA5);
-          border-radius: 8px;
-          border: 2px solid #F3F4F6;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to right, #003DA5, #002D7A);
-        }
-
-        /* Scroll vertical personalizado para columnas kanban */
-        .overflow-y-auto {
-          scrollbar-width: thin;
-          scrollbar-color: #2962FF #E5E7EB;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar {
-          width: 8px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-track {
-          background: #F3F4F6;
-          border-radius: 8px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-thumb {
-          background: linear-gradient(to bottom, #2962FF, #003DA5);
-          border-radius: 8px;
-          border: 2px solid #F3F4F6;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to bottom, #003DA5, #002D7A);
-        }
-      `}</style>
-      
-      {/* Indicador de scroll horizontal con botones de navegación - Desktop */}
-      
 
       {/* Indicador Mobile - FASE 1 DÍA 2 */}
       <div className="lg:hidden bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 mb-4">
@@ -1242,7 +1155,6 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-6 px-1 kanban-scroll-container"
         style={{
           flexWrap: 'nowrap',
-          minWidth: 'max-content'
         }}
       >
         {COLUMNAS_KANBAN.map((columna) => {
@@ -1323,8 +1235,6 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
       <motion.div
         ref={drop}
         className="w-full lg:w-10 flex-shrink-0 lg:h-full"
-        initial={{ width: '100%' }}
-        animate={{ width: '100%' }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
         <Card 
@@ -1401,14 +1311,14 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
   // Versión expandida
   return (
     <div 
-      className="w-full flex-shrink-0"
+      className="w-full flex-shrink-0 border border-gray-200 rounded-lg"
       style={{
         minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : undefined,
         width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : '100%'
       }}
     >
       {/* Header Columna */}
-      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl">
+      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl bg-white" style={{backgroundColor: 'white'}}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 flex-1">
             <div className="p-2 rounded-lg bg-white border border-gray-200">
@@ -1474,7 +1384,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
             ? 'bg-gradient-to-b from-blue-100 to-blue-50 border-[#1e5da8] border-dashed shadow-inner' 
             : 'bg-gray-50 border-transparent'
         }`}
-        style={{ minHeight: 'calc(100vh - 180px)', maxHeight: 'calc(100vh - 180px)' }}
+        style={{ minHeight: 'calc(100vh - 180px)', maxHeight: 'calc(100vh - 180px)', backgroundColor: 'white' }}
       >
         {isOver && (
           <motion.div

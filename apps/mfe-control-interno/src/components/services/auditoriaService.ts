@@ -218,7 +218,7 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
       año: form.planAnualAño,
       rol: form.rolDecretoAsociado,
     } : undefined,
-    estadoKanban: form.estadoKanban || 'Plan Anual', // Por defecto Plan Anual
+    estadoKanban: form.estadoKanban || 'Programa Anual', // Por defecto Plan Anual
   };
 }
 

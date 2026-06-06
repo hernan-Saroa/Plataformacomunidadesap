@@ -31,9 +31,15 @@ import graduadosService, {
   type CertificadoGraduado,
   type GraduateMatchSuggestion,
 } from "../../services/api/graduados.service";
+import { getPublicBaseUrl } from "../../config/environment";
 // import { simularEnvioCorreo } from '../../utils/emailTemplates';
 // import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
 // import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
+
+const getRuntimePublicBaseUrl = () =>
+  typeof window !== "undefined" && window.location?.origin
+    ? window.location.origin
+    : getPublicBaseUrl();
 
 interface PublicTitleVerificationProps {
   onBack: () => void;
@@ -64,7 +70,7 @@ const getPersonNameValidationError = (value: string, fieldName: string) => {
   const normalizedValue = normalizeTextSpaces(value);
 
   if (!normalizedValue) {
-    return `Por favor ingresa ${fieldName}`;
+    return `Por favor, ingresa ${fieldName}`;
   }
 
   if (normalizedValue.length < 2) {
@@ -123,7 +129,7 @@ const showRequestErrorToast = (error: any, title: string) => {
   }
 
   toast.error(title, {
-    description: error?.message || "Por favor intenta nuevamente",
+    description: error?.message || "Por favor, intenta nuevamente",
   });
 };
 
@@ -283,7 +289,7 @@ export function PublicTitleVerification({
       id: certificado.id,
       certificateNumber: certificado.certificateNumber,
       qrCode: certificado.verificationCode,
-      qrUrl: `${window.location.origin}/verificar-certificado/${certificado.verificationCode}`,
+      qrUrl: `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificado.verificationCode}`,
       graduate: {
         documentNumber: certificado.idNumber,
         documentIssueDate: "",
@@ -315,7 +321,7 @@ export function PublicTitleVerification({
     const normalizedRequesterEmail = requesterEmail.trim();
 
     if (!normalizedDocumentNumber) {
-      return "Por favor ingresa el número de cédula del graduado";
+      return "Por favor, ingresa el número de cédula del graduado";
     }
 
     if (
@@ -345,7 +351,7 @@ export function PublicTitleVerification({
 
     if (requesterType === "empresa") {
       if (!normalizedRequesterName) {
-        return "Por favor ingresa el nombre de la empresa";
+        return "Por favor, ingresa el nombre de la empresa";
       }
 
       if (normalizedRequesterName.length < 2) {
@@ -366,7 +372,7 @@ export function PublicTitleVerification({
     }
 
     if (!normalizedRequesterEmail) {
-      return "Por favor ingresa tu correo electrónico";
+      return "Por favor, ingresa tu correo electrónico";
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -374,7 +380,7 @@ export function PublicTitleVerification({
       normalizedRequesterEmail.length > EMAIL_MAX_LENGTH ||
       !emailRegex.test(normalizedRequesterEmail)
     ) {
-      return "Por favor ingresa un correo electrónico válido";
+      return "Por favor, ingresa un correo electrónico válido";
     }
     if (!acceptedTerms) {
       return "Debes aceptar los términos y condiciones y la política de tratamiento de datos personales";
@@ -592,7 +598,7 @@ export function PublicTitleVerification({
       if (!response.existe || !response.certificado) {
         throw new Error(
           response.mensaje ||
-            "No se pudo generar el certificado con la seleccion elegida.",
+            "No se pudo generar el certificado con la selección elegida.",
         );
       }
 
@@ -1711,7 +1717,7 @@ export function PublicTitleVerification({
                         ) : (
                           <>
                             <Award className="w-4 h-4 mr-2" />
-                            Confirmar seleccion
+                            Confirmar selección
                           </>
                         )}
                       </Button>

@@ -12,12 +12,14 @@
  */
 
 import { useState } from 'react';
-import { X, RefreshCw, CheckCircle, AlertCircle, ArrowRight, Calendar, ClipboardCheck, Play, MessageSquare, Eye, Award } from 'lucide-react';
+import { X, RefreshCw, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
+import { useKanbanConfig } from './context/KanbanConfigContext';
+import { iconoParaEstadoAuditoria } from './config/auditoriaKanbanCatalog';
 
-type EstadoAuditoria = 'Plan Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | 'Finalizada';
+type EstadoAuditoria = string;
 
 interface Auditoria {
   id: string;
@@ -36,51 +38,6 @@ interface ModalCambiarEstadoAuditoriaProps {
   onCambiarEstado: (auditoriaId: string, nuevoEstado: EstadoAuditoria, comentario: string) => void;
 }
 
-const ESTADOS_FLUJO: { estado: EstadoAuditoria; label: string; color: string; icon: any; descripcion: string }[] = [
-  { 
-    estado: 'Plan Anual', 
-    label: 'Plan Anual', 
-    color: '#6366F1',
-    icon: Calendar,
-    descripcion: 'Auditoría programada en plan anual'
-  },
-  { 
-    estado: 'Planeación', 
-    label: 'Planeación', 
-    color: '#3B82F6',
-    icon: ClipboardCheck,
-    descripcion: 'Definición de objetivos y alcance'
-  },
-  { 
-    estado: 'Ejecución', 
-    label: 'Ejecución', 
-    color: '#F59E0B',
-    icon: Play,
-    descripcion: 'Recopilación de evidencias y pruebas'
-  },
-  { 
-    estado: 'Comunicación', 
-    label: 'Comunicación', 
-    color: '#8B5CF6',
-    icon: MessageSquare,
-    descripcion: 'Elaboración y envío de informes'
-  },
-  { 
-    estado: 'Seguimiento', 
-    label: 'Seguimiento', 
-    color: '#EC4899',
-    icon: Eye,
-    descripcion: 'Monitoreo de hallazgos y planes'
-  },
-  { 
-    estado: 'Finalizada', 
-    label: 'Finalizada', 
-    color: '#10B981',
-    icon: Award,
-    descripcion: 'Auditoría completada y cerrada'
-  }
-];
-
 export function ModalCambiarEstadoAuditoria({
   isOpen,
   onClose,
@@ -89,6 +46,17 @@ export function ModalCambiarEstadoAuditoria({
 }: ModalCambiarEstadoAuditoriaProps) {
   const [estadoSeleccionado, setEstadoSeleccionado] = useState<EstadoAuditoria | null>(null);
   const [comentario, setComentario] = useState('');
+  
+  const { etapasKanban } = useKanbanConfig();
+
+  // Mapeamos dinámicamente desde el backend
+  const ESTADOS_FLUJO = etapasKanban.map(etapa => ({
+    estado: etapa.nombre,
+    label: etapa.nombre,
+    color: etapa.color || '#6366F1',
+    icon: iconoParaEstadoAuditoria(etapa.nombre),
+    descripcion: `Transición a ${etapa.nombre} (SLA: ${etapa.slaDias} días)`
+  }));
 
   if (!isOpen || !auditoria) return null;
 

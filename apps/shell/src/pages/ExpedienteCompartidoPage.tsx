@@ -200,14 +200,14 @@ export function ExpedienteCompartidoPage() {
 
       const blob = await response.blob();
 
-      // En móviles, abrir PDFs en nueva pestaña, pero DOCX en modal ya que funciona
-      if (isMobile() && blob.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      // En móviles, abrir PDFs y imágenes en nueva pestaña, pero DOCX en modal ya que funciona
+      if (isMobile() && blob.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && !blob.type.startsWith('image/')) {
         window.open(downloadUrl, '_blank', 'noopener,noreferrer');
         toast.info('Documento abierto en nueva pestaña');
         return;
       }
 
-      // Mostrar modal con visor para desktop o DOCX en móvil
+      // Mostrar modal con visor para desktop o archivos que requieren conversión (DOCX)
       setDocumentoSeleccionado(doc);
       setShowModalVisor(true);
       setPdfBlobUrl(null);
@@ -246,7 +246,6 @@ export function ExpedienteCompartidoPage() {
           // Fallback to original blob
           const url = window.URL.createObjectURL(blob);
           setPdfBlobUrl(url);
-          setEsDocumentoConvertido(false);
         }
       } else {
         const url = window.URL.createObjectURL(blob);
@@ -712,15 +711,15 @@ export function ExpedienteCompartidoPage() {
                 </div>
               )}
 
-              {pdfBlobUrl && !cargandoPDF && !errorPDF && (
-                <iframe
-                  src={pdfBlobUrl}
-                  className="w-full"
-                  style={{ height: '65vh', minHeight: '500px', border: 'none' }}
-                  title={`Visor de ${documentoSeleccionado.nombre}`}
-                  sandbox={esDocumentoConvertido ? "allow-same-origin allow-scripts allow-popups allow-forms" : undefined}
-                />
-              )}
+{pdfBlobUrl && !cargandoPDF && !errorPDF && (
+                 <iframe
+                   src={pdfBlobUrl}
+                   className="w-full"
+                   style={{ height: '65vh', minHeight: '500px', border: 'none' }}
+                   title={`Visor de ${documentoSeleccionado.nombre}`}
+                   sandbox={esDocumentoConvertido ? "allow-same-origin allow-scripts allow-popups allow-forms" : "allow-same-origin"}
+                 />
+               )}
             </div>
 
             {/* Footer */}

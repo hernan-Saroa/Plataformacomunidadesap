@@ -16,8 +16,10 @@ export enum EstadoEtapa {
   INTERMEDIA = 'intermedia',
   FINAL = 'final',
 }
+import { Unique } from 'typeorm';
 
 @Entity('etapa_kanban', { schema: 'control_interno' })
+@Unique(['tableroKanbanId', 'nombre'])
 @Index(['tableroKanbanId', 'orden'])
 @Index(['deletedAt'], { where: 'deleted_at IS NULL' })
 export class EtapaKanban {
