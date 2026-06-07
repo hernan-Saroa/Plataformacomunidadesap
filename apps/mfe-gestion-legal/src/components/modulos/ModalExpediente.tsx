@@ -1459,15 +1459,45 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const handleGuardarEdicion = async (data: any, isEdit?: boolean, id?: string) => {
     try {
       if (!isEdit || !id) return;
+
+      // Upload new document-type custom fields and strip base64 from payload
+      if (data.camposAdicionales) {
+        const cleaned: Record<string, any> = {};
+        for (const [key, val] of Object.entries(data.camposAdicionales as Record<string, any>)) {
+          if (val && typeof val === 'object' && val.base64 && val.esNuevo) {
+            try {
+              const res = await fetch(val.base64);
+              const blob = await res.blob();
+              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
+              const formDataDoc = new FormData();
+              formDataDoc.append('archivo', file);
+              formDataDoc.append('expedienteId', id);
+              formDataDoc.append('nombre', val.nombre);
+              formDataDoc.append('tipo', 'DATO_ADICIONAL');
+              formDataDoc.append('origen', 'CARGA_DIRECTA');
+              formDataDoc.append('categoria', 'documentos');
+              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
+              await legalService.crearDocumento(formDataDoc);
+              cleaned[key] = { nombre: val.nombre, tipoMime: val.tipoMime, tamano: val.tamano, cargado: true };
+            } catch (err) {
+              console.error('Error uploading dynamic document on edit:', err);
+              cleaned[key] = val;
+            }
+          } else {
+            cleaned[key] = val;
+          }
+        }
+        data = { ...data, camposAdicionales: cleaned };
+      }
+
       await legalService.updateExpediente(id, data);
       setIsEditModalOpen(false);
-      // Actualizar los datos del expediente en el modal actual o avisar al padre
       if (onUpdate) {
         onUpdate();
       }
     } catch (error) {
       console.error('Error al actualizar expediente', error);
-      throw error; // Para que ModalNuevaDemandaRESTAURADO muestre error si es que lo maneja
+      throw error;
     }
   };
 
@@ -2065,6 +2095,45 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     )}
                   </ul>
                 </Card>
+
+                {/* Campos Adicionales Dinámicos (no-documento) */}
+                {(() => {
+                  const camposDef = (procesoSeleccionado?.camposAdicionalesConfig || []).filter(c => c.tipo !== 'documento');
+                  const camposVals = (expediente as any).camposAdicionales as Record<string, any> | undefined;
+                  if (!camposDef.length || !camposVals) return null;
+                  const camposConValor = camposDef.filter(c => {
+                    const v = camposVals[c.id];
+                    return v !== undefined && v !== '' && v !== null;
+                  });
+                  if (!camposConValor.length) return null;
+                  return (
+                    <Card className="p-4">
+                      <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                        <FileCheck className="w-4 h-4 text-blue-600" />
+                        INFORMACIÓN ESPECÍFICA DEL PROCESO
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                        {camposConValor.map(c => {
+                          const v = camposVals[c.id];
+                          let display: string;
+                          if (c.tipo === 'booleano') {
+                            display = v ? 'Sí' : 'No';
+                          } else if (c.tipo === 'fecha') {
+                            display = v ? new Date(v).toLocaleDateString('es-CO') : '-';
+                          } else {
+                            display = String(v);
+                          }
+                          return (
+                            <div key={c.id} className="flex items-start justify-between py-2 border-b border-gray-100 last:border-0">
+                              <span className="text-xs text-gray-500 flex-shrink-0">{c.nombre}:</span>
+                              <span className="text-sm font-bold text-gray-900 text-right ml-2 break-all">{display}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  );
+                })()}
 
                 {/* Última Actuación Destacada */}
                 <Card className="p-4 border-2 border-blue-300 bg-blue-50/55">

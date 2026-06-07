@@ -132,6 +132,7 @@ interface ModalNuevaDemandaRESTAURADOProps {
   onClose: () => void;
   onSave: (data: NuevaDemandaData, isEdit?: boolean, originalId?: string) => void;
   expedienteEdit?: ExpedienteJudicial;
+  tableroSeleccionado?: string;
 }
 
 // ==================== DATOS PARAMETRIZABLES ====================
@@ -1095,8 +1096,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         if (!formData.numeroRadicado) {
           newErrors.numeroRadicado = 'El número de radicado es obligatorio';
           hasError = true;
-        } else if (formData.numeroRadicado.length !== 23) {
-          newErrors.numeroRadicado = 'El radicado debe tener exactamente 23 dígitos';
+        } else if (formData.numeroRadicado.length < 11 || formData.numeroRadicado.length > 23) {
+          newErrors.numeroRadicado = 'El radicado debe tener entre 11 y 23 dígitos';
           hasError = true;
         }
 
@@ -1766,42 +1767,40 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
                       )}
 
-                      {!(tableroSeleccionado && tableroSeleccionado !== 'TODOS') && (
-                        <div className="space-y-2">
-                          <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
-                            Tipo de Proceso Judicial <span className="text-red-500">*</span>
-                          </Label>
-                          <Select
-                            value={formData.tipoProcesoJudicial}
-                            onValueChange={(value: string) => {
-                              const tp = tiposProcesosActivos.find(t => t.nombre === value);
-                              setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
-                              if (erroresCampos.tipoProcesoJudicial) {
-                                setErroresCampos(prev => {
-                                  const copy = { ...prev };
-                                  delete copy.tipoProcesoJudicial;
-                                  return copy;
-                                });
-                              }
-                            }}
-                          >
-                            <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                              <SelectValue placeholder="Seleccione tipo de proceso..." />
-                            </SelectTrigger>
-                            <SelectContent className="z-[100000]">
-                              {tiposProcesosActivos.map(tp => (
-                                <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {erroresCampos.tipoProcesoJudicial && (
-                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              {erroresCampos.tipoProcesoJudicial}
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
+                          Tipo de Proceso Judicial <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          value={formData.tipoProcesoJudicial}
+                          onValueChange={(value: string) => {
+                            const tp = tiposProcesosActivos.find(t => t.nombre === value);
+                            setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
+                            if (erroresCampos.tipoProcesoJudicial) {
+                              setErroresCampos(prev => {
+                                const copy = { ...prev };
+                                delete copy.tipoProcesoJudicial;
+                                return copy;
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
+                            <SelectValue placeholder="Seleccione tipo de proceso..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100000]">
+                            {tiposProcesosActivos.map(tp => (
+                              <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {erroresCampos.tipoProcesoJudicial && (
+                          <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {erroresCampos.tipoProcesoJudicial}
+                          </p>
+                        )}
+                      </div>
 
                       {/* Campos condicionales para Proceso Penal */}
                       {formData.tipoProcesoJudicial === 'Proceso Penal' && (

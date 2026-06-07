@@ -953,7 +953,16 @@ export function ModuloDefensaJudicialV3() {
         fechaVencimientoTermino: demandaData.fechaVencimiento,
         etapaProcesal: demandaData.etapa || (columnasTablero.length > 0 ? columnasTablero[0].id : 'RADICACION'),
         ultimaActuacion: undefined, // Backend manages initial state or assumes created
-        camposAdicionales: demandaData.camposAdicionales,
+        camposAdicionales: demandaData.camposAdicionales
+          ? Object.fromEntries(
+              Object.entries(demandaData.camposAdicionales).map(([k, v]) => [
+                k,
+                (v && typeof v === 'object' && (v as any).base64 && (v as any).esNuevo)
+                  ? { nombre: (v as any).nombre, tipoMime: (v as any).tipoMime, tamano: (v as any).tamano, cargado: true }
+                  : v
+              ])
+            )
+          : undefined,
 
         // Mapeo unificado de actores
         actors: [
