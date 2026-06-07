@@ -474,6 +474,7 @@ export function ModuloDefensaJudicialV3() {
           pretensiones: exp.pretensionDemandante || '',
           pretensionDemandante: exp.pretensionDemandante,
           tipoProceso: exp.tipoProceso,
+          camposAdicionales: exp.camposAdicionales,
           documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
           actuaciones: exp.actuaciones || [],
           procesosAnexados: exp.procesosAnexados || [],

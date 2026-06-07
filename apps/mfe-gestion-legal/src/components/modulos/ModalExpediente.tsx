@@ -2099,13 +2099,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 {/* Campos Adicionales Dinámicos (no-documento) */}
                 {(() => {
                   const camposDef = (procesoSeleccionado?.camposAdicionalesConfig || []).filter(c => c.tipo !== 'documento');
-                  const camposVals = (expediente as any).camposAdicionales as Record<string, any> | undefined;
-                  if (!camposDef.length || !camposVals) return null;
-                  const camposConValor = camposDef.filter(c => {
+                  if (!camposDef.length) return null;
+                  const camposVals = ((expediente as any).camposAdicionales as Record<string, any>) || {};
+                  // Booleanos siempre se muestran (no marcado = No); el resto solo si tiene valor
+                  const camposVisibles = camposDef.filter(c => {
+                    if (c.tipo === 'booleano') return true;
                     const v = camposVals[c.id];
                     return v !== undefined && v !== '' && v !== null;
                   });
-                  if (!camposConValor.length) return null;
+                  if (!camposVisibles.length) return null;
                   return (
                     <Card className="p-4">
                       <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
@@ -2113,12 +2115,22 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         INFORMACIÓN ESPECÍFICA DEL PROCESO
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-                        {camposConValor.map(c => {
+                        {camposVisibles.map(c => {
                           const v = camposVals[c.id];
-                          let display: string;
                           if (c.tipo === 'booleano') {
-                            display = v ? 'Sí' : 'No';
-                          } else if (c.tipo === 'fecha') {
+                            const marcado = !!v;
+                            return (
+                              <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                                <span className="text-xs text-gray-500 flex-shrink-0">{c.nombre}:</span>
+                                <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${marcado ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                  {marcado ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                                  {marcado ? 'Sí' : 'No'}
+                                </span>
+                              </div>
+                            );
+                          }
+                          let display: string;
+                          if (c.tipo === 'fecha') {
                             display = v ? new Date(v).toLocaleDateString('es-CO') : '-';
                           } else {
                             display = String(v);
