@@ -272,7 +272,7 @@ export class PdfGeneratorService {
     if (signerName && signatureDataUrl) {
       return `
                 <div class="firma-seccion">
-                    <img class="firma-img" src="${this.escapeHtml(signatureDataUrl)}" alt="Firma electronica" />
+                    <img class="firma-img" src="${this.escapeHtml(signatureDataUrl)}" alt="Firma institucional" />
                     <div class="firma-nombre">${this.escapeHtml(signerName)}</div>
                     <div class="firma-cargo">${this.formatMultilineText(signerTitle)}</div>
                 </div>`;

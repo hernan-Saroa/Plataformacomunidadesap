@@ -3221,10 +3221,10 @@ export function GraduatesManagementModule() {
                 <label htmlFor="includeSignature" className="flex-1 text-sm cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-gray-600" />
-                    <span className="font-medium text-gray-900">Incluir Firma Digital</span>
+                    <span className="font-medium text-gray-900">Incluir firma institucional</span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Agrega firma digital oficial de ESAP para mayor seguridad
+                    Agrega la firma visual del firmante autorizado de ESAP al certificado
                   </p>
                 </label>
               </div>

@@ -3276,10 +3276,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           htmlFor="template-electronic-signature"
                           className="text-sm font-bold text-slate-900"
                         >
-                          Incluir firma electrónica
+                          Incluir firma institucional
                         </Label>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          La firma se aplicará a los certificados generados después de guardar esta plantilla. Requiere nombre, imagen y cargo.
+                          La firma visual del firmante autorizado se aplicará a los certificados generados después de guardar esta plantilla. Requiere nombre, imagen y cargo.
                         </p>
                       </div>
                       <Badge
@@ -3487,7 +3487,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               <div className="mt-4">
                                 <img
                                   src={signaturePreviewUrl}
-                                  alt="Firma electrónica"
+                                  alt="Firma institucional"
                                   className="h-14 max-w-[220px] object-contain object-left"
                                 />
                                 <p className="mt-2 text-[15px] font-semibold leading-5 text-slate-900">

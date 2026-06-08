@@ -66,6 +66,14 @@ const sanitizePersonName = (value: string) =>
 
 const normalizeTextSpaces = (value: string) => value.trim().replace(/\s+/g, " ");
 
+const getTodayInputDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const getPersonNameValidationError = (value: string, fieldName: string) => {
   const normalizedValue = normalizeTextSpaces(value);
 
@@ -114,6 +122,9 @@ const getPersonNameValidationError = (value: string, fieldName: string) => {
 const CERTIFICATE_NOT_AVAILABLE_MESSAGE =
   "El certificado de grado aún no se encuentra disponible para expedición.";
 
+const GRADUATION_DATE_FUTURE_ERROR =
+  "La fecha de grado no puede ser posterior a la fecha actual";
+
 const isCertificateNotAvailableError = (error: any) =>
   error?.status === 422 &&
   String(error?.message || "")
@@ -138,6 +149,7 @@ export function PublicTitleVerification({
   onLoginClick,
 }: PublicTitleVerificationProps) {
   const manualReviewPromptRef = useRef<HTMLDivElement | null>(null);
+  const todayInputDate = getTodayInputDate();
 
   // Scroll to top cuando se monta el componente
   useEffect(() => {
@@ -169,6 +181,7 @@ export function PublicTitleVerification({
   const [showManualReviewDialog, setShowManualReviewDialog] = useState(false);
   const [manualReviewAlertMessage, setManualReviewAlertMessage] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [graduationDateError, setGraduationDateError] = useState("");
 
   useEffect(() => {
     if (showManualReviewDialog) {
@@ -198,6 +211,18 @@ export function PublicTitleVerification({
 
   const handleContactPersonChange = (name: string) => {
     setContactPerson(sanitizePersonName(name));
+  };
+
+  const handleGraduationDateChange = (value: string) => {
+    clearMatchSuggestions();
+
+    if (value && value > todayInputDate) {
+      setGraduationDateError(GRADUATION_DATE_FUTURE_ERROR);
+      return;
+    }
+
+    setGraduationDateError("");
+    setGraduateDocumentIssueDate(value);
   };
 
   const clearMatchSuggestions = () => {
@@ -382,6 +407,12 @@ export function PublicTitleVerification({
     ) {
       return "Por favor, ingresa un correo electrónico válido";
     }
+    if (
+      graduateDocumentIssueDate &&
+      graduateDocumentIssueDate > todayInputDate
+    ) {
+      return GRADUATION_DATE_FUTURE_ERROR;
+    }
     if (!acceptedTerms) {
       return "Debes aceptar los términos y condiciones y la política de tratamiento de datos personales";
     }
@@ -562,6 +593,7 @@ export function PublicTitleVerification({
     setGraduateDocumentNumber(suggestion.idNumber.replace(/\D+/g, ""));
     if (suggestion.graduationDate) {
       setGraduateDocumentIssueDate(toDateInputValue(suggestion.graduationDate));
+      setGraduationDateError("");
     }
 
     toast.success("Coincidencia seleccionada", {
@@ -638,6 +670,7 @@ export function PublicTitleVerification({
     setReviewRequestCreated(false);
     clearMatchSuggestions();
     setAcceptedTerms(false);
+    setGraduationDateError("");
     setIsGenerating(false);
     setIsConfirmingSelection(false);
   };
@@ -1534,12 +1567,30 @@ export function PublicTitleVerification({
                           id="documentIssueDate"
                           type="date"
                           value={graduateDocumentIssueDate}
-                          onChange={(e) => {
-                            clearMatchSuggestions();
-                            setGraduateDocumentIssueDate(e.target.value);
-                          }}
-                          className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                          max={todayInputDate}
+                          onChange={(e) =>
+                            handleGraduationDateChange(e.target.value)
+                          }
+                          aria-invalid={!!graduationDateError}
+                          aria-describedby={
+                            graduationDateError
+                              ? "documentIssueDate-error"
+                              : undefined
+                          }
+                          className={`h-10 text-sm focus:ring-1 ${
+                            graduationDateError
+                              ? "border-red-500 focus:border-red-500 focus:ring-red-500/20"
+                              : "border-gray-300 focus:border-blue-500 focus:ring-blue-500/20"
+                          }`}
                         />
+                        {graduationDateError && (
+                          <p
+                            id="documentIssueDate-error"
+                            className="text-xs text-red-600 mt-1"
+                          >
+                            {graduationDateError}
+                          </p>
+                        )}
                       </div>
 
                       {requesterType === "graduado" && (

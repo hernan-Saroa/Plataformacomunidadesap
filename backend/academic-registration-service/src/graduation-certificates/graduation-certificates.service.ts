@@ -3895,7 +3895,7 @@ export class GraduationCertificatesService {
 
     if (!signerName) {
       throw new BadRequestException(
-        'El nombre del firmante es obligatorio cuando la firma electronica esta activa.',
+        'El nombre del firmante es obligatorio cuando la firma institucional esta activa.',
       );
     }
     if (signerName.length > 255) {
@@ -3905,7 +3905,7 @@ export class GraduationCertificatesService {
     }
     if (!signerTitle) {
       throw new BadRequestException(
-        'El cargo del firmante es obligatorio cuando la firma electronica esta activa.',
+        'El cargo del firmante es obligatorio cuando la firma institucional esta activa.',
       );
     }
     if (signerTitle.length > 255) {
@@ -3915,7 +3915,7 @@ export class GraduationCertificatesService {
     }
     if (!hasExistingSignature && !hasIncomingSignature) {
       throw new BadRequestException(
-        'La imagen de la firma es obligatoria cuando la firma electronica esta activa.',
+        'La imagen de la firma es obligatoria cuando la firma institucional esta activa.',
       );
     }
 
