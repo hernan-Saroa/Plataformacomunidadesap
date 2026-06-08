@@ -1755,6 +1755,44 @@ export function ReviewRequestsModule({
         ].includes(event.type),
       );
 
+  const requestMetricCards = [
+    {
+      id: 'total',
+      label: 'Total',
+      value: displayStats.total,
+      subtitle: isMyReviewsScope ? 'Mis revisiones' : 'Solicitudes',
+      color: '#64748B',
+    },
+    {
+      id: 'pending',
+      label: isMyReviewsScope ? 'Por revisar' : 'Pendientes',
+      value: isMyReviewsScope ? myPendingRequests.length : displayStats.pending,
+      subtitle: isMyReviewsScope ? 'Pendientes y devueltas' : 'Sin revisar',
+      color: '#D97706',
+    },
+    {
+      id: 'under-review',
+      label: isMyReviewsScope ? 'Devueltas' : 'En Revisión',
+      value: isMyReviewsScope ? myReturnedCount : displayStats.underReview,
+      subtitle: isMyReviewsScope ? 'Con observación' : 'En proceso',
+      color: isMyReviewsScope ? '#D97706' : '#2563EB',
+    },
+    {
+      id: 'approved',
+      label: isMyReviewsScope ? 'Enviadas' : 'Aprobadas',
+      value: isMyReviewsScope ? mySubmittedCount : displayStats.approved,
+      subtitle: isMyReviewsScope ? 'Esperando validación' : 'Resueltas',
+      color: '#059669',
+    },
+    {
+      id: 'rejected',
+      label: isMyReviewsScope ? 'Cerradas' : 'Rechazadas',
+      value: isMyReviewsScope ? myClosedCount : displayStats.rejected,
+      subtitle: isMyReviewsScope ? 'Finalizadas' : 'No aprobadas',
+      color: isMyReviewsScope ? '#475569' : '#DC2626',
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Banner informativo de solicitudes */}
@@ -1762,144 +1800,30 @@ export function ReviewRequestsModule({
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3"
       >
-        {/* Card 1: Total */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Total
+        {requestMetricCards.map((metric) => (
+          <Card
+            key={metric.id}
+            aria-label={`${metric.label}: ${metric.value} ${metric.subtitle}`}
+            className="gap-0 rounded-lg border border-l-4 border-slate-200 bg-white shadow-none cursor-default select-none"
+            style={{ borderLeftColor: metric.color }}
+          >
+            <div className="flex min-h-[92px] items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-600">
+                  {metric.label}
                 </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {displayStats.total}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Mis revisiones' : 'Solicitudes'}
+                <p className="mt-2 truncate text-xs text-slate-500">
+                  {metric.subtitle}
                 </p>
               </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)' }}
-              >
-                <FileText className="w-7 h-7 text-white" />
-              </div>
+              <p className="shrink-0 text-3xl font-semibold leading-none text-slate-900 tabular-nums">
+                {metric.value}
+              </p>
             </div>
-          </div>
-        </Card>
-
-        {/* Card 2: Pendientes */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Por revisar' : 'Pendientes'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? myPendingRequests.length : displayStats.pending}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Pendientes y devueltas' : 'Sin revisar'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
-              >
-                <Clock className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 3: En Revisión */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Devueltas' : 'En Revisión'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? myReturnedCount : displayStats.underReview}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Con observación' : 'En proceso'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{
-                  background: isMyReviewsScope
-                    ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
-                    : 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)',
-                }}
-              >
-                <RefreshCw className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 4: Aprobadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Enviadas' : 'Aprobadas'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? mySubmittedCount : displayStats.approved}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Esperando validación' : 'Resueltas'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-              >
-                <CheckCircle className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 5: Rechazadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Cerradas' : 'Rechazadas'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? myClosedCount : displayStats.rejected}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Finalizadas' : 'No aprobadas'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{
-                  background: isMyReviewsScope
-                    ? 'linear-gradient(135deg, #64748B 0%, #334155 100%)'
-                    : 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-                }}
-              >
-                {isMyReviewsScope ? (
-                  <ClipboardCheck className="w-7 h-7 text-white" />
-                ) : (
-                  <XCircle className="w-7 h-7 text-white" />
-                )}
-              </div>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        ))}
 
       </motion.div>
 
