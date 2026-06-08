@@ -1340,7 +1340,14 @@ export function ModuloDefensaJudicialV3() {
         onGenerar={(expedientesFiltrados, descripcionFiltros) => {
           toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
           setTimeout(() => {
-            generarReporteExpedientesPDF(expedientesFiltrados as any, filtroTipo === 'TODOS' ? 'TODOS' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo), descripcionFiltros);
+            // Mapa tipoProceso.nombre → camposAdicionalesConfig (no-documento)
+            const camposConfigPorTipo: Record<string, any[]> = {};
+            (allTiposProcesos || []).forEach((tp: any) => {
+              if (tp.camposAdicionalesConfig?.length) {
+                camposConfigPorTipo[tp.nombre] = tp.camposAdicionalesConfig.filter((c: any) => c.tipo !== 'documento');
+              }
+            });
+            generarReporteExpedientesPDF(expedientesFiltrados as any, filtroTipo === 'TODOS' ? 'TODOS' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo), descripcionFiltros, camposConfigPorTipo);
             toast.success(`Reporte generado con ${expedientesFiltrados.length} expediente(s)`, {
               id: 'reporte-pdf',
               description: descripcionFiltros,

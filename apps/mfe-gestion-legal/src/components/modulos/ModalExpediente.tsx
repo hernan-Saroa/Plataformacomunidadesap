@@ -2101,10 +2101,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   const camposDef = (procesoSeleccionado?.camposAdicionalesConfig || []).filter(c => c.tipo !== 'documento');
                   if (!camposDef.length) return null;
                   const camposVals = ((expediente as any).camposAdicionales as Record<string, any>) || {};
-                  // Booleanos siempre se muestran (no marcado = No); el resto solo si tiene valor
+                  // Booleanos siempre se muestran; opciones-multiple si tiene al menos 1 seleccionada; el resto si tiene valor
                   const camposVisibles = camposDef.filter(c => {
                     if (c.tipo === 'booleano') return true;
                     const v = camposVals[c.id];
+                    if (c.tipo === 'opciones-multiple') return Array.isArray(v) && (v as string[]).length > 0;
                     return v !== undefined && v !== '' && v !== null;
                   });
                   if (!camposVisibles.length) return null;
@@ -2126,6 +2127,22 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                   {marcado ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
                                   {marcado ? 'Sí' : 'No'}
                                 </span>
+                              </div>
+                            );
+                          }
+                          if (c.tipo === 'opciones-multiple') {
+                            const seleccionadas: string[] = Array.isArray(v) ? v : [];
+                            return (
+                              <div key={c.id} className="py-2 border-b border-gray-100 last:border-0 md:col-span-2">
+                                <span className="text-xs text-gray-500 block mb-1.5">{c.nombre}:</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {seleccionadas.map((opt, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                                      <Check className="w-3 h-3" />
+                                      {opt}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                             );
                           }
