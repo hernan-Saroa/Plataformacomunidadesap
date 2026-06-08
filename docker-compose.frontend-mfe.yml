@@ -4,6 +4,7 @@ x-frontend-build-args: &frontend-build-args
   VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
   VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
   VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
+  ESAP_BUILD_DATE: ${ESAP_BUILD_DATE:-}
 
 x-frontend-service: &frontend-service
   networks:

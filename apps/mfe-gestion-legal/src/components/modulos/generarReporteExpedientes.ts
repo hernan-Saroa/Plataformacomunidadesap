@@ -3,6 +3,13 @@
  * Usa html2canvas + jsPDF para descargar directamente sin diálogo de impresión
  */
 
+interface CampoConfig {
+  id: string;
+  nombre: string;
+  tipo: string;
+  opciones?: string[];
+}
+
 interface ExpedienteReporte {
   id: string;
   radicado?: string;
@@ -31,10 +38,7 @@ interface ExpedienteReporte {
   demandantes?: any[];
   demandados?: any[];
   otrosActores?: any[];
-  esDelitoAdminPublica?: boolean;
-  esConductaPatrimonioPublico?: boolean;
-  esOtroDelitoPenal?: boolean;
-  otroDelitoPenalDescripcion?: string;
+  camposAdicionales?: Record<string, any>;
   ultimaActuacion?: { descripcion?: string; fecha?: string; tipo?: string };
   fechaCreacion?: Date;
   estado?: string;
@@ -63,7 +67,7 @@ function getSemaforoColor(dias: number | undefined): { color: string; label: str
   return { color: '#10B981', label: 'EN TÉRMINO' };
 }
 
-function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string {
+function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposConfig?: CampoConfig[]): string {
   const semaforo = getSemaforoColor(exp.diasRestantes);
 
   // Partes procesales
@@ -127,23 +131,54 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
     return html;
   })();
 
-  // Clasificación penal
-  const penalHTML = (exp.tipoProceso === 'Proceso Penal' || exp.esDelitoAdminPublica || exp.esConductaPatrimonioPublico || exp.esOtroDelitoPenal) ? `
-    <div style="margin-top:12px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;">
-      <p style="font-size:11px;font-weight:700;color:#991B1B;margin:0 0 6px 0;">🛡️ CLASIFICACIÓN PENAL (Contraloría / ANDJE)</p>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;">
-        <span style="font-size:11px;color:${exp.esDelitoAdminPublica ? '#DC2626' : '#9CA3AF'};">
-          ${exp.esDelitoAdminPublica ? '✅' : '—'} Delitos contra la Administración Pública
-        </span>
-        <span style="font-size:11px;color:${exp.esConductaPatrimonioPublico ? '#DC2626' : '#9CA3AF'};">
-          ${exp.esConductaPatrimonioPublico ? '✅' : '—'} Conductas que afectan el Patrimonio Público
-        </span>
-        <span style="font-size:11px;color:${exp.esOtroDelitoPenal ? '#DC2626' : '#9CA3AF'};">
-          ${exp.esOtroDelitoPenal ? '✅' : '—'} Otro delito penal${exp.esOtroDelitoPenal && exp.otroDelitoPenalDescripcion ? ': ' + exp.otroDelitoPenalDescripcion : ''}
-        </span>
-      </div>
-    </div>
-  ` : '';
+  // Campos adicionales dinámicos (no-documento)
+  const camposAdicionalesHTML = (() => {
+    const campos = (camposConfig || []).filter(c => c.tipo !== 'documento');
+    const vals = exp.camposAdicionales || {};
+    const filas = campos
+      .map(c => {
+        const v = vals[c.id];
+        // Booleanos siempre; opciones-multiple solo si hay seleccionadas; resto si tiene valor
+        if (c.tipo === 'booleano') {
+          const marcado = !!v;
+          return `<tr>
+            <td style="padding:6px 12px;font-size:11px;color:#6B7280;width:35%;border-bottom:1px solid #E5E7EB;">${c.nombre}</td>
+            <td style="padding:6px 12px;font-size:11px;font-weight:700;border-bottom:1px solid #E5E7EB;color:${marcado ? '#059669' : '#6B7280'};">
+              ${marcado ? '✅ Sí' : '— No'}
+            </td>
+          </tr>`;
+        }
+        if (c.tipo === 'opciones-multiple') {
+          const sel: string[] = Array.isArray(v) ? v : [];
+          if (sel.length === 0) return '';
+          return `<tr>
+            <td style="padding:6px 12px;font-size:11px;color:#6B7280;width:35%;border-bottom:1px solid #E5E7EB;vertical-align:top;">${c.nombre}</td>
+            <td style="padding:6px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">
+              ${sel.map(o => `<span style="display:inline-block;margin:2px 4px 2px 0;padding:1px 8px;background:#DBEAFE;color:#1D4ED8;border-radius:12px;font-size:10px;font-weight:700;">✔ ${o}</span>`).join('')}
+            </td>
+          </tr>`;
+        }
+        if (v === undefined || v === null || v === '') return '';
+        let display = String(v);
+        if (c.tipo === 'fecha') {
+          try { display = new Date(v).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }); } catch { /* noop */ }
+        }
+        return `<tr>
+          <td style="padding:6px 12px;font-size:11px;color:#6B7280;width:35%;border-bottom:1px solid #E5E7EB;">${c.nombre}</td>
+          <td style="padding:6px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${display}</td>
+        </tr>`;
+      })
+      .filter(Boolean)
+      .join('');
+    if (!filas) return '';
+    return `
+      <div style="margin-top:12px;">
+        <h3 style="font-size:12px;font-weight:800;color:#003DA5;margin:0 0 6px 0;border-bottom:2px solid #003DA5;padding-bottom:4px;">📋 INFORMACIÓN ESPECÍFICA DEL PROCESO</h3>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #E5E7EB;border-radius:6px;overflow:hidden;">
+          ${filas}
+        </table>
+      </div>`;
+  })();
 
   // Provisión contable
   const provisionHTML = exp.provisionContable ? `
@@ -237,7 +272,7 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
         </tr>
       </table>
 
-      ${penalHTML}
+      ${camposAdicionalesHTML}
       ${provisionHTML}
 
       <!-- Partes procesales -->
@@ -295,7 +330,7 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
   `;
 }
 
-export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], filtroTipo: string, descripcionFiltros?: string): void {
+export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], filtroTipo: string, descripcionFiltros?: string, camposConfigPorTipo?: Record<string, CampoConfig[]>): void {
   if (expedientes.length === 0) {
     return;
   }
@@ -344,7 +379,11 @@ export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], f
   `;
 
   // Generar páginas
-  const paginasHTML = expedientes.map((exp, idx) => generarPaginaExpediente(exp, idx)).join('');
+  const paginasHTML = expedientes.map((exp, idx) => {
+    const tipoClave = exp.tipoProceso || '';
+    const campos = camposConfigPorTipo?.[tipoClave] || [];
+    return generarPaginaExpediente(exp, idx, campos);
+  }).join('');
 
   // HTML completo
   const htmlCompleto = `<!DOCTYPE html>

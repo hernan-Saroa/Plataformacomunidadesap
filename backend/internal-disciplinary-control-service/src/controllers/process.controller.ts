@@ -15,6 +15,7 @@ import {
   Res,
   HttpException,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -1185,6 +1186,28 @@ export class ProcessController {
   }
 
   /**
+   * Obtener todas las noticias RADICADA con documentos adjuntos
+   * Estas noticias no tienen proceso asociado aún
+   */
+  @Get('radicated-news')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Obtener Noticias Radicadas con Documentos',
+    description: 'Retorna las noticias en estado RADICADA que tienen archivos adjuntos pero no tienen proceso asociado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias radicadas con documentos',
+  })
+  async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
+    const access = await this.getSensitiveAccessContext(req);
+    if (!access.fullAccess) {
+      return [];
+    }
+    return await this.processService.findRadicatedNewsWithDocuments();
+  }
+
+  /**
    * Obtener todos los procesos
    */
   @Get()
@@ -1226,7 +1249,7 @@ export class ProcessController {
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async getById(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<DisciplinaryProcess> {
     const access = await this.getSensitiveAccessContext(req);
 
@@ -1585,21 +1608,4 @@ export class ProcessController {
      }
    }
 
-   /**
-    * Obtener todas las noticias RADICADA con documentos adjuntos
-    * Estas noticias no tienen proceso asociado aún
-    */
-   @Get('radicated-news')
-   @HttpCode(HttpStatus.OK)
-   @ApiOperation({
-     summary: 'Obtener Noticias Radicadas con Documentos',
-     description: 'Retorna las noticias en estado RADICADA que tienen archivos adjuntos pero no tienen proceso asociado',
-   })
-   @ApiResponse({
-     status: 200,
-     description: 'Lista de noticias radicadas con documentos',
-   })
-   async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
-     return await this.processService.findRadicatedNewsWithDocuments();
-   }
  }

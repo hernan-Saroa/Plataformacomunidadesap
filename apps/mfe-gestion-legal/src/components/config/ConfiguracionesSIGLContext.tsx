@@ -44,10 +44,11 @@ export interface TipoProcesoJudicial {
   camposAdicionalesConfig?: Array<{
     id: string;
     nombre: string;
-    tipo: 'texto' | 'numero' | 'fecha' | 'booleano' | 'alfanumerico' | 'unico' | 'documento';
+    tipo: 'texto' | 'numero' | 'fecha' | 'booleano' | 'alfanumerico' | 'unico' | 'documento' | 'opciones-multiple' | 'lista';
     obligatorio: boolean;
     paso: number;
     tiposDocumento?: string[];
+    opciones?: string[];
   }>;
   unidadTermino?: 'dias' | 'horas' | 'Dias Habiles' | 'Dias Calendario' | 'Horas' | 'Ambos';
   estados?: EstadoKanban[];
@@ -227,7 +228,7 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias surgidas de contratos estatales.', plazo: 35, alertaDias: 7, activo: true },
       { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', plazo: 10, alertaDias: 2, activo: true },
       { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para el cobro de obligaciones claras, expresas y exigibles.', plazo: 20, alertaDias: 5, activo: true },
-      { id: 'proceso-penal', nombre: 'Proceso Penal', descripcion: 'Proceso de naturaleza penal relacionado con la entidad, incluyendo delitos contra la administración pública y/o conductas que afecten el patrimonio público.', plazo: 30, alertaDias: 7, activo: true },
+      { id: 'proceso-penal', nombre: 'Proceso Penal', descripcion: 'Proceso de naturaleza penal relacionado con la entidad, incluyendo delitos contra la administración pública y/o conductas que afecten el patrimonio público.', plazo: 30, alertaDias: 7, activo: true, camposAdicionalesConfig: [{ id: 'clasificacion-penal', nombre: 'Clasificación Penal', tipo: 'opciones-multiple' as const, obligatorio: true, paso: 1, opciones: ['Delitos contra la Administración Pública', 'Conductas que afectan el Patrimonio Público', 'Otros'] }] },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales no categorizados.', plazo: 15, alertaDias: 3, activo: true },
     ],
     tiposAutos: [
@@ -598,7 +599,16 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
               // Para todo lo demás (estados, mediosControl, etc.): el backend manda, comportamiento original
               const mergeTiposProcesos = (base: TipoProcesoJudicial[] = [], override: TipoProcesoJudicial[] = []): TipoProcesoJudicial[] => {
                 const map = new Map(base.map(item => [item.id, item]));
-                override.forEach(item => map.set(item.id, item));
+                override.forEach(item => {
+                  const baseItem = map.get(item.id);
+                  // Si el backend no tiene camposAdicionalesConfig (undefined) pero el default sí, usar el del default
+                  // Si el backend tiene [] vacío, es decisión del usuario → respetar
+                  if (baseItem && item.camposAdicionalesConfig === undefined && baseItem.camposAdicionalesConfig) {
+                    map.set(item.id, { ...item, camposAdicionalesConfig: baseItem.camposAdicionalesConfig });
+                  } else {
+                    map.set(item.id, item);
+                  }
+                });
                 return Array.from(map.values());
               };
               return {

@@ -1438,12 +1438,12 @@ function ModalNuevaActuacion({
         exit={{ opacity: 0, scale: 0.98, y: 12 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ maxWidth: 900, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        style={{ maxWidth: 900, maxHeight: '92vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '20px' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
-          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+          style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -1785,12 +1785,12 @@ function ModalNuevaTarea({
         exit={{ opacity: 0, scale: 0.98, y: 12 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ maxWidth: 920, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        style={{ maxWidth: 920, maxHeight: '92vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '20px' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
-          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+          style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
