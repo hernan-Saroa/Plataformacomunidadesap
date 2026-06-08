@@ -4720,13 +4720,13 @@ export class GraduationCertificatesService {
       formattedUpdateDate = updateDate.toISOString();
     }
 
-    const subject = `Actualización de solicitud en revisión - ${requestNumber}`;
+    const subject = `Revisión iniciada para tu solicitud - ${requestNumber}`;
     const text =
       `Hola ${requesterName},\n` +
-      `Tu solicitud ${requestNumber} avanzó al estado En revisión.\n` +
+      `Iniciamos la revisión de tu solicitud ${requestNumber}.\n` +
       `Documento consultado: ${idNumber || 'No informado'}.\n` +
       `Fecha de actualización: ${formattedUpdateDate}.\n\n` +
-      `Nuestro equipo se encuentra validando la informacion. Te notificaremos el siguiente avance al mismo correo.`;
+      `El equipo de Registro Académico se encuentra validando la información. Te notificaremos el siguiente avance al mismo correo.`;
 
     const safeRequesterName = safe(requesterName);
     const safeRequestNumber = safe(requestNumber);
@@ -4744,7 +4744,7 @@ export class GraduationCertificatesService {
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
                       <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
-                      <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">En revisión</span></td>
+                      <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Revisión iniciada</span></td>
                     </tr></table>
                   </td></tr>
                 </table>
@@ -4752,8 +4752,8 @@ export class GraduationCertificatesService {
             </tr>
             <tr>
               <td style="padding:32px 28px 8px 28px;">
-                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Tu solicitud está siendo revisada</h1>
-                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, tu solicitud avanzó en el proceso. Nuestro equipo está validando la información.</p>
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Iniciamos la revisión de tu solicitud</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, el equipo de Registro Académico inició la validación de la información consultada.</p>
                 <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
                   <tr><td style="padding:16px 20px;">
                     <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Estado de la solicitud</p>

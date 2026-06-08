@@ -1549,9 +1549,9 @@ export function ReviewRequestsModule({
           reviewerId,
           reviewerEmail,
         );
-        toast.success('Solicitud marcada como en revisión', {
+        toast.success('Revisión iniciada', {
           description:
-            'Se envió un correo de actualización sobre el proceso al solicitante.',
+            'Se envió un correo al solicitante informando que la revisión fue iniciada.',
         });
       } else if (
         confirmAction.type === 'approve' ||
@@ -1662,10 +1662,22 @@ export function ReviewRequestsModule({
       : 'Registrar novedad de rechazo';
   const confirmActionLabel =
     confirmAction?.type === 'start_review'
-      ? 'Enviar a revisión'
+      ? 'Iniciar revisión'
       : confirmAction?.type === 'approve'
         ? 'Cargar información revisada'
         : 'Registrar novedad de rechazo';
+  const confirmDialogTitle =
+    confirmAction?.type === 'start_review'
+      ? 'Iniciar revisión'
+      : 'Confirmar Acción';
+  const confirmDialogDescription =
+    confirmAction?.type === 'start_review'
+      ? 'Confirma que deseas iniciar la revisión. El solicitante recibirá una notificación por correo.'
+      : 'Verifica que deseas continuar con esta acción.';
+  const confirmButtonLabel =
+    confirmAction?.type === 'start_review'
+      ? 'Iniciar revisión'
+      : 'Confirmar';
 
   const formatTimelineActor = (
     actorName?: string,
@@ -2254,7 +2266,7 @@ export function ReviewRequestsModule({
                             <>
                               <DropdownMenuItem onClick={() => handleStartReview(request)}>
                                 <RefreshCw className="w-4 h-4 mr-2" />
-                                Enviar a Revisión
+                                Iniciar revisión
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -2448,7 +2460,7 @@ export function ReviewRequestsModule({
                                 }}
                               >
                                 <Eye className="w-4 h-4" />
-                                Revisar Solicitud
+                                Iniciar revisión
                               </button>
                             )}
                             <button
@@ -2702,7 +2714,7 @@ export function ReviewRequestsModule({
         </motion.div>
       )}
 
-      {/* Modal: Revisar Solicitud */}
+      {/* Modal: Gestionar solicitud */}
       <Dialog
         open={showReviewModal}
         onOpenChange={(open) => {
@@ -3236,7 +3248,13 @@ export function ReviewRequestsModule({
         }}
       >
         <DialogContent
-          className="w-[92vw] max-w-lg"
+          className="top-1/2 -translate-y-1/2"
+          style={{
+            width: 'min(360px, calc(100vw - 2rem), calc(100vh - 2rem))',
+            height: 'min(360px, calc(100vw - 2rem), calc(100vh - 2rem))',
+            maxWidth: 'none',
+            gridTemplateRows: 'auto 1fr auto',
+          }}
           onEscapeKeyDown={(event) => {
             if (isUpdating) {
               event.preventDefault();
@@ -3251,15 +3269,15 @@ export function ReviewRequestsModule({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />
-              Confirmar Acción
+              {confirmDialogTitle}
             </DialogTitle>
             <DialogDescription>
-              Verifica que deseas continuar con esta acción.
+              {confirmDialogDescription}
             </DialogDescription>
           </DialogHeader>
 
           {confirmAction && (
-            <div className="py-4 space-y-4">
+            <div className="flex flex-col justify-center py-2 space-y-4">
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
                 <p className="font-semibold text-gray-900 mb-1">{confirmActionLabel}</p>
                 <p>
@@ -3318,7 +3336,7 @@ export function ReviewRequestsModule({
               disabled={isUpdating}
             >
               <CheckCircle className="w-4 h-4" />
-              {isUpdating ? 'Procesando...' : 'Confirmar'}
+              {isUpdating ? 'Procesando...' : confirmButtonLabel}
             </button>
           </DialogFooter>
         </DialogContent>
