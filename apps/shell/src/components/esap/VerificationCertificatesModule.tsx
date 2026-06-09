@@ -67,6 +67,7 @@ import {
 import React from 'react';
 import { copyToClipboard } from '@/utils/browser';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import headerLogoPreviewFallback from '../../assets/graduation-certificates/img_primera.png';
 import graduadosService, {
   CertificadoGraduado,
   GraduationCertificateTemplateConfig,
@@ -165,6 +166,8 @@ const DEFAULT_CERTIFICATE_TEMPLATE_TEXTS: GraduationCertificateTemplateTexts = {
   signerTitle: 'Dirección Técnica Registro y Control',
   validationMessage:
     'Puede validar la autenticidad de esta verificación en',
+  footerAddress:
+    'Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN\nPBX: 2202790 - Fax: (091) 2202790 Ext. 7205\nCorreo Electrónico: ventanillaunica@esap.edu.co\nwww.esap.edu.co',
 };
 
 const TEMPLATE_TEXT_FIELDS: Array<{
@@ -184,6 +187,7 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
   { key: 'closingText', label: 'Texto de cierre' },
   { key: 'validationMessage', label: 'Mensaje de validación', rows: 2 },
+  { key: 'footerAddress', label: 'Dirección pie de página', rows: 4 },
 ];
 
 const DEFAULT_TEMPLATE_SIGNATURE_FORM = {
@@ -193,6 +197,31 @@ const DEFAULT_TEMPLATE_SIGNATURE_FORM = {
   signatureFilename: '',
   signatureImageDataUrl: '',
   signatureImageFilename: '',
+};
+
+const DEFAULT_TEMPLATE_LOGO_FORM = { filename: '', dataUrl: '' };
+
+const createLogoPreviewImageStyle = (
+  position: React.CSSProperties['objectPosition'] = 'left center',
+): React.CSSProperties => ({
+  position: 'absolute',
+  inset: 0,
+  display: 'block',
+  width: '100%',
+  height: '100%',
+  maxWidth: '100%',
+  maxHeight: '100%',
+  objectFit: 'contain',
+  objectPosition: position,
+});
+
+const resolveTemplateImagePreviewUrl = (value?: string | null) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^data:image\/(png|jpe?g|svg\+xml|webp);base64,/i.test(raw)) {
+    return raw;
+  }
+  return buildServiceAssetUrl('registro-academico', raw);
 };
 
 export function VerificationCertificatesModule({ onPendingCountChange }: VerificationCertificatesModuleProps = {}) {
@@ -248,6 +277,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [templateSignatureForm, setTemplateSignatureForm] = useState(
     DEFAULT_TEMPLATE_SIGNATURE_FORM,
   );
+  const [newHeaderLogoFile, setNewHeaderLogoFile] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [newFooterLogoFile, setNewFooterLogoFile] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [headerLogoPreviewFailed, setHeaderLogoPreviewFailed] = useState(false);
   const canEditCertificates = authService.hasPermission(
     Permissions.GRADUATES_CERTIFICATES_EDIT,
   );
@@ -1043,6 +1075,35 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     reader.readAsDataURL(file);
   };
 
+  const makeLogoFileChangeHandler = (
+    setter: React.Dispatch<React.SetStateAction<{ filename: string; dataUrl: string } | null>>,
+    label: string,
+  ) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp']);
+    if (!allowedTypes.has(file.type)) {
+      toast.error(`${label} debe ser una imagen PNG, JPEG, SVG o WebP`);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error(`${label} no debe superar los 10 MB`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) { toast.error(`No se pudo leer ${label}`); return; }
+      setter({ filename: file.name, dataUrl: result });
+    };
+    reader.onerror = () => { toast.error(`No se pudo leer ${label}`); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleHeaderLogoFileChange = makeLogoFileChangeHandler(setNewHeaderLogoFile, 'el logo de cabecera');
+  const handleFooterLogoFileChange = makeLogoFileChangeHandler(setNewFooterLogoFile, 'el logo de pie de página');
+
   const handleOpenTemplateEditor = async () => {
     if (!canEditCertificates) {
       toast.error('Permiso requerido', {
@@ -1059,11 +1120,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setTemplateConfig(config);
       setTemplateForm(config?.texts || DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
       setTemplateSignatureForm(getSignatureFormFromConfig(config));
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
     } catch (error: any) {
       console.error('Error cargando plantilla académica:', error);
       setTemplateConfig(null);
       setTemplateForm(DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
       setTemplateSignatureForm(DEFAULT_TEMPLATE_SIGNATURE_FORM);
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
       toast.error('No se pudo cargar la plantilla', {
         description: error?.response?.data?.message || error?.message,
       });
@@ -1134,11 +1199,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           templateSignatureForm.signatureImageFilename ||
           templateSignatureForm.signatureFilename ||
           undefined,
+        headerLogoDataUrl: newHeaderLogoFile ? newHeaderLogoFile.dataUrl : undefined,
+        headerLogoFilename: newHeaderLogoFile ? newHeaderLogoFile.filename : undefined,
+        footerLogoDataUrl: newFooterLogoFile ? newFooterLogoFile.dataUrl : undefined,
+        footerLogoFilename: newFooterLogoFile ? newFooterLogoFile.filename : undefined,
         updatedBy: resolveTemplateActor(),
       });
       setTemplateConfig(response);
       setTemplateForm(response.texts);
       setTemplateSignatureForm(getSignatureFormFromConfig(response));
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
       toast.success('Plantilla actualizada', {
         description:
           'Los textos del certificado de registro académico quedaron guardados.',
@@ -1162,6 +1233,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setTemplateConfig(response);
       setTemplateForm(response.texts);
       setTemplateSignatureForm(getSignatureFormFromConfig(response));
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
       toast.success('Textos restablecidos', {
         description: 'Se recuperó la plantilla base del certificado.',
       });
@@ -1838,12 +1911,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       baseSignature.signerName !== templateSignatureForm.signerName ||
       baseSignature.signatureUrl !== templateSignatureForm.signatureUrl ||
       Boolean(templateSignatureForm.signatureImageDataUrl);
+    const logoChanged = Boolean(newHeaderLogoFile) || Boolean(newFooterLogoFile);
 
     return (
       JSON.stringify(baseTexts) !== JSON.stringify(templateForm) ||
-      signatureChanged
+      signatureChanged ||
+      logoChanged
     );
-  }, [templateConfig, templateForm, templateSignatureForm]);
+  }, [templateConfig, templateForm, templateSignatureForm, newHeaderLogoFile, newFooterLogoFile]);
 
   const signaturePreviewUrl = useMemo(() => {
     if (templateSignatureForm.signatureImageDataUrl) {
@@ -1860,6 +1935,49 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
     return '';
   }, [templateSignatureForm.signatureImageDataUrl, templateSignatureForm.signatureUrl]);
+
+  const hasCustomHeaderLogo = Boolean(
+    newHeaderLogoFile || templateConfig?.logos?.headerLogoDataUrl,
+  );
+  const hasCustomFooterLogo = Boolean(
+    newFooterLogoFile || templateConfig?.logos?.footerLogoDataUrl,
+  );
+
+  const headerLogoPreviewUrl = useMemo(
+    () =>
+      resolveTemplateImagePreviewUrl(
+        newHeaderLogoFile?.dataUrl ||
+          templateConfig?.logos?.headerLogoDataUrl ||
+          templateConfig?.logos?.defaultHeaderLogoDataUrl,
+      ) || headerLogoPreviewFallback,
+    [
+      newHeaderLogoFile?.dataUrl,
+      templateConfig?.logos?.headerLogoDataUrl,
+      templateConfig?.logos?.defaultHeaderLogoDataUrl,
+    ],
+  );
+
+  const footerLogoPreviewUrl = useMemo(
+    () =>
+      resolveTemplateImagePreviewUrl(
+        newFooterLogoFile?.dataUrl ||
+          templateConfig?.logos?.footerLogoDataUrl ||
+          templateConfig?.logos?.defaultFooterLogoDataUrl,
+      ),
+    [
+      newFooterLogoFile?.dataUrl,
+      templateConfig?.logos?.footerLogoDataUrl,
+      templateConfig?.logos?.defaultFooterLogoDataUrl,
+    ],
+  );
+
+  useEffect(() => {
+    setHeaderLogoPreviewFailed(false);
+  }, [headerLogoPreviewUrl]);
+
+  const headerLogoDisplayUrl = headerLogoPreviewFailed
+    ? headerLogoPreviewFallback
+    : headerLogoPreviewUrl;
 
   return (
     <div className="space-y-6">
@@ -3249,6 +3367,116 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
                 {!isLoadingTemplateConfig && (
                   <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#F7FAFF] px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Logo institucional (cabecera)</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Logo que aparece en la parte superior izquierda del certificado. Si no se sube, se usa el logo predeterminado de Función Pública.
+                        </p>
+                      </div>
+                      <Badge className={
+                        hasCustomHeaderLogo
+                          ? 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                          : 'border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600'
+                      }>
+                        {hasCustomHeaderLogo ? 'Personalizado' : 'Predeterminado'}
+                      </Badge>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#8BB8F6] bg-white px-4 py-5 text-center transition-colors hover:border-[#003DA5] hover:bg-[#FAFCFF]">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          className="hidden"
+                          onChange={handleHeaderLogoFileChange}
+                          disabled={isSavingTemplateConfig}
+                        />
+                        <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF5FF] text-[#003DA5]">
+                          <Upload className="h-5 w-5" />
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">Subir logo PNG, JPEG, SVG o WebP</span>
+                        <span className="mt-1 text-xs text-slate-500">Máximo 10 MB. Se ajustará al espacio del certificado.</span>
+                      </label>
+                      {headerLogoPreviewUrl ? (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <ImageIcon className="h-4 w-4 text-[#003DA5]" />
+                            {newHeaderLogoFile?.filename || templateConfig?.logos?.headerLogoFilename || 'Logo Funcion Publica predeterminado'}
+                            {newHeaderLogoFile && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Nuevo</span>}
+                            {!hasCustomHeaderLogo && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Base</span>}
+                          </div>
+                          <div className="relative h-16 w-full max-w-[300px] overflow-hidden rounded-md border border-slate-100 bg-slate-50 p-2">
+                            <div className="relative h-full w-full overflow-hidden">
+                              <img
+                                src={headerLogoPreviewUrl}
+                                alt="Vista previa logo cabecera"
+                                style={createLogoPreviewImageStyle()}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                )}
+
+                {!isLoadingTemplateConfig && (
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#F7FAFF] px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Logo ESAP (pie de página)</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Logo que aparece en la parte inferior derecha del certificado, junto a la dirección de la sede.
+                        </p>
+                      </div>
+                      <Badge className={
+                        hasCustomFooterLogo
+                          ? 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                          : 'border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600'
+                      }>
+                        {hasCustomFooterLogo ? 'Personalizado' : 'Predeterminado'}
+                      </Badge>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#8BB8F6] bg-white px-4 py-5 text-center transition-colors hover:border-[#003DA5] hover:bg-[#FAFCFF]">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          className="hidden"
+                          onChange={handleFooterLogoFileChange}
+                          disabled={isSavingTemplateConfig}
+                        />
+                        <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF5FF] text-[#003DA5]">
+                          <Upload className="h-5 w-5" />
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">Subir logo PNG, JPEG, SVG o WebP</span>
+                        <span className="mt-1 text-xs text-slate-500">Máximo 10 MB. Se ajustará al espacio del certificado.</span>
+                      </label>
+                      {footerLogoPreviewUrl ? (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <ImageIcon className="h-4 w-4 text-[#003DA5]" />
+                            {newFooterLogoFile?.filename || templateConfig?.logos?.footerLogoFilename || 'Logo ESAP predeterminado'}
+                            {newFooterLogoFile && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Nuevo</span>}
+                            {!hasCustomFooterLogo && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Base</span>}
+                          </div>
+                          <div className="relative h-16 w-full max-w-[240px] overflow-hidden rounded-md border border-slate-100 bg-slate-50 p-2">
+                            <div className="relative h-full w-full overflow-hidden">
+                              <img
+                                src={footerLogoPreviewUrl}
+                                alt="Vista previa logo pie de página"
+                                style={createLogoPreviewImageStyle()}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                )}
+
+                {!isLoadingTemplateConfig && (
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                     <div className="flex items-start gap-3 px-4 py-4">
                       <div className="pt-0.5">
                         <Checkbox
@@ -3276,10 +3504,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           htmlFor="template-electronic-signature"
                           className="text-sm font-bold text-slate-900"
                         >
-                          Incluir firma electrónica
+                          Incluir firma institucional
                         </Label>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          La firma se aplicará a los certificados generados después de guardar esta plantilla. Requiere nombre, imagen y cargo.
+                          La firma visual del firmante autorizado se aplicará a los certificados generados después de guardar esta plantilla. Requiere nombre, imagen y cargo.
                         </p>
                       </div>
                       <Badge
@@ -3416,20 +3644,25 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </Badge>
                       </div>
 
-                      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#003DA5] via-[#0052CC] to-[#C79A2B]" />
+                      <div className="relative overflow-hidden rounded-lg border border-slate-200 border-t-4 border-t-[#003DA5] bg-white p-5 shadow-sm sm:p-6">
 
                         <div className="relative">
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex min-w-0 items-center gap-3 rounded-lg bg-slate-100 px-4 py-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C79A2B] text-xs font-black text-white">
-                                ES
-                              </div>
-                              <div className="text-base font-black text-[#444444]">
-                                FUNCIÓN PÚBLICA
-                              </div>
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,340px)_230px] sm:items-start sm:justify-between">
+                            <div className="relative h-[62px] min-w-0 w-full max-w-[340px] overflow-hidden bg-white sm:h-[66px]">
+                              {headerLogoDisplayUrl ? (
+                                <img
+                                  src={headerLogoDisplayUrl}
+                                  alt="Logo cabecera certificado"
+                                  style={createLogoPreviewImageStyle()}
+                                  onError={() => setHeaderLogoPreviewFailed(true)}
+                                />
+                              ) : (
+                                <div className="rounded bg-slate-100 px-4 py-3 text-base font-black text-[#444444]">
+                                  FUNCION PUBLICA
+                                </div>
+                              )}
                             </div>
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold text-slate-700 sm:max-w-[230px] sm:text-right">
+                            <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold leading-4 text-slate-700 sm:text-right">
                               Código para validaciones: {previewCertificate.validationCode}
                             </div>
                           </div>
@@ -3487,7 +3720,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               <div className="mt-4">
                                 <img
                                   src={signaturePreviewUrl}
-                                  alt="Firma electrónica"
+                                  alt="Firma institucional"
                                   className="h-14 max-w-[220px] object-contain object-left"
                                 />
                                 <p className="mt-2 text-[15px] font-semibold leading-5 text-slate-900">
@@ -3524,6 +3757,23 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           <p className="mt-2 break-all text-xs font-medium text-[#003DA5]">
                             {previewCertificate.validationUrl}
                           </p>
+                        </div>
+
+                        <div className="mt-10 border-t border-slate-300 pt-3">
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_132px] sm:items-end">
+                            <p className="min-w-0 whitespace-pre-line font-sans text-[12px] leading-[1.25] text-slate-500 sm:max-w-[440px]">
+                              {templateForm.footerAddress}
+                            </p>
+                            {footerLogoPreviewUrl ? (
+                              <div className="relative h-[58px] w-[118px] justify-self-end overflow-hidden sm:h-[64px] sm:w-[132px]">
+                                <img
+                                  src={footerLogoPreviewUrl}
+                                  alt="Logo ESAP pie de pagina"
+                                  style={createLogoPreviewImageStyle('right bottom')}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>

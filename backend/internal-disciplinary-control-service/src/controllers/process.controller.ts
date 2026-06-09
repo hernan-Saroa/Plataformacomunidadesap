@@ -63,6 +63,7 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'CONTROL_DISCIPLINARIO',
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
+  'SECRETARIA_RADICADOR',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -1192,14 +1193,18 @@ export class ProcessController {
   @Get('radicated-news')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Obtener Noticias Radicadas con Documentos',
-    description: 'Retorna las noticias en estado RADICADA que tienen archivos adjuntos pero no tienen proceso asociado',
+    summary: 'Obtener Noticias Radicadas',
+    description: 'Retorna las noticias en estado RADICADA que no tienen proceso asociado (con o sin adjuntos)',
   })
   @ApiResponse({
     status: 200,
     description: 'Lista de noticias radicadas con documentos',
   })
-  async getRadicatedNewsWithDocuments() {
+  async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
+    const access = await this.getSensitiveAccessContext(req);
+    if (!access.fullAccess) {
+      return [];
+    }
     return await this.processService.findRadicatedNewsWithDocuments();
   }
 

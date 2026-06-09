@@ -262,6 +262,7 @@ export class AutoService {
           auto.processId,
           auto.etapaDestino as ProcessStage,
           new Date(),
+          aprobadoPorId,
         );
       }
 

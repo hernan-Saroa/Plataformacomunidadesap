@@ -553,9 +553,71 @@ export function ApprovalRequestsModule({
     }
   };
 
+  const handleDownloadRequesterSupport = async (
+    request: SolicitudCertificadoGraduado,
+  ) => {
+    const file = request.requesterSupportFile;
+    if (!file) return;
+
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(
+        request.id,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = normalizeDisplayText(file.originalName) || 'soporte-solicitud.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error('No se pudo descargar el soporte del solicitante', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
   const closePreview = () => {
     if (previewState?.url) URL.revokeObjectURL(previewState.url);
     setPreviewState(null);
+  };
+
+  const handlePreviewRequesterSupport = async (
+    request: SolicitudCertificadoGraduado,
+  ) => {
+    const file = request.requesterSupportFile;
+    if (!file) return;
+
+    const displayName =
+      normalizeDisplayText(file.originalName) || 'Soporte de solicitud';
+    const fileType = getFileType(displayName);
+    if (fileType === 'other' || fileType === 'office') {
+      setPreviewState({
+        url: '',
+        name: displayName,
+        fileType: 'other',
+        officePreview: {
+          status: 'unsupported',
+          kind: 'unsupported',
+          error:
+            'Este tipo de archivo no tiene previsualizacion disponible. Puedes descargarlo para abrirlo.',
+        },
+      });
+      return;
+    }
+
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(
+        request.id,
+      );
+      const url = URL.createObjectURL(blob);
+      setPreviewState({ url, name: displayName, fileType });
+    } catch (error: any) {
+      toast.error('No se pudo cargar el soporte para visualizacion', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
   };
 
   const handlePreviewFile = async (
@@ -821,6 +883,7 @@ export function ApprovalRequestsModule({
             {sortedRequests.map((request) => {
               const payload = (request.reviewPayload || {}) as Record<string, unknown>;
               const files = request.reviewFiles || [];
+              const requesterSupportFile = request.requesterSupportFile || null;
               const isExpanded = expandedId === request.id;
               const isPendingApproval = pendingStatuses.includes(
                 request.approvalStatus || '',
@@ -1065,6 +1128,56 @@ export function ApprovalRequestsModule({
                             </div>
                           </div>
                         </div>
+                        {requesterSupportFile && (
+                          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+                            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                              <h4 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                                <FileText className="w-4 h-4 text-amber-700" />
+                                Soporte del solicitante
+                              </h4>
+                              <Badge className="w-fit border border-amber-200 bg-white text-amber-700 text-xs">
+                                1 archivo
+                              </Badge>
+                            </div>
+                            <div className="max-w-2xl rounded-lg border border-amber-100 bg-white p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0 flex items-center gap-3">
+                                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                    <FileText className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-gray-900">
+                                      {normalizeDisplayText(requesterSupportFile.originalName) ||
+                                        'Soporte de solicitud'}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {formatBytes(requesterSupportFile.sizeBytes)} -{' '}
+                                      {formatDate(requesterSupportFile.uploadedAt)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePreviewRequesterSupport(request)}
+                                    className="rounded-lg bg-blue-50 p-2 text-blue-600 hover:bg-blue-100"
+                                    title="Visualizar soporte"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadRequesterSupport(request)}
+                                    className="rounded-lg bg-gray-100 p-2 text-gray-700 hover:bg-gray-200"
+                                    title="Descargar soporte"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         {compactReviewTimeline(request.reviewTimeline || []).length > 0 && (() => {
                           const timelineEvents = compactReviewTimeline(request.reviewTimeline || []);
                           const getDot = (label: string) => {

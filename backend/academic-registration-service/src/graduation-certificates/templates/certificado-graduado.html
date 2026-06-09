@@ -42,11 +42,21 @@
             margin-bottom: 0.4cm;
         }
 
+        .header-logo-box {
+            width: 8.4cm;
+            height: 1.8cm;
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+        }
+
         .header-img {
-            width: 58%;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
             height: auto;
-            max-height: 1.8cm;
             object-fit: contain;
+            object-position: left top;
         }
 
         .codigo-validacion {
@@ -166,16 +176,38 @@
 
         .pie-pagina {
             margin-top: auto;
-            text-align: center;
             padding-top: 0.4cm;
             page-break-inside: avoid;
         }
 
-        .pie-img {
-            width: 100%;
-            height: auto;
-            max-height: 3cm;
+        .pie-divisor {
+            border: none;
+            border-top: 1px solid #333;
+            margin-bottom: 0.25cm;
+        }
+
+        .pie-footer-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 0.5cm;
+        }
+
+        .pie-texto {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 8.2pt;
+            line-height: 1.18;
+            color: #5f6b76;
+            text-align: left;
+            flex: 1;
+        }
+
+        .pie-logo {
+            width: 3.2cm;
+            height: 1.55cm;
             object-fit: contain;
+            object-position: right bottom;
+            flex-shrink: 0;
         }
 
         @media print {
@@ -193,7 +225,9 @@
     <div class="certificado-container">
         <!-- Header -->
         <div class="header">
-            <img class="header-img" src="{{HEADER_IMG}}" alt="Funci&oacute;n P&uacute;blica" />
+            <div class="header-logo-box">
+                <img class="header-img" src="{{HEADER_IMG}}" alt="Funci&oacute;n P&uacute;blica" />
+            </div>
             <div class="codigo-validacion">
                 <strong>C&oacute;digo para validaciones:</strong> {{CODIGO_VALIDACION}}
             </div>
@@ -274,7 +308,11 @@
 
         <!-- Pie de P&aacute;gina -->
         <div class="pie-pagina">
-            <img class="pie-img" src="{{FOOTER_IMG}}" alt="Pie de p&aacute;gina ESAP" />
+            <div class="pie-divisor"></div>
+            <div class="pie-footer-row">
+                <div class="pie-texto">{{FOOTER_ADDRESS}}</div>
+                {{FOOTER_LOGO_BLOCK}}
+            </div>
         </div>
     </div>
 </body>
