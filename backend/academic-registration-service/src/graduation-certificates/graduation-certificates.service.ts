@@ -91,6 +91,15 @@ type OracleGraduateSyncResult = {
   unchanged: number;
 };
 
+type RequesterSupportFileResponse = {
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: Date | string;
+  url: string;
+};
+
 @Injectable()
 export class GraduationCertificatesService {
   constructor(
@@ -119,6 +128,7 @@ export class GraduationCertificatesService {
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
   private readonly manualReviewExpirationBusinessDays = 15;
+  private readonly publicManualReviewSupportMaxSizeBytes = 20 * 1024 * 1024;
   private readonly certificateNotAvailableMessage =
     'El certificado de grado aún no se encuentra disponible para expedición.';
   private mailTransporter: nodemailer.Transporter | null = null;
@@ -169,14 +179,81 @@ export class GraduationCertificatesService {
     return original;
   }
 
-  private normalizeReviewFilesForResponse<
-    T extends { reviewFiles?: GraduationRequestReviewFile[] },
-  >(item: T) {
-    if (Array.isArray(item.reviewFiles)) {
-      item.reviewFiles.forEach((file) => {
-        file.originalName = this.normalizeOriginalFileName(file.originalName);
-      });
+  private isLegacyPublicReviewSupportFile(
+    file?: Pick<GraduationRequestReviewFile, 'storedName'> | null,
+  ) {
+    return String(file?.storedName || '').startsWith('public-review-');
+  }
+
+  private requesterSupportUploadDir() {
+    return path.join(process.cwd(), 'uploads', 'graduation-request-supports');
+  }
+
+  private requesterSupportUrl(storedName: string) {
+    if (storedName.startsWith('public-review-')) {
+      return `/uploads/graduation-review-files/${storedName}`;
     }
+    return `/uploads/graduation-request-supports/${storedName}`;
+  }
+
+  private buildRequesterSupportFileFromRequest(
+    request: Partial<GraduationCertificateRequest>,
+  ): RequesterSupportFileResponse | null {
+    const storedName = request.requesterSupportStoredName;
+    if (!storedName) {
+      return null;
+    }
+
+    return {
+      originalName: this.normalizeOriginalFileName(
+        request.requesterSupportOriginalName || storedName,
+      ),
+      storedName,
+      mimeType: request.requesterSupportMimeType || 'application/pdf',
+      sizeBytes: Number(request.requesterSupportSizeBytes || 0),
+      uploadedAt: request.requesterSupportUploadedAt || request.requestDate || new Date(),
+      url: this.requesterSupportUrl(storedName),
+    };
+  }
+
+  private buildRequesterSupportFileFromLegacyReviewFile(
+    file?: GraduationRequestReviewFile | null,
+  ): RequesterSupportFileResponse | null {
+    if (!file || !this.isLegacyPublicReviewSupportFile(file)) {
+      return null;
+    }
+
+    return {
+      originalName: this.normalizeOriginalFileName(file.originalName),
+      storedName: file.storedName,
+      mimeType: file.mimeType || 'application/pdf',
+      sizeBytes: Number(file.sizeBytes || 0),
+      uploadedAt: file.uploadedAt || new Date(),
+      url: `/uploads/graduation-review-files/${file.storedName}`,
+    };
+  }
+
+  private normalizeReviewFilesForResponse<
+    T extends { reviewFiles?: GraduationRequestReviewFile[] } & Partial<GraduationCertificateRequest>,
+  >(item: T) {
+    const legacyRequesterSupport = Array.isArray(item.reviewFiles)
+      ? item.reviewFiles.find((file) => this.isLegacyPublicReviewSupportFile(file))
+      : null;
+
+    if (Array.isArray(item.reviewFiles)) {
+      item.reviewFiles = item.reviewFiles
+        .filter((file) => !this.isLegacyPublicReviewSupportFile(file))
+        .map((file) => {
+          file.originalName = this.normalizeOriginalFileName(file.originalName);
+          return file;
+        });
+    }
+
+    (item as T & { requesterSupportFile?: RequesterSupportFileResponse | null })
+      .requesterSupportFile =
+      this.buildRequesterSupportFileFromRequest(item) ||
+      this.buildRequesterSupportFileFromLegacyReviewFile(legacyRequesterSupport);
+
     return item;
   }
 
@@ -958,7 +1035,9 @@ export class GraduationCertificatesService {
     const normalizedRequesterType = this.normalizeRequesterType(
       dto.requesterType,
     );
-    const forceManualReview = dto.forceManualReview === true;
+    const forceManualReview =
+      dto.forceManualReview === true ||
+      String(dto.forceManualReview || '').toLowerCase() === 'true';
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedición inválida');
@@ -1147,6 +1226,7 @@ export class GraduationCertificatesService {
             ? 'Se creo la solicitud de revision manual para validar un titulo adicional no disponible en la plataforma.'
             : 'No encontramos un graduado activo con esos datos. Se creo la solicitud para revision manual (15 dias habiles).',
         solicitudId: request.requestNumber,
+        requestId: request.id,
       };
     }
 
@@ -1222,6 +1302,137 @@ export class GraduationCertificatesService {
       mensaje: `Certificado generado y enviado a ${dto.requesterEmail}`,
       certificado: certificate,
     };
+  }
+
+  async solicitarCertificadoLandingConSoporte(
+    dto: LandingCertificateRequestDto,
+    supportFile: Express.Multer.File | undefined,
+    frontendBaseUrl?: string,
+  ) {
+    if (supportFile) {
+      this.validatePublicManualReviewSupportFile(supportFile);
+    }
+
+    const response = await this.solicitarCertificadoLanding(dto, frontendBaseUrl);
+    const manualReviewResponse = response as {
+      existe: boolean;
+      requestId?: string;
+      solicitudId?: string;
+    };
+
+    if (manualReviewResponse.existe || !supportFile) {
+      this.removeUploadedReviewSupportFile(supportFile);
+      return response;
+    }
+
+    if (!manualReviewResponse.requestId) {
+      this.removeUploadedReviewSupportFile(supportFile);
+      throw new InternalServerErrorException(
+        'No se pudo asociar el soporte a la solicitud de revision',
+      );
+    }
+
+    const requesterSupportFile = await this.registrarSoporteSolicitanteRevision(
+      manualReviewResponse.requestId,
+      supportFile,
+      dto,
+    );
+
+    return {
+      ...response,
+      requesterSupportFile,
+    };
+  }
+
+  private validatePublicManualReviewSupportFile(file?: Express.Multer.File) {
+    if (!file) {
+      return;
+    }
+
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const isPdf = ext === '.pdf' || file.mimetype === 'application/pdf';
+    if (!isPdf) {
+      throw new BadRequestException('El soporte debe ser un archivo PDF');
+    }
+
+    if (file.size > this.publicManualReviewSupportMaxSizeBytes) {
+      throw new BadRequestException('El soporte PDF no puede superar 20 MB');
+    }
+  }
+
+  private removeUploadedReviewSupportFile(file?: Express.Multer.File) {
+    const filePath = file?.path;
+    if (!filePath || !fs.existsSync(filePath)) {
+      return;
+    }
+
+    try {
+      fs.unlinkSync(filePath);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo eliminar soporte publico no asociado ${filePath}: ${error}`,
+      );
+    }
+  }
+
+  private async registrarSoporteSolicitanteRevision(
+    requestId: string,
+    supportFile: Express.Multer.File,
+    dto: LandingCertificateRequestDto,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    if (!request.manualReview) {
+      throw new BadRequestException(
+        'Solo se pueden adjuntar soportes publicos a solicitudes de revision manual',
+      );
+    }
+
+    const uploadedBy =
+      (dto.requesterName || request.requesterName || request.fullName || '')
+        .trim() || 'Solicitante';
+
+    if (request.requesterSupportStoredName) {
+      const previousPath = path.join(
+        this.requesterSupportUploadDir(),
+        request.requesterSupportStoredName,
+      );
+      if (fs.existsSync(previousPath)) {
+        try {
+          fs.unlinkSync(previousPath);
+        } catch (error) {
+          this.logger.warn(
+            `No se pudo eliminar soporte previo del solicitante ${previousPath}: ${error}`,
+          );
+        }
+      }
+    }
+
+    const now = new Date();
+    request.requesterSupportOriginalName = this.normalizeOriginalFileName(
+      supportFile.originalname,
+    );
+    request.requesterSupportStoredName = supportFile.filename;
+    request.requesterSupportMimeType = supportFile.mimetype || 'application/pdf';
+    request.requesterSupportSizeBytes = supportFile.size;
+    request.requesterSupportUploadedAt = now;
+
+    this.appendReviewTimeline(request, {
+      type: 'requester_support_uploaded',
+      label: 'Soporte del solicitante cargado',
+      notes: this.normalizeOriginalFileName(supportFile.originalname),
+      actorName: uploadedBy,
+      actorEmail: dto.requesterEmail,
+      createdAt: now,
+    });
+    const saved = await this.requestRepository.save(request);
+    return this.buildRequesterSupportFileFromRequest(saved);
   }
 
   /**
@@ -3301,6 +3512,45 @@ export class GraduationCertificatesService {
   /**
    * ADMIN: Buscar graduado por cédula
    */
+  async obtenerSoporteSolicitanteRevisionParaDescarga(requestId: string) {
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+      relations: ['reviewFiles'],
+    });
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    const requesterSupport =
+      this.buildRequesterSupportFileFromRequest(request) ||
+      this.buildRequesterSupportFileFromLegacyReviewFile(
+        (request.reviewFiles || []).find((file) =>
+          this.isLegacyPublicReviewSupportFile(file),
+        ),
+      );
+
+    if (!requesterSupport) {
+      throw new NotFoundException('Esta solicitud no tiene soporte adjunto');
+    }
+
+    const storageDir = requesterSupport.storedName.startsWith('public-review-')
+      ? path.join(process.cwd(), 'uploads', 'graduation-review-files')
+      : this.requesterSupportUploadDir();
+    const filePath = path.join(storageDir, requesterSupport.storedName);
+
+    if (!fs.existsSync(filePath)) {
+      this.logger.warn(
+        `Soporte del solicitante no encontrado para requestId=${requestId}, storedName=${requesterSupport.storedName}`,
+      );
+      throw new NotFoundException('Archivo no encontrado en almacenamiento');
+    }
+
+    return {
+      file: requesterSupport,
+      filePath,
+    };
+  }
+
   async listarArchivosRevisionSolicitud(requestId: string) {
     const request = await this.requestRepository.findOne({
       where: { id: requestId },
@@ -3310,7 +3560,10 @@ export class GraduationCertificatesService {
     }
 
     const files = await this.reviewFileRepository.find({
-      where: { requestId },
+      where: {
+        requestId,
+        storedName: Raw((alias) => `${alias} NOT LIKE 'public-review-%'`),
+      },
       order: { uploadedAt: 'DESC' },
     });
 
@@ -3328,7 +3581,7 @@ export class GraduationCertificatesService {
     const file = await this.reviewFileRepository.findOne({
       where: { id: fileId, requestId },
     });
-    if (!file) {
+    if (!file || this.isLegacyPublicReviewSupportFile(file)) {
       throw new NotFoundException('Archivo no encontrado');
     }
 
@@ -3379,7 +3632,7 @@ export class GraduationCertificatesService {
     const file = await this.reviewFileRepository.findOne({
       where: { id: fileId, requestId },
     });
-    if (!file) {
+    if (!file || this.isLegacyPublicReviewSupportFile(file)) {
       throw new NotFoundException('Archivo no encontrado');
     }
 
@@ -3437,7 +3690,10 @@ export class GraduationCertificatesService {
     }
 
     const existingCount = await this.reviewFileRepository.count({
-      where: { requestId },
+      where: {
+        requestId,
+        storedName: Raw((alias) => `${alias} NOT LIKE 'public-review-%'`),
+      },
     });
     if (existingCount + files.length > 5) {
       throw new BadRequestException('Solo se permiten maximo 5 archivos');
@@ -3475,7 +3731,10 @@ export class GraduationCertificatesService {
     uploadedBy?: string,
   ) {
     const reviewFiles = await this.reviewFileRepository.find({
-      where: { requestId },
+      where: {
+        requestId,
+        storedName: Raw((alias) => `${alias} NOT LIKE 'public-review-%'`),
+      },
       order: { uploadedAt: 'ASC' },
     });
 
@@ -4058,10 +4317,14 @@ export class GraduationCertificatesService {
   async listarSolicitudes() {
     await this.expireOverdueManualReviewRequests();
 
-    return await this.requestRepository.find({
+    const requests = await this.requestRepository.find({
       relations: ['graduate'],
       order: { requestDate: 'DESC' },
     });
+
+    return requests.map((request) =>
+      this.normalizeReviewFilesForResponse(request),
+    );
   }
 
   /**

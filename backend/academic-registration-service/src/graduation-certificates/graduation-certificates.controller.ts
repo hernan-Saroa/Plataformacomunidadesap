@@ -12,6 +12,7 @@ import {
   HttpStatus,
   Res,
   UseInterceptors,
+  UploadedFile,
   UploadedFiles,
   BadRequestException,
   ForbiddenException,
@@ -28,7 +29,7 @@ import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
 import type { Request, Response } from 'express';
 import { Public } from '../auth/public.decorator';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
@@ -484,6 +485,69 @@ export class GraduationCertificatesController {
     );
   }
 
+  @Post('autoservicio/solicitar-revision-con-soporte')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('supportFile', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const uploadDir = join(
+            process.cwd(),
+            'uploads',
+            'graduation-request-supports',
+          );
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          cb(null, uploadDir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `request-support-${uniqueSuffix}${extname(file.originalname)}`);
+        },
+      }),
+      fileFilter: (_req, file, cb) => {
+        const ext = extname(file.originalname || '').toLowerCase();
+        const isPdf = ext === '.pdf' || file.mimetype === 'application/pdf';
+        if (!isPdf) {
+          return cb(
+            new BadRequestException('El soporte debe ser un archivo PDF'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        files: 1,
+        fileSize: 20 * 1024 * 1024,
+      },
+    }),
+  )
+  async solicitarRevisionConSoporte(
+    @Body() body: LandingCertificateRequestDto,
+    @UploadedFile() supportFile: Express.Multer.File | undefined,
+    @Req() req: Request,
+  ) {
+    try {
+      return await this.service.solicitarCertificadoLandingConSoporte(
+        body,
+        supportFile,
+        getFrontendBaseUrl(req),
+      );
+    } catch (error) {
+      if (supportFile?.path && fs.existsSync(supportFile.path)) {
+        try {
+          fs.unlinkSync(supportFile.path);
+        } catch {
+          // Mantener el error funcional de la solicitud.
+        }
+      }
+      throw error;
+    }
+  }
+
   /**
    * POST /academic-registration/api/v1/certificates/autoservicio/generar-codigo
    * Generar código de validación y enviar por email
@@ -669,6 +733,28 @@ export class GraduationCertificatesController {
   @Get('solicitudes/:id/revision-files')
   async listarArchivosRevisionSolicitud(@Param('id') id: string) {
     return await this.service.listarArchivosRevisionSolicitud(id);
+  }
+
+  @Get('solicitudes/:id/requester-support/download')
+  async descargarSoporteSolicitanteRevision(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const { file, filePath } =
+      await this.service.obtenerSoporteSolicitanteRevisionParaDescarga(id);
+    const safeName = (file.originalName || 'soporte-solicitud.pdf').replace(
+      /"/g,
+      '',
+    );
+    const encodedName = encodeURIComponent(safeName);
+
+    res.setHeader('Content-Type', file.mimeType || 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+    );
+
+    return res.sendFile(filePath);
   }
 
   @Get('solicitudes/:id/revision-files/:fileId/download')

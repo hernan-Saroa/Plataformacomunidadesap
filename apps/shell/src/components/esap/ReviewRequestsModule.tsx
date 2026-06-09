@@ -31,7 +31,8 @@ import {
   UploadCloud,
   Paperclip,
   Trash2,
-  FileCheck2
+  FileCheck2,
+  Download
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -59,6 +60,12 @@ type ApprovalForm = {
   numRegistro: string;
   numFolio: string;
   numLibro: string;
+};
+
+type ReviewSupportPreview = {
+  url: string;
+  name: string;
+  fileType: 'pdf' | 'image' | 'other';
 };
 
 type ReviewRequestsScope = 'all' | 'mine';
@@ -111,6 +118,8 @@ export function ReviewRequestsModule({
     currentFilePercent: 0,
     overallPercent: 0,
   });
+  const [reviewSupportPreview, setReviewSupportPreview] =
+    useState<ReviewSupportPreview | null>(null);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
@@ -558,6 +567,72 @@ export function ReviewRequestsModule({
     }
   };
 
+  const getRequesterSupportFileType = (
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ): ReviewSupportPreview['fileType'] => {
+    const name = (file.originalName || '').toLowerCase();
+    const mimeType = (file.mimeType || '').toLowerCase();
+    if (name.endsWith('.pdf') || mimeType.includes('pdf')) return 'pdf';
+    if (mimeType.startsWith('image/')) return 'image';
+    return 'other';
+  };
+
+  const handleDownloadRequesterSupportFile = async (
+    request: ReviewRequest,
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ) => {
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(request.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.originalName || 'soporte-solicitud.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error('No se pudo descargar el soporte', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  const handlePreviewRequesterSupportFile = async (
+    request: ReviewRequest,
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ) => {
+    const fileType = getRequesterSupportFileType(file);
+    if (fileType === 'other') {
+      toast.info('Este archivo no tiene vista previa disponible', {
+        description: 'Puedes descargarlo para abrirlo en tu equipo.',
+      });
+      return;
+    }
+
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(request.id);
+      const url = URL.createObjectURL(blob);
+      setReviewSupportPreview({
+        url,
+        name: file.originalName || 'Soporte de solicitud',
+        fileType,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo visualizar el soporte', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (reviewSupportPreview?.url) {
+        URL.revokeObjectURL(reviewSupportPreview.url);
+      }
+    };
+  }, [reviewSupportPreview?.url]);
+
   const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
   const allowedFileMimeTypes = new Set([
     'application/pdf',
@@ -826,6 +901,7 @@ export function ReviewRequestsModule({
       headReviewerName: request.headReviewerName,
       reviewTimeline: request.reviewTimeline || [],
       reviewFiles: request.reviewFiles || [],
+      requesterSupportFile: request.requesterSupportFile || null,
       updatedAt: request.updatedAt,
     };
   };
@@ -2492,6 +2568,75 @@ export function ReviewRequestsModule({
                           </div>
                         </div>
 
+                        <div className="bg-white border border-amber-200 rounded-lg p-4">
+                          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                              <Paperclip className="w-4 h-4 text-amber-600" />
+                              Soporte del solicitante
+                            </h4>
+                            <Badge className="w-fit border border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                              {request.requesterSupportFile ? '1 archivo' : 'Sin adjunto'}
+                            </Badge>
+                          </div>
+
+                          {request.requesterSupportFile ? (
+                            <div className="max-w-2xl">
+                              {(() => {
+                                const file = request.requesterSupportFile;
+                                const fileType = getRequesterSupportFileType(file);
+                                return (
+                                  <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                        <FileText className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-gray-900">
+                                          {file.originalName || 'Soporte de solicitud'}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                          {formatBytes(file.sizeBytes)}
+                                          {file.uploadedAt
+                                            ? ` - ${formatDate(file.uploadedAt)}`
+                                            : ''}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-shrink-0 items-center gap-1">
+                                      {fileType !== 'other' && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handlePreviewRequesterSupportFile(request, file)
+                                          }
+                                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                          title="Visualizar soporte"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDownloadRequesterSupportFile(request, file)
+                                        }
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                        title="Descargar soporte"
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                              Esta solicitud no tiene soporte adjunto del solicitante.
+                            </div>
+                          )}
+                        </div>
+
                         {/* Botones de Acción Rápida */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <h4 className="text-sm font-semibold text-gray-900 mb-3">
@@ -3298,6 +3443,80 @@ export function ReviewRequestsModule({
               Continuar
             </button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(reviewSupportPreview)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewSupportPreview(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="flex flex-col gap-0 overflow-hidden rounded-xl border-0 p-0 shadow-2xl"
+          style={{
+            width: 'min(92vw, 860px)',
+            height: 'min(88vh, 900px)',
+            maxWidth: 'none',
+          }}
+        >
+          <div className="flex-shrink-0 bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white/20">
+                  <FileText className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="truncate text-lg font-semibold text-white">
+                    Vista previa - Soporte
+                  </DialogTitle>
+                  <DialogDescription className="truncate text-sm text-blue-100">
+                    {reviewSupportPreview?.name}
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1">
+                {reviewSupportPreview?.url && (
+                  <a
+                    href={reviewSupportPreview.url}
+                    download={reviewSupportPreview.name || 'soporte-solicitud.pdf'}
+                    className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+                    title="Descargar soporte"
+                  >
+                    <Download className="h-5 w-5" />
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setReviewSupportPreview(null)}
+                  className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+                  title="Cerrar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden bg-gray-100">
+            {reviewSupportPreview?.fileType === 'pdf' && (
+              <iframe
+                src={`${reviewSupportPreview.url}#navpanes=0&zoom=page-width`}
+                title={reviewSupportPreview.name}
+                className="h-full w-full border-0"
+              />
+            )}
+            {reviewSupportPreview?.fileType === 'image' && (
+              <div className="flex h-full items-center justify-center p-4">
+                <img
+                  src={reviewSupportPreview.url}
+                  alt={reviewSupportPreview.name}
+                  className="max-h-full max-w-full rounded-lg object-contain shadow"
+                />
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

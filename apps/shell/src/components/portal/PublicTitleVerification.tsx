@@ -19,6 +19,9 @@ import {
   Sparkles,
   MapPin,
   Phone,
+  UploadCloud,
+  Paperclip,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
@@ -61,6 +64,7 @@ type CreatedReviewDetails = {
   programName?: string;
   graduationDate?: string;
   graduateEmail?: string;
+  supportFileName?: string;
 };
 
 const COLOMBIAN_ID_MIN_LENGTH = 5;
@@ -70,6 +74,8 @@ const COMPANY_NAME_MAX_LENGTH = 120;
 const COMPANY_NIT_MIN_LENGTH = 9;
 const COMPANY_NIT_MAX_LENGTH = 10;
 const EMAIL_MAX_LENGTH = 254;
+const MANUAL_REVIEW_SUPPORT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
+const MANUAL_REVIEW_SUPPORT_MAX_SIZE_LABEL = "20 MB";
 const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
 
 const sanitizeDigits = (value: string, maxLength: number) =>
@@ -82,6 +88,24 @@ const sanitizePersonName = (value: string) =>
     .slice(0, PERSON_NAME_MAX_LENGTH);
 
 const normalizeTextSpaces = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const formatBytes = (bytes?: number) => {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getManualReviewSupportValidationError = (file: File) => {
+  const lowerName = file.name.toLowerCase();
+  const isPdf = lowerName.endsWith(".pdf") || file.type === "application/pdf";
+  if (!isPdf) {
+    return "El soporte debe ser un archivo PDF";
+  }
+  if (file.size > MANUAL_REVIEW_SUPPORT_MAX_SIZE_BYTES) {
+    return `El soporte PDF no puede superar ${MANUAL_REVIEW_SUPPORT_MAX_SIZE_LABEL}`;
+  }
+  return "";
+};
 
 const normalizeComparableText = (value: string) =>
   normalizeTextSpaces(value)
@@ -190,6 +214,7 @@ export function PublicTitleVerification({
   onLoginClick,
 }: PublicTitleVerificationProps) {
   const manualReviewPromptRef = useRef<HTMLDivElement | null>(null);
+  const manualReviewSupportInputRef = useRef<HTMLInputElement | null>(null);
   const todayInputDate = getTodayInputDate();
 
   // Scroll to top cuando se monta el componente
@@ -230,6 +255,10 @@ export function PublicTitleVerification({
     useState<MissingTitleBaseRecord | null>(null);
   const [missingTitleProgramName, setMissingTitleProgramName] = useState("");
   const [manualReviewAlertMessage, setManualReviewAlertMessage] = useState("");
+  const [manualReviewSupportFile, setManualReviewSupportFile] =
+    useState<File | null>(null);
+  const [manualReviewSupportUploadProgress, setManualReviewSupportUploadProgress] =
+    useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [graduationDateError, setGraduationDateError] = useState("");
 
@@ -267,6 +296,34 @@ export function PublicTitleVerification({
     setMissingTitleProgramName(title);
   };
 
+  const resetManualReviewSupportFile = () => {
+    setManualReviewSupportFile(null);
+    setManualReviewSupportUploadProgress(0);
+    if (manualReviewSupportInputRef.current) {
+      manualReviewSupportInputRef.current.value = "";
+    }
+  };
+
+  const handleManualReviewSupportFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const selectedFile = event.target.files?.[0] || null;
+    if (!selectedFile) {
+      resetManualReviewSupportFile();
+      return;
+    }
+
+    const validationError = getManualReviewSupportValidationError(selectedFile);
+    if (validationError) {
+      toast.error(validationError);
+      event.target.value = "";
+      return;
+    }
+
+    setManualReviewSupportFile(selectedFile);
+    setManualReviewSupportUploadProgress(0);
+  };
+
   const handleGraduationDateChange = (value: string) => {
     clearMatchSuggestions();
 
@@ -287,11 +344,13 @@ export function PublicTitleVerification({
     setMissingTitleBaseRecord(null);
     setMissingTitleProgramName("");
     setManualReviewAlertMessage("");
+    resetManualReviewSupportFile();
   };
 
   const hideManualReviewPrompt = () => {
     setShowManualReviewDialog(false);
     setManualReviewAlertMessage("");
+    resetManualReviewSupportFile();
   };
 
   const applyMissingTitleBaseRecord = (baseRecord: MissingTitleBaseRecord) => {
@@ -573,6 +632,14 @@ export function PublicTitleVerification({
       }
     }
 
+    if (manualReviewSupportFile) {
+      const supportValidationError =
+        getManualReviewSupportValidationError(manualReviewSupportFile);
+      if (supportValidationError) {
+        return supportValidationError;
+      }
+    }
+
     return null;
   };
 
@@ -638,18 +705,26 @@ export function PublicTitleVerification({
       : null;
     const missingTitleGraduationDate = graduateDocumentIssueDate;
 
-    const response = await graduadosService.autoservicio.solicitarCertificado(
-      buildRequestPayload({
-        idNumber: missingTitleBase?.idNumber,
-        graduationDate: missingTitleGraduationDate,
-        programName: isMissingTitleReview
-          ? normalizeTextSpaces(missingTitleProgramName)
-          : undefined,
-        selectedGraduateId: missingTitleBase?.graduateId,
-        selectedFullName: missingTitleBase?.fullName,
-        forceManualReview: isMissingTitleReview,
-      }),
-    );
+    const requestPayload = buildRequestPayload({
+      idNumber: missingTitleBase?.idNumber,
+      graduationDate: missingTitleGraduationDate,
+      programName: isMissingTitleReview
+        ? normalizeTextSpaces(missingTitleProgramName)
+        : undefined,
+      selectedGraduateId: missingTitleBase?.graduateId,
+      selectedFullName: missingTitleBase?.fullName,
+      forceManualReview: isMissingTitleReview,
+    });
+
+    const response = manualReviewSupportFile
+      ? await graduadosService.autoservicio.solicitarRevisionConSoporte(
+        requestPayload,
+        manualReviewSupportFile,
+        (progress) => setManualReviewSupportUploadProgress(progress || 1),
+      )
+      : await graduadosService.autoservicio.solicitarCertificado(
+        requestPayload,
+      );
 
     if (!response.existe) {
       setReviewRequestCreated(true);
@@ -667,7 +742,11 @@ export function PublicTitleVerification({
           isMissingTitleReview && requesterType === "graduado"
             ? requesterEmail.trim()
             : undefined,
+        supportFileName: manualReviewSupportFile?.name,
       });
+      if (manualReviewSupportFile) {
+        setManualReviewSupportUploadProgress(100);
+      }
       setGeneratedCertificate(null);
       clearMatchSuggestions();
       toast.info("Solicitud de revisión creada", {
@@ -714,6 +793,7 @@ export function PublicTitleVerification({
         forceManualReview: manualReviewReason === "missing_title",
       });
     } catch (error: any) {
+      setManualReviewSupportUploadProgress(0);
       console.error("Error al crear la solicitud de revisión:", error);
       showRequestErrorToast(error, "Error al crear la solicitud de revisión");
     } finally {
@@ -735,6 +815,7 @@ export function PublicTitleVerification({
         forceManualReview: manualReviewReason === "missing_title",
       });
     } catch (error: any) {
+      setManualReviewSupportUploadProgress(0);
       if (error?.status === 409) {
         setManualReviewAlertMessage(
           "Ya registramos una solicitud de revisión manual para esta cédula y todavía se encuentra en proceso. Mientras esa solicitud siga activa, no es posible crear otra.",
@@ -808,6 +889,7 @@ export function PublicTitleVerification({
     setMissingTitleBaseRecord(null);
     setMissingTitleProgramName("");
     setManualReviewAlertMessage("");
+    resetManualReviewSupportFile();
     setIsGenerating(true);
 
     try {
@@ -983,6 +1065,8 @@ export function PublicTitleVerification({
     isMissingTitleReviewCreated && requesterType === "graduado"
       ? createdReviewDetails?.graduateEmail || requesterEmail.trim()
       : "";
+  const reviewConfirmationSupportFileName =
+    createdReviewDetails?.supportFileName || "";
 
   // Si hay un certificado generado, mostrarlo
   if (generatedCertificate) {
@@ -1152,6 +1236,16 @@ export function PublicTitleVerification({
                         </p>
                         <p className="font-bold text-lg text-[#1e5da8] break-all">
                           {reviewConfirmationGraduateEmail}
+                        </p>
+                      </div>
+                    )}
+                    {reviewConfirmationSupportFileName && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-600 font-medium">
+                          Soporte adjunto
+                        </p>
+                        <p className="font-bold text-lg text-[#1e5da8] break-all">
+                          {reviewConfirmationSupportFileName}
                         </p>
                       </div>
                     )}
@@ -2322,6 +2416,88 @@ export function PublicTitleVerification({
                           )}
                         </div>
                       )}
+
+                      <div className="rounded-xl border border-amber-100 bg-white/85 px-4 py-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-gray-700">
+                              Soporte de la solicitud{" "}
+                              <span className="text-gray-500">(opcional)</span>
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-gray-600">
+                              Si cuentas con un diploma, acta de grado o soporte
+                              relacionado, puedes adjuntarlo en PDF. Tamaño máximo:{" "}
+                              {MANUAL_REVIEW_SUPPORT_MAX_SIZE_LABEL}.
+                            </p>
+                          </div>
+                          <input
+                            ref={manualReviewSupportInputRef}
+                            id="manual-review-support-file"
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            className="sr-only"
+                            onChange={handleManualReviewSupportFileChange}
+                          />
+                          <label
+                            htmlFor="manual-review-support-file"
+                            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-50"
+                          >
+                            <UploadCloud className="mr-2 h-4 w-4" />
+                            {manualReviewSupportFile ? "Cambiar PDF" : "Cargar PDF"}
+                          </label>
+                        </div>
+
+                        {manualReviewSupportFile ? (
+                          <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                  <Paperclip className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-gray-900">
+                                    {manualReviewSupportFile.name}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    PDF - {formatBytes(manualReviewSupportFile.size)}
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={resetManualReviewSupportFile}
+                                disabled={isGenerating}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Quitar soporte"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {isGenerating && manualReviewSupportUploadProgress > 0 && (
+                              <div className="mt-3 space-y-1">
+                                <div className="h-2 overflow-hidden rounded-full bg-amber-100">
+                                  <div
+                                    className="h-full rounded-full bg-[#1e5da8] transition-all duration-300"
+                                    style={{
+                                      width: `${Math.max(
+                                        0,
+                                        Math.min(100, manualReviewSupportUploadProgress),
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
+                                <p className="text-right text-[11px] font-semibold text-blue-700">
+                                  {Math.round(manualReviewSupportUploadProgress)}%
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-3 py-2 text-xs font-medium text-amber-800">
+                            Puedes enviar la solicitud sin soporte o adjuntar un PDF si deseas ampliar la información.
+                          </p>
+                        )}
+                      </div>
 
                       <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
                         La revisión manual tiene un tiempo estimado de{" "}

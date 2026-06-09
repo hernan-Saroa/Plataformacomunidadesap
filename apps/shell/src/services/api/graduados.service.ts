@@ -120,6 +120,7 @@ export interface SolicitudCertificadoGraduado {
     createdAt: string;
   }>;
   reviewFiles?: GraduationReviewFile[];
+  requesterSupportFile?: GraduationRequesterSupportFile | null;
   requestDate: string;
   updatedAt?: string;
   validationDate?: string;
@@ -212,6 +213,15 @@ export interface GraduationReviewFile {
   url?: string;
 }
 
+export interface GraduationRequesterSupportFile {
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  url?: string;
+}
+
 /**
  * Interface: Respuesta de verificación de documento
  */
@@ -276,7 +286,10 @@ export interface BuscarCoincidenciasGraduadoResponse {
 export interface SolicitarCertificadoLandingResponse {
   existe: boolean;
   mensaje: string;
+  solicitudId?: string;
+  requestId?: string;
   certificado?: CertificadoGraduado;
+  requesterSupportFile?: GraduationRequesterSupportFile | null;
 }
 
 /**
@@ -459,6 +472,8 @@ const graduadosService = {
       graduateEmail?: string;
       requesterPhone?: string;
       companyName?: string;
+      companyNit?: string;
+      contactPerson?: string;
       programName?: string;
       graduationDate?: string;
       lastName?: string;
@@ -469,6 +484,46 @@ const graduadosService = {
         `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
         payload,
         { skipAuth: true },
+      );
+      return response;
+    },
+
+    solicitarRevisionConSoporte: async (
+      payload: {
+        idNumber: string;
+        idIssueDate?: string;
+        requesterType: "GRADUATE" | "COMPANY";
+        requesterName: string;
+        requesterEmail: string;
+        graduateEmail?: string;
+        requesterPhone?: string;
+        companyName?: string;
+        companyNit?: string;
+        contactPerson?: string;
+        programName?: string;
+        graduationDate?: string;
+        lastName?: string;
+        selectedGraduateId?: string;
+        forceManualReview?: boolean;
+      },
+      supportFile: File,
+      onProgress?: (progress: number) => void,
+    ): Promise<SolicitarCertificadoLandingResponse> => {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          formData.append(key, String(value));
+        }
+      });
+      formData.append("supportFile", supportFile);
+
+      const response = await apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-revision-con-soporte`,
+        formData,
+        {
+          onProgress,
+          skipAuthRefresh: true,
+        },
       );
       return response;
     },
@@ -668,6 +723,12 @@ const graduadosService = {
     ): Promise<Blob> => {
       return apiClient.getBlob(
         `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/revision-files/${fileId}/download`,
+      );
+    },
+
+    descargarSoporteSolicitante: async (requestId: string): Promise<Blob> => {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/requester-support/download`,
       );
     },
 
