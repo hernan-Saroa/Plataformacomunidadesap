@@ -35,7 +35,7 @@ import {
   Scale, FileText, Users, Building2, User, MapPin, Calendar,
   ChevronRight, ChevronLeft, Plus, Trash2, Check, AlertCircle,
   DollarSign, Clock, Star, Info, Sparkles, Save, X, CheckCircle,
-  Shield, Zap, Upload, Download
+  Zap, Upload, Download
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -132,6 +132,7 @@ interface ModalNuevaDemandaRESTAURADOProps {
   onClose: () => void;
   onSave: (data: NuevaDemandaData, isEdit?: boolean, originalId?: string) => void;
   expedienteEdit?: ExpedienteJudicial;
+  tableroSeleccionado?: string;
 }
 
 // ==================== DATOS PARAMETRIZABLES ====================
@@ -388,7 +389,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             };
 
             return (
-              <div key={fieldId} className="space-y-2">
+              <div key={fieldId} className={`space-y-2 ${c.tipo === 'opciones-multiple' ? 'md:col-span-2' : ''}`}>
                 <Label htmlFor={fieldId} className={`text-sm font-bold flex items-center ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>
                   {c.nombre}
                   {c.obligatorio && <span className="text-red-500 ml-1">*</span>}
@@ -506,6 +507,71 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         {c.nombre}
                       </label>
                     </div>
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'opciones-multiple' && (
+                  <div className={`space-y-2 w-full ${(c.opciones || []).length > 2 ? 'md:col-span-2' : ''}`}>
+                    <div className="flex flex-col gap-2">
+                      {(c.opciones || []).map((opcion, optIdx) => {
+                        const selected: string[] = Array.isArray(currentVal) ? currentVal : [];
+                        const isChecked = selected.includes(opcion);
+                        return (
+                          <label key={optIdx} className="flex items-center gap-2.5 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const prev: string[] = Array.isArray(formData.camposAdicionales?.[fieldId]) ? [...(formData.camposAdicionales![fieldId] as string[])] : [];
+                                const next = e.target.checked ? [...prev, opcion] : prev.filter(o => o !== opcion);
+                                handleValueChange(next);
+                                if (erroresCampos[fieldId]) {
+                                  setErroresCampos(p => { const cp = { ...p }; delete cp[fieldId]; return cp; });
+                                }
+                              }}
+                              className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer ${erroresCampos[fieldId] ? 'border-red-500' : ''}`}
+                            />
+                            <span className={`text-sm font-medium group-hover:text-blue-700 ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>{opcion}</span>
+                          </label>
+                        );
+                      })}
+                      {(c.opciones || []).length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Sin opciones configuradas.</p>
+                      )}
+                    </div>
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'lista' && (
+                  <div className="space-y-1 w-full">
+                    <select
+                      id={fieldId}
+                      value={typeof currentVal === 'string' ? currentVal : ''}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value);
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(p => { const cp = { ...p }; delete cp[fieldId]; return cp; });
+                        }
+                      }}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800 ${erroresCampos[fieldId] ? 'border-red-500' : 'border-gray-300'}`}
+                    >
+                      <option value="">Seleccione una opción...</option>
+                      {(c.opciones || []).map((opcion, optIdx) => (
+                        <option key={optIdx} value={opcion}>{opcion}</option>
+                      ))}
+                    </select>
                     {erroresCampos[fieldId] && (
                       <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
                         <AlertCircle className="w-3.5 h-3.5" />
@@ -1095,8 +1161,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         if (!formData.numeroRadicado) {
           newErrors.numeroRadicado = 'El número de radicado es obligatorio';
           hasError = true;
-        } else if (formData.numeroRadicado.length !== 23) {
-          newErrors.numeroRadicado = 'El radicado debe tener exactamente 23 dígitos';
+        } else if (formData.numeroRadicado.length < 11 || formData.numeroRadicado.length > 23) {
+          newErrors.numeroRadicado = 'El radicado debe tener entre 11 y 23 dígitos';
           hasError = true;
         }
 
@@ -1118,6 +1184,22 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         if (cuantiaReq && (formData.cuantia === undefined || formData.cuantia === null || formData.cuantia === 0)) {
           newErrors.cuantia = 'La cuantía es obligatoria y debe ser mayor a 0';
           hasError = true;
+        }
+
+        // Validar campos adicionales obligatorios del paso 1
+        if (activeTipoProceso?.camposAdicionalesConfig) {
+          for (const campo of activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === 1 && c.obligatorio)) {
+            const val = formData.camposAdicionales?.[campo.id];
+            const isEmpty = campo.tipo === 'opciones-multiple'
+              ? !Array.isArray(val) || (val as string[]).length === 0
+              : campo.tipo === 'booleano'
+                ? false
+                : val === undefined || val === null || val === '';
+            if (isEmpty) {
+              newErrors[campo.id] = `${campo.nombre} es obligatorio`;
+              hasError = true;
+            }
+          }
         }
 
         if (hasError) {
@@ -1155,18 +1237,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           return false;
         }
 
-        if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico && !(formData as any).esOtroDelitoPenal) {
-          toast.error('⚠️ Clasificación penal requerida', {
-            description: 'Debe seleccionar al menos una clasificación penal'
-          });
-          return false;
-        }
-        if (formData.tipoProcesoJudicial === 'Proceso Penal' && (formData as any).esOtroDelitoPenal && !((formData as any).otroDelitoPenalDescripcion || '').trim()) {
-          toast.error('⚠️ Descripción requerida', {
-            description: 'Debe describir el tipo de delito en el campo "Otros"'
-          });
-          return false;
-        }
         return true;
       }
 
@@ -1513,11 +1583,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           hechos: formData.hechos || undefined,
           tipoConteoTermino: formData.tipoPlazo === 'Horas' ? 'HORAS' : formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
           terminoProcesalDias: formData.termino || undefined,
-          // Clasificación penal
-          esDelitoAdminPublica: formData.esDelitoAdminPublica || false,
-          esConductaPatrimonioPublico: formData.esConductaPatrimonioPublico || false,
-          esOtroDelitoPenal: (formData as any).esOtroDelitoPenal || false,
-          otroDelitoPenalDescripcion: (formData as any).otroDelitoPenalDescripcion || undefined,
           camposAdicionales: formData.camposAdicionales || undefined,
           // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
         };
@@ -1766,106 +1831,41 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
                       )}
 
-                      {!(tableroSeleccionado && tableroSeleccionado !== 'TODOS') && (
-                        <div className="space-y-2">
-                          <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
-                            Tipo de Proceso Judicial <span className="text-red-500">*</span>
-                          </Label>
-                          <Select
-                            value={formData.tipoProcesoJudicial}
-                            onValueChange={(value: string) => {
-                              const tp = tiposProcesosActivos.find(t => t.nombre === value);
-                              setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
-                              if (erroresCampos.tipoProcesoJudicial) {
-                                setErroresCampos(prev => {
-                                  const copy = { ...prev };
-                                  delete copy.tipoProcesoJudicial;
-                                  return copy;
-                                });
-                              }
-                            }}
-                          >
-                            <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                              <SelectValue placeholder="Seleccione tipo de proceso..." />
-                            </SelectTrigger>
-                            <SelectContent className="z-[100000]">
-                              {tiposProcesosActivos.map(tp => (
-                                <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {erroresCampos.tipoProcesoJudicial && (
-                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              {erroresCampos.tipoProcesoJudicial}
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
+                          Tipo de Proceso Judicial <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          value={formData.tipoProcesoJudicial}
+                          onValueChange={(value: string) => {
+                            const tp = tiposProcesosActivos.find(t => t.nombre === value);
+                            setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
+                            if (erroresCampos.tipoProcesoJudicial) {
+                              setErroresCampos(prev => {
+                                const copy = { ...prev };
+                                delete copy.tipoProcesoJudicial;
+                                return copy;
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
+                            <SelectValue placeholder="Seleccione tipo de proceso..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100000]">
+                            {tiposProcesosActivos.map(tp => (
+                              <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {erroresCampos.tipoProcesoJudicial && (
+                          <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {erroresCampos.tipoProcesoJudicial}
+                          </p>
+                        )}
+                      </div>
 
-                      {/* Campos condicionales para Proceso Penal */}
-                      {formData.tipoProcesoJudicial === 'Proceso Penal' && (
-                        <div className="md:col-span-2">
-                          <Card className="p-4 bg-red-50 border-red-200">
-                            <div className="flex items-start gap-3 mb-3">
-                              <Shield className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                              <div>
-                                <h4 className="text-sm font-bold text-red-900">Clasificación Penal</h4>
-                                <p className="text-xs text-red-700">Requerido para informes de Contraloría General y ANDJE</p>
-                              </div>
-                            </div>
-                            <div className="space-y-3 ml-8">
-                              <label className="flex items-start gap-3 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={(formData as any).esDelitoAdminPublica || false}
-                                  onChange={(e) => setFormData({ ...formData, esDelitoAdminPublica: e.target.checked } as any)}
-                                  className="mt-0.5 w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
-                                />
-                                <div>
-                                  <span className="text-sm font-semibold text-gray-800 group-hover:text-red-800">Delitos contra la Administración Pública</span>
-                                  <p className="text-xs text-gray-500">El asunto corresponde a delitos tipificados en el Título XV del Código Penal colombiano</p>
-                                </div>
-                              </label>
-                              <label className="flex items-start gap-3 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={(formData as any).esConductaPatrimonioPublico || false}
-                                  onChange={(e) => setFormData({ ...formData, esConductaPatrimonioPublico: e.target.checked } as any)}
-                                  className="mt-0.5 w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
-                                />
-                                <div>
-                                  <span className="text-sm font-semibold text-gray-800 group-hover:text-red-800">Conductas que afectan el Patrimonio Público</span>
-                                  <p className="text-xs text-gray-500">El asunto involucra conductas que comprometen recursos o bienes del Estado</p>
-                                </div>
-                              </label>
-                              <label className="flex items-start gap-3 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={(formData as any).esOtroDelitoPenal || false}
-                                  onChange={(e) => setFormData({ ...formData, esOtroDelitoPenal: e.target.checked } as any)}
-                                  className="mt-0.5 w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
-                                />
-                                <div className="flex-1">
-                                  <span className="text-sm font-semibold text-gray-800 group-hover:text-red-800">Otros</span>
-                                  <p className="text-xs text-gray-500">Proceso penal que no corresponde a las categorías anteriores</p>
-                                </div>
-                              </label>
-                              {(formData as any).esOtroDelitoPenal && (
-                                <div className="ml-7">
-                                  <Input
-                                    placeholder="Describa el tipo de delito..."
-                                    value={(formData as any).otroDelitoPenalDescripcion || ''}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, otroDelitoPenalDescripcion: e.target.value } as any)}
-                                    className="bg-white border-red-200 focus:border-red-400 text-sm"
-                                    maxLength={200}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </Card>
-                        </div>
-                      )}
 
                       <div className="space-y-2">
                         <Label htmlFor="etapaProcesal" className={`text-sm font-bold ${erroresCampos.etapaProcesal ? 'text-red-600' : 'text-gray-700'}`}>

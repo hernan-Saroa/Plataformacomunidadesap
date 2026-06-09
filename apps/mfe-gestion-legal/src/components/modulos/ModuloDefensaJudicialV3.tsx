@@ -474,6 +474,7 @@ export function ModuloDefensaJudicialV3() {
           pretensiones: exp.pretensionDemandante || '',
           pretensionDemandante: exp.pretensionDemandante,
           tipoProceso: exp.tipoProceso,
+          camposAdicionales: exp.camposAdicionales,
           documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
           actuaciones: exp.actuaciones || [],
           procesosAnexados: exp.procesosAnexados || [],
@@ -953,7 +954,16 @@ export function ModuloDefensaJudicialV3() {
         fechaVencimientoTermino: demandaData.fechaVencimiento,
         etapaProcesal: demandaData.etapa || (columnasTablero.length > 0 ? columnasTablero[0].id : 'RADICACION'),
         ultimaActuacion: undefined, // Backend manages initial state or assumes created
-        camposAdicionales: demandaData.camposAdicionales,
+        camposAdicionales: demandaData.camposAdicionales
+          ? Object.fromEntries(
+              Object.entries(demandaData.camposAdicionales).map(([k, v]) => [
+                k,
+                (v && typeof v === 'object' && (v as any).base64 && (v as any).esNuevo)
+                  ? { nombre: (v as any).nombre, tipoMime: (v as any).tipoMime, tamano: (v as any).tamano, cargado: true }
+                  : v
+              ])
+            )
+          : undefined,
 
         // Mapeo unificado de actores
         actors: [
@@ -1330,7 +1340,14 @@ export function ModuloDefensaJudicialV3() {
         onGenerar={(expedientesFiltrados, descripcionFiltros) => {
           toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
           setTimeout(() => {
-            generarReporteExpedientesPDF(expedientesFiltrados as any, filtroTipo === 'TODOS' ? 'TODOS' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo), descripcionFiltros);
+            // Mapa tipoProceso.nombre → camposAdicionalesConfig (no-documento)
+            const camposConfigPorTipo: Record<string, any[]> = {};
+            (allTiposProcesos || []).forEach((tp: any) => {
+              if (tp.camposAdicionalesConfig?.length) {
+                camposConfigPorTipo[tp.nombre] = tp.camposAdicionalesConfig.filter((c: any) => c.tipo !== 'documento');
+              }
+            });
+            generarReporteExpedientesPDF(expedientesFiltrados as any, filtroTipo === 'TODOS' ? 'TODOS' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo), descripcionFiltros, camposConfigPorTipo);
             toast.success(`Reporte generado con ${expedientesFiltrados.length} expediente(s)`, {
               id: 'reporte-pdf',
               description: descripcionFiltros,
