@@ -1297,6 +1297,60 @@ export class GraduationCertificatesService {
       }
     }
 
+    if (normalizedRequesterType === 'GRADUATE') {
+      try {
+        const allGraduatesForId = await this.findActiveGraduatesByIdNumber(
+          dto.idNumber,
+        );
+        const normalizedRequesterEmail = (requesterEmail || dto.requesterEmail || '')
+          .trim()
+          .toLowerCase();
+        const uniqueRegisteredEmails = [
+          ...new Set(
+            allGraduatesForId
+              .map((g) => (g.email || '').trim())
+              .filter(
+                (email) =>
+                  email && email.toLowerCase() !== normalizedRequesterEmail,
+              ),
+          ),
+        ];
+
+        for (const registeredEmail of uniqueRegisteredEmails) {
+          const matchingGraduate = allGraduatesForId.find(
+            (g) => (g.email || '').trim().toLowerCase() === registeredEmail.toLowerCase(),
+          );
+          try {
+            await this.sendGraduateOwnerNotificationEmail({
+              registeredEmail,
+              graduateName:
+                matchingGraduate?.fullName ||
+                graduate?.fullName ||
+                request.fullName,
+              requesterName: requesterName || request.requesterName || 'No informado',
+              requesterEmail: requesterEmail || dto.requesterEmail || 'No informado',
+              requestDate: request.requestDate || new Date(),
+              certificateNumber: certificate.certificateNumber,
+            });
+          } catch (error) {
+            this.logger.warn(
+              `Solicitud ${request.requestNumber}: no se pudo enviar aviso al correo registrado ${registeredEmail}: ${error?.message || error}`,
+            );
+          }
+        }
+
+        if (uniqueRegisteredEmails.length === 0) {
+          this.logger.debug(
+            `Solicitud ${request.requestNumber}: no se requieren avisos adicionales (requesterEmail coincide con todos los correos registrados o no hay correos registrados)`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Solicitud ${request.requestNumber}: error al procesar avisos al graduado: ${error?.message || error}`,
+        );
+      }
+    }
+
     return {
       existe: true,
       mensaje: `Certificado generado y enviado a ${dto.requesterEmail}`,
@@ -2913,6 +2967,150 @@ export class GraduationCertificatesService {
     }
 
     this.logger.log(`Notificacion enviada al graduado ${graduateEmail}`);
+  }
+
+  private async sendGraduateOwnerNotificationEmail(data: {
+    registeredEmail: string;
+    graduateName: string;
+    requesterName: string;
+    requesterEmail: string;
+    requestDate?: Date;
+    certificateNumber?: string;
+  }): Promise<void> {
+    const registeredEmail = (data.registeredEmail || '').trim();
+    if (!registeredEmail) {
+      this.logger.warn(
+        'No se pudo enviar el aviso al graduado: email registrado vacío',
+      );
+      return;
+    }
+
+    const safe = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const graduateName = data.graduateName || 'Graduado';
+    const requesterName = data.requesterName || 'No informado';
+    const requesterEmail = data.requesterEmail || 'No informado';
+    const certificateNumber = data.certificateNumber || 'N/A';
+    const requestDate = data.requestDate || new Date();
+
+    let formattedDate = requestDate.toISOString();
+    try {
+      const datePart = requestDate.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      const timePart = requestDate.toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      formattedDate = `${datePart} ${timePart}`;
+    } catch (_) {
+      formattedDate = requestDate.toISOString();
+    }
+
+    const subject = `Aviso: se solicitó un certificado de tus títulos ESAP`;
+    const text =
+      `Hola ${graduateName},\n` +
+      `Te informamos que se solicitó un certificado de egresado a tu nombre con un correo diferente al registrado en nuestra plataforma.\n` +
+      `Nombre del solicitante: ${requesterName}.\n` +
+      `Correo utilizado en la solicitud: ${requesterEmail}.\n` +
+      `Fecha y hora: ${formattedDate}.\n` +
+      `Número de certificado: ${certificateNumber}.\n` +
+      'Si no reconoces esta solicitud, por favor comunícate con ESAP.';
+
+    const safeGraduateName = safe(graduateName);
+    const safeRequesterName = safe(requesterName);
+    const safeRequesterEmail = safe(requesterEmail);
+    const safeCertificateNumber = safe(certificateNumber);
+    const safeFormattedDate = safe(formattedDate);
+
+    const html = `
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Aviso de solicitud</span></td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 8px 28px;">
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Se solicitó un certificado de tus títulos</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeGraduateName}</strong>, te informamos que se solicitó un certificado de egresado a tu nombre utilizando un correo diferente al registrado en la plataforma ESAP.</p>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                  <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Datos de la solicitud</p>
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Nombre del solicitante</span><br><span style="font-size:14px;font-weight:700;color:#111827;">${safeRequesterName}</span></td></tr>
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Correo utilizado en la solicitud</span><br><span style="font-size:14px;color:#374151;">${safeRequesterEmail}</span></td></tr>
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Fecha y hora</span><br><span style="font-size:14px;color:#374151;">${safeFormattedDate}</span></td></tr>
+                      <tr><td style="padding:8px 0;"><span style="font-size:12px;color:#6b7280;">Número de certificado</span><br><span style="font-size:15px;font-weight:700;color:#1d4ed8;">${safeCertificateNumber}</span></td></tr>
+                    </table>
+                  </td></tr>
+                </table>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:24px;">
+                  <tr><td style="padding:12px 16px;font-size:13px;color:#92400e;line-height:1.5;">&#9888; Si no reconoces esta solicitud, contacta a ESAP para verificar la información.</td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
+      </div>
+    `;
+
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: registeredEmail,
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch (_) {
+        errorBody = '';
+      }
+      this.logger.warn(
+        `No se pudo enviar el aviso al correo registrado ${registeredEmail}: ${response.status} ${errorBody}`,
+      );
+      throw new Error(
+        `Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`,
+      );
+    }
+
+    this.logger.log(
+      `Aviso de solicitud enviado al correo registrado ${registeredEmail}`,
+    );
   }
 
   private resolveTemplateUpdatedBy(updatedBy?: string): string {
