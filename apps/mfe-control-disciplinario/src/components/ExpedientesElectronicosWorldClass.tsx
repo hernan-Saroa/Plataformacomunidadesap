@@ -762,11 +762,25 @@ export function ExpedientesElectronicosWorldClass() {
       return ordenCronologico === 'desc' ? fechaB - fechaA : fechaA - fechaB;
     });
 
-    return expedientesOrdenados.map(expId => ({
+    const resultado = expedientesOrdenados.map(expId => ({
       expedienteId: expId,
       expediente: expedientes.find(e => e.id === expId)!,
       documentos: grupos[expId]
     }));
+
+    // Incluir expedientes sin documentos que pasen el filtro de estado y búsqueda
+    expedientes.forEach(exp => {
+      if (grupos[exp.id]) return; // ya está incluido
+      const cumpleFiltro = filtroEstado === 'todos' || exp.estado === filtroEstado;
+      const cumpleBusqueda = busqueda === '' ||
+        exp.radicado?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        exp.nombreDisciplinado?.toLowerCase().includes(busqueda.toLowerCase());
+      if (cumpleFiltro && cumpleBusqueda) {
+        resultado.push({ expedienteId: exp.id, expediente: exp, documentos: [] });
+      }
+    });
+
+    return resultado;
   }, [documentos, busqueda, filtroTipoDoc, filtroEstado, ordenCronologico, expedientes]);
 
   const getEstadoConfig = (estado: string) => {
