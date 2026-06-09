@@ -463,6 +463,7 @@ const graduadosService = {
       graduationDate?: string;
       lastName?: string;
       selectedGraduateId?: string;
+      forceManualReview?: boolean;
     }): Promise<SolicitarCertificadoLandingResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
@@ -922,6 +923,28 @@ const graduadosService = {
     buscarPorCedula: async (idNumber: string): Promise<GraduadoData> => {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/graduates/cedula/${idNumber}`,
+      );
+      return response;
+    },
+
+    listarTitulosPorCedula: async (
+      idNumber: string,
+    ): Promise<
+      Array<
+        Pick<
+          GraduadoData,
+          | "id"
+          | "idNumber"
+          | "fullName"
+          | "programName"
+          | "degreeTitle"
+          | "graduationDate"
+          | "status"
+        >
+      >
+    > => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/graduates/cedula/${idNumber}/titulos`,
       );
       return response;
     },

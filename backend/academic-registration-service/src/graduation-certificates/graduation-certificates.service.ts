@@ -958,12 +958,19 @@ export class GraduationCertificatesService {
     const normalizedRequesterType = this.normalizeRequesterType(
       dto.requesterType,
     );
+    const forceManualReview = dto.forceManualReview === true;
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedición inválida');
     }
     if (dto.graduationDate && !gradDate) {
       throw new BadRequestException('Fecha de graduación inválida');
+    }
+
+    if (forceManualReview && !(dto.programName || '').trim()) {
+      throw new BadRequestException(
+        'El título que deseas revisar es obligatorio',
+      );
     }
 
     this.logger.debug(
@@ -1024,14 +1031,45 @@ export class GraduationCertificatesService {
       });
     }
 
-    if (graduate) {
+    if (graduate && !forceManualReview) {
       this.ensureGraduationCertificateCanBeIssued(graduate.graduationDate);
     }
 
-    if (!graduate) {
-      this.logger.warn(
-        `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
-      );
+    if (forceManualReview) {
+      const requestedProgramName = this.normalizeName(dto.programName || '');
+      const activeGraduatesForDocument =
+        await this.findActiveGraduatesByIdNumber(dto.idNumber);
+      const existingProgramNames = (
+        activeGraduatesForDocument.length
+          ? activeGraduatesForDocument
+          : graduate
+            ? [graduate]
+            : []
+      )
+        .flatMap((item) => [item.programName, item.degreeTitle])
+        .map((value) => this.normalizeName(value || ''))
+        .filter(Boolean);
+
+      if (
+        requestedProgramName &&
+        existingProgramNames.includes(requestedProgramName)
+      ) {
+        throw new BadRequestException(
+          'Ese título ya existe para el graduado seleccionado. Selecciona un título diferente para solicitar revisión.',
+        );
+      }
+    }
+
+    if (!graduate || forceManualReview) {
+      if (!graduate) {
+        this.logger.warn(
+          `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
+        );
+      } else {
+        this.logger.warn(
+          `Solicitud de revision manual forzada para idNumber=${dto.idNumber?.trim()} graduateId=${graduate.id}`,
+        );
+      }
 
       await this.expireOverdueManualReviewRequests();
       const activeManualReview =
@@ -1043,28 +1081,41 @@ export class GraduationCertificatesService {
       }
     }
 
+    const shouldCreateManualReview = !graduate || forceManualReview;
+    const requestGraduate = shouldCreateManualReview ? null : graduate;
     const requestNumber = await this.generateRequestNumber();
     const parsedIssueDate = dto.idIssueDate
       ? this.parseDate(dto.idIssueDate)
       : undefined;
-    const idIssueDate = graduate?.idIssueDate ?? parsedIssueDate ?? undefined;
+    const idIssueDate =
+      requestGraduate?.idIssueDate ?? parsedIssueDate ?? undefined;
+    const graduateEmailForRequest = shouldCreateManualReview
+      ? normalizedRequesterType === 'GRADUATE'
+        ? (dto.graduateEmail || requesterEmail || dto.requesterEmail || '').trim() ||
+          undefined
+        : undefined
+      : requestGraduate?.email;
 
     const requestPayload: DeepPartial<GraduationCertificateRequest> = {
       requestNumber,
       requesterType: normalizedRequesterType,
-      graduateId: graduate?.id,
+      graduateId: requestGraduate?.id,
       idNumber: dto.idNumber,
       idIssueDate,
       fullName:
-        this.getPreferredGraduateFullName(graduate) ||
+        this.getPreferredGraduateFullName(requestGraduate) ||
+        graduateLastName ||
         requesterName ||
         dto.requesterName,
       graduateLastName: graduateLastName || undefined,
-      graduateEmail: graduate?.email,
-      graduatePhone: graduate?.phone,
-      programName: graduate?.programName || dto.programName || 'No disponible',
+      graduateEmail: graduateEmailForRequest,
+      graduatePhone: requestGraduate?.phone,
+      programName:
+        requestGraduate?.programName || dto.programName || 'No disponible',
       graduationDate:
-        graduate?.graduationDate || this.parseDate(dto.graduationDate) || null,
+        requestGraduate?.graduationDate ||
+        this.parseDate(dto.graduationDate) ||
+        null,
       requesterName: requesterName || dto.requesterName,
       requesterEmail: requesterEmail || dto.requesterEmail,
       requesterPhone: dto.requesterPhone,
@@ -1075,23 +1126,32 @@ export class GraduationCertificatesService {
       validationCode: undefined,
       validationExpiresAt: undefined,
       isValidated: false,
-      status: graduate ? 'PROCESSING' : 'PENDING',
-      manualReview: !graduate,
-      observations: graduate
-        ? 'Solicitud automática desde la landing de certificados'
-        : 'Solicitud de revisión manual: graduado no localizado',
+      status: shouldCreateManualReview ? 'PENDING' : 'PROCESSING',
+      manualReview: shouldCreateManualReview,
+      observations: shouldCreateManualReview
+        ? forceManualReview
+          ? 'Solicitud de revision manual: posible titulo adicional no disponible en plataforma'
+          : 'Solicitud de revision manual: graduado no localizado'
+        : 'Solicitud automatica desde la landing de certificados',
     };
 
     const request = this.requestRepository.create(requestPayload);
 
     await this.requestRepository.save(request);
 
-    if (!graduate) {
+    if (shouldCreateManualReview) {
       return {
         existe: false,
         mensaje:
-          'No encontramos un graduado activo con esos datos. Se creó la solicitud para revisión manual (48-72h).',
+          forceManualReview
+            ? 'Se creo la solicitud de revision manual para validar un titulo adicional no disponible en la plataforma.'
+            : 'No encontramos un graduado activo con esos datos. Se creo la solicitud para revision manual (15 dias habiles).',
+        solicitudId: request.requestNumber,
       };
+    }
+
+    if (!graduate) {
+      throw new NotFoundException('Graduado no encontrado');
     }
 
     request.graduate = graduate;
@@ -3475,6 +3535,29 @@ export class GraduationCertificatesService {
     return graduate;
   }
 
+  async listarTitulosGraduadoPorCedula(idNumber: string) {
+    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    if (!normalizedIdNumber) {
+      throw new BadRequestException('El número de documento es obligatorio');
+    }
+
+    const mysqlSync = await this.syncGraduatesFromMysqlByIdNumber(idNumber);
+    if (!mysqlSync.found) {
+      await this.syncGraduatesFromOracleByIdNumber(idNumber);
+    }
+
+    const graduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    return graduates.map((graduate) => ({
+      id: graduate.id,
+      idNumber: graduate.idNumber,
+      fullName: this.getPreferredGraduateFullName(graduate),
+      programName: graduate.programName,
+      degreeTitle: graduate.degreeTitle,
+      graduationDate: this.normalizeDateString(graduate.graduationDate),
+      status: graduate.status,
+    }));
+  }
+
   /**
    * ADMIN: Actualizar graduado
    */
@@ -4057,6 +4140,30 @@ export class GraduationCertificatesService {
     };
   }
 
+  private async ensureManualReviewProgramDoesNotAlreadyExist(
+    idNumber: string,
+    programName?: string | null,
+  ) {
+    const normalizedProgramName = this.normalizeName(programName || '');
+    if (!normalizedProgramName) {
+      return;
+    }
+
+    const existingGraduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    const duplicatedGraduate = existingGraduates.find((graduate) =>
+      [graduate.programName, graduate.degreeTitle]
+        .map((value) => this.normalizeName(value || ''))
+        .filter(Boolean)
+        .includes(normalizedProgramName),
+    );
+
+    if (duplicatedGraduate) {
+      throw new BadRequestException(
+        'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.',
+      );
+    }
+  }
+
   async enviarDecisionRevision(
     id: string,
     payload: SubmitReviewDecisionDto,
@@ -4087,6 +4194,13 @@ export class GraduationCertificatesService {
     ).trim();
     if (!reason) {
       throw new BadRequestException('Las notas de revision son obligatorias');
+    }
+
+    if (decision === 'APPROVED' && request.manualReview) {
+      await this.ensureManualReviewProgramDoesNotAlreadyExist(
+        payload.idNumber || request.idNumber,
+        payload.programName || request.programName,
+      );
     }
 
     const reviewPayload = this.buildReviewPayload(payload);
@@ -4386,6 +4500,13 @@ export class GraduationCertificatesService {
       payload?.publicNotificationNotes !== undefined
         ? (payload.publicNotificationNotes || '').trim()
         : reviewNotes;
+
+    if (request.manualReview) {
+      await this.ensureManualReviewProgramDoesNotAlreadyExist(
+        payload?.idNumber || request.idNumber,
+        payload?.programName || request.programName,
+      );
+    }
 
     if (payload?.fullName) {
       request.fullName = payload.fullName.trim();

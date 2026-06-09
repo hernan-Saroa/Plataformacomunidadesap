@@ -28,6 +28,11 @@ export class GraduatesController {
     return await this.service.listarGraduados();
   }
 
+  @Get('cedula/:idNumber/titulos')
+  async listarTitulosPorCedula(@Param('idNumber') idNumber: string) {
+    return await this.service.listarTitulosGraduadoPorCedula(idNumber);
+  }
+
   @Get('cedula/:idNumber')
   async obtenerPorCedula(@Param('idNumber') idNumber: string) {
     return await this.service.buscarGraduadoPorCedula(idNumber);

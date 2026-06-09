@@ -32,6 +32,7 @@ import graduadosService, {
   type GraduateMatchSuggestion,
 } from "../../services/api/graduados.service";
 import { getPublicBaseUrl } from "../../config/environment";
+import { GRADUATE_PROGRAM_OPTIONS } from "../../constants/academicPrograms";
 // import { simularEnvioCorreo } from '../../utils/emailTemplates';
 // import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
 // import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
@@ -45,6 +46,22 @@ interface PublicTitleVerificationProps {
   onBack: () => void;
   onLoginClick?: () => void;
 }
+
+type ManualReviewReason = "no_matches" | "missing_title";
+type MissingTitleBaseRecord = {
+  graduateId?: string;
+  idNumber: string;
+  fullName: string;
+  programName?: string;
+  degreeTitle?: string;
+};
+type CreatedReviewDetails = {
+  idNumber: string;
+  fullName: string;
+  programName?: string;
+  graduationDate?: string;
+  graduateEmail?: string;
+};
 
 const COLOMBIAN_ID_MIN_LENGTH = 5;
 const COLOMBIAN_ID_MAX_LENGTH = 10;
@@ -65,6 +82,30 @@ const sanitizePersonName = (value: string) =>
     .slice(0, PERSON_NAME_MAX_LENGTH);
 
 const normalizeTextSpaces = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const normalizeComparableText = (value: string) =>
+  normalizeTextSpaces(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const matchesExistingAcademicTitle = (
+  programName: string,
+  baseRecord?: { programName?: string; degreeTitle?: string } | null,
+) => {
+  const normalizedProgramName = normalizeComparableText(programName);
+  if (!normalizedProgramName || !baseRecord) {
+    return false;
+  }
+
+  return [baseRecord.programName, baseRecord.degreeTitle]
+    .map((value) => normalizeComparableText(value || ""))
+    .filter(Boolean)
+    .includes(normalizedProgramName);
+};
 
 const getTodayInputDate = () => {
   const today = new Date();
@@ -174,11 +215,20 @@ export function PublicTitleVerification({
   const [generatedCertificate, setGeneratedCertificate] =
     useState<VerificationCertificate | null>(null);
   const [reviewRequestCreated, setReviewRequestCreated] = useState(false);
+  const [createdReviewReason, setCreatedReviewReason] =
+    useState<ManualReviewReason>("no_matches");
+  const [createdReviewDetails, setCreatedReviewDetails] =
+    useState<CreatedReviewDetails | null>(null);
   const [matchSuggestions, setMatchSuggestions] = useState<
     GraduateMatchSuggestion[]
   >([]);
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
   const [showManualReviewDialog, setShowManualReviewDialog] = useState(false);
+  const [manualReviewReason, setManualReviewReason] =
+    useState<ManualReviewReason>("no_matches");
+  const [missingTitleBaseRecord, setMissingTitleBaseRecord] =
+    useState<MissingTitleBaseRecord | null>(null);
+  const [missingTitleProgramName, setMissingTitleProgramName] = useState("");
   const [manualReviewAlertMessage, setManualReviewAlertMessage] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [graduationDateError, setGraduationDateError] = useState("");
@@ -213,6 +263,10 @@ export function PublicTitleVerification({
     setContactPerson(sanitizePersonName(name));
   };
 
+  const handleMissingTitleChange = (title: string) => {
+    setMissingTitleProgramName(title);
+  };
+
   const handleGraduationDateChange = (value: string) => {
     clearMatchSuggestions();
 
@@ -229,7 +283,80 @@ export function PublicTitleVerification({
     setMatchSuggestions([]);
     setSelectedSuggestionId("");
     setShowManualReviewDialog(false);
+    setManualReviewReason("no_matches");
+    setMissingTitleBaseRecord(null);
+    setMissingTitleProgramName("");
     setManualReviewAlertMessage("");
+  };
+
+  const hideManualReviewPrompt = () => {
+    setShowManualReviewDialog(false);
+    setManualReviewAlertMessage("");
+  };
+
+  const applyMissingTitleBaseRecord = (baseRecord: MissingTitleBaseRecord) => {
+    const normalizedIdNumber =
+      sanitizeDigits(baseRecord.idNumber, COLOMBIAN_ID_MAX_LENGTH) ||
+      baseRecord.idNumber;
+
+    setMissingTitleBaseRecord({
+      ...baseRecord,
+      idNumber: normalizedIdNumber,
+    });
+    setGraduateDocumentNumber(normalizedIdNumber);
+    setGraduateLastName(baseRecord.fullName);
+    if (baseRecord.graduateId) {
+      setSelectedSuggestionId(baseRecord.graduateId);
+    }
+  };
+
+  const openMissingTitleReviewPrompt = (
+    explicitBaseRecord?: MissingTitleBaseRecord,
+  ) => {
+    const selectedBaseRecord =
+      matchSuggestions.find(
+        (suggestion) => suggestion.graduateId === selectedSuggestionId,
+      ) ||
+      (matchSuggestions.length === 1 ? matchSuggestions[0] : null);
+    const nextBaseRecord = explicitBaseRecord || selectedBaseRecord;
+
+    if (!nextBaseRecord) {
+      toast.error("Selecciona primero la persona correcta para continuar");
+      return;
+    }
+
+    applyMissingTitleBaseRecord({
+      graduateId: nextBaseRecord.graduateId,
+      idNumber: nextBaseRecord.idNumber,
+      fullName: nextBaseRecord.fullName,
+      programName: nextBaseRecord.programName,
+      degreeTitle: nextBaseRecord.degreeTitle,
+    });
+    setManualReviewReason("missing_title");
+    setManualReviewAlertMessage("");
+    setShowManualReviewDialog(true);
+  };
+
+  const titleAlreadyExistsForMissingReview = (programName: string) => {
+    const normalizedDocumentNumber = sanitizeDigits(
+      missingTitleBaseRecord?.idNumber || graduateDocumentNumber,
+      COLOMBIAN_ID_MAX_LENGTH,
+    );
+
+    return (
+      matchesExistingAcademicTitle(programName, missingTitleBaseRecord) ||
+      matchSuggestions.some((suggestion) => {
+        const suggestionDocumentNumber = sanitizeDigits(
+          suggestion.idNumber,
+          COLOMBIAN_ID_MAX_LENGTH,
+        );
+
+        return (
+          suggestionDocumentNumber === normalizedDocumentNumber &&
+          matchesExistingAcademicTitle(programName, suggestion)
+        );
+      })
+    );
   };
 
   const toDateInputValue = (value?: string | null) => {
@@ -339,7 +466,9 @@ export function PublicTitleVerification({
     };
   };
 
-  const validateRequestForm = () => {
+  const validateRequestForm = (options?: {
+    skipMissingTitleReview?: boolean;
+  }) => {
     const normalizedDocumentNumber = graduateDocumentNumber.trim();
     const normalizedCompanyNit = companyNIT.trim();
     const normalizedRequesterName = normalizeTextSpaces(requesterName);
@@ -417,19 +546,56 @@ export function PublicTitleVerification({
       return "Debes aceptar los términos y condiciones y la política de tratamiento de datos personales";
     }
 
+    if (
+      manualReviewReason === "missing_title" &&
+      !options?.skipMissingTitleReview
+    ) {
+      if (!missingTitleBaseRecord) {
+        return "Selecciona primero la persona correcta para crear la solicitud de revisión";
+      }
+
+      const normalizedMissingTitle =
+        normalizeTextSpaces(missingTitleProgramName);
+      if (!normalizedMissingTitle) {
+        return "Selecciona el título que deseas enviar a revisión";
+      }
+      if (
+        !(GRADUATE_PROGRAM_OPTIONS as readonly string[]).includes(
+          normalizedMissingTitle,
+        )
+      ) {
+        return "Selecciona un título válido de la lista de programas";
+      }
+      if (
+        titleAlreadyExistsForMissingReview(normalizedMissingTitle)
+      ) {
+        return "Ese título ya existe para la persona seleccionada. Selecciona un título diferente para solicitar revisión.";
+      }
+    }
+
     return null;
   };
 
   const buildRequestPayload = (options?: {
+    idNumber?: string;
+    graduationDate?: string;
+    programName?: string;
     selectedGraduateId?: string;
     selectedFullName?: string;
+    forceManualReview?: boolean;
   }) => {
     const normalizedGraduateName = normalizeTextSpaces(
       options?.selectedFullName || graduateLastName
     );
     const normalizedCompanyName = normalizeTextSpaces(requesterName);
     const normalizedContactPerson = normalizeTextSpaces(contactPerson);
-    const normalizedDocumentNumber = graduateDocumentNumber.trim();
+    const normalizedDocumentNumber = (
+      options?.idNumber || graduateDocumentNumber
+    ).trim();
+    const normalizedProgramName = options?.programName
+      ? normalizeTextSpaces(options.programName)
+      : "";
+    const graduationDate = options?.graduationDate || graduateDocumentIssueDate;
 
     return {
       idNumber: normalizedDocumentNumber,
@@ -443,6 +609,9 @@ export function PublicTitleVerification({
           ? normalizedCompanyName
           : normalizedGraduateName,
       requesterEmail: requesterEmail.trim(),
+      ...(requesterType === "graduado"
+        ? { graduateEmail: requesterEmail.trim() }
+        : {}),
       ...(requesterType === "empresa"
         ? {
             companyName: normalizedCompanyName,
@@ -450,29 +619,62 @@ export function PublicTitleVerification({
             contactPerson: normalizedContactPerson,
           }
         : {}),
-      ...(graduateDocumentIssueDate
-        ? { graduationDate: graduateDocumentIssueDate }
-        : {}),
+      ...(normalizedProgramName ? { programName: normalizedProgramName } : {}),
+      ...(graduationDate ? { graduationDate } : {}),
       ...(options?.selectedGraduateId
         ? { selectedGraduateId: options.selectedGraduateId }
         : {}),
+      ...(options?.forceManualReview ? { forceManualReview: true } : {}),
     };
   };
 
-  const handleManualReviewCreation = async () => {
+  const handleManualReviewCreation = async (options?: {
+    forceManualReview?: boolean;
+  }) => {
     setManualReviewAlertMessage("");
+    const isMissingTitleReview = options?.forceManualReview === true;
+    const missingTitleBase = isMissingTitleReview
+      ? missingTitleBaseRecord
+      : null;
+    const missingTitleGraduationDate = graduateDocumentIssueDate;
 
     const response = await graduadosService.autoservicio.solicitarCertificado(
-      buildRequestPayload(),
+      buildRequestPayload({
+        idNumber: missingTitleBase?.idNumber,
+        graduationDate: missingTitleGraduationDate,
+        programName: isMissingTitleReview
+          ? normalizeTextSpaces(missingTitleProgramName)
+          : undefined,
+        selectedGraduateId: missingTitleBase?.graduateId,
+        selectedFullName: missingTitleBase?.fullName,
+        forceManualReview: isMissingTitleReview,
+      }),
     );
 
     if (!response.existe) {
       setReviewRequestCreated(true);
+      setCreatedReviewReason(
+        isMissingTitleReview ? "missing_title" : "no_matches",
+      );
+      setCreatedReviewDetails({
+        idNumber: missingTitleBase?.idNumber || graduateDocumentNumber,
+        fullName: missingTitleBase?.fullName || graduateLastName.trim(),
+        programName: isMissingTitleReview
+          ? normalizeTextSpaces(missingTitleProgramName)
+          : undefined,
+        graduationDate: missingTitleGraduationDate || undefined,
+        graduateEmail:
+          isMissingTitleReview && requesterType === "graduado"
+            ? requesterEmail.trim()
+            : undefined,
+      });
       setGeneratedCertificate(null);
       clearMatchSuggestions();
       toast.info("Solicitud de revisión creada", {
         description:
-          "No encontramos coincidencias con esa cédula. Se generó una solicitud de revisión manual (15 días hábiles).",
+          isMissingTitleReview
+            ? "Se creó una solicitud de revisión para validar otro título que no aparece en la plataforma."
+            : "No encontramos coincidencias con esa cédula. Se generó una solicitud de revisión manual (15 días hábiles).",
       });
       return;
     }
@@ -508,7 +710,9 @@ export function PublicTitleVerification({
     setIsGenerating(true);
 
     try {
-      await handleManualReviewCreation();
+      await handleManualReviewCreation({
+        forceManualReview: manualReviewReason === "missing_title",
+      });
     } catch (error: any) {
       console.error("Error al crear la solicitud de revisión:", error);
       showRequestErrorToast(error, "Error al crear la solicitud de revisión");
@@ -527,7 +731,9 @@ export function PublicTitleVerification({
     setIsGenerating(true);
 
     try {
-      await handleManualReviewCreation();
+      await handleManualReviewCreation({
+        forceManualReview: manualReviewReason === "missing_title",
+      });
     } catch (error: any) {
       if (error?.status === 409) {
         setManualReviewAlertMessage(
@@ -552,6 +758,56 @@ export function PublicTitleVerification({
       return;
     }
 
+    setIsGenerating(true);
+
+    try {
+      const response = await graduadosService.autoservicio.buscarCoincidencias(
+        graduateDocumentNumber,
+        graduateDocumentIssueDate,
+        graduateLastName,
+      );
+
+      if (!response.hasMatches || !response.suggestions.length) {
+        setGeneratedCertificate(null);
+        setReviewRequestCreated(false);
+        setManualReviewReason("no_matches");
+        clearMatchSuggestions();
+        setShowManualReviewDialog(true);
+        return;
+      }
+
+      setGeneratedCertificate(null);
+      setReviewRequestCreated(false);
+      setMatchSuggestions(response.suggestions.slice(0, 3));
+      setSelectedSuggestionId("");
+
+      toast.info("Selecciona la persona correcta para continuar", {
+        description:
+          response.message ||
+          "Encontramos coincidencias con esa cédula. Debes elegir una para generar el certificado.",
+      });
+    } catch (error: any) {
+      console.error("Error al buscar coincidencias:", error);
+      showRequestErrorToast(error, "Error al verificar los datos");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSearchAgain = async () => {
+    const validationError = validateRequestForm({
+      skipMissingTitleReview: true,
+    });
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    setManualReviewReason("no_matches");
+    setShowManualReviewDialog(false);
+    setMissingTitleBaseRecord(null);
+    setMissingTitleProgramName("");
+    setManualReviewAlertMessage("");
     setIsGenerating(true);
 
     try {
@@ -591,9 +847,15 @@ export function PublicTitleVerification({
     setSelectedSuggestionId(suggestion.graduateId);
     setGraduateLastName(suggestion.fullName);
     setGraduateDocumentNumber(suggestion.idNumber.replace(/\D+/g, ""));
-    if (suggestion.graduationDate) {
-      setGraduateDocumentIssueDate(toDateInputValue(suggestion.graduationDate));
-      setGraduationDateError("");
+    if (manualReviewReason === "missing_title") {
+      setMissingTitleBaseRecord({
+        graduateId: suggestion.graduateId,
+        idNumber: suggestion.idNumber.replace(/\D+/g, ""),
+        fullName: suggestion.fullName,
+        programName: suggestion.programName,
+        degreeTitle: suggestion.degreeTitle,
+      });
+      setMissingTitleProgramName("");
     }
 
     toast.success("Coincidencia seleccionada", {
@@ -602,7 +864,9 @@ export function PublicTitleVerification({
   };
 
   const handleConfirmSelection = async () => {
-    const validationError = validateRequestForm();
+    const validationError = validateRequestForm({
+      skipMissingTitleReview: true,
+    });
     if (validationError) {
       toast.error(validationError);
       return;
@@ -668,6 +932,8 @@ export function PublicTitleVerification({
     setRequesterType("graduado");
     setGeneratedCertificate(null);
     setReviewRequestCreated(false);
+    setCreatedReviewReason("no_matches");
+    setCreatedReviewDetails(null);
     clearMatchSuggestions();
     setAcceptedTerms(false);
     setGraduationDateError("");
@@ -683,6 +949,40 @@ export function PublicTitleVerification({
     matchSuggestions.find(
       (suggestion) => suggestion.graduateId === selectedSuggestionId,
     ) || null;
+  const isMissingTitleManualReview = manualReviewReason === "missing_title";
+  const manualReviewDisplayRecord =
+    isMissingTitleManualReview && missingTitleBaseRecord
+      ? missingTitleBaseRecord
+      : null;
+  const manualReviewDisplayDocument =
+    manualReviewDisplayRecord?.idNumber || graduateDocumentNumber;
+  const manualReviewDisplayName =
+    manualReviewDisplayRecord?.fullName || graduateLastName.trim();
+  const selectedMissingTitleAlreadyExists =
+    isMissingTitleManualReview &&
+    titleAlreadyExistsForMissingReview(missingTitleProgramName);
+  const manualReviewDisplayGraduationDate = graduateDocumentIssueDate;
+  const isMissingTitleReviewCreated = createdReviewReason === "missing_title";
+  const manualReviewTitle = isMissingTitleManualReview
+    ? "¿Te falta otro título?"
+    : "No encontramos coincidencias en la base de datos";
+  const manualReviewDescription = isMissingTitleManualReview
+    ? "Si tienes otro título de ESAP que no aparece entre los resultados disponibles, puedes enviar una solicitud de revisión manual para que Registro Académico lo valide."
+    : "No encontramos ningún graduado ni coincidencias con los datos ingresados. Si deseas, puedes enviar ahora una solicitud de revisión manual para la verificación del título de egresado.";
+  const manualReviewCancelLabel = isMissingTitleManualReview
+    ? "Volver a los resultados"
+    : "Seguir revisando";
+  const reviewConfirmationDocument =
+    createdReviewDetails?.idNumber || graduateDocumentNumber;
+  const reviewConfirmationName =
+    createdReviewDetails?.fullName || requesterDisplayName;
+  const reviewConfirmationProgram = createdReviewDetails?.programName || "";
+  const reviewConfirmationGraduationDate =
+    createdReviewDetails?.graduationDate || graduateDocumentIssueDate;
+  const reviewConfirmationGraduateEmail =
+    isMissingTitleReviewCreated && requesterType === "graduado"
+      ? createdReviewDetails?.graduateEmail || requesterEmail.trim()
+      : "";
 
   // Si hay un certificado generado, mostrarlo
   if (generatedCertificate) {
@@ -754,11 +1054,34 @@ export function PublicTitleVerification({
                     ¿Qué sucedió?
                   </h3>
                   <p className="text-gray-700 leading-relaxed mb-3">
-                    No encontramos el registro del graduado con la cédula{" "}
-                    <span className="font-mono font-bold text-[#1e5da8]">
-                      {graduateDocumentNumber}
-                    </span>{" "}
-                    en nuestra base de datos de graduados ESAP.
+                    {isMissingTitleReviewCreated ? (
+                      <>
+                        Creamos una solicitud para revisar otro título asociado
+                        a la cédula{" "}
+                        <span className="font-mono font-bold text-[#1e5da8]">
+                          {reviewConfirmationDocument}
+                        </span>{" "}
+                        que no aparece disponible en la plataforma.
+                        {reviewConfirmationProgram ? (
+                          <>
+                            {" "}
+                            Título solicitado:{" "}
+                            <strong className="text-gray-900">
+                              {reviewConfirmationProgram}
+                            </strong>
+                            .
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        No encontramos el registro del graduado con la cédula{" "}
+                        <span className="font-mono font-bold text-[#1e5da8]">
+                          {graduateDocumentNumber}
+                        </span>{" "}
+                        en nuestra base de datos de graduados ESAP.
+                      </>
+                    )}
                   </p>
                   <p className="text-gray-700 leading-relaxed">
                     Hemos generado una{" "}
@@ -780,33 +1103,58 @@ export function PublicTitleVerification({
                         Cédula Consultada
                       </p>
                       <p className="font-mono font-bold text-lg text-gray-900">
-                        {graduateDocumentNumber}
+                        {reviewConfirmationDocument}
                       </p>
                     </div>
+                    {reviewConfirmationGraduationDate && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-600 font-medium">
+                          Fecha de Grado
+                        </p>
+                        <p className="font-bold text-lg text-gray-900">
+                          {formatInputDate(reviewConfirmationGraduationDate)}
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">
-                        Fecha de Grado
+                        {isMissingTitleReviewCreated
+                          ? "Nombre del Graduado"
+                          : "Solicitante"}
                       </p>
                       <p className="font-bold text-lg text-gray-900">
-                        {formatInputDate(graduateDocumentIssueDate)}
+                        {reviewConfirmationName || "Sin registrar"}
                       </p>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">
-                        Solicitante
-                      </p>
-                      <p className="font-bold text-lg text-gray-900">
-                        {requesterDisplayName || "Sin registrar"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">
-                        Email de Contacto
-                      </p>
-                      <p className="font-bold text-lg text-[#1e5da8] break-all">
-                        {requesterEmail}
-                      </p>
-                    </div>
+                    {isMissingTitleReviewCreated ? (
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-600 font-medium">
+                          Título a Revisar
+                        </p>
+                        <p className="font-bold text-lg text-[#1e5da8]">
+                          {reviewConfirmationProgram || "Sin registrar"}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-600 font-medium">
+                          Email de Contacto
+                        </p>
+                        <p className="font-bold text-lg text-[#1e5da8] break-all">
+                          {requesterEmail}
+                        </p>
+                      </div>
+                    )}
+                    {reviewConfirmationGraduateEmail && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-600 font-medium">
+                          Correo del Graduado
+                        </p>
+                        <p className="font-bold text-lg text-[#1e5da8] break-all">
+                          {reviewConfirmationGraduateEmail}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -826,10 +1174,16 @@ export function PublicTitleVerification({
                             ✓
                           </span>
                           <span className="text-gray-700">
-                            Te enviaremos un correo de confirmación a{" "}
-                            <strong className="text-gray-900">
-                              {requesterEmail}
-                            </strong>
+                            {isMissingTitleReviewCreated ? (
+                              "Registro Académico revisará el título seleccionado para crear el nuevo registro si corresponde."
+                            ) : (
+                              <>
+                                Te enviaremos un correo de confirmación a{" "}
+                                <strong className="text-gray-900">
+                                  {requesterEmail}
+                                </strong>
+                              </>
+                            )}
                           </span>
                         </li>
                         <li className="flex items-start gap-3">
@@ -1773,14 +2127,45 @@ export function PublicTitleVerification({
                         )}
                       </Button>
                       <Button
-                        type="submit"
+                        type="button"
                         variant="outline"
+                        onClick={() => {
+                          void handleSearchAgain();
+                        }}
                         disabled={isGenerating || isConfirmingSelection}
                         className="h-10 px-4 text-sm font-semibold border-gray-300"
                       >
                         Buscar nuevamente
                       </Button>
                     </div>
+
+                    {(!showManualReviewDialog ||
+                      manualReviewReason !== "missing_title") && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-amber-950">
+                              ¿Te falta otro título?
+                            </p>
+                            <p className="text-xs leading-5 text-amber-900">
+                              Si el título que buscas no aparece en estas
+                              coincidencias, puedes crear una solicitud de
+                              revisión manual.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => openMissingTitleReviewPrompt()}
+                            disabled={isGenerating || isConfirmingSelection}
+                            className="h-10 border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            Crear solicitud de revisión
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1854,13 +2239,10 @@ export function PublicTitleVerification({
                         </div>
                         <div className="space-y-1">
                           <p className="text-base font-bold text-gray-900">
-                            No encontramos coincidencias en la base de datos
+                            {manualReviewTitle}
                           </p>
                           <p className="text-sm leading-6 text-gray-600">
-                            No encontramos ningún graduado ni coincidencias con
-                            los datos ingresados. Si deseas, puedes enviar ahora
-                            una solicitud de revisión manual para la verificación
-                            del título de egresado.
+                            {manualReviewDescription}
                           </p>
                         </div>
                       </div>
@@ -1868,31 +2250,78 @@ export function PublicTitleVerification({
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <div className="rounded-xl border border-amber-100 bg-white/80 px-4 py-3">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Documento consultado
+                            {isMissingTitleManualReview
+                              ? "Documento seleccionado"
+                              : "Documento consultado"}
                           </p>
                           <p className="mt-1 text-sm font-semibold text-gray-900">
-                            {graduateDocumentNumber || "Sin registrar"}
+                            {manualReviewDisplayDocument || "Sin registrar"}
                           </p>
                         </div>
                         <div className="rounded-xl border border-amber-100 bg-white/80 px-4 py-3">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Nombre ingresado
+                            {isMissingTitleManualReview
+                              ? "Nombre completo"
+                              : "Nombre ingresado"}
                           </p>
                           <p className="mt-1 text-sm font-semibold text-gray-900">
-                            {graduateLastName.trim() || "Sin registrar"}
+                            {manualReviewDisplayName || "Sin registrar"}
                           </p>
                         </div>
-                        {graduateDocumentIssueDate && (
+                        {manualReviewDisplayGraduationDate && (
                           <div className="rounded-xl border border-amber-100 bg-white/80 px-4 py-3">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                              Fecha de grado
+                              {isMissingTitleManualReview
+                                ? "Fecha de grado ingresada"
+                                : "Fecha de grado"}
                             </p>
                             <p className="mt-1 text-sm font-semibold text-gray-900">
-                              {formatInputDate(graduateDocumentIssueDate)}
+                              {formatInputDate(
+                                manualReviewDisplayGraduationDate,
+                              )}
                             </p>
                           </div>
                         )}
                       </div>
+
+                      {isMissingTitleManualReview && (
+                        <div className="rounded-xl border border-amber-100 bg-white/85 px-4 py-3">
+                          <Label
+                            htmlFor="missing-title-program"
+                            className="mb-2 block text-xs font-semibold text-gray-700"
+                          >
+                            Título que deseas revisar{" "}
+                            <span className="text-red-500">*</span>
+                          </Label>
+                          <select
+                            id="missing-title-program"
+                            value={missingTitleProgramName}
+                            onChange={(event) =>
+                              handleMissingTitleChange(event.target.value)
+                            }
+                            className="h-10 w-full rounded-md border border-amber-200 bg-white px-3 text-sm text-gray-900 outline-none transition-colors focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                          >
+                            <option value="">Seleccionar título</option>
+                            {GRADUATE_PROGRAM_OPTIONS.map((program) => (
+                              <option key={program} value={program}>
+                                {program}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-2 text-xs leading-5 text-gray-600">
+                            Selecciona el título que no aparece en los
+                            resultados para que Registro Académico pueda
+                            validarlo.
+                          </p>
+                          {selectedMissingTitleAlreadyExists && (
+                            <p className="mt-2 text-xs font-semibold leading-5 text-red-600">
+                              Ese título ya existe para la persona seleccionada.
+                              Selecciona un título diferente para solicitar
+                              revisión.
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
                         La revisión manual tiene un tiempo estimado de{" "}
@@ -1904,17 +2333,27 @@ export function PublicTitleVerification({
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={clearMatchSuggestions}
+                          onClick={
+                            isMissingTitleManualReview
+                              ? hideManualReviewPrompt
+                              : clearMatchSuggestions
+                          }
                           className="h-11 border-gray-300 text-sm font-semibold"
                         >
-                          Seguir revisando
+                          {manualReviewCancelLabel}
                         </Button>
                         <Button
                           type="button"
                           onClick={() => {
                             void handleManualReviewSubmit();
                           }}
-                          disabled={isGenerating || isConfirmingSelection}
+                          disabled={
+                            isGenerating ||
+                            isConfirmingSelection ||
+                            (isMissingTitleManualReview &&
+                              (!normalizeTextSpaces(missingTitleProgramName) ||
+                                selectedMissingTitleAlreadyExists))
+                          }
                           className="h-11 bg-[#1e5da8] text-sm font-semibold text-white hover:bg-[#174a86] disabled:opacity-50"
                         >
                           {isGenerating ? (
@@ -1925,7 +2364,7 @@ export function PublicTitleVerification({
                           ) : (
                             <>
                               <FileText className="mr-2 h-4 w-4" />
-                              Sí, enviar solicitud de revisión
+                              Enviar solicitud de revisión
                             </>
                           )}
                         </Button>

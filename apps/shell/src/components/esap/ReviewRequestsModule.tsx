@@ -46,6 +46,7 @@ import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import type { Seccional, Sede } from '../../services/api/types';
+import { GRADUATE_PROGRAM_OPTIONS } from '../../constants/academicPrograms';
 
 type ApprovalForm = {
   fullName: string;
@@ -97,6 +98,7 @@ export function ReviewRequestsModule({
     numFolio: '',
     numLibro: '',
   });
+  const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [isApprovalFileDragActive, setIsApprovalFileDragActive] = useState(false);
   const [existingApprovalFiles, setExistingApprovalFiles] = useState<
@@ -206,19 +208,7 @@ export function ReviewRequestsModule({
     (request.approvalStatus !== 'HEAD_OBSERVATION' ||
       canManageApprovalConcepts);
   const isMyReviewsScope = scope === 'mine';
-  const PROGRAMAS_ESAP = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
+  const PROGRAMAS_ESAP: readonly string[] = GRADUATE_PROGRAM_OPTIONS;
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
@@ -238,6 +228,26 @@ export function ReviewRequestsModule({
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+
+  const normalizeComparableProgram = (value?: string | null) =>
+    (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const programAlreadyExistsForGraduate = (programName: string) => {
+    const normalizedProgramName = normalizeComparableProgram(programName);
+    if (!normalizedProgramName) {
+      return false;
+    }
+
+    return existingGraduatePrograms.some(
+      (program) => normalizeComparableProgram(program) === normalizedProgramName,
+    );
+  };
 
   const normalizeName = (value?: string) => {
     const normalized = (value || '').trim();
@@ -982,6 +992,12 @@ export function ReviewRequestsModule({
   }, []);
 
   const programNameOptions = useMemo(() => PROGRAMAS_ESAP, []);
+  const selectedProgramAlreadyExists = useMemo(
+    () => programAlreadyExistsForGraduate(approvalForm.programName),
+    [approvalForm.programName, existingGraduatePrograms],
+  );
+  const duplicateProgramMessage =
+    'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.';
 
   const campusOptions = useMemo(() => {
     const options = new Set<string>(sedesOptions);
@@ -1298,6 +1314,7 @@ export function ReviewRequestsModule({
     setShowReviewModal(true);
     setApprovalFiles([]);
     setExistingApprovalFiles(action === 'approve' ? request.reviewFiles || [] : []);
+    setExistingGraduatePrograms([]);
     resetApprovalUploadProgress();
 
     if (action !== 'approve') {
@@ -1308,6 +1325,14 @@ export function ReviewRequestsModule({
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
       setExistingApprovalFiles(detail.reviewFiles || request.reviewFiles || []);
+      const existingProgramsByKey = new Map<string, string>();
+      const rememberExistingProgram = (programName?: string | null) => {
+        const trimmedProgramName = (programName || '').trim();
+        const normalizedProgramName = normalizeComparableProgram(trimmedProgramName);
+        if (trimmedProgramName && normalizedProgramName) {
+          existingProgramsByKey.set(normalizedProgramName, trimmedProgramName);
+        }
+      };
       const graduationDate = toDateInputValue(
         detail.graduationDate || request.graduationDate
       );
@@ -1345,6 +1370,25 @@ export function ReviewRequestsModule({
           .map((value) => (value || '').trim())
           .find((value) => value.length > 0) || '';
 
+      try {
+        const documentForExistingPrograms = sanitizeDigits(
+          detail.idNumber || request.graduateDocumentNumber,
+          DOCUMENT_MAX_LENGTH,
+        );
+        if (documentForExistingPrograms) {
+          const existingTitles =
+            await graduadosService.graduados.listarTitulosPorCedula(
+              documentForExistingPrograms,
+            );
+          existingTitles.forEach((title) => {
+            rememberExistingProgram(title.programName);
+            rememberExistingProgram(title.degreeTitle);
+          });
+        }
+      } catch (error) {
+        console.warn('No se pudieron cargar los títulos existentes:', error);
+      }
+
       let nextForm: ApprovalForm = {
         fullName: resolvedFullName,
         idNumber: sanitizeDigits(
@@ -1366,6 +1410,8 @@ export function ReviewRequestsModule({
       if (detail.graduateId) {
         try {
           const graduate = await graduadosService.graduados.obtenerPorId(detail.graduateId);
+          rememberExistingProgram(graduate.programName);
+          rememberExistingProgram(graduate.degreeTitle);
           nextForm = {
             ...nextForm,
             fullName: graduate.fullName || nextForm.fullName,
@@ -1373,7 +1419,9 @@ export function ReviewRequestsModule({
               graduate.idNumber || nextForm.idNumber,
               DOCUMENT_MAX_LENGTH,
             ),
-            email: graduate.email || nextForm.email,
+            email: isCompanyRequester
+              ? graduate.email || nextForm.email
+              : nextForm.email || graduate.email,
             programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
               ? (graduate.programName || '').trim()
               : nextForm.programName,
@@ -1389,6 +1437,8 @@ export function ReviewRequestsModule({
           console.error('Error cargando graduado asociado:', error);
         }
       }
+
+      setExistingGraduatePrograms(Array.from(existingProgramsByKey.values()));
 
       const savedPayload =
         detail.reviewPayload && typeof detail.reviewPayload === 'object'
@@ -1472,6 +1522,10 @@ export function ReviewRequestsModule({
       }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
+        return;
+      }
+      if (selectedProgramAlreadyExists) {
+        toast.error(duplicateProgramMessage);
         return;
       }
       if (!approvalForm.graduationDate) {
@@ -2348,7 +2402,7 @@ export function ReviewRequestsModule({
                               <div className="flex items-start gap-2">
                                 <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Apellido</p>
+                                  <p className="text-xs text-gray-600">Nombre completo</p>
                                   <p className="font-semibold text-gray-900">
                                     {request.graduateLastName || 'Sin registrar'}
                                   </p>
@@ -2954,16 +3008,29 @@ export function ReviewRequestsModule({
                     <select
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
-                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className={`review-approval-input w-full rounded-lg border-2 px-3 py-2 text-sm ${
+                        selectedProgramAlreadyExists
+                          ? 'border-red-300 bg-red-50 focus:border-red-500'
+                          : 'border-gray-300'
+                      }`}
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar programa</option>
-                      {programNameOptions.map((programa) => (
-                        <option key={programa} value={programa}>
+                      {programNameOptions.map((programa) => {
+                        const alreadyExists = programAlreadyExistsForGraduate(programa);
+                        return (
+                        <option key={programa} value={programa} disabled={alreadyExists}>
                           {programa}
+                          {alreadyExists ? ' (ya existe)' : ''}
                         </option>
-                      ))}
+                        );
+                      })}
                     </select>
+                    {selectedProgramAlreadyExists && (
+                      <p className="text-xs font-semibold leading-5 text-red-600">
+                        {duplicateProgramMessage}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
