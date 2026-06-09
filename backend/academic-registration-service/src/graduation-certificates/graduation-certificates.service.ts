@@ -3230,6 +3230,8 @@ export class GraduationCertificatesService {
       signerId: config.signerId,
       institutionLogoUrl: config.institutionLogoUrl,
       institutionLogoFilename: config.institutionLogoFilename,
+      footerLogoUrl: config.footerLogoUrl,
+      footerLogoFilename: config.footerLogoFilename,
       signerNameOverride: config.signerNameOverride,
       signatureUrlOverride: config.signatureUrlOverride,
       signatureFilenameOverride: config.signatureFilenameOverride,
@@ -4248,6 +4250,16 @@ export class GraduationCertificatesService {
         signatureUrl: config.signatureUrlOverride || '',
         signatureFilename: config.signatureFilenameOverride || '',
       },
+      logos: {
+        headerLogoDataUrl: config.institutionLogoUrl || null,
+        headerLogoFilename: config.institutionLogoFilename || null,
+        footerLogoDataUrl: config.footerLogoUrl || null,
+        footerLogoFilename: config.footerLogoFilename || null,
+        defaultHeaderLogoDataUrl: this.loadTemplateImageDataUrl('img_primera.png'),
+        defaultFooterLogoDataUrl: this.loadTemplateImageDataUrl(
+          'logo_esap_footer.png',
+        ),
+      },
       texts: normalizeGraduationCertificateTemplateTexts({
         ...parsedTexts,
         signerTitle: signerTitleForEditing,
@@ -4290,12 +4302,41 @@ export class GraduationCertificatesService {
       signatureUrl: config.signatureUrlOverride || '',
       signatureFilename: config.signatureFilenameOverride || '',
     };
+    const previousLogos = {
+      headerLogoDataUrl: config.institutionLogoUrl || null,
+      headerLogoFilename: config.institutionLogoFilename || null,
+      footerLogoDataUrl: config.footerLogoUrl || null,
+      footerLogoFilename: config.footerLogoFilename || null,
+    };
 
     if (
       typeof payload.electronicSignatureEnabled === 'boolean' ||
       payload.signatureImageDataUrl !== undefined
     ) {
       await this.applyElectronicSignatureConfig(config, payload);
+    }
+
+    if (payload.headerLogoDataUrl !== undefined) {
+      const storedHeaderLogo = payload.headerLogoDataUrl
+        ? this.normalizeTemplateLogoImage(
+            payload.headerLogoDataUrl,
+            payload.headerLogoFilename,
+            'logo-cabecera',
+          )
+        : null;
+      config.institutionLogoUrl = storedHeaderLogo?.dataUrl || null;
+      config.institutionLogoFilename = storedHeaderLogo?.filename || null;
+    }
+    if (payload.footerLogoDataUrl !== undefined) {
+      const storedFooterLogo = payload.footerLogoDataUrl
+        ? this.normalizeTemplateLogoImage(
+            payload.footerLogoDataUrl,
+            payload.footerLogoFilename,
+            'logo-esap-pie',
+          )
+        : null;
+      config.footerLogoUrl = storedFooterLogo?.dataUrl || null;
+      config.footerLogoFilename = storedFooterLogo?.filename || null;
     }
 
     config.status = 'published';
@@ -4324,6 +4365,12 @@ export class GraduationCertificatesService {
       signatureUrl: config.signatureUrlOverride || '',
       signatureFilename: config.signatureFilenameOverride || '',
     };
+    const nextLogos = {
+      headerLogoDataUrl: config.institutionLogoUrl || null,
+      headerLogoFilename: config.institutionLogoFilename || null,
+      footerLogoDataUrl: config.footerLogoUrl || null,
+      footerLogoFilename: config.footerLogoFilename || null,
+    };
 
     await this.templateConfigChangeRepository.save(
       this.templateConfigChangeRepository.create({
@@ -4333,10 +4380,12 @@ export class GraduationCertificatesService {
         oldValue: JSON.stringify({
           texts: previousSerialized,
           electronicSignature: previousSignature,
+          logos: previousLogos,
         }),
         newValue: JSON.stringify({
           texts: nextSerialized,
           electronicSignature: nextSignature,
+          logos: nextLogos,
         }),
         changedBy: actor,
         observations:
@@ -4377,6 +4426,10 @@ export class GraduationCertificatesService {
     config.signatureUrlOverride = null;
     config.signatureFilenameOverride = null;
     config.signerNameOverride = null;
+    config.institutionLogoUrl = null;
+    config.institutionLogoFilename = null;
+    config.footerLogoUrl = null;
+    config.footerLogoFilename = null;
     config.status = 'published';
     config.isActive = true;
     config.updatedBy = actor;
@@ -4409,6 +4462,96 @@ export class GraduationCertificatesService {
     );
 
     return this.obtenerConfiguracionPlantillaCertificado();
+  }
+
+  private loadTemplateImageDataUrl(filename: string): string {
+    const candidates = [
+      path.join(process.cwd(), 'uploads', 'graduation-certificates', filename),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'uploads',
+        'graduation-certificates',
+        filename,
+      ),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'src',
+        'graduation-certificates',
+        'templates',
+        filename,
+      ),
+      path.join(
+        process.cwd(),
+        'src',
+        'graduation-certificates',
+        'templates',
+        filename,
+      ),
+      path.join(__dirname, 'templates', filename),
+    ];
+
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) {
+      return '';
+    }
+
+    const buffer = fs.readFileSync(filePath);
+    const mime = this.getTemplateImageMimeType(filePath);
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+
+  private getTemplateImageMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.png') return 'image/png';
+    if (ext === '.svg') return 'image/svg+xml';
+    if (ext === '.webp') return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  private normalizeTemplateLogoImage(
+    dataUrl: string,
+    originalFilename?: string,
+    defaultBaseName = 'logo-certificado',
+  ): { dataUrl: string; filename: string } {
+    const match = String(dataUrl || '').match(
+      /^data:(image\/png|image\/jpe?g|image\/svg\+xml|image\/webp);base64,([A-Za-z0-9+/=\r\n]+)$/i,
+    );
+    if (!match) {
+      throw new BadRequestException(
+        'El logo debe ser una imagen PNG, JPEG, SVG o WebP valida.',
+      );
+    }
+
+    const mimeType = match[1].toLowerCase();
+    const base64 = match[2].replace(/\s/g, '');
+    const buffer = Buffer.from(base64, 'base64');
+    if (!buffer.length || buffer.length > 10 * 1024 * 1024) {
+      throw new BadRequestException('El logo debe pesar maximo 10 MB.');
+    }
+
+    const extensionByMime: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/svg+xml': 'svg',
+      'image/webp': 'webp',
+    };
+    const extension = extensionByMime[mimeType] || 'png';
+    const safeBaseName = path
+      .basename(originalFilename || defaultBaseName)
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+
+    return {
+      dataUrl: `data:${mimeType};base64,${base64}`,
+      filename: `${safeBaseName || defaultBaseName}.${extension}`,
+    };
   }
 
   private async applyElectronicSignatureConfig(

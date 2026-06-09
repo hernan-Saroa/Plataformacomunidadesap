@@ -329,6 +329,7 @@ export interface GraduationCertificateTemplateTexts {
   closingText: string;
   signerTitle: string;
   validationMessage: string;
+  footerAddress: string;
 }
 
 export interface GraduationCertificateTemplateConfig {
@@ -342,6 +343,14 @@ export interface GraduationCertificateTemplateConfig {
     signerName: string;
     signatureUrl: string;
     signatureFilename: string;
+  };
+  logos?: {
+    headerLogoDataUrl: string | null;
+    headerLogoFilename: string | null;
+    footerLogoDataUrl: string | null;
+    footerLogoFilename: string | null;
+    defaultHeaderLogoDataUrl?: string | null;
+    defaultFooterLogoDataUrl?: string | null;
   };
   texts: GraduationCertificateTemplateTexts;
 }
@@ -906,6 +915,10 @@ const graduadosService = {
         signerName?: string;
         signatureImageDataUrl?: string;
         signatureFilename?: string;
+        headerLogoDataUrl?: string;
+        headerLogoFilename?: string;
+        footerLogoDataUrl?: string;
+        footerLogoFilename?: string;
       },
     ): Promise<GraduationCertificateTemplateConfig> => {
       const response = await apiClient.post(

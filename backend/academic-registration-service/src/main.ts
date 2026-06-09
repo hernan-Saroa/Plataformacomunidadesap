@@ -9,7 +9,7 @@ async function bootstrap() {
     bodyParser: false,
   });
   app.getHttpAdapter().getInstance().disable?.('x-powered-by');
-  const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? '8mb';
+  const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? '35mb';
 
   app.use(json({ limit: requestBodyLimit }));
   app.use(urlencoded({ limit: requestBodyLimit, extended: true }));

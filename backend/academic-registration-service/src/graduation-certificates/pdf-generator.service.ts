@@ -95,8 +95,8 @@ export class PdfGeneratorService {
       templateTexts,
     );
 
-    const headerImg = this.loadImageDataUrl('img_primera.png');
-    const footerImg = this.loadImageDataUrl('img_segunda.png');
+    const { headerLogoDataUrl, footerLogoDataUrl } =
+      await this.resolveLogoSettings(templateSnapshot);
 
     const baseUrl = this.resolveValidationBaseUrl(
       templateSnapshot?.validationBaseUrl,
@@ -176,8 +176,16 @@ export class PdfGeneratorService {
         this.formatMultilineText(templateTexts.validationMessage),
       )
       .replace(/{{URL_VALIDACION}}/g, validationUrl)
-      .replace(/{{HEADER_IMG}}/g, headerImg)
-      .replace(/{{FOOTER_IMG}}/g, footerImg);
+      .replace(/{{HEADER_IMG}}/g, headerLogoDataUrl)
+      .replace(
+        /{{FOOTER_ADDRESS}}/g,
+        this.formatMultilineText(templateTexts.footerAddress),
+      )
+      .replace(/{{FOOTER_LOGO_BLOCK}}/g, () =>
+        footerLogoDataUrl
+          ? `<img class="pie-logo" src="${footerLogoDataUrl}" alt="Logo ESAP" />`
+          : '',
+      );
 
     const executablePath =
       process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
@@ -225,6 +233,53 @@ export class PdfGeneratorService {
     }
   }
 
+  private async resolveLogoSettings(
+    snapshot: GraduationCertificateTemplateSnapshot | null,
+  ): Promise<{ headerLogoDataUrl: string; footerLogoDataUrl: string }> {
+    if (snapshot) {
+      return {
+        headerLogoDataUrl: snapshot.institutionLogoUrl
+          ? this.loadLogoDataUrl(snapshot.institutionLogoUrl)
+          : this.loadImageDataUrl('img_primera.png'),
+        footerLogoDataUrl: snapshot.footerLogoUrl
+          ? this.loadLogoDataUrl(snapshot.footerLogoUrl)
+          : this.loadImageDataUrl('logo_esap_footer.png'),
+      };
+    }
+
+    const activeConfig = await this.templateConfigRepository.findOne({
+      where: { isActive: true },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    return {
+      headerLogoDataUrl: activeConfig?.institutionLogoUrl
+        ? this.loadLogoDataUrl(activeConfig.institutionLogoUrl)
+        : this.loadImageDataUrl('img_primera.png'),
+      footerLogoDataUrl: activeConfig?.footerLogoUrl
+        ? this.loadLogoDataUrl(activeConfig.footerLogoUrl)
+        : this.loadImageDataUrl('logo_esap_footer.png'),
+    };
+  }
+
+  private loadLogoDataUrl(logoUrl?: string | null): string {
+    const raw = String(logoUrl || '').trim();
+    if (!raw) return '';
+    if (/^data:image\/(png|jpe?g|svg\+xml|gif|webp);base64,/i.test(raw)) {
+      return raw;
+    }
+    const normalized = raw.startsWith('/') ? raw.slice(1) : raw;
+    const candidates = [
+      path.join(process.cwd(), normalized),
+      path.join(process.cwd(), 'uploads', normalized),
+    ];
+    const filePath = candidates.find((c) => fs.existsSync(c));
+    if (!filePath) return '';
+    const buffer = fs.readFileSync(filePath);
+    const mime = this.getImageMimeType(filePath);
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+
   private loadImageDataUrl(filename: string): string {
     const candidates = [
       path.join(process.cwd(), 'uploads', 'graduation-certificates', filename),
@@ -252,9 +307,17 @@ export class PdfGeneratorService {
     }
 
     const buffer = fs.readFileSync(filePath);
-    const ext = path.extname(filePath).toLowerCase();
-    const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+    const mime = this.getImageMimeType(filePath);
     return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+
+  private getImageMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.png') return 'image/png';
+    if (ext === '.svg') return 'image/svg+xml';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.gif') return 'image/gif';
+    return 'image/jpeg';
   }
 
   private async buildSignatureBlock(

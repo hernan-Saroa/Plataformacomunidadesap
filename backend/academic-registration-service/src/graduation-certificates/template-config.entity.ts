@@ -25,10 +25,15 @@ export class TemplateConfig {
 
   // Logo institucional
   @Column({ name: 'institution_logo_url', type: 'text', nullable: true })
-  institutionLogoUrl: string;
+  institutionLogoUrl: string | null;
 
-  @Column({ name: 'institution_logo_filename', length: 255, nullable: true })
-  institutionLogoFilename: string;
+  @Column({
+    name: 'institution_logo_filename',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  institutionLogoFilename: string | null;
 
   // Tipografía
   @Column({
@@ -52,6 +57,13 @@ export class TemplateConfig {
 
   @Column({ length: 50, default: 'draft' })
   status: string; // draft, published
+
+  // Logo pie de página (ESAP)
+  @Column({ name: 'footer_logo_url', type: 'text', nullable: true })
+  footerLogoUrl: string | null;
+
+  @Column({ name: 'footer_logo_filename', type: 'varchar', length: 255, nullable: true })
+  footerLogoFilename: string | null;
 
   // Firma (puede sobrescribir la del firmante)
   @Column({ name: 'signature_url_override', type: 'text', nullable: true })
