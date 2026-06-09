@@ -1047,8 +1047,10 @@ export class ProcessService {
     id: string,
     nuevaEtapa: ProcessStage,
     fechaAprobacion: Date,
+    aprobadoPorId: string,
   ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
     const proceso = await this.findById(id, false);
+    const etapaAnterior = proceso.etapaActual;
 
     let tiempoAcumuladoDias: number | null = null;
     const fechaInicioReferencia =
@@ -1076,6 +1078,17 @@ export class ProcessService {
     }
 
     const procesoGuardado = await this.processRepository.save(proceso);
+
+    await this.actuacionesRepository.save({
+      processId: id,
+      tipo: 'cambio_etapa',
+      etapa: nuevaEtapa,
+      descripcion: `Cambio de etapa aprobado mediante auto de apertura. Etapa anterior: ${etapaAnterior}.`,
+      responsableNombre: aprobadoPorId,
+      fechaActuacion: fechaAprobacion,
+      observaciones: `Etapa anterior: ${etapaAnterior} | Nueva etapa: ${nuevaEtapa}`,
+    });
+
     return { proceso: procesoGuardado, tiempoAcumuladoDias };
   }
 
