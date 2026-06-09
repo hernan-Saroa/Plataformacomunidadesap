@@ -1646,6 +1646,7 @@ export function ExpedientesElectronicosWorldClass() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {grupo.expediente.estado !== 'radicada' && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1658,6 +1659,7 @@ export function ExpedientesElectronicosWorldClass() {
                                 <Share2 className="w-3.5 h-3.5" />
                                 Compartir
                               </button>
+                              )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1815,6 +1817,7 @@ export function ExpedientesElectronicosWorldClass() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {expediente.estado !== 'radicada' && (
                               <button
                                 onClick={() => {
                                   setExpedienteParaCompartir(expediente);
@@ -1826,6 +1829,7 @@ export function ExpedientesElectronicosWorldClass() {
                                 <Share2 className="w-3.5 h-3.5" />
                                 Compartir
                               </button>
+                              )}
                               <button
                                 onClick={() => exportarIndiceExpedienteExcel(expediente.id)}
                                 className="px-2.5 py-1.5 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition text-xs font-bold flex items-center gap-1.5"
