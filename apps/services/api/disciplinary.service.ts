@@ -1866,6 +1866,14 @@ if (fechaQuejaRaw) {
         return apiClient.get(`${SERVICE_PREFIX}/configuration/firma-jefe/existe`);
     }
 
+    async getFirmaJefe(): Promise<string> {
+        const url = buildApiUrl('control-disciplinario', `${SERVICE_PREFIX}/configuration/firma-jefe`);
+        const response = await fetch(url, { method: 'GET', credentials: 'include' });
+        if (!response.ok) throw new Error('No se pudo cargar la firma');
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
+    }
+
 }
 
 const disciplinaryService = new DisciplinaryService();
