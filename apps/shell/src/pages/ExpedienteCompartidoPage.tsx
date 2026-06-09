@@ -19,6 +19,7 @@ import {
   Unlock,
   ArrowLeft,
   ExternalLink,
+  Play,
   User,
   Scale,
   Building
@@ -63,12 +64,17 @@ interface Documento {
   url?: string;
   urlExterna?: string;
   downloadUrl?: string;
+  archivoNombre?: string;
+  fileType?: string;
+  processId?: string;
   metadatos: {
     firmado?: boolean;
     notificado?: boolean;
     folios?: number;
   };
 }
+
+type FilePreviewType = 'pdf' | 'video' | 'audio' | 'image' | 'document' | 'spreadsheet' | 'html' | 'other';
 
 export function ExpedienteCompartidoPage() {
   const { token } = useParams<{ token: string }>();
@@ -175,6 +181,122 @@ export function ExpedienteCompartidoPage() {
     return window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   };
 
+  const getDocumentoFileName = (doc: Documento): string => {
+    return doc.archivoNombre || doc.nombre || doc.downloadUrl || doc.url || doc.urlExterna || 'documento';
+  };
+
+  const getFileType = (filename: string, mimeType?: string): FilePreviewType => {
+    const mime = (mimeType || '').toLowerCase();
+    if (mime === 'application/pdf') return 'pdf';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv')) return 'spreadsheet';
+    if (mime.includes('html')) return 'html';
+    if (mime.includes('wordprocessingml') || mime.includes('msword') || mime.startsWith('text/')) return 'document';
+
+    const ext = filename.toLowerCase().split('?')[0].split('#')[0].split('.').pop() || '';
+    if (ext === 'pdf') return 'pdf';
+    if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
+    if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return 'audio';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) return 'image';
+    if (['doc', 'docx', 'odt', 'txt', 'rtf'].includes(ext)) return 'document';
+    if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) return 'spreadsheet';
+    if (['html', 'htm'].includes(ext)) return 'html';
+    return 'other';
+  };
+
+  const getFileTypeIconColor = (filename: string, mimeType?: string): string => {
+    const colors: Record<FilePreviewType, string> = {
+      pdf: '#DC2626',
+      video: '#7C3AED',
+      audio: '#DB2777',
+      image: '#059669',
+      document: '#2563EB',
+      spreadsheet: '#059669',
+      html: '#0891B2',
+      other: '#6B7280'
+    };
+    return colors[getFileType(filename, mimeType)];
+  };
+
+  const getFileTypeDisplayName = (filename: string, mimeType?: string): string => {
+    const names: Record<FilePreviewType, string> = {
+      pdf: 'PDF',
+      video: 'Video',
+      audio: 'Audio',
+      image: 'Imagen',
+      document: 'Documento',
+      spreadsheet: 'Hoja de cálculo',
+      html: 'HTML',
+      other: 'Archivo'
+    };
+    return names[getFileType(filename, mimeType)];
+  };
+
+  const isDocxFile = (doc: Documento, mimeType?: string): boolean => {
+    const filename = getDocumentoFileName(doc).toLowerCase();
+    const mime = (mimeType || doc.fileType || '').toLowerCase();
+    return filename.split('?')[0].endsWith('.docx') || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  };
+
+  const buildControlApiUrl = (path: string): string => {
+    let normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    normalizedPath = normalizedPath.replace(/^\/control-disciplinario\/api\/v1/, '/api/v1');
+
+    if (API_MODE === 'direct') {
+      normalizedPath = normalizedPath.replace(/^\/api\/v1/, '') || '/';
+    } else if (!normalizedPath.startsWith('/api/v1')) {
+      normalizedPath = `/api/v1${normalizedPath}`;
+    }
+
+    return buildApiUrl('control-disciplinario', normalizedPath);
+  };
+
+  const appendViewParam = (url: string): string => {
+    if (!/\/download(?:\?|$)/.test(url) || /[?&]view=/.test(url)) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}view=true`;
+  };
+
+  const resolveDocumentoUrl = (doc: Documento, forViewer = false): string => {
+    const rawUrl = doc.downloadUrl || doc.url || doc.urlExterna;
+
+    if (rawUrl) {
+      if (/^https?:\/\//i.test(rawUrl)) {
+        return forViewer ? appendViewParam(rawUrl) : rawUrl;
+      }
+
+      const path = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+      const isApiPath =
+        path.startsWith('/control-disciplinario/api/v1') ||
+        path.startsWith('/api/v1') ||
+        path.startsWith('/disciplinary-') ||
+        path.startsWith('/compartir-expediente/');
+
+      if (isApiPath) {
+        const apiUrl = buildControlApiUrl(path);
+        return forViewer ? appendViewParam(apiUrl) : apiUrl;
+      }
+
+      return disciplinaryService.getAbsoluteFileUrl(path);
+    }
+
+    const processId = doc.processId || expedienteData?.proceso?.id;
+    if (processId) {
+      const restPath = `/disciplinary-processes/${processId}/documents/${doc.id}/download`;
+      const apiUrl = buildControlApiUrl(restPath);
+      return forViewer ? appendViewParam(apiUrl) : apiUrl;
+    }
+
+    if (!token) {
+      throw new Error('Token de acceso no válido');
+    }
+
+    const sharedPath = `/compartir-expediente/documento/${token}/${doc.id}/download`;
+    const sharedUrl = buildControlApiUrl(sharedPath);
+    return forViewer ? appendViewParam(sharedUrl) : sharedUrl;
+  };
+
   // Ver documento
   const handleVerDocumento = async (doc: Documento) => {
     if (!token || !doc.id) {
@@ -182,16 +304,19 @@ export function ExpedienteCompartidoPage() {
       return;
     }
 
+    setDocumentoSeleccionado(doc);
+    setShowModalVisor(true);
+    setPdfBlobUrl(null);
+    setCargandoPDF(true);
+    setErrorPDF(null);
+    setEsDocumentoConvertido(false);
+
     try {
-      // Usar el endpoint público para descarga de documentos compartidos
-      const docPath = `/compartir-expediente/documento/${token}/${doc.id}/download?view=true`;
-      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath : `/api/v1${docPath}`);
+      const downloadUrl = resolveDocumentoUrl(doc, true);
 
       const response = await fetch(downloadUrl, {
         method: 'GET',
-        headers: {
-          'Accept': 'application/octet-stream',
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -200,23 +325,17 @@ export function ExpedienteCompartidoPage() {
 
       const blob = await response.blob();
 
-      // En móviles, abrir PDFs y imágenes en nueva pestaña, pero DOCX en modal ya que funciona
-      if (isMobile() && blob.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && !blob.type.startsWith('image/')) {
+      // En móviles, abrir archivos pesados de audio/video en nueva pestaña.
+      const previewType = getFileType(getDocumentoFileName(doc), blob.type || doc.fileType);
+      if (isMobile() && (previewType === 'video' || previewType === 'audio')) {
         window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+        setShowModalVisor(false);
         toast.info('Documento abierto en nueva pestaña');
         return;
       }
 
-      // Mostrar modal con visor para desktop o archivos que requieren conversión (DOCX)
-      setDocumentoSeleccionado(doc);
-      setShowModalVisor(true);
-      setPdfBlobUrl(null);
-      setCargandoPDF(true);
-      setErrorPDF(null);
-      setEsDocumentoConvertido(false);
-
       // Check if it's a DOCX file and convert to HTML for display
-      if (blob.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      if (isDocxFile(doc, blob.type)) {
         const arrayBuffer = await blob.arrayBuffer();
         try {
           const result = await mammoth.convertToHtml({ arrayBuffer });
@@ -254,6 +373,7 @@ export function ExpedienteCompartidoPage() {
       }
     } catch (error: any) {
       console.error('Error al cargar documento:', error);
+      setErrorPDF(error.message || 'No se pudo cargar el documento');
       toast.error('No se pudo cargar el documento');
     } finally {
       setCargandoPDF(false);
@@ -270,14 +390,12 @@ export function ExpedienteCompartidoPage() {
 
       toast.loading('Descargando documento...', { id: 'download' });
 
-      // Usar el endpoint público para descarga de documentos compartidos
-      const docPath2 = `/compartir-expediente/documento/${token}/${doc.id}/download`;
-      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath2 : `/api/v1${docPath2}`);
+      const downloadUrl = resolveDocumentoUrl(doc, false);
 
       // Crear un enlace temporal para descargar
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = doc.nombre || 'documento';
+      link.download = getDocumentoFileName(doc);
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -579,6 +697,9 @@ export function ExpedienteCompartidoPage() {
                 <tbody className="divide-y divide-gray-200">
                   {documentos.map((doc) => {
                     const colors = getFileTypeColor(doc.nombre);
+                    const fileName = getDocumentoFileName(doc);
+                    const previewType = getFileType(fileName, doc.fileType);
+                    const previewColor = getFileTypeIconColor(fileName, doc.fileType);
                     return (
                       <tr key={doc.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
@@ -625,8 +746,13 @@ export function ExpedienteCompartidoPage() {
                               size="sm"
                               variant="outline"
                               className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                              title={`Ver ${getFileTypeDisplayName(fileName, doc.fileType)}`}
                             >
-                              <Eye className="w-4 h-4 mr-1" />
+                              {previewType === 'video' || previewType === 'audio' ? (
+                                <Play className="w-4 h-4 mr-1" style={{ color: previewColor }} />
+                              ) : (
+                                <Eye className="w-4 h-4 mr-1" style={{ color: previewColor }} />
+                              )}
                               Ver
                             </Button>
                             <Button
@@ -675,15 +801,30 @@ export function ExpedienteCompartidoPage() {
                     {documentoSeleccionado.nombre}
                   </h2>
                   <p className="text-sm text-gray-600 mt-1">
-                    Versión {documentoSeleccionado.version}
+                    {esDocumentoConvertido
+                      ? 'Documento Word convertido'
+                      : getFileTypeDisplayName(getDocumentoFileName(documentoSeleccionado), documentoSeleccionado.fileType)}
+                    {' '}• Versión {documentoSeleccionado.version}
                   </p>
                 </div>
-                <button
-                  onClick={() => { setShowModalVisor(false); setPdfBlobUrl(null); setEsDocumentoConvertido(false); }}
-                  className="p-2 hover:bg-gray-200 rounded-lg"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  {pdfBlobUrl && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(pdfBlobUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      <ExternalLink className="w-4 h-4 mr-1" />
+                      Nueva pestaña
+                    </Button>
+                  )}
+                  <button
+                    onClick={() => { setShowModalVisor(false); setPdfBlobUrl(null); setEsDocumentoConvertido(false); }}
+                    className="p-2 hover:bg-gray-200 rounded-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -711,15 +852,82 @@ export function ExpedienteCompartidoPage() {
                 </div>
               )}
 
-{pdfBlobUrl && !cargandoPDF && !errorPDF && (
-                 <iframe
-                   src={pdfBlobUrl}
-                   className="w-full"
-                   style={{ height: '65vh', minHeight: '500px', border: 'none' }}
-                   title={`Visor de ${documentoSeleccionado.nombre}`}
-                   sandbox={esDocumentoConvertido ? "allow-same-origin allow-scripts allow-popups allow-forms" : "allow-same-origin"}
-                 />
-               )}
+              {pdfBlobUrl && !cargandoPDF && !errorPDF && (() => {
+                const fileName = getDocumentoFileName(documentoSeleccionado);
+                const previewType = esDocumentoConvertido
+                  ? 'html'
+                  : getFileType(fileName, documentoSeleccionado.fileType);
+
+                if (previewType === 'video') {
+                  return (
+                    <div className="h-full bg-black flex items-center justify-center">
+                      <video src={pdfBlobUrl} controls className="w-full max-h-full">
+                        Tu navegador no soporta la reproducción de video.
+                      </video>
+                    </div>
+                  );
+                }
+
+                if (previewType === 'audio') {
+                  return (
+                    <div className="h-full flex flex-col items-center justify-center bg-gray-100 p-8">
+                      <Play className="w-16 h-16 text-purple-600 mb-4" />
+                      <audio src={pdfBlobUrl} controls className="w-full max-w-xl">
+                        Tu navegador no soporta la reproducción de audio.
+                      </audio>
+                    </div>
+                  );
+                }
+
+                if (previewType === 'image') {
+                  return (
+                    <div className="h-full flex items-center justify-center bg-gray-100 p-4">
+                      <img
+                        src={pdfBlobUrl}
+                        alt={documentoSeleccionado.nombre}
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    </div>
+                  );
+                }
+
+                if (previewType === 'pdf') {
+                  return (
+                    <iframe
+                      src={pdfBlobUrl}
+                      className="w-full"
+                      style={{ height: '100%', border: 'none' }}
+                      title={`Visor de ${documentoSeleccionado.nombre}`}
+                    />
+                  );
+                }
+
+                if (previewType === 'html') {
+                  return (
+                    <iframe
+                      src={pdfBlobUrl}
+                      className="w-full"
+                      style={{ height: '65vh', minHeight: '500px', border: 'none' }}
+                      title={`Visor de ${documentoSeleccionado.nombre}`}
+                      sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                    />
+                  );
+                }
+
+                return (
+                  <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                    <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                    <p className="text-lg font-semibold text-gray-700 mb-2">Vista previa no disponible</p>
+                    <p className="text-sm text-gray-600 mb-6">
+                      El tipo de archivo "{getFileTypeDisplayName(fileName, documentoSeleccionado.fileType)}" no tiene vista previa en el navegador.
+                    </p>
+                    <Button onClick={() => handleDescargarDocumento(documentoSeleccionado)}>
+                      <Download className="w-4 h-4 mr-2" />
+                      Descargar archivo
+                    </Button>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Footer */}
