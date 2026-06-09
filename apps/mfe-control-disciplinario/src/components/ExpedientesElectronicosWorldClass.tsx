@@ -86,6 +86,7 @@ interface Documento {
 interface ExpedienteElectronico {
   id: string;
   radicado: string;
+  radicadoNoticia?: string;
   estado: 'radicada' | 'valoracion' | 'indagacion' | 'investigacion' | 'juzgamiento' | 'finalizado';
   nombreDisciplinado: string;
   tipoProceso: string;
@@ -488,6 +489,7 @@ export function ExpedientesElectronicosWorldClass() {
          return {
            id: proceso.id,
            radicado: proceso.radicadoProceso,
+           radicadoNoticia: proceso.news?.radicado || undefined,
            estado: estadoMap[proceso.etapaActual] || 'valoracion',
            nombreDisciplinado: proceso.news?.disciplinable?.nombre || 'Sin nombre',
            tipoProceso: proceso.news?.hechos?.substring(0, 50) || 'Proceso Disciplinario',
@@ -1624,6 +1626,9 @@ export function ExpedientesElectronicosWorldClass() {
                                   </span>
                                 </div>
                                 <p className="text-xs font-bold text-gray-700">NED: {grupo.expediente.nombreDisciplinado}</p>
+                                {grupo.expediente.radicadoNoticia && (
+                                  <p className="text-xs text-gray-500 mt-0.5">Noticia: {grupo.expediente.radicadoNoticia}</p>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -1790,6 +1795,9 @@ export function ExpedientesElectronicosWorldClass() {
                                   </span>
                                 </div>
                                 <p className="text-xs font-bold text-gray-700">NED: {expediente.nombreDisciplinado}</p>
+                                {expediente.radicadoNoticia && (
+                                  <p className="text-xs text-gray-500 mt-0.5">Noticia: {expediente.radicadoNoticia}</p>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">

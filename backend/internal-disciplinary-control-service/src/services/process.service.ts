@@ -1820,11 +1820,10 @@ export class ProcessService {
     * Estas noticias no tienen proceso asociado aún
     */
 async findRadicatedNewsWithDocuments(): Promise<any[]> {
-      // Buscar noticias RADICADA que tienen adjuntos (no array vacío) y NO tienen proceso asociado
+      // Buscar noticias RADICADA que NO tienen proceso asociado (con o sin adjuntos)
       const noticiasRadicadas = await this.newsRepository
         .createQueryBuilder('noticia')
         .where('noticia.estado = :estado', { estado: NewsStatus.RADICADA })
-        .andWhere("noticia.adjuntos IS NOT NULL AND array_length(noticia.adjuntos, 1) > 0")
         .andWhere('noticia.proceso_asociado_id IS NULL')
         .orderBy('noticia.createdAt', 'DESC')
         .getMany();
