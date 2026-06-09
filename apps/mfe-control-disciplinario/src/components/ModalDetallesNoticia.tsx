@@ -613,7 +613,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
              </span>
           </div>
           <div className="flex items-center gap-2">
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida') && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida' || n.estado === 'archivada' || n.estado === 'archivado') && (
               <button
                 onClick={() => { onClose(); onEditar(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg border text-gray-700 hover:bg-gray-100 transition-all"
@@ -623,7 +623,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 Editar
               </button>
             )}
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida') && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida' || n.estado === 'archivada' || n.estado === 'archivado') && (
               <button
                 onClick={() => { onClose(); onConvertir(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
