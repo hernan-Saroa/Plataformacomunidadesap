@@ -49,6 +49,7 @@ export interface UploadRequestOptions {
   onProgressDetail?: (detail: UploadProgressDetail) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
+  skipAuth?: boolean;
   skipAuthRefresh?: boolean;
   _authRetry?: boolean;
 }
@@ -195,12 +196,15 @@ export class ApiClient {
       onProgressDetail,
       signal,
       timeoutMs,
+      skipAuth = false,
       skipAuthRefresh = false,
       _authRetry = false,
     } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
-    const headers = this.addAuthHeader(getDefaultHeaders(true));
+    const headers = skipAuth
+      ? getDefaultHeaders(false)
+      : this.addAuthHeader(getDefaultHeaders(true));
     delete (headers as any)['Content-Type'];
 
     return new Promise((resolve, reject) => {
@@ -241,7 +245,7 @@ export class ApiClient {
           } catch (error) {
             reject(new Error('Error al parsear respuesta del servidor'));
           }
-        } else if (xhr.status === 401 && !skipAuthRefresh && !_authRetry) {
+        } else if (xhr.status === 401 && !skipAuth && !skipAuthRefresh && !_authRetry) {
           try {
             const newToken = await this.refreshAccessToken();
             if (newToken) {
