@@ -11,6 +11,7 @@ export interface ProgramasFiltroDto {
   modalidad?: string;
   estado?: string;
   sede?: string;
+  periodoAcademico?: string;
   page?: number;
   limit?: number;
 }
@@ -66,12 +67,28 @@ export class ProgramasService {
       where.nombre = Like(`%${search}%`);
     }
 
-    const [data, total] = await this.programaRepo.findAndCount({
-      where,
-      order: { nombre: 'ASC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const qb = this.programaRepo.createQueryBuilder('p');
+
+    if (where.tipo) qb.andWhere('p.tipo = :tipo', { tipo: where.tipo });
+    if (where.modalidad) qb.andWhere('p.modalidad = :modalidad', { modalidad: where.modalidad });
+    if (where.activo !== undefined) qb.andWhere('p.activo = :activo', { activo: where.activo });
+    if (search) qb.andWhere('p.nombre ILIKE :search', { search: `%${search}%` });
+
+    if (filtros.periodoAcademico) {
+      qb.andWhere(`EXISTS (
+        SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+        JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
+        WHERE ocp.id_programa = p.id AND pa.codigo = :periodo
+      )`, { periodo: filtros.periodoAcademico });
+    }
+
+    qb.orderBy('p.nombre', 'ASC');
+    qb.skip((page - 1) * limit);
+    qb.take(limit);
+
+    console.log('[DEBUG SQL]', qb.getSql(), qb.getParameters());
+
+    const [data, total] = await qb.getManyAndCount();
 
     const nivelFormacionMap: Record<string, string> = {
       pregrado: 'Pregrado',
@@ -91,20 +108,78 @@ export class ProgramasService {
           .where('asignatura.id_programa = :programaId', { programaId: programa.id })
           .getRawOne();
 
+        let cetapParams: any[] = [programa.id];
+        let periodFilter = '';
+        if (filtros.periodoAcademico) {
+          periodFilter = `JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico AND pa.codigo = $2`;
+          cetapParams.push(filtros.periodoAcademico);
+        }
+
+        const cetapsRes = await this.programaRepo.query(
+          `SELECT ocp.id as oferta_id, ocp.cupos_estimados, c.nombre, dt.nombre as dt_nombre 
+           FROM academic_work_plan.oferta_cetap_programa ocp
+           ${periodFilter}
+           JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+           LEFT JOIN academic_work_plan.direccion_territorial dt ON dt.id = c.id_direccion_territorial
+           WHERE ocp.id_programa = $1 AND ocp.activa = TRUE
+           ORDER BY dt.nombre ASC, c.nombre ASC`,
+          cetapParams
+        );
+
+        let sedeLabel = 'Sede Central';
+        if (cetapsRes && cetapsRes.length > 0) {
+          if (cetapsRes.length === 1) {
+            sedeLabel = cetapsRes[0].nombre;
+          } else if (cetapsRes.length <= 3) {
+            sedeLabel = cetapsRes.map((c: any) => c.nombre.substring(0, 15)).join(', ');
+          } else {
+            sedeLabel = `${cetapsRes[0].nombre} y ${cetapsRes.length - 1} CETAPs más`;
+          }
+        }
+
+        // Build cetapsList FIRST as a standalone variable
+        const cetapsList = (cetapsRes || []).map((c: any) => ({
+          ofertaId: c.oferta_id,
+          estudiantes: parseInt(c.cupos_estimados) || 0,
+          cetap: c.nombre,
+          dt: c.dt_nombre || 'Sin Dirección Territorial',
+        }));
+
+        // Construct plain object (NOT spreading the TypeORM entity) to ensure all fields are serialized
         return {
-          ...programa,
+          id: programa.id,
+          codigo: programa.codigo,
+          nombre: programa.nombre,
+          nombreExcel: programa.nombreExcel,
+          nombreCorto: programa.nombreCorto,
+          idFacultad: programa.idFacultad,
+          tipo: programa.tipo,
+          modalidad: programa.modalidad,
+          activo: programa.activo,
+          createdAt: programa.createdAt,
+          updatedAt: programa.updatedAt,
           estado: programa.activo ? 'ACTIVO' : 'INACTIVO',
           nivelFormacion: nivelFormacionMap[programa.tipo] || programa.tipo || 'Pregrado',
           descripcion: programa.nombreExcel || programa.nombre,
           duracion: 10,
           creditos: parseInt(asignaturasStats?.creditos_plan || '0'),
-          sede: 'Sede Central',
+          sede: sedeLabel,
           facultad: programa.tipo === 'pregrado' ? 'Pregrado' : 'Postgrados',
           totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
           creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
+          estudiantesActivos: cetapsList.reduce((acc: number, c: any) => acc + (c.estudiantes || 0), 0),
+          cetapsList,
+          horasBasePorCredito: programa.horasBasePorCredito,
+          horasPregradoCentral: programa.horasPregradoCentral,
         };
       })
     );
+    // DEBUG: Log cetapsList to verify it's populated
+    if (enrichedData.length > 0) {
+      const sample = enrichedData[0] as any;
+      console.log('[DEBUG-BACKEND] First program:', sample.nombre, '| cetapsList:', Array.isArray(sample.cetapsList) ? sample.cetapsList.length : typeof sample.cetapsList, '| sede:', sample.sede);
+      console.log('[DEBUG-BACKEND] Keys:', Object.keys(sample).sort().join(', '));
+    }
 
     return {
       total,
@@ -136,6 +211,25 @@ export class ProgramasService {
       maestria: 'Maestría',
     };
 
+    const cetapsRes = await this.programaRepo.query(
+      `SELECT c.nombre, dt.nombre as dt_nombre 
+       FROM academic_work_plan.oferta_cetap_programa ocp
+       JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+       LEFT JOIN academic_work_plan.direccion_territorial dt ON dt.id = c.id_direccion_territorial
+       WHERE ocp.id_programa = $1
+       ORDER BY dt.nombre ASC, c.nombre ASC`,
+      [programa.id]
+    );
+
+    let sedeLabel = 'Sede Central';
+    if (cetapsRes && cetapsRes.length > 0) {
+      if (cetapsRes.length === 1) {
+        sedeLabel = cetapsRes[0].nombre;
+      } else {
+        sedeLabel = `${cetapsRes[0].nombre} y ${cetapsRes.length - 1} CETAPs más`;
+      }
+    }
+
     return {
       ...programa,
       estado: programa.activo ? 'ACTIVO' : 'INACTIVO',
@@ -143,10 +237,14 @@ export class ProgramasService {
       descripcion: programa.nombreExcel || programa.nombre,
       duracion: 10,
       creditos: parseInt(asignaturasStats?.creditos_plan || '0'),
-      sede: 'Sede Central',
+      sede: sedeLabel,
       facultad: programa.tipo === 'pregrado' ? 'Pregrado' : 'Postgrados',
       totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
       creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
+      estudiantesActivos: cetapsRes ? cetapsRes.reduce((acc: number, c: any) => acc + (parseInt(c.cupos_estimados) || 0), 0) : 0,
+      cetapsList: cetapsRes ? cetapsRes.map((c: any) => ({ ofertaId: c.oferta_id, estudiantes: parseInt(c.cupos_estimados) || 0, cetap: c.nombre, dt: c.dt_nombre || 'Sin Dirección Territorial' })) : [],
+      horasBasePorCredito: programa.horasBasePorCredito,
+      horasPregradoCentral: programa.horasPregradoCentral,
     } as any;
   }
 
@@ -181,6 +279,8 @@ export class ProgramasService {
       idFacultad,
       tipo,
       modalidad,
+      horasBasePorCredito: dto.horasBasePorCredito ?? 16,
+      horasPregradoCentral: dto.horasPregradoCentral ?? null,
       activo: dto.estado !== 'INACTIVO',
     });
 
@@ -203,6 +303,8 @@ export class ProgramasService {
       const modLower = dto.modalidad.toLowerCase();
       programa.modalidad = modLower.includes('dist') ? 'distancia' : modLower.includes('mix') ? 'mixto' : 'presencial';
     }
+    if (dto.horasBasePorCredito !== undefined) programa.horasBasePorCredito = dto.horasBasePorCredito;
+    if (dto.horasPregradoCentral !== undefined) programa.horasPregradoCentral = dto.horasPregradoCentral;
     if (dto.estado) {
       programa.activo = dto.estado !== 'INACTIVO';
     }
@@ -219,17 +321,38 @@ export class ProgramasService {
   }
 
   async obtenerAsignaturasPrograma(programaId: string) {
-    const asignaturas = await this.asignaturaRepo.find({
-      where: { programaId },
-      order: { semestreId: 'ASC', nombre: 'ASC' }
-    });
+      const asignaturas = await this.asignaturaRepo
+      .createQueryBuilder('a')
+      .leftJoin(qb => qb.select('*').from('academic_work_plan.nucleo_tematico', 'nt_inner'), 'nt', 'nt.id = a.id_nucleo_tematico')
+      .where('a.id_programa = :programaId', { programaId })
+      .orderBy('a.id_ubicacion_semestral', 'ASC')
+      .addOrderBy('a.nombre', 'ASC')
+      .select([
+        'a.*',
+        'nt.nombre as nucleo_nombre'
+      ])
+      .getRawMany();
+
+    console.log('RAW ASIGNATURA 0:', asignaturas[0]);
 
     return asignaturas.map(a => ({
       ...a,
-      semestre: String(a.semestreId || 1),
+      id: a.id,
+      nombre: a.nombre,
+      codigo: a.codigo,
+      creditos: a.creditos,
+      semestreId: a.id_ubicacion_semestral,
+      nucleoTematicoId: a.id_nucleo_tematico,
+      facultadId: a.id_facultad,
+      modalidad: a.modalidad || 'sin_definir',
+      horasFijasPta: a.horas_fijas_pta,
+      tipoExcepcion: a.tipo_excepcion,
+      activa: a.activa,
+      programaId: a.id_programa,
+      semestre: String(a.id_ubicacion_semestral || 1),
       horas: (a.creditos || 3) * 48,
-      tipo: a.tipoExcepcion || 'obligatoria',
-      nucleoTematico: 'Núcleo Temático',
+      tipo: a.tipo_excepcion || 'obligatoria',
+      nucleoTematico: a.nucleo_nombre || 'Sin definir',
     }));
   }
 
@@ -305,12 +428,12 @@ export class ProgramasService {
         }
       }
 
-      const modalMap: Record<string, string> = {
-        'presencial': 'presencial',
-        'distancia': 'distancia',
-        'virtual': 'virtual',
-      };
-      const modalidad = modalMap[(data.modalidad || '').toLowerCase()] || 'sin_definir';
+      const modStr = (data.modalidad || '').toLowerCase();
+      let modalidad = 'sin_definir';
+      if (modStr.includes('presencial')) modalidad = 'presencial';
+      else if (modStr.includes('distancia')) modalidad = 'distancia';
+      else if (modStr.includes('virtual')) modalidad = 'virtual';
+      else if (modStr.includes('mixto') || modStr.includes('hibrid')) modalidad = 'mixto';
 
       const asignaturaData = {
         programaId,
@@ -335,6 +458,25 @@ export class ProgramasService {
     }
 
     return this.obtenerAsignaturasPrograma(programaId);
+  }
+
+  async actualizarCuposCetap(programaId: string, ofertaId: string, cupos: number) {
+    // Validate that the oferta belongs to the given program to prevent tampering
+    const oferta = await this.programaRepo.query(
+      `SELECT id FROM academic_work_plan.oferta_cetap_programa WHERE id = $1 AND id_programa = $2 LIMIT 1`,
+      [ofertaId, programaId]
+    );
+
+    if (!oferta || oferta.length === 0) {
+      throw new NotFoundException(`Oferta de CETAP con ID ${ofertaId} no encontrada para este programa.`);
+    }
+
+    await this.programaRepo.query(
+      `UPDATE academic_work_plan.oferta_cetap_programa SET cupos_estimados = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [cupos, ofertaId]
+    );
+
+    return { success: true };
   }
 }
 

@@ -76,17 +76,214 @@ export class AsignaturasImportService {
     result.periodo = periodCodigo;
     result.advertencias = [...circularWarnings];
 
-    // Obtener CETAPs válidos de la BD para validación estricta
-    const dbCetaps = await this.dataSource.query('SELECT codigo FROM academic_work_plan.cetap');
+    // Obtener CETAPs y catálogos de la BD para validación estricta y comparación de duplicados
+    const dbCetaps = await this.dataSource.query('SELECT id, codigo FROM academic_work_plan.cetap');
     const validCetapsMap = new Map<string, boolean>();
+    const cetapsMap = new Map<string, string>();
     for (const c of dbCetaps) {
       validCetapsMap.set(c.codigo.toLowerCase().trim(), true);
+      cetapsMap.set(c.codigo.toLowerCase().trim(), c.id);
     }
+
+    const existingProgramas = await this.dataSource.query('SELECT * FROM academic_work_plan.programa');
+    const existingAsignaturas = await this.dataSource.query('SELECT * FROM academic_work_plan.asignatura');
+    const existingNucleos = await this.dataSource.query('SELECT id, nombre FROM academic_work_plan.nucleo_tematico');
+    const semestres = await this.dataSource.query('SELECT id, codigo, etiqueta FROM academic_work_plan.ubicacion_semestral');
+    const dbFacultades = await this.dataSource.query('SELECT id, codigo FROM academic_work_plan.facultad');
+
+    const existingProgMap = new Map<string, any>();
+    for (const p of existingProgramas) {
+      existingProgMap.set(p.codigo.toLowerCase().trim(), p);
+    }
+    const existingAsigMap = new Map<string, any>();
+    for (const a of existingAsignaturas) {
+      existingAsigMap.set(a.codigo.toLowerCase().trim(), a);
+    }
+    const existingNtMap = new Map<string, string>();
+    for (const nt of existingNucleos) {
+      existingNtMap.set(nt.nombre.toLowerCase().trim(), nt.id);
+    }
+    const semestresMap = new Map<string, number>();
+    for (const r of semestres) {
+      semestresMap.set(r.codigo.toLowerCase().trim(), parseInt(r.id, 10));
+      semestresMap.set(r.etiqueta.toLowerCase().trim(), parseInt(r.id, 10));
+    }
+    const facMap = new Map<string, string>();
+    for (const f of dbFacultades) {
+      facMap.set(f.codigo.toLowerCase().trim(), f.id);
+    }
+
+    // Clasificar programas
+    const newProgs: any[] = [];
+    const modifiedProgs: any[] = [];
+    const identicalProgs: any[] = [];
+
+    const getResolvedFacId = (codigoFacultad: string, tipoPrograma: string): string => {
+      let facId = facMap.get(codigoFacultad.toLowerCase().trim());
+      if (!facId) {
+        if (tipoPrograma.toLowerCase().includes('maestria')) facId = '3';
+        else if (tipoPrograma.toLowerCase().includes('especializacion')) facId = '2';
+        else facId = '1';
+      }
+      return facId;
+    };
+
+    for (const p of rawProgramas) {
+      const existing = existingProgMap.get(p.codigo_programa.toLowerCase().trim());
+      const resolvedFacId = getResolvedFacId(p.codigo_facultad, p.tipo_programa);
+
+      if (!existing) {
+        newProgs.push(p);
+      } else {
+        const diffs = this.diffProgramFields(existing, p, resolvedFacId);
+        if (diffs) {
+          modifiedProgs.push({ ...p, _cambios: diffs, dbId: existing.id });
+        } else {
+          identicalProgs.push({ ...p, dbId: existing.id });
+        }
+      }
+    }
+
+    // Clasificar asignaturas
+    const newAsigs: any[] = [];
+    const modifiedAsigs: any[] = [];
+    const identicalAsigs: any[] = [];
+
+    const progIdLookupMap = new Map<string, string>();
+    for (const p of existingProgramas) {
+      progIdLookupMap.set(p.codigo.toLowerCase().trim(), p.id);
+    }
+    for (const p of newProgs) {
+      progIdLookupMap.set(p.codigo_programa.toLowerCase().trim(), 'NEW_PROG');
+    }
+
+    for (const a of rawAsignaturas) {
+      const existing = existingAsigMap.get(a.codigo_asignatura.toLowerCase().trim());
+      const resolvedProgId = progIdLookupMap.get(a.codigo_programa.toLowerCase().trim()) || 'NOT_FOUND';
+      
+      let resolvedNtId = existingNtMap.get(a.nucleo_tematico.toLowerCase().trim()) || 'NEW_NT';
+      
+      let resolvedSemId = semestresMap.get(a.semestre.toLowerCase().trim());
+      if (!resolvedSemId) {
+        const numSem = parseInt(a.semestre, 10);
+        if (!isNaN(numSem) && numSem >= 1 && numSem <= 12) {
+          resolvedSemId = numSem;
+        } else {
+          resolvedSemId = 1;
+        }
+      }
+
+      const resolvedFacId = facMap.get(a.codigo_facultad.toLowerCase().trim()) || '1';
+
+      if (!existing) {
+        newAsigs.push(a);
+      } else {
+        const diffs = this.diffAsignaturaFields(
+          existing,
+          a,
+          resolvedProgId,
+          resolvedNtId,
+          resolvedSemId,
+          resolvedFacId
+        );
+        if (diffs) {
+          modifiedAsigs.push({ ...a, _cambios: diffs, dbId: existing.id });
+        } else {
+          identicalAsigs.push({ ...a, dbId: existing.id });
+        }
+      }
+    }
+
+    const allIdentical = (identicalProgs.length > 0 || identicalAsigs.length > 0) && newProgs.length === 0 && modifiedProgs.length === 0 && newAsigs.length === 0 && modifiedAsigs.length === 0;
+
+    // Poblar estadísticas
+    result.carga.programas.creados = newProgs.length;
+    result.carga.programas.actualizados = modifiedProgs.length;
+    result.carga.programas.omitidos = identicalProgs.length;
+
+    result.carga.asignaturas.creados = newAsigs.length;
+    result.carga.asignaturas.actualizados = modifiedAsigs.length;
+    result.carga.asignaturas.omitidos = identicalAsigs.length;
+
+    const uniqueNucleos = new Set(rawAsignaturas.map(a => a.nucleo_tematico.trim().toUpperCase()).filter(Boolean));
+    let newNucleosCount = 0;
+    for (const name of uniqueNucleos) {
+      if (!existingNtMap.has(name.toLowerCase().trim())) {
+        newNucleosCount++;
+      }
+    }
+    result.carga.nucleos_tematicos.creados = newNucleosCount;
+    result.carga.nucleos_tematicos.actualizados = 0;
+    result.carga.nucleos_tematicos.omitidos = uniqueNucleos.size - newNucleosCount;
+
+    let ofertasCount = 0;
+    const cetapsSet = new Set<string>();
+    for (const m of matrizOferta) {
+      if (m.codigo_cetap) cetapsSet.add(m.codigo_cetap.trim().toUpperCase());
+      ofertasCount += m.programas_ofertados.length;
+    }
+    
+    let newOfertasCount = 0;
+    let existingOfertasCount = 0;
+    const dbPeriodo = await this.dataSource.query('SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1', [periodCodigo]);
+    let periodIdTemp = dbPeriodo[0]?.id;
+
+    if (periodIdTemp) {
+      const dbOfertas = await this.dataSource.query('SELECT id_cetap, id_programa FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = $1', [periodIdTemp]);
+      const dbOfertaMap = new Set<string>();
+      for (const o of dbOfertas) {
+        dbOfertaMap.add(`${o.id_cetap}::${o.id_programa}`);
+      }
+
+      for (const m of matrizOferta) {
+        const cetapId = cetapsMap.get(m.codigo_cetap.toLowerCase().trim());
+        if (!cetapId) continue;
+        for (const progCode of m.programas_ofertados) {
+          const progId = progIdLookupMap.get(progCode.toLowerCase().trim());
+          if (!progId || progId === 'NEW_PROG') {
+            newOfertasCount++;
+          } else {
+            const key = `${cetapId}::${progId}`;
+            if (dbOfertaMap.has(key)) {
+              existingOfertasCount++;
+            } else {
+              newOfertasCount++;
+            }
+          }
+        }
+      }
+    } else {
+      newOfertasCount = ofertasCount;
+    }
+    result.carga.ofertas_cetap_programa.creados = newOfertasCount;
+    result.carga.ofertas_cetap_programa.actualizados = 0;
+    result.carga.ofertas_cetap_programa.omitidos = existingOfertasCount;
+
+    result.carga.cetaps.creados = cetapsSet.size;
+    result.carga.cetaps.actualizados = 0;
+    result.carga.cetaps.omitidos = 0;
+
+    // Resumen detallado de duplicados
+    (result as any).analisis_duplicados = {
+      programas: { nuevos: newProgs.length, modificados: modifiedProgs.length, identicos: identicalProgs.length },
+      asignaturas: { nuevos: newAsigs.length, modificados: modifiedAsigs.length, identicos: identicalAsigs.length },
+      total_identicos: identicalProgs.length + identicalAsigs.length,
+      total_modificados: modifiedProgs.length + modifiedAsigs.length,
+      total_nuevos: newProgs.length + newAsigs.length,
+      todo_identico: allIdentical,
+    };
 
     this.buildRelationsAndSimulateCarga(rawAsignaturas, rawProgramas, matrizOferta, result, dryRun, validCetapsMap, omitErrors);
 
+    if (allIdentical) {
+      (result as any).blocked_reason = 'ALL_IDENTICAL';
+      result.success = true; // El archivo es válido, pero no hay nada nuevo
+      result.tiempo_ms = Date.now() - startTime;
+      this.calculateIndicators(rawAsignaturas, rawProgramas, matrizOferta, result);
+      return result;
+    }
+
     if (dryRun) {
-      // Calcular indicadores de simulación
       this.calculateIndicators(rawAsignaturas, rawProgramas, matrizOferta, result);
       result.success = true;
       result.tiempo_ms = Date.now() - startTime;
@@ -104,17 +301,37 @@ export class AsignaturasImportService {
       const semestresMap = await this.seedUbicacionesSemestrales(queryRunner);
       const periodId = await this.seedPeriodoAcademico(queryRunner, periodCodigo);
 
-      // 6. Cargar PROGRAMAS
-      const programasMap = await this.loadProgramas(queryRunner, rawProgramas, result.carga.programas);
+      // Dummy counts to pass to database loaders
+      const dummyCount = new ImportCountDto();
 
-      // 7. Cargar NUCLEOS_TEMATICOS
-      const nucleosMap = await this.loadNucleosTematicos(queryRunner, rawAsignaturas, result.carga.nucleos_tematicos);
+      // 6. Cargar PROGRAMAS (solo nuevos y modificados)
+      const dbProgramasMap = await this.loadProgramas(queryRunner, [...newProgs, ...modifiedProgs], dummyCount);
+      const programasMapBase = new Map<string, string>();
+      for (const p of existingProgramas) {
+        programasMapBase.set(p.nombre.toLowerCase().trim(), p.id);
+        programasMapBase.set(p.codigo.toLowerCase().trim(), p.id);
+      }
+      const programasMap = new Map<string, string>([
+        ...programasMapBase.entries(),
+        ...dbProgramasMap.entries()
+      ]);
 
-      // 8. Cargar CETAPS desde la base de datos (se asume que ya existen por estructura-import)
+      // 7. Cargar NUCLEOS_TEMATICOS (solo basados en asignaturas a cargar)
+      const dbNucleosMap = await this.loadNucleosTematicos(queryRunner, [...newAsigs, ...modifiedAsigs], dummyCount);
+      const nucleosMapBase = new Map<string, string>();
+      for (const nt of existingNucleos) {
+        nucleosMapBase.set(nt.nombre.toLowerCase().trim(), nt.id);
+      }
+      const nucleosMap = new Map<string, string>([
+        ...nucleosMapBase.entries(),
+        ...dbNucleosMap.entries()
+      ]);
+
+      // 8. Cargar CETAPs desde la base de datos (se asume que ya existen por estructura-import)
       const cetaps = await queryRunner.query('SELECT id, codigo FROM academic_work_plan.cetap');
-      const cetapsMap = new Map<string, string>();
+      const cetapsMapTransaction = new Map<string, string>();
       for (const c of cetaps) {
-        cetapsMap.set(c.codigo.toLowerCase().trim(), c.id);
+        cetapsMapTransaction.set(c.codigo.toLowerCase().trim(), c.id);
       }
 
       // 9. Cargar OFERTA_CETAP_PROGRAMA
@@ -122,20 +339,49 @@ export class AsignaturasImportService {
         queryRunner,
         matrizOferta,
         programasMap,
-        cetapsMap,
+        cetapsMapTransaction,
         periodId,
-        result.carga.ofertas_cetap_programa,
+        dummyCount,
       );
 
-      // 10. Cargar las 423 ASIGNATURAS
+      // 10. Cargar ASIGNATURAS del catálogo (solo nuevas y modificadas)
       await this.loadAsignaturas(
         queryRunner,
-        rawAsignaturas,
+        [...newAsigs, ...modifiedAsigs],
         programasMap,
         nucleosMap,
         semestresMap,
-        result.carga.asignaturas,
+        dummyCount,
       );
+
+      // 11. [BR-002] Validación post-carga: la tabla oferta_cetap_programa NO puede quedar vacía
+      const postLoadCounts = await queryRunner.query(`
+        SELECT 
+          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = $1) AS ofertas_count,
+          (SELECT COUNT(*) FROM academic_work_plan.asignatura) AS asignaturas_count,
+          (SELECT COUNT(*) FROM academic_work_plan.programa) AS programas_count
+      `, [periodId]);
+      
+      const ofertasPostCarga = parseInt(postLoadCounts[0]?.ofertas_count || '0', 10);
+      const asignaturasPostCarga = parseInt(postLoadCounts[0]?.asignaturas_count || '0', 10);
+      
+      if (ofertasPostCarga === 0) {
+        this.logger.error(`[BR-002] Validación post-carga falló: oferta_cetap_programa tiene 0 registros para periodo ${periodCodigo}. Ejecutando rollback.`);
+        throw new Error(
+          `[BR-002] La tabla de oferta territorial quedó vacía (0 registros). ` +
+          `Esto indica que ningún CETAP del archivo Excel coincide con la estructura organizacional cargada. ` +
+          `Verifique que los códigos de CETAP en la hoja MATRIZ_OFERTA sean correctos.`
+        );
+      }
+
+      if (asignaturasPostCarga === 0) {
+        this.logger.error(`[BR-002] Validación post-carga falló: asignaturas tiene 0 registros. Ejecutando rollback.`);
+        throw new Error(
+          `[BR-002] La tabla de asignaturas quedó vacía (0 registros). Verifique la hoja ASIGNATURAS del archivo Excel.`
+        );
+      }
+
+      this.logger.log(`[BR-002] Validación post-carga OK: ${ofertasPostCarga} ofertas, ${asignaturasPostCarga} asignaturas.`);
 
       // Confirmar transacción
       await queryRunner.commitTransaction();
@@ -341,7 +587,7 @@ export class AsignaturasImportService {
         p.modalidad_principal.toLowerCase().trim() === 'mixta' ? 'mixto' : p.modalidad_principal.toLowerCase().trim(),
         p.horas_base_por_credito,
         p.horas_pregrado_central,
-        p.activo === 'true' || p.activo === true || p.activo === 1,
+        p.activo === false || p.activo === 0 || String(p.activo).toLowerCase().trim() === 'false' || String(p.activo).toLowerCase().trim() === 'no' || String(p.activo).toLowerCase().trim() === 'inactivo' ? false : true,
       ]);
 
       const insertedId = rows[0].id;
@@ -604,14 +850,6 @@ export class AsignaturasImportService {
       ofertasCount += m.programas_ofertados.length;
     }
 
-    if (dryRun) {
-      result.carga.programas.creados = progCount;
-      result.carga.asignaturas.creados = asigCount;
-      result.carga.nucleos_tematicos.creados = nucleosSet.size;
-      result.carga.cetaps.creados = 0; // Se asume que no se crean cetaps en la carga, solo ofertas
-      result.carga.ofertas_cetap_programa.creados = ofertasCount;
-    }
-
     const progMap = new Map<string, import('./dto/import-result.dto').ProgramRelationDto>();
 
     for (const p of programas) {
@@ -642,7 +880,7 @@ export class AsignaturasImportService {
     }
 
     for (const m of matrizOferta) {
-      const validOfertados = [];
+      const validOfertados: string[] = [];
       for (const progOfertado of m.programas_ofertados) {
         const pCode = progOfertado.toLowerCase().trim();
         const pRelation = progMap.get(pCode);
@@ -686,6 +924,73 @@ export class AsignaturasImportService {
     }
 
     result.relaciones_cruzadas = relaciones;
+  }
+
+  private diffProgramFields(existing: any, parsed: any, resolvedFacId: number | string): string[] | null {
+    const diffs: string[] = [];
+    
+    const parsedNombre = parsed.nombre_programa;
+    const parsedNombreExcel = parsed.nombre_excel_origen || parsed.nombre_programa;
+    const parsedNombreCorto = parsed.nombre_corto || parsed.nombre_programa.substring(0, 30);
+    const parsedTipo = parsed.tipo_programa.toLowerCase().trim();
+    const parsedModalidad = parsed.modalidad_principal.toLowerCase().trim() === 'mixta' ? 'mixto' : parsed.modalidad_principal.toLowerCase().trim();
+    const parsedHorasBase = parsed.horas_base_por_credito;
+    const parsedHorasCentral = parsed.horas_pregrado_central;
+    const parsedActivo = parsed.activo === 'true' || parsed.activo === true || parsed.activo === 1;
+
+    if (String(existing.nombre || '').trim() !== String(parsedNombre || '').trim()) diffs.push(`nombre: ${existing.nombre} -> ${parsedNombre}`);
+    if (String(existing.nombre_excel || '').trim() !== String(parsedNombreExcel || '').trim()) diffs.push(`nombre_excel: ${existing.nombre_excel} -> ${parsedNombreExcel}`);
+    if (String(existing.nombre_corto || '').trim() !== String(parsedNombreCorto || '').trim()) diffs.push(`nombre_corto: ${existing.nombre_corto} -> ${parsedNombreCorto}`);
+    if (String(existing.id_facultad) !== String(resolvedFacId)) diffs.push(`id_facultad: ${existing.id_facultad} -> ${resolvedFacId}`);
+    if (String(existing.tipo || '').trim() !== String(parsedTipo || '').trim()) diffs.push(`tipo: ${existing.tipo} -> ${parsedTipo}`);
+    if (String(existing.modalidad || '').trim() !== String(parsedModalidad || '').trim()) diffs.push(`modalidad: ${existing.modalidad} -> ${parsedModalidad}`);
+    if (String(existing.horas_base_por_credito) !== String(parsedHorasBase)) diffs.push(`horas_base: ${existing.horas_base_por_credito} -> ${parsedHorasBase}`);
+    if (String(existing.horas_pregrado_central) !== String(parsedHorasCentral)) diffs.push(`horas_central: ${existing.horas_pregrado_central} -> ${parsedHorasCentral}`);
+    if (Boolean(existing.activo) !== Boolean(parsedActivo)) diffs.push(`activo: ${existing.activo} -> ${parsedActivo}`);
+
+    return diffs.length > 0 ? diffs : null;
+  }
+
+  private diffAsignaturaFields(
+    existing: any,
+    parsed: any,
+    resolvedProgId: number | string,
+    resolvedNtId: number | string,
+    resolvedSemId: number,
+    resolvedFacId: number | string
+  ): string[] | null {
+    const diffs: string[] = [];
+
+    const parsedNombre = parsed.nombre_asignatura;
+    const parsedNombreBase = parsed.nombre_base;
+    const parsedModSufijo = parsed.modalidad;
+    const parsedMod = mapModalidad(parsed.modalidad);
+    const parsedRevMod = parsed.requiere_revision_modalidad === 'true' || parsed.requiere_revision_modalidad === true || String(parsed.requiere_revision_modalidad).trim().toLowerCase() === 'si';
+    const parsedCreditos = parsed.creditos;
+    const parsedExcep = mapTipoExcepcion(parsed.tipo_excepcion);
+    
+    let parsedHorasFijas: number | null = null;
+    if (parsedExcep === 'seminario_enfasis') parsedHorasFijas = 384;
+    else if (parsedExcep === 'opciones_grado_ap') parsedHorasFijas = 20;
+    else if (parsedExcep === 'seminario_opciones_apt') parsedHorasFijas = 144;
+
+    const parsedActiva = parsed.activa === 'true' || parsed.activa === true || parsed.activa === 1 || String(parsed.activa).trim().toLowerCase() === 'si';
+
+    if (String(existing.nombre || '').trim() !== String(parsedNombre || '').trim()) diffs.push(`nombre: ${existing.nombre} -> ${parsedNombre}`);
+    if (String(existing.nombre_base || '').trim() !== String(parsedNombreBase || '').trim()) diffs.push(`nombre_base: ${existing.nombre_base} -> ${parsedNombreBase}`);
+    if (String(existing.modalidad_sufijo || '').trim() !== String(parsedModSufijo || '').trim()) diffs.push(`modalidad_sufijo: ${existing.modalidad_sufijo} -> ${parsedModSufijo}`);
+    if (String(existing.modalidad || '').trim() !== String(parsedMod || '').trim()) diffs.push(`modalidad: ${existing.modalidad} -> ${parsedMod}`);
+    if (Boolean(existing.requiere_revision_modalidad) !== Boolean(parsedRevMod)) diffs.push(`requiere_revision_modalidad: ${existing.requiere_revision_modalidad} -> ${parsedRevMod}`);
+    if (String(existing.creditos) !== String(parsedCreditos)) diffs.push(`creditos: ${existing.creditos} -> ${parsedCreditos}`);
+    if (String(existing.id_ubicacion_semestral) !== String(resolvedSemId)) diffs.push(`id_ubicacion_semestral: ${existing.id_ubicacion_semestral} -> ${resolvedSemId}`);
+    if (String(existing.id_programa) !== String(resolvedProgId)) diffs.push(`id_programa: ${existing.id_programa} -> ${resolvedProgId}`);
+    if (String(existing.id_nucleo_tematico) !== String(resolvedNtId)) diffs.push(`id_nucleo_tematico: ${existing.id_nucleo_tematico} -> ${resolvedNtId}`);
+    if (String(existing.id_facultad) !== String(resolvedFacId)) diffs.push(`id_facultad: ${existing.id_facultad} -> ${resolvedFacId}`);
+    if (String(existing.horas_fijas_pta) !== String(parsedHorasFijas)) diffs.push(`horas_fijas_pta: ${existing.horas_fijas_pta} -> ${parsedHorasFijas}`);
+    if (String(existing.tipo_excepcion || '').trim() !== String(parsedExcep || '').trim()) diffs.push(`tipo_excepcion: ${existing.tipo_excepcion} -> ${parsedExcep}`);
+    if (Boolean(existing.activa) !== Boolean(parsedActiva)) diffs.push(`activa: ${existing.activa} -> ${parsedActiva}`);
+
+    return diffs.length > 0 ? diffs : null;
   }
 
   private async logAudit(startTime: number, result: ImportResultDto, periodo: string, user: any): Promise<void> {

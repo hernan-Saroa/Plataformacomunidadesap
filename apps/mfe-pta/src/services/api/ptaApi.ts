@@ -19,6 +19,23 @@ function asObject(raw: any): Record<string, any> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+
+export async function getActivePeriodoAcademico() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/periodos-academicos`);
+    const normalized = normalizeResult<any[]>(raw, []);
+    if (normalized.success && Array.isArray(normalized.data)) {
+      const active = normalized.data.find(p => p.estado === 'en_curso');
+      if (active) return active;
+      if (normalized.data.length > 0) return normalized.data[0];
+    }
+    return { codigo: '2026-1' };
+  } catch (error) {
+    console.error('Error fetching active periodo:', error);
+    return { codigo: '2026-1' };
+  }
+}
+
 export async function getAllPTAs(filters?: {
   estado?: string;
   periodo?: string;
@@ -60,7 +77,45 @@ export async function getPTAById(id: string) {
 
 export async function savePTA(data: any) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/save`, data);
+    // Collect any File objects from investigation resoluciones
+    const files: { key: string; file: File }[] = [];
+
+    // Check project-level resolution file
+    if (data.investigacion_proyecto?.resolucion_archivo instanceof File) {
+      files.push({ key: 'inv_proyecto_resolucion', file: data.investigacion_proyecto.resolucion_archivo });
+      data = {
+        ...data,
+        investigacion_proyecto: {
+          ...data.investigacion_proyecto,
+          resolucion_archivo: undefined,
+          _tiene_archivo_resolucion: true,
+        },
+      };
+    }
+
+    // Check activity-level resolution files
+    if (Array.isArray(data.investigacion_actividades)) {
+      const cleanedActividades = data.investigacion_actividades.map((act: any, idx: number) => {
+        if (act.resolucion_archivo instanceof File) {
+          files.push({ key: `inv_actividad_${idx}_resolucion`, file: act.resolucion_archivo });
+          return { ...act, resolucion_archivo: undefined, _tiene_archivo_resolucion: true };
+        }
+        return act;
+      });
+      data = { ...data, investigacion_actividades: cleanedActividades };
+    }
+
+    let raw: any;
+    if (files.length > 0) {
+      // Use FormData to send both JSON payload + files
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(data));
+      files.forEach(f => formData.append(f.key, f.file, f.file.name));
+      raw = await (apiClient as any).upload<any>(`${PTA_BASE}/save`, formData);
+    } else {
+      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data);
+    }
+
     const normalized = normalizeResult<any>(raw, null);
     return { ...asObject(raw), success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -325,6 +380,37 @@ export async function updatePTAStatus(
   } catch (error) {
     console.error('[mfe-pta][updatePTAStatus] Error:', error);
     return { success: false };
+  }
+}
+
+export async function getComponentesAprobacion(ptaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-aprobacion`);
+    const normalized = normalizeResult<any[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.error('[mfe-pta][getComponentesAprobacion] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
+export async function aprobarComponente(ptaId: string, data: {
+  componente: string;
+  estado: 'aprobado' | 'devuelto';
+  aprobadorId: string;
+  aprobadorNombre: string;
+  aprobadorRol: string;
+  comentarios?: string;
+  scope?: string;
+  scopeId?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/aprobar-componente`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('[mfe-pta][aprobarComponente] Error:', error);
+    return { success: false, data: null };
   }
 }
 
@@ -1494,6 +1580,16 @@ export async function respuestaConcertacionDocente(ptaId: string, aceptaPropuest
   }
 }
 
+export async function syncRUNDDocuments(docenteId: string, documentos: any[]) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/rund/docente/${docenteId}/sync-documents`, { documentos });
+    return normalizeResult<any>(raw, null);
+  } catch (error: any) {
+    console.error('Error syncing RUND checklist with Carpeta Digital:', error);
+    return { success: false };
+  }
+}
+
 // ═══ Banco de Docentes ════════════════════════════════════════════════
 
 const BD_BASE = `${SERVICE_BASE}/pta/banco-docentes`;
@@ -1505,6 +1601,7 @@ export async function getBancoDocentes(filters?: {
   search?: string;
   page?: number;
   limit?: number;
+  periodoCarga?: string;
 }) {
   try {
     // El backend devuelve { success, items:[...], total, pages } sin wrapper "data"
@@ -1519,9 +1616,15 @@ export async function getBancoDocentes(filters?: {
   }
 }
 
-export async function getBancoDocenteStats() {
+export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; estado?: string; periodoCarga?: string }) {
   try {
-    const raw = await apiClient.get<any>(`${BD_BASE}/stats`);
+    const params = new URLSearchParams();
+    if (filters?.territorial) params.set('territorial', filters.territorial);
+    if (filters?.dedicacion) params.set('dedicacion', filters.dedicacion);
+    if (filters?.estado) params.set('estado', filters.estado);
+    if (filters?.periodoCarga) params.set('periodoCarga', filters.periodoCarga);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const raw = await apiClient.get<any>(`${BD_BASE}/stats${qs}`);
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][getBancoDocenteStats] Error:', error);
@@ -1569,15 +1672,19 @@ export async function toggleBancoDocenteEstado(id: string) {
   }
 }
 
-export async function bulkUploadBancoDocentes(file: File) {
+export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitErrors = false) {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    const raw = await apiClient.upload<any>(`${BD_BASE}/bulk`, formData);
+    const query = new URLSearchParams();
+    if (dryRun) query.append('dry_run', 'true');
+    if (omitErrors) query.append('omit_errors', 'true');
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const raw = await apiClient.upload<any>(`${BD_BASE}/bulk${queryString}`, formData, { timeoutMs: 300000 });
     return normalizeResult<any>(raw, null);
-  } catch (error) {
-    console.error('[mfe-pta][bulkUploadBancoDocentes] Error:', error);
-    return { success: false, data: null };
+  } catch (error: any) {
+    const msg = error?.response?.data?.message || error?.message || 'Error en la carga masiva';
+    return { success: false, data: null, error: msg };
   }
 }
 
@@ -1599,4 +1706,140 @@ export async function downloadBancoDocentesTemplate(): Promise<Blob> {
   return res.blob();
 }
 
+// ═══ RUND — Aprobación por bloques (BR-038..BR-061) ═══════════════════
+
+/** BR-044 — Obtener estados de aprobación por bloque */
+export async function getRundBloques(docenteId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/${docenteId}/bloques`);
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    console.error('[mfe-pta][getRundBloques] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
+/** BR-059 — Obtener tarjeta RUND completa (bloques + soportes + semáforo) */
+export async function getTarjetaRUND(docenteId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/${docenteId}/tarjeta-rund`);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][getTarjetaRUND] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-043 — Aprobar un bloque (maker-checker) */
+export async function aprobarRundBloque(docenteId: string, bloque: string, aprobadorId: string) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/aprobar`, { aprobadorId });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][aprobarRundBloque] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-045 — Devolver un bloque con observación obligatoria */
+export async function devolverRundBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/devolver`, { aprobadorId, observacion });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][devolverRundBloque] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-039 — Vincular un soporte a un bloque */
+export async function vincularRundSoporte(docenteId: string, bloque: string, data: {
+  tipoSoporte: string;
+  documentoCarpetaId?: string;
+  nombreArchivo?: string;
+  fechaVencimiento?: string;
+  cargadoPor?: string;
+}, file?: File) {
+  try {
+    if (file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('tipoSoporte', data.tipoSoporte);
+      if (data.documentoCarpetaId) formData.append('documentoCarpetaId', data.documentoCarpetaId);
+      if (data.nombreArchivo) formData.append('nombreArchivo', data.nombreArchivo);
+      if (data.fechaVencimiento) formData.append('fechaVencimiento', data.fechaVencimiento);
+      if (data.cargadoPor) formData.append('cargadoPor', data.cargadoPor);
+      
+      const raw = await (apiClient as any).upload<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/soportes`, formData);
+      return normalizeResult<any>(raw, null);
+    } else {
+      const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/soportes`, data);
+      return normalizeResult<any>(raw, null);
+    }
+  } catch (error) {
+    console.error('[mfe-pta][vincularRundSoporte] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-052 — Validar unicidad de documento y correo */
+export async function validarUnicidadRund(documentNumber: string, correoInstitucional: string, excludeDocenteId?: string) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/validar-unicidad`, { documentNumber, correoInstitucional, excludeDocenteId });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][validarUnicidadRund] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-053 — Detectar posible duplicado */
+export async function detectarDuplicadoRund(nombreCompleto: string, fechaNacimiento: string) {
+  try {
+    const raw = await apiClient.post<any>(`${BD_BASE}/detectar-duplicado`, { nombreCompleto, fechaNacimiento });
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][detectarDuplicadoRund] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-047 — Verificar activación */
+export async function verificarActivacionRund(docenteId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/${docenteId}/activacion`);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][verificarActivacionRund] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+/** BR-055 — Soportes próximos a vencer */
+export async function getSoportesProximosVencer(dias = 30) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/soportes/proximos-vencer`, { dias: String(dias) });
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    console.error('[mfe-pta][getSoportesProximosVencer] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
+
+
+/**
+ * BR-056 — Obtener historial de auditoría inmutable de un docente.
+ */
+export async function getAuditoriaRUND(docenteId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/${docenteId}/auditoria`);
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    console.error('[mfe-pta][getAuditoriaRUND] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
 // ═══ Solicitudes PTA — Segundo PTA ═══════════════════════════════════
+

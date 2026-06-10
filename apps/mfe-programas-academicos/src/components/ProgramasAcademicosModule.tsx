@@ -35,6 +35,7 @@ import { OfertaAsignaturasModule } from './OfertaAsignaturasModule';
 import { AsignaturasPlanEstudios } from './AsignaturasPlanEstudios';
 import { ImportarAsignaturas } from './ImportarAsignaturas';
 import { GestionPeriodos } from './GestionPeriodos';
+import { ProgramCetapsModal } from './ProgramCetapsModal';
 import { useAuth } from '../hooks';
 import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
 
@@ -66,6 +67,7 @@ export function ProgramasAcademicosModule() {
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
   const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'oferta-asignaturas' | 'importar-asignaturas' | 'periodos-academicos'>('lista');
+  const [selectedProgramaForCetaps, setSelectedProgramaForCetaps] = useState<ProgramaAcademicoDTO | null>(null);
   const [selectedPeriodoForImport, setSelectedPeriodoForImport] = useState<string | undefined>(undefined);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const itemsPerPage = 10;
@@ -73,12 +75,45 @@ export function ProgramasAcademicosModule() {
   const isSuperAdmin = hasRole('SUPER_ADMIN');
   const canImport = hasRole('GESTION_PROFESORAL') || isSuperAdmin;
 
+  // ─── Periodo Académico (Selector Global) ───
+  const [periodosPA, setPeriodosPA] = useState<any[]>([]);
+  const [periodoSeleccionadoPA, setPeriodoSeleccionadoPA] = useState<string>('');
+  const [showPeriodoDropdownPA, setShowPeriodoDropdownPA] = useState(false);
+
+  useEffect(() => {
+    const cargarPeriodos = async () => {
+      try {
+        const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+        const data = Array.isArray(res) ? res : [];
+        setPeriodosPA(data);
+        const activo = data.find((p: any) => p.estado === 'en_curso');
+        if (activo) setPeriodoSeleccionadoPA(activo.codigo || `${activo.anio}-${activo.semestre}`);
+      } catch { setPeriodoSeleccionadoPA('2025-2'); }
+    };
+    cargarPeriodos();
+  }, []);
+
+  const periodoActivoPA = periodosPA.find((p: any) => p.estado === 'en_curso');
+  const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '2025-2';
+  const esPeriodoActivoPA = !periodoSeleccionadoPA || periodoSeleccionadoPA === periodoActivoCodigoPA;
+
   // Cargar datos del backend
   useEffect(() => {
     const loadProgramas = async () => {
       try {
         setLoading(true);
         setError(null);
+        console.log('[FRONTEND DEBUG] Fetching programas with params:', {
+          search: searchQuery,
+          nivelFormacion: nivelFilter,
+          modalidad: modalidadFilter,
+          sede: sedeFilter,
+          estado: estadoFilter,
+          page: currentPage,
+          limit: 15,
+          periodoAcademico: periodoSeleccionadoPA,
+          _t: Date.now()
+        });
         const response = await apiClient.get('/auth/api/v1/programas-academicos', {
           params: {
             search: searchQuery || undefined,
@@ -86,12 +121,22 @@ export function ProgramasAcademicosModule() {
             modalidad: modalidadFilter !== 'all' ? modalidadFilter : undefined,
             sede: sedeFilter !== 'all' ? sedeFilter : undefined,
             estado: estadoFilter !== 'all' ? estadoFilter : undefined,
+            periodoAcademico: periodoSeleccionadoPA || undefined,
             page: currentPage,
             limit: itemsPerPage,
+            _t: Date.now()
           },
-          requiresAuth: false,
+          requiresAuth: true,
         });
+        console.log('[DEBUG] Raw API response keys:', Object.keys(response));
+        console.log('[DEBUG] response.data count:', response.data?.length, 'response.total:', response.total);
         const programasData = response.data || [];
+        if (programasData.length > 0) {
+          console.log('[DEBUG] First programa keys:', Object.keys(programasData[0]));
+          console.log('[DEBUG] First programa cetapsList:', programasData[0].cetapsList?.length, 'sede:', programasData[0].sede);
+          const progWithCetaps = programasData.find((p: any) => p.cetapsList && p.cetapsList.length > 0);
+          console.log('[DEBUG] Programa with cetapsList:', progWithCetaps?.nombre, 'count:', progWithCetaps?.cetapsList?.length);
+        }
         setProgramas(programasData);
         setPagination({
           total: response.total || 0,
@@ -100,9 +145,11 @@ export function ProgramasAcademicosModule() {
         });
 
 
-      } catch (err) {
-        console.error('Error loading programas:', err);
-        setError('Error al cargar los programas académicos');
+      } catch (error) {
+        console.error('Error cargando programas:', error);
+        setError('Error al cargar los programas. Por favor intente nuevamente.');
+        setProgramas([]);
+        setPagination(null);
         toast.error('Error al cargar los programas');
       } finally {
         setLoading(false);
@@ -110,7 +157,7 @@ export function ProgramasAcademicosModule() {
     };
 
     loadProgramas();
-  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, currentPage, refreshTrigger]);
+  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, currentPage, refreshTrigger]);
 
 
 
@@ -190,6 +237,34 @@ export function ProgramasAcademicosModule() {
     }
   };
 
+  const handleUpdateEstudiantesCetap = async (ofertaId: string, estudiantes: number) => {
+    if (!selectedProgramaForCetaps) return;
+    try {
+      await api.programas.updateCetapEstudiantes(selectedProgramaForCetaps.id, ofertaId, estudiantes);
+      // Update local state to reflect the new count
+      const updatedCetapsList = selectedProgramaForCetaps.cetapsList?.map(c => 
+        c.ofertaId === ofertaId ? { ...c, estudiantes } : c
+      );
+      
+      const prevTotal = selectedProgramaForCetaps.cetapsList?.find(c => c.ofertaId === ofertaId)?.estudiantes || 0;
+      const diff = estudiantes - prevTotal;
+      const newTotal = (selectedProgramaForCetaps.estudiantesActivos || 0) + diff;
+
+      setSelectedProgramaForCetaps({
+        ...selectedProgramaForCetaps,
+        cetapsList: updatedCetapsList,
+        estudiantesActivos: newTotal
+      });
+
+      // Reload program data slightly after to ensure consistency in the background
+      setTimeout(() => setRefreshTrigger(prev => prev + 1), 500);
+      toast.success('Cupos actualizados exitosamente');
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al actualizar los cupos del CETAP');
+    }
+  };
+
   const handleView = (programa: ProgramaAcademico) => {
     toast.info('Ver Programa', { description: `Viendo: ${programa.nombre}` });
   };
@@ -241,104 +316,103 @@ export function ProgramasAcademicosModule() {
   return (
     <>
     <Toaster position="bottom-right" richColors />
-    <Container4K className="space-y-6">
-      {/* Header - DÍA 5: ResponsiveHeader */}
-      <ResponsiveHeader
-        title="Programas Académicos"
-        description="Gestiona los programas académicos de todas las sedes ESAP"
-        icon={GraduationCap}
-        primaryAction={{
-          label: "Crear Programa",
-          icon: Plus,
-          onClick: () => setShowCreateModal(true),
-          variant: "primary"
-        }}
-      />
+    <Container4K className="space-y-4">
+      {/* ━━━ Premium Header ━━━ */}
+      <div className="rounded-2xl bg-white border border-gray-200 px-8 py-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EBF0FA' }}>
+              <GraduationCap className="w-6 h-6 text-[#003DA5]" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Programas Académicos</h1>
 
-      {/* Stats Summary */}
-      {stats.totalAsignaturas > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-          className="flex overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 lg:grid lg:grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 hide-scrollbar"
-        >
-          {[
-            { label: 'Programas', value: stats.totalProgramas, sub: `${stats.programasConPlan} con plan`, color: 'text-[#003DA5]', bg: 'bg-blue-50 border-blue-200', icon: GraduationCap },
-            { label: 'Con Plan de Estudios', value: stats.programasConPlan, sub: `de ${stats.totalProgramas}`, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: BookOpen },
-            { label: 'Asignaturas Totales', value: stats.totalAsignaturas, sub: `${stats.totalCreditos} creditos`, color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200', icon: Layers },
-            { label: 'Estudiantes', value: stats.totalEstudiantes, sub: `${stats.totalGraduados} graduados`, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: Users },
-          ].map((stat) => (
-            <Card key={stat.label} className={`${stat.bg} border p-3 min-w-[200px] lg:min-w-0 flex-shrink-0`}>
-              <div className="flex items-center gap-2">
-                <stat.icon className={`w-4 h-4 ${stat.color}`} />
-                <span className="text-[10px] uppercase tracking-wider font-bold text-gray-500">{stat.label}</span>
+              <p className="text-xs text-gray-400 mt-0.5">Gestión de programas de todas las sedes ESAP</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Selector de Periodo Académico */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PERIODO:</span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowPeriodoDropdownPA(!showPeriodoDropdownPA)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
+                >
+                  {periodoSeleccionadoPA || '2025-2'}
+                  {esPeriodoActivoPA && (
+                    <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
+                  )}
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                {showPeriodoDropdownPA && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdownPA(false)} />
+                    <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
+                      <div className="px-3 py-2 border-b border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
+                      </div>
+                      {periodosPA.length > 0 ? periodosPA.map((p: any, idx: number) => {
+                        const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                        const esActivo = p.estado === 'en_curso';
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => { setPeriodoSeleccionadoPA(codigo); setShowPeriodoDropdownPA(false); }}
+                            className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                              codigo === periodoSeleccionadoPA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
+                            {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
+                          </button>
+                        );
+                      }) : (
+                        <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
-              <p className={`text-2xl font-black ${stat.color} mt-1`}>{stat.value.toLocaleString()}</p>
-              <p className="text-[11px] text-gray-500">{stat.sub}</p>
-            </Card>
-          ))}
-        </motion.div>
-      )}
+              {!esPeriodoActivoPA && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Solo lectura
+                </span>
+              )}
+            </div>
 
-      {/* View Toggle: Lista vs Dashboard vs Oferta Asignaturas vs Importar Catálogo */}
-      {(stats.totalProgramas > 0 || canImport) && (
-        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit overflow-x-auto hide-scrollbar">
-          <button
-            onClick={() => setActiveView('lista')}
-            className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-              activeView === 'lista' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <GraduationCap className="w-3.5 h-3.5" />
-            Lista de Programas
-          </button>
-          {stats.programasConPlan > 0 && (
-            <button
-              onClick={() => setActiveView('dashboard')}
-              className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                activeView === 'dashboard' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Dashboard Planes de Estudio
-            </button>
-          )}
-          {stats.totalProgramas > 0 && (
-            <button
-              onClick={() => setActiveView('oferta-asignaturas')}
-              className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                activeView === 'oferta-asignaturas' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Oferta de Asignaturas
-            </button>
-          )}
-          {canImport && (
-            <>
+            {/* Tabs integrados */}
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
               <button
-                onClick={() => setActiveView('importar-asignaturas')}
-                className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                  activeView === 'importar-asignaturas' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                onClick={() => setActiveView('lista')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeView === 'lista' ? 'bg-[#003DA5] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5" />
-                Importar Catálogo (Excel)
+                <GraduationCap className="w-3.5 h-3.5" />
+                Programas
               </button>
               <button
                 onClick={() => setActiveView('periodos-academicos')}
-                className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                  activeView === 'periodos-academicos' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeView === 'periodos-academicos' ? 'bg-[#003DA5] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
-                Periodos Académicos
+                Periodos
               </button>
-            </>
-          )}
+            </div>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#003DA5] text-white text-xs font-bold rounded-xl hover:bg-[#002d7a] transition-all shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Crear Programa
+            </button>
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Dashboard View */}
       {activeView === 'dashboard' ? (
@@ -391,182 +465,101 @@ export function ProgramasAcademicosModule() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.15 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm"
+        transition={{ duration: 0.3, delay: 0.1 }}
+        className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
       >
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        {/* Compact search & filters bar */}
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
               <input
                 type="text"
                 placeholder="Buscar por nombre, código o facultad..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-10 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
+                className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 focus:border-[#003DA5]/30 transition-all placeholder:text-gray-300"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-200 rounded transition-colors"
                 >
-                  <X className="w-4 h-4 text-gray-400" />
+                  <X className="w-3.5 h-3.5 text-gray-400" />
                 </button>
               )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
             <select
               value={nivelFilter}
               onChange={(e) => setNivelFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todos los niveles</option>
+              <option value="all">Nivel</option>
               {niveles.map(nivel => (
                 <option key={nivel} value={nivel}>{nivel}</option>
               ))}
             </select>
-
             <select
               value={modalidadFilter}
               onChange={(e) => setModalidadFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todas las modalidades</option>
+              <option value="all">Modalidad</option>
               {modalidades.map(mod => (
                 <option key={mod} value={mod}>{mod}</option>
               ))}
             </select>
-
             <select
               value={sedeFilter}
               onChange={(e) => setSedeFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todas las sedes</option>
+              <option value="all">Sede</option>
               {sedes.map(sede => (
                 <option key={sede} value={sede}>{sede}</option>
               ))}
             </select>
-
             <select
               value={estadoFilter}
               onChange={(e) => setEstadoFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todos los estados</option>
+              <option value="all">Estado</option>
               <option value="Activo">Activo</option>
               <option value="Inactivo">Inactivo</option>
               <option value="En Trámite">En Trámite</option>
               <option value="Suspendido">Suspendido</option>
             </select>
+            {hasActiveFilters && (
+              <button onClick={clearAllFilters} className="text-[10px] font-bold text-[#003DA5] hover:underline whitespace-nowrap">
+                Limpiar
+              </button>
+            )}
           </div>
         </div>
 
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
-            <span className="text-xs font-semibold text-gray-500">Filtros activos:</span>
-            {searchQuery && (
-              <Badge variant="outline" className="gap-1">
-                Búsqueda: "{searchQuery}"
-                <button onClick={() => setSearchQuery('')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {nivelFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Nivel: {nivelFilter}
-                <button onClick={() => setNivelFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {modalidadFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Modalidad: {modalidadFilter}
-                <button onClick={() => setModalidadFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {sedeFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Sede: {sedeFilter}
-                <button onClick={() => setSedeFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {estadoFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Estado: {estadoFilter}
-                <button onClick={() => setEstadoFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            <button
-              onClick={clearAllFilters}
-              className="text-xs font-semibold text-[#003DA5] hover:underline ml-auto"
-            >
-              Limpiar todos
-            </button>
-          </div>
-        )}
-      </motion.div>
 
-      {/* Tabla Premium */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
-      >
-        <Card className="overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-black text-gray-900 text-lg">Programas Académicos</h2>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  Mostrando {paginatedProgramas.length} de {filteredProgramas.length} programas
-                </p>
-              </div>
-              <Badge variant="outline" className="font-semibold">
-                Total: {filteredProgramas.length}
-              </Badge>
-            </div>
+          {/* Table info bar */}
+          <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
+            <p className="text-xs text-gray-400">
+              Mostrando <span className="font-semibold text-gray-600">{paginatedProgramas.length}</span> de <span className="font-semibold text-gray-600">{pagination?.total || 0}</span> programas
+            </p>
           </div>
 
-          {/* Vista Desktop */}
           <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50/80 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Programa
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Nivel
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Plan de Estudios
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Sede
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Estudiantes
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Acciones
-                  </th>
+                  <th className="px-6 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Programa</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Nivel</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Plan de Estudios</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Sede</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estudiantes</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-gray-50 bg-white">
                 <AnimatePresence>
                   {paginatedProgramas.map((programa, index) => [
                     <motion.tr
@@ -575,15 +568,15 @@ export function ProgramasAcademicosModule() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.2, delay: index * 0.05 }}
-                      className="hover:bg-gray-50 transition-colors cursor-pointer group"
+                      className="hover:bg-blue-50/20 transition-colors cursor-pointer group"
                       onClick={() => setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id)}
                     >
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-3">
                           <div>
-                            <p className="font-bold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
+                            <p className="font-semibold text-gray-900 text-xs group-hover:text-[#003DA5] transition-colors">
                               {programa.nombre}
                             </p>
-                            <p className="text-xs text-gray-500 font-mono">{programa.codigo}</p>
+                            <p className="text-[10px] text-gray-400 font-mono mt-0.5">{programa.codigo}</p>
                           </div>
                         </td>
 
@@ -630,7 +623,20 @@ export function ProgramasAcademicosModule() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-900">{programa.sede}</span>
+                            {programa.cetapsList && programa.cetapsList.length > 0 ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProgramaForCetaps(programa);
+                                }}
+                                style={{ color: '#003DA5' }}
+                                className="text-sm font-medium hover:underline transition-colors text-left"
+                              >
+                                {programa.sede}
+                              </button>
+                            ) : (
+                              <span className="text-sm text-gray-900">{programa.sede}</span>
+                            )}
                           </div>
                         </td>
 
@@ -640,7 +646,7 @@ export function ProgramasAcademicosModule() {
                               <Users className="w-4 h-4 text-gray-400" />
                               <span className="text-sm font-medium text-gray-900">{programa.estudiantesActivos}</span>
                             </div>
-                            <p className="text-xs text-gray-500">{programa.graduados} graduados</p>
+                            <p className="text-xs text-gray-500">{programa.horasBasePorCredito}h / créd.</p>
                           </div>
                         </td>
 
@@ -708,6 +714,7 @@ export function ProgramasAcademicosModule() {
                                     <div className="space-y-2 text-sm">
                                       <p className="text-gray-700"><span className="font-semibold">Duración:</span> {programa.duracionSemestres} semestres ({programa.creditos} créditos)</p>
                                       <p className="text-gray-700"><span className="font-semibold">Jornada:</span> {programa.jornada}</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
                                       <p className="text-gray-700"><span className="font-semibold">Facultad:</span> {programa.facultad}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Costo matrícula:</span> ${(programa.costoMatricula || 0).toLocaleString()}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Docentes:</span> {programa.docentesAsignados}</p>
@@ -846,6 +853,7 @@ export function ProgramasAcademicosModule() {
                           <div className="space-y-1.5 text-xs text-gray-700">
                             <p><span className="font-semibold text-gray-900">Duración:</span> {programa.duracionSemestres} semestres</p>
                             <p><span className="font-semibold text-gray-900">Jornada:</span> {programa.jornada}</p>
+                            <p><span className="font-semibold text-gray-900">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
                             <p><span className="font-semibold text-gray-900">Facultad:</span> {programa.facultad}</p>
                             <p><span className="font-semibold text-gray-900">Costo:</span> ${(programa.costoMatricula || 0).toLocaleString()} COP</p>
                           </div>
@@ -875,28 +883,37 @@ export function ProgramasAcademicosModule() {
 
           {/* Empty State */}
           {filteredProgramas.length === 0 && (
-            <div className="py-16 px-4 text-center">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                <GraduationCap className="w-10 h-10 text-gray-400" />
+            <div className="py-20 px-4 text-center">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center">
+                <GraduationCap className="w-8 h-8 text-[#003DA5]/40" />
               </div>
-              <h3 className="font-bold text-gray-900 text-lg mb-2">No se encontraron programas</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                {hasActiveFilters ? 'Intenta ajustar los filtros' : 'Aún no hay programas registrados'}
+              <h3 className="font-bold text-gray-900 text-sm mb-1">No se encontraron programas</h3>
+              <p className="text-xs text-gray-400 mb-5 max-w-xs mx-auto">
+                {hasActiveFilters ? 'Intenta ajustar los filtros de búsqueda' : 'Aún no hay programas registrados. Crea uno para comenzar.'}
               </p>
-              {hasActiveFilters && (
+              <div className="flex items-center justify-center gap-3">
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="px-4 py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+                  >
+                    Limpiar Filtros
+                  </button>
+                )}
                 <button
-                  onClick={clearAllFilters}
-                  className="px-4 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002d7a] transition-colors font-semibold text-sm"
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-5 py-2 bg-[#003DA5] text-white text-xs font-bold rounded-lg hover:bg-[#002d7a] transition-all shadow-sm flex items-center gap-1.5"
                 >
-                  Limpiar Filtros
+                  <Plus className="w-3.5 h-3.5" />
+                  Crear Programa
                 </button>
-              )}
+              </div>
             </div>
           )}
 
           {/* Paginación */}
           {filteredProgramas.length > 0 && (
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+            <div className="border-t border-gray-100 px-6 py-3 bg-gray-50/30">
               <PaginationPremium
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -906,7 +923,6 @@ export function ProgramasAcademicosModule() {
               />
             </div>
           )}
-        </Card>
       </motion.div>
 
       {/* Modal para Crear/Editar Programa */}
@@ -930,6 +946,15 @@ export function ProgramasAcademicosModule() {
         onCancel={() => setProgramaToDelete(null)}
       />
       </>
+      )}
+      {/* Modal para ver CETAPs */}
+      {selectedProgramaForCetaps && (
+        <ProgramCetapsModal
+          onClose={() => setSelectedProgramaForCetaps(null)}
+          programaNombre={selectedProgramaForCetaps.nombre}
+          cetapsList={selectedProgramaForCetaps.cetapsList || []}
+          onUpdateEstudiantes={handleUpdateEstudiantesCetap}
+        />
       )}
     </Container4K>
     </>

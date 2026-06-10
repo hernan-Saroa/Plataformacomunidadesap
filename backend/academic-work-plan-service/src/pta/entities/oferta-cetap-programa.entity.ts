@@ -1,9 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn, BeforeInsert, BeforeUpdate, Unique } from 'typeorm';
 import { CetapEntity } from './cetap.entity';
 import { ProgramaEntity } from './programa.entity';
 import { PeriodoAcademicoEntity } from './periodo-academico.entity';
 
 @Entity({ schema: 'academic_work_plan', name: 'oferta_cetap_programa' })
+@Unique(['idCetap', 'idPrograma', 'idPeriodoAcademico'])
 export class OfertaCetapProgramaEntity {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;

@@ -302,13 +302,21 @@ export const estructuraService = {
     return apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
   },
 
-  async importarEstructura(file: File, dryRun: boolean): Promise<any> {
+  async obtenerDetallePeriodo(id: string): Promise<any> {
+    return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
+  },
+
+  async importarEstructura(file: File, dryRun: boolean, skipInvalid: boolean = false, periodo?: string): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
-    return apiClient.upload<any>(
-      `${SERVICE_PREFIX}/estructura-import/upload-geografico?dry_run=${dryRun}`,
-      formData
-    );
+    
+    let url = `${SERVICE_PREFIX}/estructura-import/upload-geografico?dry_run=${dryRun}&skip_invalid=${skipInvalid}`;
+    if (periodo) {
+      url += `&periodo=${encodeURIComponent(periodo)}`;
+    }
+
+    // No forzar Content-Type — el navegador lo setea automáticamente con el boundary correcto para FormData
+    return apiClient.post<any>(url, formData);
   },
 };
 

@@ -258,9 +258,9 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2026-
         }
       }
 
-      // PRIORITY 3: Generate demo oferta if nothing found
+      // No generar oferta demo si no hay datos.
       if (!ofertaCargada) {
-        generateDemoOferta(progsData);
+        setOferta([]);
       }
 
       setOfertaLoaded(true);

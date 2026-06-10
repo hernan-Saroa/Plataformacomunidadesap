@@ -59,18 +59,26 @@ export function EstructuraOrganizacionalModule() {
     applyPeriodFilter();
   }, [periodo, periodos, seccionalesOriginales, sedesOriginales]);
 
+  const FALLBACK_PERIODOS = [
+    { id: 'default-2025-2', codigo: '2025-2', anio: 2025, semestre: 2, estado: 'ACTIVO' },
+    { id: 'default-2025-1', codigo: '2025-1', anio: 2025, semestre: 1, estado: 'ACTIVO' },
+  ];
+
   const loadPeriodos = async () => {
     try {
       setLoadingPeriodos(true);
       const data = await estructuraService.obtenerPeriodos();
-      const sorted = [...data].sort((a, b) => b.codigo.localeCompare(a.codigo));
+      const list = Array.isArray(data) && data.length > 0 ? data : FALLBACK_PERIODOS;
+      const sorted = [...list].sort((a, b) => b.codigo.localeCompare(a.codigo));
       setPeriodos(sorted);
       if (sorted.length > 0) {
         const hasCurrent = sorted.some(p => p.codigo === '2025-2');
         setPeriodo(hasCurrent ? '2025-2' : sorted[0].codigo);
       }
     } catch (e) {
-      console.error('Error cargando periodos:', e);
+      console.error('Error cargando periodos, usando fallback:', e);
+      setPeriodos(FALLBACK_PERIODOS);
+      setPeriodo('2025-2');
     } finally {
       setLoadingPeriodos(false);
     }
@@ -81,50 +89,55 @@ export function EstructuraOrganizacionalModule() {
 
     try {
       const p = periodos.find(x => x.codigo === periodo);
-      if (!p) {
+      if (!p || !p.id || String(p.id).startsWith('default-')) {
+        // Es un periodo de fallback local (no existe en BD), mostrar estructura master
         setSeccionales(seccionalesOriginales);
         setSedes(sedesOriginales);
         return;
       }
 
-      const response = await fetch(buildApiUrl('pta', `/pta/api/v1/periodos-academicos/${p.id}/detalle`), CORS_CONFIG);
-      if (response.ok) {
-        const detail = await response.json();
-        if (detail && detail.cetaps) {
-          if (detail.cetaps.length === 0) {
-            // Si el periodo está vacío (no se han asignado cetaps),
-            // mostramos la estructura master sin filtrar.
-            setSeccionales(seccionalesOriginales);
-            setSedes(sedesOriginales);
-          } else {
-            const activeCodes = new Set<string>(detail.cetaps.map((c: any) => c.codigo));
-
-            const sedesFiltradas = sedesOriginales.filter(s => activeCodes.has(s.codSede));
-            const seccionalesFiltradas = seccionalesOriginales.filter(sec =>
-              sedesFiltradas.some(s => s.idSeccional === sec.idSeccional) ||
-              sec.codSeccional?.toUpperCase() === 'SCENT'
-            );
-
-            setSeccionales(seccionalesFiltradas);
-            setSedes(sedesFiltradas);
-
-            if (estadisticas) {
-              setEstadisticas({
-                ...estadisticas,
-                totalSeccionales: seccionalesFiltradas.length,
-                totalSedes: sedesFiltradas.length,
-              });
-            }
+      const detail = await estructuraService.obtenerDetallePeriodo(p.id);
+      if (detail && detail.cetaps) {
+        if (detail.cetaps.length === 0) {
+          // El periodo existe pero NO tiene CETAPs asignados → mostrar vacío
+          setSeccionales([]);
+          setSedes([]);
+          if (estadisticas) {
+            setEstadisticas({
+              ...estadisticas,
+              totalSeccionales: 0,
+              totalSedes: 0,
+            });
           }
-          return;
+        } else {
+          const activeCodes = new Set<string>(detail.cetaps.map((c: any) => c.codigo));
+
+          const sedesFiltradas = sedesOriginales.filter(s => activeCodes.has(s.codSede));
+          const seccionalesFiltradas = seccionalesOriginales.filter(sec =>
+            sedesFiltradas.some(s => s.idSeccional === sec.idSeccional) ||
+            sec.codSeccional?.toUpperCase() === 'SCENT'
+          );
+
+          setSeccionales(seccionalesFiltradas);
+          setSedes(sedesFiltradas);
+
+          if (estadisticas) {
+            setEstadisticas({
+              ...estadisticas,
+              totalSeccionales: seccionalesFiltradas.length,
+              totalSedes: sedesFiltradas.length,
+            });
+          }
         }
+        return;
       }
 
-      // Fallback
+      // Fallback — no se pudo obtener detalle del periodo, mostrar master
       setSeccionales(seccionalesOriginales);
       setSedes(sedesOriginales);
     } catch (err) {
       console.error('Error filtrando por periodo:', err);
+      // En caso de error de red, mostrar master
       setSeccionales(seccionalesOriginales);
       setSedes(sedesOriginales);
     }
@@ -221,50 +234,58 @@ export function EstructuraOrganizacionalModule() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <ImportarEstructuraView
-            onBack={() => setVistaActual('arbol')}
-            onSuccess={cargarDatos}
-          />
+        <ImportarEstructuraView
+          onBack={() => {
+            setVistaActual('arbol');
+            cargarDatos();
+          }}
+          onSuccess={() => {
+            setVistaActual('arbol');
+            cargarDatos();
+          }}
+          periodos={periodos}
+          periodoSeleccionado={periodo}
+          onPeriodoChange={(p) => setPeriodo(p)}
+        />
         </motion.div>
       ) : (
         <>
-          {/* Header */}
+          {/* Header - World Class Design */}
+          <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 flex items-center justify-center shrink-0">
-                  <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <div className="flex items-center gap-3 md:gap-4 flex-wrap">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#EBF0FA' }}>
+                  <Building2 className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                    <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">
                       Estructura Organizacional
                     </h1>
-
-                    {/* Selector de Periodo Academico */}
-                    <div className="flex items-center gap-1.5 bg-blue-50/50 border border-blue-100 rounded-xl px-2.5 py-1 text-xs font-bold text-[#003DA5]">
-                      <span className="text-gray-500 uppercase font-bold text-[10px]">Periodo:</span>
-                      {loadingPeriodos ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#003DA5]" />
-                      ) : (
-                        <select
-                          value={periodo}
-                          onChange={(e) => setPeriodo(e.target.value)}
-                          className="bg-transparent border-0 outline-none focus:ring-0 text-[#003DA5] font-black cursor-pointer pr-1 text-xs"
-                        >
-                          {periodos.map((p) => (
-                            <option key={p.id} value={p.codigo} className="text-gray-900 bg-white font-bold">
-                              {p.codigo} {p.codigo === '2025-2' ? '(Actual)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
                   </div>
-                  <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
-                    Gestion de seccionales y sedes ESAP
+                  <p className="text-[11px] md:text-xs text-gray-400 mt-0.5 line-clamp-1">
+                    Gestión de seccionales y sedes ESAP
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Selector de Periodo Académico */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 bg-blue-50/60 border border-blue-200/60 rounded-xl px-3 py-2">
+                <GraduationCap className="w-4 h-4 text-[#003DA5]" />
+                <span className="text-[11px] font-semibold text-gray-500 hidden md:inline">Periodo:</span>
+                <select
+                  value={periodo}
+                  onChange={(e) => setPeriodo(e.target.value)}
+                  disabled={loadingPeriodos}
+                  className="text-sm font-bold text-[#003DA5] bg-transparent border-0 focus:ring-0 focus:outline-none cursor-pointer pr-6 appearance-auto"
+                >
+                  {periodos.map((p) => (
+                    <option key={p.codigo} value={p.codigo}>{p.codigo}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -368,6 +389,7 @@ export function EstructuraOrganizacionalModule() {
                 </div>
               )}
             </div>
+          </div>
           </div>
 
           {/* Busqueda */}

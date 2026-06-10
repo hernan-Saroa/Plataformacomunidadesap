@@ -30,6 +30,7 @@ interface Asignatura {
   semestre: number;
   creditos: number;
   horas: number;
+  horasFijasPta?: number;
   modalidad: string;
   tipo?: string;
   prerequisitos?: string;
@@ -47,6 +48,26 @@ interface Props {
 
 const MODALIDADES = ['Presencial', 'Virtual', 'Mixta', 'Distancia'];
 const TIPOS = ['Teorica', 'Practica', 'Taller', 'Seminario', 'Laboratorio'];
+
+const SEMESTRES_LABELS: string[] = [
+  '',
+  'Primer semestre',
+  'Segundo semestre',
+  'Tercer semestre',
+  'Cuarto semestre',
+  'Quinto semestre',
+  'Sexto semestre',
+  'Séptimo semestre',
+  'Octavo semestre',
+  'Noveno semestre',
+  'Décimo semestre',
+  'Onceavo semestre',
+  'Doceavo semestre',
+  'Semestre I',
+  'Semestre II',
+  'Semestre III',
+  'Semestre IV'
+];
 
 const NUCLEO_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   'Administración Pública': { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
@@ -90,8 +111,8 @@ function exportToCSV(asignaturas: Asignatura[], programaNombre: string) {
       a.codigo || '',
       `"${a.nombre.replace(/"/g, '""')}"`,
       a.semestre,
-      a.creditos,
       a.horas,
+      a.horasFijasPta || '',
       `"${a.nucleoTematico}"`,
       a.modalidad,
       a.tipo || 'Teorica',
@@ -167,12 +188,12 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
       return `<div class="semester">
         <h3>Semestre ${sem} — ${asigs.length} asignaturas · ${semCr} creditos</h3>
         <table>
-          <thead><tr><th>#</th><th>Codigo</th><th>Asignatura</th><th>Creditos</th><th>Horas</th><th>Nucleo</th><th>Modalidad</th></tr></thead>
+          <thead><tr><th>#</th><th>Codigo</th><th>Asignatura</th><th>Creditos</th><th>Horas</th><th>Horas PTA</th><th>Nucleo</th><th>Modalidad</th></tr></thead>
           <tbody>
             ${asigs.map((a, i) => `<tr>
               <td>${i + 1}</td><td>${a.codigo || '-'}</td><td><strong>${a.nombre}</strong></td>
-              <td>${a.creditos}</td><td>${a.horas}</td>
-              <td><span class="nucleo">${a.nucleoTematico}</span></td><td>${a.modalidad}</td>
+              <td>${a.creditos}</td><td>${a.horas}</td><td>${a.horasFijasPta || '-'}</td>
+              <td><span class="nucleo">${a.nucleoTematico}</span></td><td>${a.modalidad ? a.modalidad.charAt(0).toUpperCase() + a.modalidad.slice(1) : ''}</td>
             </tr>`).join('')}
             <tr class="totals"><td colspan="3">Subtotal Semestre ${sem}</td><td>${semCr}</td><td>${asigs.reduce((s, a) => s + (a.horas || 0), 0)}</td><td colspan="2"></td></tr>
           </tbody>
@@ -232,7 +253,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     }
     setLoading(true);
     try {
-      const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`);
+      const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas?_cb=${Date.now()}`);
       const asignaturasData = (response || []).map(a => ({ ...a, nucleoTematico: a.nucleoTematico || a.nucleo || 'General' }));
       setAsignaturas(asignaturasData);
     } catch (err: any) {
@@ -851,12 +872,13 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500 font-bold">
-                  <th className="px-3 py-2 text-left w-8">#</th>
+                  <th className="px-3 py-2 text-left w-24">Código</th>
                   <th className="px-3 py-2 text-left">Asignatura</th>
-                  <th className="px-3 py-2 text-center w-14">Sem.</th>
+                  <th className="px-3 py-2 text-center w-24">Semestre</th>
                   <th className="px-3 py-2 text-center w-14">Cred.</th>
                   <th className="px-3 py-2 text-center w-14">Horas</th>
-                  <th className="px-3 py-2 text-left">Nucleo</th>
+                  <th className="px-3 py-2 text-center w-16">Hrs PTA</th>
+                  <th className="px-3 py-2 text-left">Núcleo</th>
                   <th className="px-3 py-2 text-center w-20">Modalidad</th>
                   <th className="px-3 py-2 text-center w-16">Tipo</th>
                   <th className="px-3 py-2 text-center w-16">Acciones</th>
@@ -875,7 +897,17 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                         exit={{ opacity: 0, height: 0 }}
                         className={`border-t border-gray-100 transition-colors ${isEditing ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
                       >
-                        <td className="px-3 py-1.5 text-gray-400 text-[10px]">{idx + 1}</td>
+                        <td className="px-3 py-1.5">
+                          {isEditing ? (
+                            <input
+                              value={asig.codigo || ''}
+                              onChange={e => handleUpdate(asig.id, 'codigo', e.target.value)}
+                              className="w-full h-7 px-2 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50"
+                            />
+                          ) : (
+                            <span className="font-semibold text-gray-700 text-[11px]">{asig.codigo || '-'}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5">
                           {isEditing ? (
                             <input
@@ -888,7 +920,6 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                             <div className="flex items-center gap-1.5">
                               <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color.dot}`} />
                               <span className="font-medium text-gray-900 text-xs">{asig.nombre}</span>
-                              {asig.codigo && <span className="text-[9px] text-gray-400">({asig.codigo})</span>}
                             </div>
                           )}
                         </td>
@@ -904,7 +935,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                               ))}
                             </select>
                           ) : (
-                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[#003DA5]/10 text-[#003DA5] text-[10px] font-bold">{asig.semestre}</span>
+                            <span className="font-medium text-gray-700 text-[11px] whitespace-nowrap">{SEMESTRES_LABELS[asig.semestre] || asig.semestre}</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-center">
@@ -929,6 +960,17 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                             <span className="text-[10px] font-semibold text-purple-700">{asig.horas}</span>
                           )}
                         </td>
+                        <td className="px-3 py-1.5 text-center">
+                          {isEditing ? (
+                            <input type="number" value={asig.horasFijasPta || ''}
+                              onChange={e => handleUpdate(asig.id, 'horasFijasPta', Number(e.target.value))}
+                              min={0}
+                              className="w-12 h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50 text-center"
+                            />
+                          ) : (
+                            <span className="text-[10px] font-bold text-orange-600">{asig.horasFijasPta || '-'}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5">
                           {isEditing ? (
                             <input
@@ -949,11 +991,11 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                             </select>
                           ) : (
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                              asig.modalidad === 'Presencial' ? 'bg-green-100 text-green-700' :
-                              asig.modalidad === 'Virtual' ? 'bg-blue-100 text-blue-700' :
-                              asig.modalidad === 'Mixta' ? 'bg-amber-100 text-amber-700' :
+                              asig.modalidad?.toLowerCase() === 'presencial' ? 'bg-green-100 text-green-700' :
+                              asig.modalidad?.toLowerCase() === 'virtual' ? 'bg-blue-100 text-blue-700' :
+                              asig.modalidad?.toLowerCase() === 'mixta' ? 'bg-amber-100 text-amber-700' :
                               'bg-purple-100 text-purple-700'
-                            }`}>{asig.modalidad}</span>
+                            }`}>{asig.modalidad ? asig.modalidad.charAt(0).toUpperCase() + asig.modalidad.slice(1) : ''}</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-center">
@@ -1060,7 +1102,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                             className="h-5 px-0.5 border-0 bg-transparent text-[#003DA5] font-bold outline-none">
                             {Array.from({ length: totalSemestres }, (_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
                           </select>
-                        ) : asig.semestre}
+                        ) : SEMESTRES_LABELS[asig.semestre] || asig.semestre}
                       </span>
                       {/* Créditos */}
                       <span className="inline-flex items-center gap-1 text-[11px] text-gray-600">

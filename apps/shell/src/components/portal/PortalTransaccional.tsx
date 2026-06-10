@@ -265,6 +265,20 @@ export function PortalTransaccional({
   const fotoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [isContactInfoOpen, setIsContactInfoOpen] = useState(false);
+  const [ptaVista, setPtaVista] = useState<string>('v01_dashboard');
+
+  useEffect(() => {
+    const handlePTAViewChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.vista) {
+        setPtaVista(customEvent.detail.vista);
+      }
+    };
+    window.addEventListener('pta-view-change', handlePTAViewChange);
+    return () => {
+      window.removeEventListener('pta-view-change', handlePTAViewChange);
+    };
+  }, []);
 
   useEffect(() => {
     setIsContactInfoOpen(currentView.type === 'dashboard');
@@ -566,11 +580,12 @@ export function PortalTransaccional({
           onClick={triggerFotoPicker}
           className="group relative w-14 h-14 rounded-full border-2 border-white shadow-sm bg-[#003DA5]/5 shrink-0 overflow-hidden"
           title="Cambiar foto"
+          style={{ width: '56px', height: '56px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
         >
           {fotoUrl ? (
-            <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
+            <img src={fotoUrl} alt="" className="w-full h-full object-cover" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-base font-black">
+            <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-base font-black" style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {iniciales}
             </div>
           )}
@@ -634,11 +649,12 @@ export function PortalTransaccional({
               onClick={triggerFotoPicker}
               className="group relative w-20 h-20 rounded-full border-3 border-white shadow-sm bg-[#003DA5]/5 overflow-hidden"
               title="Cambiar foto"
+              style={{ width: '80px', height: '80px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
             >
               {fotoUrl ? (
-                <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
+                <img src={fotoUrl} alt="" className="w-full h-full object-cover" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-lg font-black">
+                <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-lg font-black" style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {iniciales}
                 </div>
               )}
@@ -723,7 +739,7 @@ export function PortalTransaccional({
       );
     }
     return (
-      <div id="id-render-with-left-layout" className="flex items-start gap-6">
+      <div id="id-render-with-left-layout" className="flex items-start gap-8">
         {renderLeftPanelDesktop(contactItems)}
         <div className="flex-1 min-w-0">{center}</div>
       </div>
@@ -750,15 +766,30 @@ export function PortalTransaccional({
         return renderWithLeftLayout(
           <MisDocumentos personaId={userPersonId} userName={userName} onBack={() => setCurrentView({ type: 'dashboard' })} />,
         );
-      case 'pta':
-        return renderWithLeftLayout(
+      case 'pta': {
+        const ptaContent = (
           <PortalDocentePTA
             userPersonId={userPersonId}
             userName={userName}
             userEmail={userEmail}
             onBack={() => setCurrentView({ type: 'dashboard' })}
-          />,
+          />
         );
+        const isPTAFullWidth = ptaVista === 'v09_imprimir';
+        const contactItems = buildContactItems();
+        return (
+          <div className={isDesktop ? "flex items-start gap-8" : "space-y-4"}>
+            {isDesktop ? (
+              !isPTAFullWidth && renderLeftPanelDesktop(contactItems)
+            ) : (
+              !isPTAFullWidth && renderLeftPanelMobile(contactItems)
+            )}
+            <div className={isPTAFullWidth ? "w-full min-w-0" : isDesktop ? "flex-1 min-w-0" : "min-w-0"}>
+              {ptaContent}
+            </div>
+          </div>
+        );
+      }
       case 'mis-auditorias':
         return renderWithLeftLayout(
           <MisAuditoriasControlInterno
@@ -1017,7 +1048,7 @@ export function PortalTransaccional({
     if (!isLargeDesktop) {
       /* ▸ Desktop (1024–1279px): 2 columnas, sin right panel, Quick Apps debajo */
       return (
-        <div className="flex items-stretch gap-6" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
+        <div className="flex items-stretch gap-8" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
           {renderLeftPanelDesktop(contactItems, renderQuickApps())}
           <div className="flex-1 min-w-0 flex flex-col gap-5">
             {renderGreeting()}
@@ -1112,7 +1143,7 @@ export function PortalTransaccional({
 
     /* ▸ Large Desktop (1280px+): 3 columnas completas */
     return (
-      <div className="flex items-stretch gap-6" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
+      <div className="flex items-stretch gap-8" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
         {renderLeftPanelDesktop(contactItems, renderQuickApps())}
         <div className="flex-1 min-w-0 flex flex-col gap-5">
           {renderGreeting()}
@@ -1213,7 +1244,7 @@ export function PortalTransaccional({
 
   return (
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
-        <div className="w-full max-w-[1280px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 lg:py-8">
+        <div className="w-full max-w-[1000px] mx-auto px-6 sm:px-10 md:px-14 lg:px-16 py-5 sm:py-6 md:py-8">
           <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
           <AnimatePresence mode="wait">
             <motion.div

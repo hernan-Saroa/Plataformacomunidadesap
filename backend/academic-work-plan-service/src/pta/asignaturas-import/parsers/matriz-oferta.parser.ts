@@ -48,8 +48,8 @@ export class MatrizOfertaParser {
 
     const result: OfertaMatrizResult[] = [];
 
-    // Fila 2 en adelante: CETAPs (las filas separadoras tienen menos columnas o están vacías en la primera col)
-    for (let i = 2; i < rows.length; i++) {
+    // Fila 1 en adelante: CETAPs
+    for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const codigo_cetap = row[0] ? String(row[0]).trim() : '';
       const nombre_dt = row[3] ? String(row[3]).trim() : '';

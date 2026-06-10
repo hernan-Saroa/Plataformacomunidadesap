@@ -109,7 +109,6 @@ function TrackingBar({ estado }: { estado: string }) {
   const isRechazado = estado === 'Rechazado';
   let internalEstado = estado;
   
-  // Normalizar los estados de concertacion y correciones visualmente para que caigan bajo "Jefatura"
   if (['EN_CONCERTACION', 'OBJETADO_DOCENTE', 'MODIFICADO_DOCENTE', 'ESCALADO_SNA'].includes(estado)) {
      internalEstado = 'Pendiente Jefatura';
   }
@@ -117,67 +116,64 @@ function TrackingBar({ estado }: { estado: string }) {
   const idx = getEstadoIndex(internalEstado);
 
   return (
-    <div className="relative w-full pt-2 pb-5 mt-2 overflow-visible">
-      <div className="flex items-center w-full px-2">
+    <div className="relative w-full pt-1 pb-6 mt-1 overflow-visible">
+      {/* Animated glow keyframes */}
+      <style>{`
+        @keyframes stepPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,61,165,0.3); } 50% { box-shadow: 0 0 0 6px rgba(0,61,165,0.08); } }
+        @keyframes stepError { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 6px rgba(239,68,68,0.08); } }
+      `}</style>
+      <div className="flex items-center w-full px-1">
         {FLUJO_APROBACION.map((step, i) => {
           const isCompleted = idx > i;
           const isCurrent = idx === i;
           const isError = isCurrent && (isDevuelto || isRechazado);
           const hasNext = i < FLUJO_APROBACION.length - 1;
 
-          // Set adaptive styles
-          let circleBg = 'bg-white';
-          let circleBorder = 'border-gray-200';
-          let textColor = 'text-gray-400';
-          let fontWeight = 'font-medium';
-          let lineColor = 'bg-gray-100';
-
-          if (isCompleted) {
-             circleBg = 'bg-[#003DA5]';
-             circleBorder = 'border-[#003DA5]';
-             textColor = 'text-[#003DA5]';
-             fontWeight = 'font-bold';
-             lineColor = 'bg-[#003DA5]';
-          } else if (isCurrent) {
-             if (isError) {
-                circleBg = 'bg-red-50';
-                circleBorder = 'border-red-500 border-2 ring-4 ring-red-50';
-                textColor = 'text-red-700';
-                fontWeight = 'font-bold';
-             } else {
-                circleBg = 'bg-white';
-                circleBorder = 'border-[#003DA5] border-[2px] ring-4 ring-blue-50';
-                textColor = 'text-[#003DA5]';
-                fontWeight = 'font-bold';
-             }
-          }
-
           return (
             <div key={step.key} className={`flex items-center relative ${hasNext ? 'flex-1' : ''}`}>
-              
               <div className="flex flex-col items-center relative z-10">
-                {/* Main Stepper Dot/Icon */}
-                <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full flex justify-center items-center border transition-all duration-300 shadow-sm ${circleBg} ${circleBorder}`}>
+                {/* Stepper Dot */}
+                <div
+                  className={`w-6 h-6 md:w-7 md:h-7 rounded-full flex justify-center items-center transition-all duration-500 ${
+                    isCompleted
+                      ? 'bg-gradient-to-br from-[#003DA5] to-[#0052D4] shadow-[0_2px_8px_rgba(0,61,165,0.35)]'
+                      : isError
+                        ? 'bg-red-50 border-2 border-red-400'
+                        : isCurrent
+                          ? 'bg-white border-[2.5px] border-[#003DA5]'
+                          : 'bg-gray-50 border-[1.5px] border-gray-200'
+                  }`}
+                  style={isCurrent && !isError ? { animation: 'stepPulse 2.5s ease-in-out infinite' } : isError ? { animation: 'stepError 2s ease-in-out infinite' } : undefined}
+                >
                    {isCompleted ? (
-                     <CheckCircle2 className="w-3 h-3 md:w-3.5 md:h-3.5 text-white" />
+                     <CheckCircle2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-white drop-shadow-sm" />
                    ) : isError ? (
-                     <XCircle className="w-3 h-3 md:w-3.5 md:h-3.5 text-red-500" />
+                     <XCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-500" />
+                   ) : isCurrent ? (
+                     <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-[#003DA5]" />
                    ) : (
-                     <div className={`rounded-full transition-all duration-300 ${isCurrent ? 'bg-[#003DA5] w-2 h-2' : 'bg-transparent w-0 h-0'}`} />
+                     <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
                    )}
                 </div>
                 
-                {/* Floating Centered Label */}
-                <div className="absolute top-7 md:top-8 left-1/2 -translate-x-1/2 w-max text-center">
-                  <span className={`text-[0.6rem] md:text-[0.65rem] uppercase tracking-wide transition-colors ${textColor} ${fontWeight}`}>
+                {/* Label */}
+                <div className="absolute top-8 md:top-9 left-1/2 -translate-x-1/2 w-max text-center">
+                  <span className={`text-[0.58rem] md:text-[0.62rem] uppercase tracking-wider transition-colors duration-300 ${
+                    isCompleted ? 'text-[#003DA5] font-extrabold' : isCurrent ? (isError ? 'text-red-600 font-extrabold' : 'text-[#003DA5] font-extrabold') : 'text-gray-400 font-semibold'
+                  }`}>
                     {step.short}
                   </span>
                 </div>
               </div>
 
-              {/* Connecting Line */}
+              {/* Connecting Line — with gradient transition */}
               {hasNext && (
-                 <div className={`flex-1 h-1 mx-1 md:mx-2 rounded-full transition-all duration-500 ${lineColor}`} />
+                <div className="flex-1 h-[3px] mx-1.5 md:mx-2.5 rounded-full bg-gray-100 relative overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#003DA5] to-[#0052D4] transition-all duration-700 ease-out"
+                    style={{ width: idx > i ? '100%' : idx === i ? '0%' : '0%' }}
+                  />
+                </div>
               )}
             </div>
           );
@@ -189,6 +185,12 @@ function TrackingBar({ estado }: { estado: string }) {
 
 export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocentePTAProps) {
   const [vista, setVista] = useState<VistaPortal>('v01_dashboard');
+
+  // Dispatch global custom event for the shell container to adjust layout
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('pta-view-change', { detail: { vista } }));
+  }, [vista]);
+
   const [ptas, setPtas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPtaId, setSelectedPtaId] = useState<string | null>(null);
@@ -377,10 +379,12 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
   const puedeCrearPTA = (!loading && !ptaActivo && !limiteAnualAlcanzado) || tienePermisoEspecial;
 
-  const mensajeBloqueo = !tienePermisoEspecial && ptaActivo
-    ? 'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.'
-    : !tienePermisoEspecial && limiteAnualAlcanzado
+    const mensajeBloqueo = !tienePermisoEspecial && limiteAnualAlcanzado
     ? `Límite anual alcanzado: ya registraste 2 planes de trabajo en ${anioActual}.`
+    : !tienePermisoEspecial && ptaActivo?.estado === 'Aprobado'
+    ? 'Ya tienes un Plan de Trabajo aprobado para este periodo.'
+    : !tienePermisoEspecial && ptaActivo
+    ? 'Ya tienes un Plan de Trabajo en ejecución. Finalízalo o espera su aprobación antes de crear uno nuevo.'
     : null;
 
   // ═══ Send concertation message ═══
@@ -438,127 +442,120 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
   return (
     <div>
-      <div className="flex items-start sm:items-center gap-3 sm:gap-4 mb-5">
+      <div className="flex items-center gap-3 mb-5">
         <button onClick={onBack} 
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            border: '1px solid #E5E7EB',
-            background: 'white',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#003DA5';
-            e.currentTarget.style.background = '#EFF6FF';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#E5E7EB';
-            e.currentTarget.style.background = 'white';
-          }}
+          className="w-9 h-9 rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm flex items-center justify-center cursor-pointer transition-all duration-200 hover:border-[#003DA5]/40 hover:bg-blue-50/60 hover:shadow-sm active:scale-95 shrink-0"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-4.5 h-4.5 text-gray-600" />
         </button>
         {/* Environment Banner — Portal Docente */}
-        <div className="flex items-center justify-between px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-100/60 to-indigo-50/60 backdrop-blur-md border border-purple-200/50 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-purple-200/60 rounded-lg">
-              <Shield className="w-4 h-4 text-purple-700" />
-            </div>
-            <span className="text-[0.7rem] font-black tracking-widest uppercase text-purple-900">
+        <div className="flex-1 flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#003DA5]/[0.06] via-purple-50/40 to-indigo-50/30 backdrop-blur-xl border border-[#003DA5]/10 shadow-[0_1px_3px_rgba(0,61,165,0.06)]">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#003DA5]/15 to-purple-200/40 flex items-center justify-center shrink-0">
+            <Shield className="w-3.5 h-3.5 text-[#003DA5]" />
+          </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[0.68rem] font-black tracking-[0.14em] uppercase text-[#003DA5]">
               Portal Docente
             </span>
-            <span className="hidden sm:inline text-xs font-semibold text-purple-700/80">
-              — Tablero de Gestión de Plan de Trabajo Académico
+            <span className="hidden md:inline text-[0.72rem] font-semibold text-gray-500">
+              — Plan de Trabajo Académico
             </span>
           </div>
         </div>
       </div>
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 sm:mb-6">
-        <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5 sm:mb-7">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="hidden sm:flex w-11 h-11 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100/60 items-center justify-center shadow-sm shrink-0">
+            <FileText className="w-5 h-5 text-[#003DA5]" />
+          </div>
           <div className="min-w-0">
-            <h2 className="text-[18px] sm:text-2xl font-black text-gray-900 m-0 flex flex-col sm:flex-row sm:items-center items-start gap-2 sm:gap-3 tracking-tight leading-tight">
-              <div className="hidden sm:flex p-2 bg-blue-50/80 rounded-xl shadow-inner shrink-0">
-                <FileText className="w-6 h-6 text-[#003DA5]" />
-              </div>
-              <span className="break-words">Mi Plan de Trabajo Académico</span>
+            <h2 className="text-[17px] sm:text-xl lg:text-[22px] font-black text-gray-900 m-0 tracking-tight leading-tight">
+              Mi Plan de Trabajo Académico
             </h2>
-            <p className="text-[12px] sm:text-sm font-bold text-gray-500 mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span className="truncate max-w-[150px] sm:max-w-none">{userName || 'Docente'}</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0" />
-              <span>Periodo 2026-1</span>
+            <p className="text-[11px] sm:text-[12px] font-bold text-gray-500 mt-0.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="truncate max-w-[140px] sm:max-w-none">{userName || 'Docente'}</span>
+              <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0" />
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50/80 text-[#003DA5] text-[10px] font-extrabold tracking-wide border border-blue-100/50">
+                <Calendar className="w-3 h-3" /> 2026-1
+              </span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <PTASyncIndicator syncState={syncState} sistema="portal" compact />
           {puedeCrearPTA ? (
             <button
               onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
-              className="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl border-none text-white text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.23)] hover:bg-[#003185] active:scale-95 transition-all duration-300 cursor-pointer"
-              style={{ background: '#003DA5' }}
+              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-gradient-to-r from-[#003DA5] to-[#0052D4] hover:from-[#002B75] hover:to-[#003DA5]"
             >
-              <Plus className="w-4 h-4" /> Nuevo PTA
+              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
             </button>
           ) : (
-            <div className="flex items-center gap-3">
-              <div
-                className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border text-[12px] font-bold"
-                style={{
-                  background: ptaActivo ? '#FEF3C7' : '#FEE2E2',
-                  borderColor: ptaActivo ? '#FDE68A' : '#FCA5A5',
-                  color: ptaActivo ? '#92400E' : '#991B1B',
-                  maxWidth: 340,
-                }}
-                title={mensajeBloqueo ?? undefined}
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span className="leading-snug">{mensajeBloqueo}</span>
-              </div>
-              {ptaActivo && !tieneSolicitudPendiente && !tienePermisoEspecial && (
-                <button
-                  onClick={() => setShowSolicitudModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border text-[12px] font-bold cursor-pointer transition-all hover:shadow-md active:scale-95 whitespace-nowrap"
-                  style={{ borderColor: '#D97706', background: 'white', color: '#92400E' }}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  ¿Necesita crear otro PTA?
-                </button>
-              )}
-            </div>
+            <button
+              onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
+              disabled
+              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border border-gray-200 text-gray-400 text-[12px] sm:text-[13px] font-extrabold bg-gray-50 cursor-not-allowed transition-all duration-300"
+              title={mensajeBloqueo ?? 'No puedes crear un nuevo PTA en este momento'}
+            >
+              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
+            </button>
           )}
         </div>
       </div>
 
       {/* Vista Nav */}
-      <div className="flex overflow-x-auto hide-scrollbar gap-1.5 sm:gap-2 bg-gray-50/50 backdrop-blur-2xl rounded-xl sm:rounded-[1.25rem] p-1.5 border border-gray-200/50 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] mb-6 sm:mb-8 w-full max-w-full">
-        {VISTAS_NAV.map(v => (
-          <button
-            key={v.key}
-            onClick={() => setVista(v.key as VistaPortal)}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2.5 px-3 sm:px-5 py-2 sm:py-3 rounded-lg sm:rounded-xl border-none text-[12px] sm:text-[13px] transition-all whitespace-nowrap cursor-pointer shrink-0 ${
-              vista === v.key 
-                ? 'text-gray-900 font-black bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)]' 
-                : 'text-gray-500 font-bold hover:bg-white/60 hover:text-gray-800 bg-transparent'
-            }`}
-          >
-            <v.icon className={`w-4 h-4 ${vista === v.key ? 'text-[#003DA5]' : 'opacity-70'}`} />
-            <span>{v.label}</span>
-          </button>
-        ))}
+      <div className="flex overflow-x-auto hide-scrollbar gap-1 sm:gap-1.5 bg-gray-50/60 backdrop-blur-2xl rounded-xl sm:rounded-2xl p-1 sm:p-1.5 border border-gray-200/50 shadow-[inset_0_1px_3px_rgba(0,0,0,0.03)] mb-5 sm:mb-7 w-full max-w-full">
+        {VISTAS_NAV.map(v => {
+          const isActive = vista === v.key;
+          return (
+            <button
+              key={v.key}
+              onClick={() => setVista(v.key as VistaPortal)}
+              className={`relative flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl border-none text-[11px] sm:text-[12.5px] transition-all duration-200 whitespace-nowrap cursor-pointer shrink-0 ${
+                isActive
+                  ? 'text-[#003DA5] font-black bg-white shadow-[0_2px_8px_rgba(0,61,165,0.08)]' 
+                  : 'text-gray-500 font-bold hover:bg-white/60 hover:text-gray-700 bg-transparent'
+              }`}
+            >
+              <v.icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                isActive ? 'text-[#003DA5]' : 'text-gray-400'
+              }`} />
+              <span>{v.label}</span>
+              {isActive && <div className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[#003DA5]" />}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid #E5E7EB', borderTopColor: '#003DA5', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <p style={{ color: '#6B7280', fontSize: '0.85rem' }}>Cargando tus PTAs...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        /* Premium skeleton loading */
+        <div className="space-y-5">
+          {[1, 2].map(k => (
+            <div key={k} className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 animate-pulse">
+              <div className="flex justify-between items-start mb-6">
+                <div className="space-y-2.5">
+                  <div className="h-5 bg-gray-200/80 rounded-lg w-52" />
+                  <div className="flex gap-3">
+                    <div className="h-4 bg-gray-100 rounded-md w-28" />
+                    <div className="h-4 bg-gray-100 rounded-md w-36" />
+                  </div>
+                </div>
+                <div className="h-7 bg-gray-200/60 rounded-xl w-24" />
+              </div>
+              <div className="bg-gray-50/80 rounded-xl p-5">
+                <div className="flex items-center gap-4">
+                  {[1,2,3,4,5].map(d => (
+                    <div key={d} className="flex items-center flex-1">
+                      <div className="w-6 h-6 rounded-full bg-gray-200/80" />
+                      {d < 5 && <div className="flex-1 h-1 bg-gray-100 mx-2 rounded-full" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <>
@@ -605,89 +602,91 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                     return (
                       <motion.div
                         key={pta.id}
-                        initial={{ opacity: 0, y: 15 }}
+                        initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05, type: 'spring', stiffness: 300, damping: 25 }}
+                        transition={{ delay: i * 0.04, type: 'spring', stiffness: 320, damping: 28 }}
                         onClick={() => navigateToVista('v06_detalle', pta.id)}
-                        className={`group bg-white rounded-3xl border border-gray-200/60 p-5 sm:p-7 cursor-pointer shadow-[0_4px_24px_rgba(0,0,0,0.02)] hover:shadow-[0_12px_45px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:border-[#003DA5]/30 transition-all duration-300 transform relative overflow-hidden flex flex-col gap-5 sm:gap-7`}
+                        className={`group bg-white rounded-2xl sm:rounded-3xl border border-gray-200/60 p-4 sm:p-6 lg:p-7 cursor-pointer shadow-[0_2px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.07)] hover:-translate-y-0.5 hover:border-[#003DA5]/25 transition-all duration-300 relative overflow-hidden`}
                       >
-                        {/* Indicador Izquierdo de Acción */}
-                        {needsAction && <div className="absolute top-0 left-0 bottom-0 w-1.5" style={{ background: cfg.color }} />}
+                        {/* Left accent bar for action-needed states */}
+                        {needsAction && <div className="absolute top-0 left-0 bottom-0 w-1 sm:w-1.5 rounded-r-full" style={{ background: `linear-gradient(180deg, ${cfg.color}, ${cfg.color}88)` }} />}
                         
-                        {/* 1. Cabecera Abierta: Titulo, Info Básica y Badges a la derecha */}
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 w-full relative z-10 pl-2">
-                           {/* Bloque Izquierdo */}
-                           <div className="flex flex-col gap-2">
-                              <div className="flex items-center gap-3">
-                                <h4 className="text-[1.25rem] sm:text-[1.4rem] font-black tracking-tight text-gray-900 leading-none">
+                        {/* Card content wrapper */}
+                        <div className={`flex flex-col gap-4 sm:gap-5 ${needsAction ? 'pl-2 sm:pl-3' : ''}`}>
+                          {/* Row 1: Title + Status Badge */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                                <h4 className="text-[1rem] sm:text-[1.15rem] lg:text-[1.3rem] font-black tracking-tight text-gray-900 leading-snug">
                                   Plan de Trabajo Académico
                                 </h4>
-                                <span className="text-gray-400 font-bold text-[0.85rem] tracking-widest uppercase mt-0.5">
+                                <span className="text-gray-400 font-bold text-[0.72rem] sm:text-[0.8rem] tracking-widest uppercase">
                                   {pta.periodo || '2026-1'}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-3 text-xs sm:text-[13px] font-semibold text-gray-500 flex-wrap">
-                                 <span className="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-2.5 py-1.5 rounded-lg shadow-sm border border-gray-200/50">
-                                    <Clock className="w-3.5 h-3.5" /> {pta.dedicacion || 'Tiempo Completo'}
-                                 </span>
-                                 <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                                 <span className="flex items-center gap-1.5 text-gray-600">
-                                   <Target className="w-3.5 h-3.5 text-indigo-500" /> <strong className="text-gray-900">{pta.horas_totales ?? pta.total_horas_programadas ?? 0}</strong> de {pta.horas_asignables ?? pta.horas_a_programar ?? 800}h asignadas
-                                 </span>
+                              <div className="flex items-center gap-2 sm:gap-3 mt-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded-md text-[0.68rem] sm:text-[0.72rem] font-semibold border border-gray-100">
+                                  <Clock className="w-3 h-3 text-gray-400" /> {pta.dedicacion || 'TC'}
+                                </span>
+                                <span className="hidden xs:inline w-1 h-1 rounded-full bg-gray-300" />
+                                <span className="inline-flex items-center gap-1 text-[0.68rem] sm:text-[0.72rem] font-semibold text-gray-500">
+                                  <Target className="w-3 h-3 text-indigo-400" />
+                                  <strong className="text-gray-800">{pta.horas_totales ?? pta.total_horas_programadas ?? 0}</strong>
+                                  <span className="hidden xs:inline">de {pta.horas_asignables ?? pta.horas_a_programar ?? 800}h</span>
+                                </span>
                               </div>
-                           </div>
+                            </div>
+                            {/* Status badges — stacked on mobile, inline on desktop */}
+                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              <span className="inline-flex items-center px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[0.6rem] sm:text-[0.65rem] font-bold uppercase tracking-wider shadow-sm" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+                                {cfg.label}
+                              </span>
+                              {needsAction && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-600 text-[0.55rem] sm:text-[0.6rem] font-black uppercase tracking-wider animate-[pulse_2s_ease-in-out_infinite] border border-red-100">
+                                  <AlertTriangle className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Acción
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                           {/* Bloque Derecho (Badges) */}
-                           <div className="flex flex-col sm:items-end gap-2 shrink-0">
-                               <span className="inline-flex items-center justify-center px-4 py-2 rounded-xl text-[0.68rem] font-bold uppercase tracking-widest shadow-sm" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
-                                 {cfg.label}
-                               </span>
-                               {needsAction && (
-                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-[0.65rem] font-black uppercase tracking-widest animate-[pulse_2s_ease-in-out_infinite] border border-red-200 shadow-sm">
-                                   <AlertTriangle className="w-3.5 h-3.5" /> Acción Requerida
-                                 </span>
-                               )}
-                           </div>
-                        </div>
-
-                        {/* 2. Stepper de Rastreo y Controles Inferiores */}
-                        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 pl-2 relative z-10 w-full">
-                           {/* Stepper tracking container */}
-                           <div className="flex-1 w-full xl:max-w-2xl bg-gray-50/50 rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                              <div className="text-[0.65rem] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                <History className="w-3 h-3" /> Progreso de aprobación
+                          {/* Row 2: Stepper + Actions */}
+                          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 lg:gap-6">
+                            {/* Stepper */}
+                            <div className="flex-1 w-full lg:max-w-xl bg-gray-50/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-gray-100/80">
+                              <div className="text-[0.58rem] sm:text-[0.62rem] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                                <History className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Progreso
                               </div>
                               <TrackingBar estado={pta.estado} />
-                           </div>
+                            </div>
 
-                           {/* Botones de Acción Orientados a Conversión */}
-                           <div className="flex flex-wrap items-center justify-start xl:justify-end gap-3 shrink-0 pt-2 xl:pt-0">
-                             {pta.estado === 'NOTIFICADO_DOCENTE' && (
-                               <button onClick={(e) => { e.stopPropagation(); navigateToVista('v02_revision', pta.id); }} className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-amber-500 text-white text-[13px] font-bold shadow-[0_4px_12px_rgba(245,158,11,0.25)] hover:bg-amber-600 active:scale-95 transition-all">
-                                 <MessageSquare className="w-4 h-4" /> Revisar propuesta
-                               </button>
-                             )}
-                             {pta.estado === 'Borrador' && (
-                               <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#003DA5] text-white text-[13px] font-bold shadow-[0_4px_12px_rgba(0,61,165,0.3)] hover:bg-[#002B75] active:scale-95 transition-all">
-                                 <Edit3 className="w-4 h-4" /> Continuar edición
-                               </button>
-                             )}
-                             {pta.estado === 'Devuelto' && (
-                               <button onClick={(e) => { e.stopPropagation(); navigateToVista('v10_devoluciones'); }} className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-orange-600 text-white text-[13px] font-bold shadow-[0_4px_12px_rgba(234,88,12,0.25)] hover:bg-orange-700 active:scale-95 transition-all">
-                                 <RotateCcw className="w-4 h-4" /> Subsanar correcciones
-                               </button>
-                             )}
-                             {isEnRevisionDocente && (
-                               <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-2 px-6 py-3.5 rounded-2xl text-white text-[13px] font-bold active:scale-95 transition-all" style={{ background: '#7C3AED', boxShadow: '0 4px 12px rgba(124,58,237,0.35)' }}>
-                                 <CheckCircle2 className="w-4 h-4" /> Revisar aprobación
-                               </button>
-                             )}
-                             <button className="flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-gray-50 border border-gray-200 text-gray-700 text-[13px] font-bold shadow-sm hover:shadow-md hover:bg-white active:scale-95 transition-all ml-1 group-hover:border-[#003DA5]/30 group-hover:text-[#003DA5]">
-                               Ver detalle <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                             </button>
-                           </div>
+                            {/* Action Buttons — compact on mobile */}
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
+                              {pta.estado === 'NOTIFICADO_DOCENTE' && (
+                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v02_revision', pta.id); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-amber-500 text-white text-[11px] sm:text-[12.5px] font-bold shadow-[0_3px_10px_rgba(245,158,11,0.2)] hover:bg-amber-600 active:scale-[0.97] transition-all">
+                                  <MessageSquare className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Revisar</span> propuesta
+                                </button>
+                              )}
+                              {pta.estado === 'Borrador' && (
+                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#003DA5] to-[#0052D4] text-white text-[11px] sm:text-[12.5px] font-bold shadow-[0_3px_10px_rgba(0,61,165,0.25)] hover:from-[#002B75] active:scale-[0.97] transition-all">
+                                  <Edit3 className="w-3.5 h-3.5" /> Continuar edición
+                                </button>
+                              )}
+                              {pta.estado === 'Devuelto' && (
+                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v10_devoluciones'); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-orange-600 text-white text-[11px] sm:text-[12.5px] font-bold shadow-[0_3px_10px_rgba(234,88,12,0.2)] hover:bg-orange-700 active:scale-[0.97] transition-all">
+                                  <RotateCcw className="w-3.5 h-3.5" /> Subsanar
+                                </button>
+                              )}
+                              {isEnRevisionDocente && (
+                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-white text-[11px] sm:text-[12.5px] font-bold active:scale-[0.97] transition-all" style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 3px 10px rgba(124,58,237,0.3)' }}>
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Revisar
+                                </button>
+                              )}
+                              <button className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-50/80 border border-gray-200 text-gray-600 text-[11px] sm:text-[12.5px] font-bold shadow-sm hover:shadow-md hover:bg-white active:scale-[0.97] transition-all group-hover:border-[#003DA5]/20 group-hover:text-[#003DA5]">
+                                <span className="hidden sm:inline">Ver</span> detalle <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
-
                       </motion.div>
                     );
                   })}
@@ -700,55 +699,56 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
           {/* ═══════ V06: Detalle + V05: Concertación + V08: Tracking ═══════ */}
           {vista === 'v06_detalle' && selectedPta && (
-            <div>
-              <button onClick={() => { setVista('v01_dashboard'); setSelectedPtaId(null); setSelectedPta(null); }} style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#6B7280', fontSize: '0.82rem', fontWeight: 600, border: 'none', background: 'none', cursor: 'pointer', marginBottom: 14 }}>
-                <ChevronLeft style={{ width: 16, height: 16 }} /> Volver al dashboard
+            <div className="space-y-4">
+              <button onClick={() => { setVista('v01_dashboard'); setSelectedPtaId(null); setSelectedPta(null); }} className="flex items-center gap-1.5 text-gray-500 text-[0.78rem] sm:text-[0.82rem] font-semibold border-none bg-transparent cursor-pointer hover:text-[#003DA5] transition-colors mb-1">
+                <ChevronLeft className="w-4 h-4" /> Volver al dashboard
               </button>
 
               {/* Estado y Tracking */}
-              <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E5E7EB', padding: '20px 24px', marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: 0 }}>PTA — {selectedPta.periodo || '2026-1'}</h3>
-                    <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: '2px 0 0' }}>{selectedPta.dedicacion} • ID: {selectedPta.id?.substring(0, 14)}</p>
+              <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 shadow-sm">
+                {/* Header row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="min-w-0">
+                    <h3 className="text-[0.95rem] sm:text-[1.05rem] font-black text-gray-900 m-0 tracking-tight">PTA — {selectedPta.periodo || '2026-1'}</h3>
+                    <p className="text-[0.7rem] sm:text-[0.75rem] text-gray-500 mt-0.5 font-medium">{selectedPta.dedicacion} • <span className="text-gray-400">ID: {selectedPta.id?.substring(0, 14)}</span></p>
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div className="flex items-center gap-2 flex-wrap">
                     {selectedPta.estado === 'NOTIFICADO_DOCENTE' && (
-                      <button onClick={() => navigateToVista('v02_revision', selectedPta.id)} style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: '#D97706', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Eye style={{ width: 13, height: 13 }} /> Revisar propuesta
+                      <button onClick={() => navigateToVista('v02_revision', selectedPta.id)} className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-lg border-none bg-amber-500 text-white text-[0.72rem] font-bold cursor-pointer hover:bg-amber-600 active:scale-[0.97] transition-all shadow-sm">
+                        <Eye className="w-3 h-3" /> <span className="hidden sm:inline">Revisar</span> propuesta
                       </button>
                     )}
-                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: 'white', color: '#6B7280', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Printer style={{ width: 13, height: 13 }} /> Imprimir
+                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
+                      <Printer className="w-3 h-3" /> <span className="hidden xs:inline">Imprimir</span>
                     </button>
-                    <button onClick={() => setIsReporteOpen(true)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid transparent', background: '#EFF6FF', color: '#1E3A8A', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <FileText style={{ width: 13, height: 13 }} /> Reporte Institucional
+                    <button onClick={() => setIsReporteOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-blue-100 bg-blue-50/80 text-[#1E3A8A] text-[0.72rem] font-bold cursor-pointer hover:bg-blue-100 active:scale-[0.97] transition-all">
+                      <FileText className="w-3 h-3" /> <span className="hidden sm:inline">Reporte</span>
                     </button>
                   </div>
                 </div>
 
                 {/* V08: Tracking bar */}
-                <div style={{ padding: '12px 16px', background: '#F9FAFB', borderRadius: 10, marginBottom: 14 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>Estado de aprobación</div>
+                <div className="p-3 sm:p-4 bg-gray-50/70 rounded-xl border border-gray-100/60 mb-4">
+                  <div className="text-[0.62rem] sm:text-[0.68rem] font-bold text-gray-400 uppercase tracking-wider mb-2">Estado de aprobación</div>
                   <TrackingBar estado={selectedPta.estado} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                    <span style={{ padding: '3px 10px', borderRadius: 8, background: getEstadoCfg(selectedPta.estado).bg, color: getEstadoCfg(selectedPta.estado).color, fontSize: '0.72rem', fontWeight: 700 }}>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="px-2.5 py-1 rounded-lg text-[0.65rem] sm:text-[0.7rem] font-bold" style={{ background: getEstadoCfg(selectedPta.estado).bg, color: getEstadoCfg(selectedPta.estado).color }}>
                       {getEstadoCfg(selectedPta.estado).label}
                     </span>
                   </div>
                 </div>
 
-                {/* Métricas */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+                {/* Métricas — responsive grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                   {[
                     { label: 'Horas programadas', value: selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0 },
                     { label: 'Horas disponibles', value: selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800 },
                     { label: '% Carga', value: `${(selectedPta.horas_asignables ?? selectedPta.horas_a_programar) ? Math.round(((selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0) / (selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800)) * 100) : 0}%` },
                     { label: 'Asignaturas', value: selectedPta.asignaturas?.length || selectedPta.num_asignaturas || 0 },
                   ].map(m => (
-                    <div key={m.label} style={{ padding: '10px 14px', borderRadius: 8, background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
-                      <div style={{ fontSize: '0.62rem', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>{m.label}</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', marginTop: 2 }}>{m.value}</div>
+                    <div key={m.label} className="p-2.5 sm:p-3 rounded-xl bg-gray-50/80 border border-gray-100/60">
+                      <div className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide">{m.label}</div>
+                      <div className="text-[1rem] sm:text-[1.1rem] font-extrabold text-gray-900 mt-0.5">{m.value}</div>
                     </div>
                   ))}
                 </div>
@@ -788,71 +788,62 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 const usedPct = horasMax > 0 ? Math.min(horasTotal / horasMax, 1) : 0;
 
                 return (
-                  <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E5E7EB', padding: '18px 22px', marginBottom: 14 }}>
-                    <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Target style={{ width: 15, height: 15, color: '#003DA5' }} /> Distribución por Componente
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
+                      <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#003DA5]" /> Distribución por Componente
                     </h4>
 
-                    {/* Side-by-side: Donut (left) + Bars (right) */}
-                    <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-                      {/* Donut Chart — left */}
-                      <div style={{ position: 'relative', width: 150, height: 150, flexShrink: 0 }}>
-                        <svg width="150" height="150" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
-                          <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="18" />
+                    {/* Responsive layout: stack on mobile, side-by-side on md+ */}
+                    <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-center">
+                      {/* Donut Chart — hidden on very small, visible from sm */}
+                      <div className="relative w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] shrink-0">
+                        <svg className="w-full h-full" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
+                          <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="16" />
                           {donutSegments.map((seg, i) => (
                             <circle
                               key={seg.label}
                               cx="80" cy="80" r={radius}
                               fill="none"
                               stroke={seg.color}
-                              strokeWidth="18"
+                              strokeWidth="16"
                               strokeDasharray={`${seg.dashLength} ${circumference - seg.dashLength}`}
                               strokeDashoffset={seg.dashOffset}
                               strokeLinecap="butt"
-                              style={{
-                                transition: 'stroke-dasharray 0.6s ease-out, stroke-dashoffset 0.6s ease-out',
-                                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.08))',
-                              }}
+                              className="transition-all duration-600 ease-out"
+                              style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.06))' }}
                             />
                           ))}
                         </svg>
-                        <div style={{
-                          position: 'absolute', inset: 0,
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#111827', lineHeight: 1 }}>
-                            {horasTotal}
-                          </span>
-                          <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            horas
-                          </span>
-                          <span style={{ fontSize: '0.55rem', color: '#D1D5DB', marginTop: 2 }}>
-                            de {horasMax}h
-                          </span>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-[1.15rem] sm:text-[1.3rem] font-black text-gray-900 leading-none">{horasTotal}</span>
+                          <span className="text-[0.52rem] sm:text-[0.58rem] font-bold text-gray-400 uppercase tracking-wider">horas</span>
+                          <span className="text-[0.48rem] sm:text-[0.52rem] text-gray-300 mt-0.5">de {horasMax}h</span>
                         </div>
                       </div>
 
-                      {/* Bar chart — right */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Bar chart — fills remaining space */}
+                      <div className="flex-1 min-w-0 w-full">
                         {comps.map(c => {
                           const maxH = Math.round(horasMax * 0.5);
                           const pct = maxH > 0 ? Math.min((c.value / maxH) * 100, 100) : 0;
                           const compPct = horasTotal > 0 ? Math.round((c.value / horasTotal) * 100) : 0;
                           return (
-                            <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                              <c.icon style={{ width: 14, height: 14, color: c.color, flexShrink: 0 }} />
-                              <span style={{ width: 95, fontSize: '0.7rem', fontWeight: 600, color: '#374151', flexShrink: 0 }}>{c.label}</span>
-                              <div style={{ flex: 1, height: 7, borderRadius: 4, background: '#F3F4F6', overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: c.color, transition: 'width 0.4s ease-out' }} />
+                            <div key={c.label} className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-2.5">
+                              <c.icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" style={{ color: c.color }} />
+                              <span className="w-[70px] sm:w-[90px] text-[0.62rem] sm:text-[0.68rem] font-semibold text-gray-600 shrink-0 truncate">{c.label}</span>
+                              <div className="flex-1 h-[5px] sm:h-[6px] rounded-full bg-gray-100 overflow-hidden">
+                                <div className="h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${pct}%`, background: c.color }} />
                               </div>
-                              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: c.color, width: 55, textAlign: 'right', flexShrink: 0 }}>{c.value}h <span style={{ fontWeight: 500, color: '#9CA3AF' }}>({compPct}%)</span></span>
+                              <span className="text-[0.6rem] sm:text-[0.65rem] font-bold shrink-0 text-right w-[50px] sm:w-[55px]" style={{ color: c.color }}>
+                                {c.value}h <span className="font-medium text-gray-400">({compPct}%)</span>
+                              </span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 10, padding: '6px 10px', borderRadius: 6, background: '#F0F9FF', border: '1px solid #BAE6FD', fontSize: '0.62rem', color: '#0369A1' }}>
+                    <div className="mt-3 px-2.5 py-1.5 rounded-lg bg-blue-50/60 border border-blue-100/60 text-[0.55rem] sm:text-[0.6rem] text-blue-700">
                       <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
                     </div>
                   </div>
@@ -861,36 +852,31 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
               {/* Asignaturas */}
               {selectedPta.asignaturas?.length > 0 && (
-                <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E5E7EB', padding: '18px 22px', marginBottom: 14 }}>
-                  <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <BookOpen style={{ width: 15, height: 15, color: '#003DA5' }} /> Componente Docencia — Asignaturas ({selectedPta.asignaturas.length})
+                <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                  <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#003DA5]" /> Docencia — Asignaturas ({selectedPta.asignaturas.length})
                   </h4>
-                  <div style={{
-                    display: 'grid', gridTemplateColumns: '1fr 55px 45px 55px',
-                    gap: 4, padding: '6px 0', borderBottom: '1px solid #E5E7EB',
-                    fontSize: '0.6rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase',
-                  }}>
-                    <span>Asignatura</span>
-                    <span style={{ textAlign: 'center' }}>Créd.</span>
-                    <span style={{ textAlign: 'center' }}>Sem.</span>
-                    <span style={{ textAlign: 'right' }}>Horas</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {selectedPta.asignaturas.map((a: any, i: number) => (
-                      <div key={i} style={{
-                        display: 'grid', gridTemplateColumns: '1fr 55px 45px 55px',
-                        gap: 4, padding: '7px 0',
-                        borderBottom: i < selectedPta.asignaturas.length - 1 ? '1px solid #F9FAFB' : 'none',
-                      }}>
-                        <div>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#374151' }}>{a.nombre || a.asignatura_nombre}</span>
-                          {a.nucleo_tematico && <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>}
-                        </div>
-                        <span style={{ textAlign: 'center', fontSize: '0.78rem', color: '#6B7280' }}>{a.creditos || 0}</span>
-                        <span style={{ textAlign: 'center', fontSize: '0.78rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
-                        <span style={{ textAlign: 'right', fontSize: '0.78rem', fontWeight: 700, color: '#003DA5' }}>{a.total_horas || a.horas || 0}h</span>
+                  {/* Scrollable table on mobile */}
+                  <div className="overflow-x-auto -mx-1">
+                    <div className="min-w-[360px]">
+                      <div className="grid grid-cols-[1fr_50px_40px_50px] gap-1 px-1 pb-1.5 border-b border-gray-200">
+                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide">Asignatura</span>
+                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide text-center">Créd.</span>
+                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide text-center">Sem.</span>
+                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide text-right">Horas</span>
                       </div>
-                    ))}
+                      {selectedPta.asignaturas.map((a: any, i: number) => (
+                        <div key={i} className={`grid grid-cols-[1fr_50px_40px_50px] gap-1 px-1 py-2 ${i < selectedPta.asignaturas.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                          <div className="min-w-0">
+                            <span className="text-[0.72rem] sm:text-[0.78rem] font-medium text-gray-700 block truncate">{a.nombre || a.asignatura_nombre}</span>
+                            {a.nucleo_tematico && <div className="text-[0.55rem] text-gray-400 truncate">{a.nucleo_tematico}</div>}
+                          </div>
+                          <span className="text-center text-[0.72rem] sm:text-[0.78rem] text-gray-500">{a.creditos || 0}</span>
+                          <span className="text-center text-[0.72rem] sm:text-[0.78rem] text-gray-500">{a.semestre || '-'}</span>
+                          <span className="text-right text-[0.72rem] sm:text-[0.78rem] font-bold text-[#003DA5]">{a.total_horas || a.horas || 0}h</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1042,7 +1028,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
           {/* ═══════ V11: Calendario ═══════ */}
           {vista === 'v11_calendario' && (
-            <V11CalendarioAcademico ptas={ptas} periodo="2026-1" />
+            <V11CalendarioAcademico ptas={ptas} periodo={activePeriodo} />
           )}
 
           {/* ═══════ V12: Adjuntos ═══════ */}

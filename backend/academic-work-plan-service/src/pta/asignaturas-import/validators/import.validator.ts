@@ -15,18 +15,35 @@ export class ImportValidator {
    * @param programas - Las filas de la hoja PROGRAMAS
    * @returns Un reporte con validez, errores bloqueantes y advertencias
    */
+  // [BR-002] Conteos de referencia basados en Circular Dispositiva 003/2025
+  static readonly REFERENCIA_ASIGNATURAS = 427;
+  static readonly REFERENCIA_PROGRAMAS = 14;
+  static readonly REFERENCIA_OFERTAS = 325;
+
   static validarPreInsert(asignaturas: AsignaturaRow[], programas: ProgramaRow[]): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // R1. La hoja ASIGNATURAS tiene exactamente 423 filas de datos
-    if (asignaturas.length !== 423) {
-      errors.push(`R1: La hoja ASIGNATURAS debe contener exactamente 423 filas de datos (se encontraron ${asignaturas.length}).`);
+    // R1. [BR-001] La hoja ASIGNATURAS debe tener datos (mínimo 1, máximo razonable 2000)
+    if (asignaturas.length === 0) {
+      errors.push(`R1: La hoja ASIGNATURAS está vacía. Se requiere al menos 1 fila de datos.`);
+    } else if (asignaturas.length > 2000) {
+      errors.push(`R1: La hoja ASIGNATURAS tiene ${asignaturas.length} filas, excediendo el máximo razonable de 2000.`);
+    } else if (asignaturas.length !== ImportValidator.REFERENCIA_ASIGNATURAS) {
+      warnings.push(
+        `[BR-002] La hoja ASIGNATURAS contiene ${asignaturas.length} filas. ` +
+        `El valor de referencia (Circular 003) es ${ImportValidator.REFERENCIA_ASIGNATURAS}. Verifique si el catálogo es correcto.`
+      );
     }
 
-    // R2. La hoja PROGRAMAS tiene exactamente 14 filas de datos
-    if (programas.length !== 14) {
-      errors.push(`R2: La hoja PROGRAMAS debe contener exactamente 14 filas de datos (se encontraron ${programas.length}).`);
+    // R2. [BR-001] La hoja PROGRAMAS debe tener datos
+    if (programas.length === 0) {
+      errors.push(`R2: La hoja PROGRAMAS está vacía. Se requiere al menos 1 fila de datos.`);
+    } else if (programas.length !== ImportValidator.REFERENCIA_PROGRAMAS) {
+      warnings.push(
+        `[BR-002] La hoja PROGRAMAS contiene ${programas.length} filas. ` +
+        `El valor de referencia (Circular 003) es ${ImportValidator.REFERENCIA_PROGRAMAS}. Verifique si el catálogo es correcto.`
+      );
     }
 
     // R3. Todos los codigo_asignatura son únicos

@@ -709,239 +709,87 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
-      {/* Header */}
+      {/* Header - World Class Design */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex flex-col gap-4"
       >
-        <div>
-          <div className="flex items-center gap-2 sm:gap-3 mb-2">
-            <div 
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
-              }}
-            >
-              <Briefcase className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
-            </div>
-            <h1 
-              className="font-bold tracking-tight text-2xl sm:text-3xl lg:text-[32px]"
-              style={{
-                lineHeight: '1.2',
-                letterSpacing: '-0.25px',
-                color: '#1F2937'
-              }}
-            >
-              Certificados Laborales
-            </h1>
-          </div>
-          <p 
-            className="font-normal text-sm sm:text-base"
-            style={{
-              lineHeight: '1.5',
-              color: '#6B7280'
-            }}
-          >
-            Gestión de certificados laborales solicitados por los empleados. El documento se envía automáticamente al correo registrado en la plataforma.
-          </p>
-        </div>
-
-        {/* Botones de acción - Mobile First */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-            {canVerify && (
-            <button
-              onClick={() => onNavigate?.('validar-qr')}
-              className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
-              style={{
-                background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                minHeight: '48px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <QrCode className="w-5 h-5" strokeWidth={2.5} />
-              <span>Validar Certificado</span>
-            </button>
-            )}
-
-            <button
-              onClick={() => onNavigate?.('configuracion-plantilla')}
-              className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
-              style={{
-                background: 'linear-gradient(135deg, #F0F7FF 0%, #E0ECFF 100%)',
-                color: puedeConfigurarPlantilla ? '#1E40AF' : '#1E3A8A',
-                border: '2px solid #93C5FD',
-                borderRadius: '12px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                opacity: 1,
-                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.16)',
-                minHeight: '48px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, #DBEAFE 0%, #C7DDFF 100%)';
-                e.currentTarget.style.borderColor = '#2563EB';
-                e.currentTarget.style.color = '#1E3A8A';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 6px 14px rgba(37, 99, 235, 0.22)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, #F0F7FF 0%, #E0ECFF 100%)';
-                e.currentTarget.style.borderColor = '#93C5FD';
-                e.currentTarget.style.color = puedeConfigurarPlantilla ? '#1E40AF' : '#1E3A8A';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(37, 99, 235, 0.16)';
-              }}
-            >
-              <span className="w-6 h-6 rounded-md bg-white/80 border border-blue-200 flex items-center justify-center">
-                <Settings className="w-4 h-4" strokeWidth={2.2} />
-              </span>
-              <span className="hidden sm:inline">{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
-              <span className="sm:hidden">Plantilla</span>
-            </button>
-          </div>
-
-          <div className="flex min-w-0 flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center sm:justify-end gap-2 sm:gap-3 sm:ml-auto">
-            <button
-              onClick={() => fetchCertificados(true)}
-              disabled={isRefreshing}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#10B981',
-                border: '2px solid #10B981',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: isRefreshing ? 'not-allowed' : 'pointer',
-                opacity: isRefreshing ? 0.6 : 1
-              }}
-              onMouseEnter={(e) => {
-                if (!isRefreshing) {
-                  e.currentTarget.style.background = '#F0FDF4';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <motion.div
-                animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
-                transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
+        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+            <div className="flex items-start gap-3 md:gap-4">
+              <div 
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#EBF0FA' }}
               >
-                <RefreshCw className="w-5 h-5" strokeWidth={2} />
-              </motion.div>
-              <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
-            </button>
-
-            {canEditPrima && (
-            <button
-              onClick={() => setIsPrimaTecnicaOpen(true)}
-              className="inline-flex max-w-full items-center justify-center gap-2 transition-all whitespace-normal text-center sm:w-auto sm:whitespace-nowrap sm:flex-shrink-0"
-              style={{
-                background: '#FFFFFF',
-                color: '#4338CA',
-                border: '2px solid #C4B5FD',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(67, 56, 202, 0.08)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#EEF2FF';
-                e.currentTarget.style.borderColor = '#A5B4FC';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.borderColor = '#C4B5FD';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <span className="w-5 h-5 rounded-full bg-indigo-100/80 border border-indigo-200 flex items-center justify-center flex-shrink-0">
-                <Percent className="w-3.5 h-3.5" strokeWidth={2.4} />
-              </span>
-              <span className="leading-tight">Prima técnica y/o coordinación</span>
-            </button>
-            )}
-
-            {canExportReport && (
-            <button
-              onClick={() => setIsReporteOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#003DA5',
-                border: '2px solid #003DA5',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#F0F6FF';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <Download className="w-5 h-5" strokeWidth={2} />
-              <span>Exportar</span>
-            </button>
-            )}
-
-            <button
-              onClick={() => setIsHistorialOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#F97316',
-                border: '2px solid #F97316',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#FFF7ED';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <History className="w-5 h-5 scale-110 flex-shrink-0" strokeWidth={2.3} />
-              <span>Ver historial</span>
-            </button>
+                <Briefcase className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
+                  Certificados Laborales
+                </h1>
+                <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
+                  Gestión de certificados laborales solicitados por los empleados
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canVerify && (
+                <button
+                  onClick={() => onNavigate?.('validar-qr')}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5"
+                  title="Validar Certificado"
+                >
+                  <QrCode className="w-4 h-4 flex-shrink-0" />
+                  <span>Validar Certificado</span>
+                </button>
+              )}
+              <button
+                onClick={() => onNavigate?.('configuracion-plantilla')}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                title={puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}
+              >
+                <Settings className="w-4 h-4 flex-shrink-0" />
+                <span>{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
+              </button>
+              <button
+                onClick={() => fetchCertificados(true)}
+                disabled={isRefreshing}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                title="Actualizar"
+              >
+                <RefreshCw className={`w-4 h-4 flex-shrink-0 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
+              </button>
+              {canEditPrima && (
+                <button
+                  onClick={() => setIsPrimaTecnicaOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                  title="Prima técnica y/o coordinación"
+                >
+                  <Percent className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">Prima técnica</span>
+                </button>
+              )}
+              {canExportReport && (
+                <button
+                  onClick={() => setIsReporteOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white"
+                  title="Exportar"
+                >
+                  <Download className="w-4 h-4 flex-shrink-0" />
+                  <span>Exportar</span>
+                </button>
+              )}
+              <button
+                onClick={() => setIsHistorialOpen(true)}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                title="Ver historial"
+              >
+                <History className="w-4 h-4 flex-shrink-0" />
+                <span>Ver historial</span>
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>

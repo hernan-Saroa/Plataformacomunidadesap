@@ -1,14 +1,17 @@
-import { Controller, Get, Post, Put, Delete, Query, Param, Body } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Query, Param, Body, UseGuards } from '@nestjs/common';
 import { ProgramasService } from './programas.service';
-import type { ProgramasFiltroDto } from './programas.service';
-import { CreateProgramaDto, UpdateProgramaDto } from './programa.dto';
+import type { ProgramasFiltroDto as IProgramasFiltroDto } from './programas.service';
+import { CreateProgramaDto, UpdateProgramaDto, ProgramasFiltroDto } from './programa.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('programas-academicos')
+@UseGuards(JwtAuthGuard)
 export class ProgramasController {
   constructor(private readonly programasService: ProgramasService) {}
 
   @Get()
-  listar(@Query() query: ProgramasFiltroDto) {
+  listar(@Query() query: any) {
+    console.log('[DEBUG] Query in listar:', query);
     return this.programasService.listarProgramas(query);
   }
 
@@ -40,5 +43,10 @@ export class ProgramasController {
   @Post(':id/asignaturas')
   guardarAsignaturasPrograma(@Param('id') id: string, @Body() body: { asignaturas: any[] }) {
     return this.programasService.guardarAsignaturasPrograma(id, body.asignaturas);
+  }
+
+  @Patch(':id/cetaps/:ofertaId')
+  actualizarCuposCetap(@Param('id') id: string, @Param('ofertaId') ofertaId: string, @Body() body: { cupos: number }) {
+    return this.programasService.actualizarCuposCetap(id, ofertaId, body.cupos);
   }
 }

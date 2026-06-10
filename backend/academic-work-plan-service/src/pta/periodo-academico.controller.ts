@@ -169,9 +169,11 @@ export class PeriodoAcademicoController {
       ORDER BY p.nombre
     `;
 
-    const cetapsQuery = `
+    // Primero intentar con oferta_cetap_programa (requiere programas asignados)
+    const cetapsFromOfertas = `
       SELECT 
         c.id, 
+        c.codigo,
         c.nombre, 
         dt.nombre AS "dtNombre", 
         COUNT(DISTINCT o.id_programa)::int AS "activePrograms"
@@ -179,14 +181,45 @@ export class PeriodoAcademicoController {
       INNER JOIN academic_work_plan.cetap c ON o.id_cetap = c.id
       INNER JOIN academic_work_plan.direccion_territorial dt ON c.id_direccion_territorial = dt.id
       WHERE o.id_periodo_academico = $1 AND o.activa = TRUE
-      GROUP BY c.id, c.nombre, dt.nombre
+      GROUP BY c.id, c.codigo, c.nombre, dt.nombre
       ORDER BY c.nombre
     `;
 
-    const [programs, cetaps] = await Promise.all([
-      this.repo.query(programsQuery, [id]),
-      this.repo.query(cetapsQuery, [id])
-    ]);
+    // Fallback: tabla periodo_cetap (relación directa sin programas, usada por importación geográfica)
+    const cetapsFromPeriodoCetap = `
+      SELECT 
+        c.id, 
+        c.codigo,
+        c.nombre, 
+        dt.nombre AS "dtNombre",
+        0 AS "activePrograms"
+      FROM academic_work_plan.periodo_cetap pc
+      INNER JOIN academic_work_plan.cetap c ON pc.id_cetap = c.id
+      INNER JOIN academic_work_plan.direccion_territorial dt ON c.id_direccion_territorial = dt.id
+      WHERE pc.id_periodo_academico = $1 AND pc.activo = TRUE
+      ORDER BY c.nombre
+    `;
+
+    let programs = [];
+    let cetaps = [];
+
+    try {
+      [programs, cetaps] = await Promise.all([
+        this.repo.query(programsQuery, [id]),
+        this.repo.query(cetapsFromOfertas, [id])
+      ]);
+    } catch (e) {
+      console.warn('Error querying oferta_cetap_programa:', e.message);
+    }
+
+    // Si no hay CETAPs desde ofertas, intentar desde periodo_cetap
+    if (cetaps.length === 0) {
+      try {
+        cetaps = await this.repo.query(cetapsFromPeriodoCetap, [id]);
+      } catch (e) {
+        console.warn('Error querying periodo_cetap:', e.message);
+      }
+    }
 
     return {
       success: true,

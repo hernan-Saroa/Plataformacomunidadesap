@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PtaModule } from './pta/pta.module';
 import { BancoDocentesModule } from './pta/banco-docentes/banco-docentes.module';
+import { EstructuraImportModule } from './estructura-import/estructura-import.module';
 import { PlanTrabajoAcademicoEntity } from './pta/entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './pta/entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './pta/entities/pta-evidencia.entity';
@@ -23,6 +24,7 @@ import { PersonaEntity } from './pta/entities/persona.entity';
 import { DocenteEntity } from './pta/entities/docente.entity';
 import { AprobacionJefaturaEntity } from './pta/entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
+import { PtaComponentApprovalEntity } from './pta/entities/pta-component-approval.entity';
 
 // New entities
 import { FacultadEntity } from './pta/entities/facultad.entity';
@@ -45,6 +47,7 @@ import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       schema: process.env.DB_SCHEMA || 'academic_work_plan',
+      autoLoadEntities: true,
       entities: [
         PlanTrabajoAcademicoEntity,
         HistorialEstadoPtaEntity,
@@ -61,6 +64,7 @@ import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.
         DocenteEntity,
         AprobacionJefaturaEntity,
         PtaEventoEntity,
+        PtaComponentApprovalEntity,
         FacultadEntity,
         DireccionTerritorialEntity,
         UbicacionSemestralEntity,
@@ -75,6 +79,7 @@ import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.
     AuthModule,
     PtaModule,
     BancoDocentesModule,
+    EstructuraImportModule,
   ],
   controllers: [AppController],
   providers: [

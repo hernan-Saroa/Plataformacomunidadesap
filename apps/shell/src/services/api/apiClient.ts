@@ -583,7 +583,7 @@ export class ApiClient {
       if (response.ok) {
         data = {} as any; // For 200 OK with empty body
       } else {
-        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        const emptyError: any = new Error(`Error en la petición (status: ${response.status})`);
         emptyError.status = response.status;
         emptyError.response = { status: response.status, data: null };
         throw emptyError;

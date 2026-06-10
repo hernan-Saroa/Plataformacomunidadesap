@@ -265,6 +265,7 @@ export function DigitalFolderSection({
 
       {/* ═══ UNIFIED SHARED VIEW ═══ */}
       <CarpetaDigitalSharedView
+        personaId={selectedUserId}
         persona={persona}
         documentos={documentos}
         tiposDocumentos={tiposDocumentos}

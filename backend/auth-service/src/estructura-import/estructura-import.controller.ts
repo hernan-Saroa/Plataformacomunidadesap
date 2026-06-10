@@ -19,12 +19,15 @@ export class EstructuraImportController {
   async uploadGeografico(
     @UploadedFile() file: any,
     @Query('dry_run') dryRun: string = 'false',
+    @Query('skip_invalid') skipInvalid: string = 'false',
+    @Query('periodo') periodo?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Archivo no proporcionado');
     }
     const isDryRun = dryRun === 'true' || dryRun === '1';
-    return this.importService.importGeografico(file.buffer, isDryRun);
+    const isSkipInvalid = skipInvalid === 'true' || skipInvalid === '1';
+    return this.importService.importGeografico(file.buffer, isDryRun, isSkipInvalid, undefined, periodo);
   }
 
   @Get('status')

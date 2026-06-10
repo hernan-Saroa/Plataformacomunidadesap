@@ -25,11 +25,11 @@ import {
   ChevronDown, ChevronRight, ArrowRight, AlertTriangle, Calendar,
   MapPin, Award, Hash, Calculator, TrendingUp, Shield, Printer,
   GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2, Edit2,
-  Activity, Download, ExternalLink
+  Activity, Download, ExternalLink, Lock
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { PTAForm } from '../portal/pta/PTAForm';
@@ -54,6 +54,7 @@ interface PTADetallePanelProps {
   jefaturaTerritorialId?: string;
   isSuperUser?: boolean;
   actorId?: string;
+  actorNombre?: string;
 }
 
 type EvidencePreviewFile = {
@@ -87,6 +88,26 @@ const FLUJO_APROBACION_SIMPLE = [
   { key: 'Pendiente Gestión Profesoral', label: 'N3: G. Profesoral', color: '#3730A3' },
   { key: 'Aprobado', label: 'Aprobado', color: '#059669' },
 ];
+
+const COMPONENT_LEVELS: Record<string, number> = {
+  academica: 1,
+  complementarias: 1,
+  investigacion: 2,
+  ext_capacitacion: 2,
+  ext_procesos: 2,
+  ext_fortalecimiento: 2,
+  ext_gobierno: 2,
+  ext_secciones: 2,
+  academicas_admin: 3,
+};
+
+function getResponsableRoleLabel(key: string): string {
+  const lvl = COMPONENT_LEVELS[key];
+  if (lvl === 1) return 'Jefatura de Programa';
+  if (lvl === 2) return 'Decanatura';
+  if (lvl === 3) return 'Gestión Profesoral';
+  return 'Revisor responsable';
+}
 
 function getStatusConfig(estado: string) {
   const found = FLUJO_COMPLETO.find(f => f.key === estado);
@@ -141,6 +162,79 @@ function fmtFecha(d?: string): string {
   const date = new Date(d);
   if (isNaN(date.getTime())) return d;
   return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtFechaHora(d?: string | Date): string {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return String(d);
+  const dateStr = date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return `${dateStr} ${timeStr}`;
+}
+
+function getApprovalDuration(start: Date, end: Date): string {
+  const diffMs = end.getTime() - start.getTime();
+  const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h`;
+}
+
+function CountdownTimer({ assignmentDate, isApproved }: { assignmentDate: Date; isApproved: boolean }) {
+  const [timeLeft, setTimeLeft] = useState(() => calcRemaining(assignmentDate));
+
+  useEffect(() => {
+    if (isApproved) return;
+    const interval = setInterval(() => {
+      setTimeLeft(calcRemaining(assignmentDate));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [assignmentDate, isApproved]);
+
+  function calcRemaining(start: Date) {
+    const deadline = new Date(start.getTime() + 4 * 7 * 24 * 60 * 60 * 1000); // 4 weeks
+    const diff = deadline.getTime() - Date.now();
+    return {
+      deadline,
+      diff,
+      isExpired: diff < 0,
+    };
+  }
+
+  if (isApproved) return null;
+
+  const absDiff = Math.abs(timeLeft.diff);
+  const days = Math.floor(absDiff / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((absDiff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const minutes = Math.floor((absDiff % (60 * 60 * 1000)) / (60 * 1000));
+
+  const text = timeLeft.isExpired
+    ? `Plazo vencido hace ${days}d ${hours}h`
+    : `Plazo: 4 semanas (quedan ${days}d ${hours}h ${minutes}m)`;
+
+  const color = timeLeft.isExpired ? '#EF4444' : timeLeft.diff < 7 * 24 * 60 * 60 * 1000 ? '#F59E0B' : '#3B82F6';
+  const bg = timeLeft.isExpired ? '#FEF2F2' : timeLeft.diff < 7 * 24 * 60 * 60 * 1000 ? '#FFFBEB' : '#EFF6FF';
+
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '3px 8px',
+      borderRadius: '6px',
+      fontSize: '0.66rem',
+      fontWeight: 700,
+      color,
+      background: bg,
+      border: `1px solid ${color}20`,
+      marginTop: '4px',
+      width: 'fit-content'
+    }}>
+      <Clock style={{ width: 11, height: 11, color }} />
+      <span>{text}</span>
+    </div>
+  );
 }
 
 const IMAGE_FILE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
@@ -211,77 +305,149 @@ function getMimeTypeForExtension(extension: string): string {
 
 // ═══ SUB-COMPONENTS ═══════════════════════════════════════════════════
 
-function ApprovalTracker({ estado, isMobile = false }: { estado: string; isMobile?: boolean }) {
-  const isRechazado = estado === 'Rechazado';
-  const isDevuelto = estado === 'Devuelto';
-  const isEscalado = estado === 'ESCALADO_SNA';
-
-  const getStepStatus = (stepKey: string) => {
-    const order = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'Aprobado'];
-    const currentIdx = order.indexOf(estado);
-    const stepIdx = order.indexOf(stepKey);
-    if (currentIdx < 0) {
-      if (estado === 'Aprobado' && stepKey === 'Aprobado') return 'completed';
-      return 'pending';
-    }
-    if (stepIdx < currentIdx) return 'completed';
-    if (stepIdx === currentIdx) return 'current';
-    return 'pending';
+function ApprovalTracker({
+  estado,
+  componentesAprobacion = [],
+  isMobile = false
+}: {
+  estado: string;
+  componentesAprobacion?: any[];
+  isMobile?: boolean;
+}) {
+  const getStatusForComponent = (compKeys: string[]) => {
+    const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
+    if (approvals.length === 0) return 'pendiente';
+    if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
+    if (approvals.every(a => a.estado === 'aprobado')) return 'aprobado';
+    return 'pendiente';
   };
 
+  const steps = [
+    {
+      label: 'Docencia',
+      icon: BookOpen,
+      status: getStatusForComponent(['academica']),
+      baseColor: '#4472C4'
+    },
+    {
+      label: 'Investigación',
+      icon: FlaskConical,
+      status: getStatusForComponent(['investigacion']),
+      baseColor: '#ED7D31'
+    },
+    {
+      label: 'Extensión',
+      icon: Globe,
+      status: getStatusForComponent([
+        'ext_capacitacion',
+        'ext_procesos',
+        'ext_fortalecimiento',
+        'ext_gobierno',
+        'ext_secciones'
+      ]),
+      baseColor: '#059669'
+    },
+    {
+      label: 'Complementarias',
+      icon: Briefcase,
+      status: getStatusForComponent(['complementarias']),
+      baseColor: '#FFC000'
+    },
+    {
+      label: 'AADM',
+      icon: Award,
+      status: getStatusForComponent(['academicas_admin']),
+      baseColor: '#6B21A8'
+    }
+  ];
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, width: '100%' }}>
-      {FLUJO_APROBACION_SIMPLE.map((step, i) => {
-        const status = getStepStatus(step.key);
-        const isLast = i === FLUJO_APROBACION_SIMPLE.length - 1;
-        const circleSize = isMobile ? 24 : 28;
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(5, 1fr)',
+      gap: isMobile ? '6px' : '10px',
+      width: '100%',
+      marginTop: '8px'
+    }}>
+      {steps.map(step => {
+        const Icon = step.icon;
+        let bg = '#F9FAFB';
+        let borderColor = '#E5E7EB';
+        let statusColor = '#9CA3AF';
+        let statusLabel = 'Pendiente';
+        let iconBg = '#F3F4F6';
+        let iconColor = '#6B7280';
+
+        if (step.status === 'aprobado') {
+          bg = '#F0FDF4';
+          borderColor = '#BBF7D0';
+          statusColor = '#15803D';
+          statusLabel = 'Aprobado';
+          iconBg = '#DCFCE7';
+          iconColor = '#16A34A';
+        } else if (step.status === 'devuelto') {
+          bg = '#FEF2F2';
+          borderColor = '#FECACA';
+          statusColor = '#B91C1C';
+          statusLabel = 'Devuelto';
+          iconBg = '#FEE2E2';
+          iconColor = '#DC2626';
+        } else {
+          bg = '#FFFBEB';
+          borderColor = '#FEF3C7';
+          statusColor = '#B45309';
+          statusLabel = 'Pendiente';
+          iconBg = '#FEF3C7';
+          iconColor = '#D97706';
+        }
 
         return (
-          <div key={step.key} style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <div style={{
-                width: circleSize, height: circleSize, borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: status === 'completed' ? '#059669'
-                  : status === 'current' ? (isRechazado ? '#DC2626' : isDevuelto ? '#D97706' : step.color)
-                  : '#E5E7EB',
-                color: status !== 'pending' ? 'white' : '#9CA3AF',
-                fontSize: '0.6rem', fontWeight: 800,
-                border: status === 'current' ? '3px solid' : '2px solid',
-                borderColor: status === 'completed' ? '#059669'
-                  : status === 'current' ? (isRechazado ? '#DC2626' : isDevuelto ? '#D97706' : step.color)
-                  : '#D1D5DB',
-                transition: 'all 0.3s', flexShrink: 0,
-              }}>
-                {status === 'completed' ? <CheckCircle style={{ width: isMobile ? 11 : 14, height: isMobile ? 11 : 14 }} /> : (i + 1)}
-              </div>
-              {!isMobile && (
-                <span style={{
-                  fontSize: '0.62rem', fontWeight: status === 'current' ? 700 : 500,
-                  color: status === 'current' ? step.color : status === 'completed' ? '#059669' : '#9CA3AF',
-                  marginTop: 3, textAlign: 'center', lineHeight: 1.1,
-                }}>
-                  {step.label}
-                </span>
-              )}
-              {isMobile && (
-                <span style={{
-                  fontSize: '0.55rem', fontWeight: status === 'current' ? 700 : 500,
-                  color: status === 'current' ? step.color : status === 'completed' ? '#059669' : '#9CA3AF',
-                  marginTop: 2, textAlign: 'center', lineHeight: 1,
-                  maxWidth: 44, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {step.label.replace('N1: ', '').replace('N2: ', '').replace('N3: ', '')}
-                </span>
-              )}
+          <div
+            key={step.label}
+            style={{
+              background: bg,
+              border: `1px solid ${borderColor}`,
+              borderRadius: '8px',
+              padding: '6px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              minWidth: 0,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+            }}
+          >
+            <div style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
+              background: iconBg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: iconColor,
+              flexShrink: 0
+            }}>
+              <Icon style={{ width: '13px', height: '13px' }} />
             </div>
-            {!isLast && (
-              <div style={{
-                height: 3, flex: '0 0 12px', borderRadius: 2, marginTop: isMobile ? -12 : -14,
-                background: status === 'completed' ? '#6EE7B7' : '#E5E7EB',
-                transition: 'background 0.3s',
-              }} />
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#374151',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {step.label}
+              </span>
+              <span style={{
+                fontSize: '0.62rem',
+                fontWeight: 600,
+                color: statusColor
+              }}>
+                {statusLabel}
+              </span>
+            </div>
           </div>
         );
       })}
@@ -388,7 +554,7 @@ function SectionCollapsible({ title, icon: Icon, color, count, children, default
 
 export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADetallePanelProps>(({
   pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
-  puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId,
+  puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId, actorNombre,
 }, ref) => {
   const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion' | 'evidencias'>('resumen');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
@@ -398,6 +564,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loadingEvidencias, setLoadingEvidencias] = useState(false);
   const [previewFile, setPreviewFile] = useState<EvidencePreviewFile | null>(null);
+
+  const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>([]);
+  const [loadingComponentesAprobacion, setLoadingComponentesAprobacion] = useState(false);
+  const [comentariosComponente, setComentariosComponente] = useState<Record<string, string>>({});
+  const [procesandoAprobacionComponente, setProcesandoAprobacionComponente] = useState<Record<string, boolean>>({});
+  const [evaluandoComponente, setEvaluandoComponente] = useState<Record<string, boolean>>({});
 
   // ═══ FEATURE 3: MODO EDICIÓN ═══
   const { rules } = usePTARules();
@@ -419,6 +591,69 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       }).catch(() => setLoadingEvidencias(false));
     }
   }, [activeTab, pta?.id]);
+
+  // Cargar aprobaciones de componentes al inicializar/cambiar de PTA (eager loading para que sea instantáneo)
+  useEffect(() => {
+    if (pta?.id) {
+      setLoadingComponentesAprobacion(true);
+      getComponentesAprobacion(pta.id).then(res => {
+        if (res.success) setComponentesAprobacion(res.data || []);
+        setLoadingComponentesAprobacion(false);
+      }).catch(() => setLoadingComponentesAprobacion(false));
+    }
+  }, [pta?.id]);
+
+  const handleAprobarComponente = async (componente: string, estado: 'aprobado' | 'devuelto') => {
+    const isComponentAuthorized = isSuperUser || (nivelAprobacion === COMPONENT_LEVELS[componente]);
+    const canApprove = puedeAprobar && isPendiente && isComponentAuthorized;
+    if (!canApprove) {
+      toast.error('No tiene permisos para realizar esta acción');
+      return;
+    }
+    const comentarios = comentariosComponente[componente] || '';
+    if (estado === 'devuelto' && !comentarios.trim()) {
+      toast.error('Debe ingresar un comentario para devolver el componente');
+      return;
+    }
+
+    setProcesandoAprobacionComponente(prev => ({ ...prev, [componente]: true }));
+    try {
+      const res = await aprobarComponente(pta.id, {
+        componente,
+        estado,
+        aprobadorId: actorId || 'revisor',
+        aprobadorNombre: actorNombre || rolLabel || 'Revisor',
+        aprobadorRol: rolLabel || 'Revisor',
+        comentarios,
+        scope: 'territorial',
+        scopeId: rolLabel === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'),
+      });
+
+      if (res.success) {
+        toast.success(`Componente ${estado === 'aprobado' ? 'aprobado' : 'devuelto'} con éxito`);
+        setComentariosComponente(prev => ({ ...prev, [componente]: '' }));
+        setEvaluandoComponente(prev => ({ ...prev, [componente]: false }));
+        
+        const resList = await getComponentesAprobacion(pta.id);
+        if (resList.success) {
+          setComponentesAprobacion(resList.data || []);
+        }
+
+        if (res.data?.estadoGeneral) {
+          const nuevoEstado = res.data.estadoGeneral;
+          setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
+          onUpdated?.({ ...pta, estado: nuevoEstado });
+        }
+      } else {
+        toast.error(res.message || 'Error al actualizar el estado del componente');
+      }
+    } catch (err) {
+      console.error('[mfe-pta] Error al aprobar componente:', err);
+      toast.error('Ocurrió un error inesperado');
+    } finally {
+      setProcesandoAprobacionComponente(prev => ({ ...prev, [componente]: false }));
+    }
+  };
 
   // Cargar aprobaciones de jefatura si el PTA está en Pendiente Jefatura
   useEffect(() => {
@@ -452,10 +687,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             actividades: d.investigacion_actividades || [],
           },
           extension: {
-            asesoria: (d.extension_actividades || []).filter((e: any) => e.seccion === 'asesoria'),
-            consultoria: (d.extension_actividades || []).filter((e: any) => e.seccion === 'consultoria'),
             capacitacion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'capacitacion'),
-            comunidad: (d.extension_actividades || []).filter((e: any) => e.seccion === 'comunidad'),
+            seleccion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'seleccion'),
+            fortalecimiento: (d.extension_actividades || []).filter((e: any) => e.seccion === 'fortalecimiento'),
+            alto_gobierno: (d.extension_actividades || []).filter((e: any) => e.seccion === 'alto_gobierno'),
+            otras: (d.extension_actividades || []).filter((e: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(e.seccion)),
           },
           complementarias: { actividades: d.complementarias || [] },
           acad_admin: { actividades: d.academico_admin || [] },
@@ -494,7 +730,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const horasExtension = useMemo(() => {
     if (pta.horas_extension !== undefined) return pta.horas_extension;
-    const sections = ['asesoria', 'consultoria', 'capacitacion', 'comunidad'];
+    const sections = ['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'];
     return sections.reduce((total, sec) => {
       const acts = (extension as any)[sec] || [];
       return total + acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
@@ -680,12 +916,496 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const TABS = [
     { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     { key: 'componentes', label: 'Componentes', icon: Layers },
-    { key: 'historial', label: 'Traza del Proceso', icon: Activity, badge: historialEstados.length },
+    { key: 'historial', label: 'Traza Componentes', icon: Activity, badge: historialEstados.length },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     ...(isConcertacion || concertacion.mensajes?.length > 0
       ? [{ key: 'concertacion', label: 'Concertación', icon: MessageSquare, badge: concertacion.mensajes?.length || 0 }]
       : []),
   ];
+
+  const getSubcomponentHours = (seccionKey: string) => {
+    const acts = pta.extension_actividades || initialPta.extension_actividades || [];
+    if (seccionKey === 'otras') {
+      return acts
+        .filter((e: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(e.seccion))
+        .reduce((s: number, e: any) => s + (e.horas || 0), 0);
+    }
+    return acts
+      .filter((e: any) => e.seccion === seccionKey)
+      .reduce((s: number, e: any) => s + (e.horas || 0), 0);
+  };
+
+  const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
+    const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
+    const estado = approval.estado || 'pendiente';
+    const isEditing = estado !== 'aprobado' || !!evaluandoComponente[key];
+    const isProcessing = !!procesandoAprobacionComponente[key];
+
+    const isComponentAuthorized = isSuperUser || (nivelAprobacion === COMPONENT_LEVELS[key]);
+    const canEvaluateComponent = puedeAprobar && isPendiente && isComponentAuthorized;
+
+    const getAssignmentDate = () => {
+      const transition = (pta.historialEstados || []).find(
+        (h: any) => h.estadoNuevo === 'Pendiente Jefatura' || h.estado_nuevo === 'Pendiente Jefatura'
+      );
+      if (transition && transition.createdAt) {
+        return new Date(transition.createdAt);
+      }
+      const dateStr = pta.updatedAt || pta.updated_at || pta.createdAt || pta.created_at;
+      return dateStr ? new Date(dateStr) : new Date();
+    };
+    const assignmentDate = getAssignmentDate();
+
+    // Curated gradients and borders for a premium dashboard aesthetic
+    let cardBg = 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)';
+    let cardBorder = '1px solid #E2E8F0';
+    let badgeBg = 'rgba(245, 158, 11, 0.08)';
+    let badgeColor = '#B45309';
+    let badgeBorder = '1px solid rgba(245, 158, 11, 0.15)';
+    let badgeText = 'Pendiente';
+    let badgeIcon = Clock;
+    let dotColor = '#F59E0B';
+    let dotPulse = true;
+
+    if (estado === 'aprobado') {
+      cardBg = 'linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 100%)';
+      cardBorder = '1px solid #A7F3D0';
+      badgeBg = 'rgba(16, 185, 129, 0.08)';
+      badgeColor = '#065F46';
+      badgeBorder = '1px solid rgba(16, 185, 129, 0.15)';
+      badgeText = 'Aprobado';
+      badgeIcon = CheckCircle;
+      dotColor = '#10B981';
+      dotPulse = false;
+    } else if (estado === 'devuelto') {
+      cardBg = 'linear-gradient(135deg, #FFFFFF 0%, #FEF2F2 100%)';
+      cardBorder = '1px solid #FCA5A5';
+      badgeBg = 'rgba(239, 68, 68, 0.08)';
+      badgeColor = '#991B1B';
+      badgeBorder = '1px solid rgba(239, 68, 68, 0.15)';
+      badgeText = 'Devuelto';
+      badgeIcon = RotateCcw;
+      dotColor = '#EF4444';
+      dotPulse = false;
+    }
+
+    if (!isComponentAuthorized) {
+      cardBg = 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)';
+      cardBorder = '1px solid #E2E8F0';
+      badgeBg = 'rgba(148, 163, 184, 0.08)';
+      badgeColor = '#64748B';
+      badgeBorder = '1px solid rgba(148, 163, 184, 0.15)';
+      dotColor = '#94A3B8';
+      dotPulse = false;
+      if (estado === 'aprobado') {
+        badgeText = 'Aprobado (Lectura)';
+        badgeIcon = CheckCircle;
+      } else if (estado === 'devuelto') {
+        badgeText = 'Devuelto (Lectura)';
+        badgeIcon = RotateCcw;
+      } else {
+        badgeText = 'Pendiente (Lectura)';
+        badgeIcon = Clock;
+      }
+    }
+
+    const BadgeIcon = badgeIcon;
+
+    return (
+      <motion.div
+        whileHover={isComponentAuthorized ? { y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' } : undefined}
+        transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+        style={{
+          background: cardBg,
+          borderRadius: 16,
+          border: cardBorder,
+          padding: isSubComponent ? '14px 16px' : '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          position: 'relative',
+          overflow: 'hidden',
+          marginBottom: isSubComponent ? 0 : 16,
+          opacity: isComponentAuthorized ? 1 : 0.82,
+          transition: 'border-color 0.25s ease, background 0.25s ease, opacity 0.25s ease',
+        }}
+      >
+        {/* Left rounded color indicator bar */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: 5,
+          background: isComponentAuthorized
+            ? `linear-gradient(180deg, ${color} 0%, ${color}CC 100%)`
+            : 'linear-gradient(180deg, #94A3B8 0%, #94A3B8CC 100%)',
+          borderRadius: '4px 0 0 4px'
+        }} />
+
+        {/* Encabezado de la Tarjeta */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 12,
+          paddingLeft: 6,
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 200, flex: 1 }}>
+            <div style={{
+              width: isSubComponent ? 34 : 42,
+              height: isSubComponent ? 34 : 42,
+              borderRadius: 10,
+              background: isComponentAuthorized
+                ? `linear-gradient(135deg, ${color}1A 0%, ${color}0D 100%)`
+                : 'linear-gradient(135deg, rgba(148, 163, 184, 0.15) 0%, rgba(148, 163, 184, 0.08) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: isComponentAuthorized ? color : '#64748B',
+              border: isComponentAuthorized ? `1px solid ${color}26` : '1px solid rgba(148, 163, 184, 0.25)',
+              flexShrink: 0,
+              boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+            }}>
+              <IconComponent style={{ width: isSubComponent ? 16 : 22, height: isSubComponent ? 16 : 22 }} />
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h5 style={{
+                margin: '0 0 3px 0',
+                fontSize: isSubComponent ? '0.8rem' : '0.9rem',
+                fontWeight: 800,
+                color: '#1E293B',
+                letterSpacing: '-0.01em',
+                lineHeight: 1.2
+              }}>
+                {label}
+              </h5>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 500 }}>
+                  {subtitle}
+                </span>
+                {estado !== 'aprobado' && (
+                  <CountdownTimer assignmentDate={assignmentDate} isApproved={false} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Badge de Estado Premium */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 12px',
+            borderRadius: '99px',
+            background: badgeBg,
+            color: badgeColor,
+            border: badgeBorder,
+            fontSize: '0.68rem',
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            height: 'fit-content',
+            marginTop: 2
+          }}>
+            <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: dotColor,
+              display: 'inline-block'
+            }} className={dotPulse ? 'animate-pulse' : ''} />
+            <BadgeIcon style={{ width: 12, height: 12, strokeWidth: 2.5 }} />
+            {badgeText}
+          </div>
+        </div>
+
+        {/* Detalle de Devolución Guardada */}
+        {isEditing && approval.estado === 'devuelto' && (
+          <div style={{
+            background: 'rgba(254, 242, 242, 0.4)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            fontSize: '0.74rem',
+            color: '#991B1B',
+            border: '1px dashed #FCA5A5',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            marginLeft: 6
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', fontSize: '0.7rem' }}>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Devuelto Por</span>
+                <strong style={{ color: '#7F1D1D' }}>{approval.aprobadorNombre || 'Revisor Autorizado'}</strong>
+              </div>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Rol</span>
+                <strong style={{ color: '#7F1D1D' }}>{approval.aprobadorRol || 'Aprobador'}</strong>
+              </div>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Territorial</span>
+                <strong style={{ color: '#7F1D1D' }}>{approval.scopeId || (approval.aprobadorRol === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'))}</strong>
+              </div>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#B91C1C', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
+                <strong style={{ color: '#7F1D1D' }}>{approval.fechaAprobacion ? fmtFechaHora(approval.fechaAprobacion) : ''}</strong>
+              </div>
+            </div>
+            {approval.comentarios && (
+              <div style={{
+                borderLeft: '3px solid #EF4444',
+                padding: '10px 12px',
+                background: 'white',
+                borderRadius: '0 8px 8px 0',
+                fontStyle: 'italic',
+                color: '#374151',
+                lineHeight: 1.4,
+                border: '1px solid #FEE2E2',
+                borderLeftWidth: 3,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.01)'
+              }}>
+                "{approval.comentarios}"
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Detalle de Aprobación Guardada */}
+        {!isEditing && (
+          <div style={{
+            background: 'rgba(240, 253, 244, 0.4)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            fontSize: '0.74rem',
+            color: '#15803D',
+            border: '1px dashed #A7F3D0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            marginLeft: 6
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', fontSize: '0.7rem' }}>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Aprobado Por</span>
+                <strong style={{ color: '#14532D' }}>{approval.aprobadorNombre || 'Revisor Autorizado'}</strong>
+              </div>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Rol</span>
+                <strong style={{ color: '#14532D' }}>{approval.aprobadorRol || 'Aprobador'}</strong>
+              </div>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Territorial</span>
+                <strong style={{ color: '#14532D' }}>{approval.scopeId || (approval.aprobadorRol === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'))}</strong>
+              </div>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Fecha / Hora</span>
+                <strong style={{ color: '#14532D' }}>{approval.fechaAprobacion ? fmtFechaHora(approval.fechaAprobacion) : ''}</strong>
+              </div>
+            </div>
+            {approval.fechaAprobacion && (
+              <div style={{
+                fontSize: '0.68rem',
+                color: '#15803D',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                marginTop: 2,
+                background: '#DCFCE7',
+                padding: '4px 8px',
+                borderRadius: 6,
+                width: 'fit-content'
+              }}>
+                <CheckCircle style={{ width: 12, height: 12, color: '#16A34A' }} />
+                Avalado a tiempo (duración de revisión: {getApprovalDuration(assignmentDate, new Date(approval.fechaAprobacion))})
+              </div>
+            )}
+            {approval.comentarios && (
+              <div style={{
+                borderLeft: '3px solid #10B981',
+                padding: '10px 12px',
+                background: 'white',
+                borderRadius: '0 8px 8px 0',
+                fontStyle: 'italic',
+                color: '#374151',
+                lineHeight: 1.4,
+                border: '1px solid #DCFCE7',
+                borderLeftWidth: 3,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.01)'
+              }}>
+                "{approval.comentarios}"
+              </div>
+            )}
+            
+            {canEvaluateComponent && (
+              <button
+                onClick={() => setEvaluandoComponente(prev => ({ ...prev, [key]: true }))}
+                style={{
+                  alignSelf: 'flex-end',
+                  background: 'none',
+                  border: 'none',
+                  color: '#2563EB',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: '2px 0',
+                  marginTop: 4,
+                  textDecoration: 'underline',
+                  transition: 'color 0.15s ease',
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = '#1D4ED8'}
+                onMouseLeave={e => e.currentTarget.style.color = '#2563EB'}
+              >
+                Volver a evaluar
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Panel Interactivo de Aprobación */}
+        {isEditing && canEvaluateComponent && (
+          <div style={{
+            marginLeft: 6,
+            padding: '16px',
+            borderRadius: 12,
+            background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
+            border: '1px solid #E2E8F0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <Shield style={{ width: 14, height: 14, color: '#003DA5' }} />
+              Formulario de Revisión del Componente
+            </div>
+            <textarea
+              value={comentariosComponente[key] || ''}
+              onChange={e => setComentariosComponente(prev => ({ ...prev, [key]: e.target.value }))}
+              placeholder="Escribe aquí observaciones sobre este componente (obligatorio si devuelves)..."
+              disabled={isProcessing}
+              rows={2}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid #CBD5E1',
+                fontSize: '0.76rem',
+                resize: 'none',
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                background: 'white',
+                transition: 'all 0.2s ease',
+              }}
+              onFocus={e => {
+                e.target.style.borderColor = '#3B82F6';
+                e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.15)';
+              }}
+              onBlur={e => {
+                e.target.style.borderColor = '#CBD5E1';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              {estado === 'aprobado' && (
+                <button
+                  onClick={() => setEvaluandoComponente(prev => ({ ...prev, [key]: false }))}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #D1D5DB',
+                    background: 'white',
+                    color: '#4B5563',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                onClick={() => handleAprobarComponente(key, 'devuelto')}
+                disabled={isProcessing}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #FCA5A5',
+                  background: '#FEF2F2',
+                  color: '#B91C1C',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: isProcessing ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.15s ease',
+                  boxShadow: '0 2px 4px rgba(239, 68, 68, 0.05)'
+                }}
+                onMouseEnter={e => { if (!isProcessing) e.currentTarget.style.background = '#FEE2E2'; }}
+                onMouseLeave={e => { if (!isProcessing) e.currentTarget.style.background = '#FEF2F2'; }}
+              >
+                {isProcessing ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RotateCcw style={{ width: 13, height: 13 }} />}
+                Devolver
+              </button>
+              <button
+                onClick={() => handleAprobarComponente(key, 'aprobado')}
+                disabled={isProcessing}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#059669',
+                  color: 'white',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: isProcessing ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.15s ease',
+                  boxShadow: '0 2px 4px rgba(5, 150, 105, 0.1)'
+                }}
+                onMouseEnter={e => { if (!isProcessing) e.currentTarget.style.background = '#047857'; }}
+                onMouseLeave={e => { if (!isProcessing) e.currentTarget.style.background = '#059669'; }}
+              >
+                {isProcessing ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <CheckCircle style={{ width: 13, height: 13 }} />}
+                Aprobar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mensaje Informativo si no tiene permiso */}
+        {isEditing && !canEvaluateComponent && isPendiente && (
+          <div style={{
+            marginLeft: 6,
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)',
+            color: '#64748B',
+            fontSize: '0.72rem',
+            border: '1px solid #E2E8F0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontWeight: 500,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.01)',
+          }}>
+            <Lock style={{ width: 13, height: 13, color: '#94A3B8' }} />
+            <span>Este componente es gestionado y concertado por {getResponsableRoleLabel(key)}.</span>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
 
   return (
     <motion.div
@@ -811,7 +1531,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
           {/* Approval Tracker */}
           <div style={{ marginTop: 4 }}>
-            <ApprovalTracker estado={pta.estado} isMobile={isMobile} />
+            <ApprovalTracker estado={pta.estado} componentesAprobacion={componentesAprobacion} isMobile={isMobile} />
           </div>
         </div>
 
@@ -1290,16 +2010,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
               {/* Extensión */}
               <SectionCollapsible
-                title="Componente Extensión (4 secciones)"
+                title="Componente Extensión (5 secciones)"
                 icon={Globe}
-                color="#A5A5A5"
+                color="#059669"
               >
-                {['asesoria', 'consultoria', 'capacitacion', 'comunidad'].map(sec => {
+                {['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'].map(sec => {
                   const LABELS: Record<string, string> = {
-                    asesoria: 'Asesoría y Acompañamiento',
-                    consultoria: 'Consultoría e Interventoría',
                     capacitacion: 'Capacitación y Formación',
-                    comunidad: 'Proyección Social y Comunidad',
+                    seleccion: 'Procesos de Selección',
+                    fortalecimiento: 'Fortalecimiento Institucional',
+                    alto_gobierno: 'Escuela de Alto Gobierno',
+                    otras: 'Secciones y Actividades (Asesoría, Consultoría, etc.)',
                   };
                   const acts = extension[sec] || [];
                   if (acts.length === 0) return null;
@@ -1331,7 +2052,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </div>
                   );
                 })}
-                {!['asesoria', 'consultoria', 'capacitacion', 'comunidad'].some(sec => (extension[sec] || []).length > 0) && (
+                {!['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'].some(sec => (extension[sec] || []).length > 0) && (
                   <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '12px 0' }}>
                     Sin actividades de extensión
                   </p>
@@ -1443,129 +2164,357 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             </div>
           )}
 
-          {/* ═══ TAB: Traza del Proceso ═══ */}
+          {/* ═══ TAB: Traza Componentes ═══ */}
           {activeTab === 'historial' && (
             <div>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Activity style={{ width: 15, height: 15, color: '#4F46E5' }} />
-                Traza del Proceso ({historialEstados.length} transiciones)
-              </h4>
-              {historialEstados.length > 0 ? (
-                <div style={{ position: 'relative' }}>
-                  {/* Línea vertical */}
-                  <div style={{ position: 'absolute', top: 14, bottom: 14, left: 15, width: 2, background: '#E0E7FF', borderRadius: 1 }} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {(() => {
-                      // Asignar números de reporte según orden de display (arriba=1, abajo=N)
-                      const displayOrder = [...historialEstados].reverse();
-                      const snapshotNums = new Map<string, number>();
-                      let reporteNum = 1;
-                      displayOrder.forEach((s: any, i: number) => {
-                        if (s.snapshotPta && typeof s.snapshotPta === 'object') {
-                          snapshotNums.set(s.id || String(i), reporteNum++);
-                        }
-                      });
-                      return displayOrder.map((step: any, idx: number, arr: any[]) => {
-                      const isLatest = idx === 0;
-                      const hsc = getStatusConfig(step.estadoNuevo || '');
-                      const date = step.createdAt ? new Date(step.createdAt) : null;
-                      const snap = step.snapshotPta;
-                      const hasSnapshot = snap && typeof snap === 'object';
-                      const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(idx)) : null;
-                      return (
-                        <motion.div
-                          key={step.id || idx}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.04 }}
-                          onClick={() => { if (hasSnapshot) { setSelectedSnapshot(step); setSelectedSnapshotVersion(reporteNumStep || 1); } }}
-                          style={{
-                            display: 'flex', gap: 14, position: 'relative', zIndex: 1,
-                            padding: '10px 12px', borderRadius: 10, marginLeft: 0,
-                            cursor: hasSnapshot ? 'pointer' : 'default',
-                            background: isLatest ? `${hsc.bg || '#F3F4F6'}` : 'transparent',
-                            border: isLatest ? `1px solid ${hsc.color}20` : '1px solid transparent',
-                            transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={e => { if (hasSnapshot) { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
-                          onMouseLeave={e => { if (!isLatest) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } else { e.currentTarget.style.background = hsc.bg || '#F3F4F6'; e.currentTarget.style.borderColor = `${hsc.color}20`; } }}
-                        >
-                          {/* Dot */}
-                          <div style={{
-                            width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                            background: isLatest ? (hsc.color || '#4F46E5') : 'white',
-                            border: `2.5px solid ${isLatest ? (hsc.color || '#4F46E5') : '#CBD5E1'}`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: isLatest ? `0 0 0 3px ${hsc.color}18` : 'none',
-                          }}>
-                            <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />
-                          </div>
-                          {/* Content */}
-                          <div style={{ flex: 1, paddingTop: 2, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                              <span style={{
-                                padding: '2px 8px', borderRadius: 6,
-                                background: hsc.bg || '#F3F4F6', color: hsc.color || '#374151',
-                                fontSize: '0.72rem', fontWeight: 700,
-                                border: `1px solid ${hsc.color || '#D1D5DB'}20`,
-                              }}>
-                                {step.estadoNuevo?.replace(/_/g, ' ')}
-                              </span>
-                              {step.version && step.version > 1 && (
-                                <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 6, background: '#F3E8FF', color: '#6B21A8', fontWeight: 700 }}>v{step.version}</span>
-                              )}
-                            </div>
-                            {date && (
-                              <div style={{ fontSize: '0.68rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                <Calendar style={{ width: 11, height: 11, color: '#9CA3AF' }} />
-                                {date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                <Clock style={{ width: 11, height: 11, color: '#9CA3AF', marginLeft: 4 }} />
-                                <span style={{ color: '#374151', fontWeight: 600 }}>
-                                  {date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                </span>
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                              {step.actorRol && (
-                                <span style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
-                                  <Users style={{ width: 10, height: 10 }} /> {step.actorRol}
-                                </span>
-                              )}
-                              {hasSnapshot && (
-                                <span style={{
-                                  fontSize: '0.6rem', color: '#4F46E5', fontWeight: 700,
-                                  display: 'flex', alignItems: 'center', gap: 3,
-                                  padding: '2px 7px', borderRadius: 4, background: '#EEF2FF',
-                                  border: '1px solid #C7D2FE',
-                                }}>
-                                  <Eye style={{ width: 10, height: 10 }} /> R-{String(reporteNumStep).padStart(2, '0')}
-                                </span>
-                              )}
-                            </div>
-                            {step.comentarios && (
-                              <p style={{
-                                fontSize: '0.72rem', color: '#64748B', margin: '5px 0 0',
-                                padding: '5px 8px', background: '#F8FAFC', borderRadius: 6,
-                                border: '1px solid #E2E8F0', lineHeight: 1.4, fontStyle: 'italic',
-                              }}>
-                                "{step.comentarios}"
-                              </p>
-                            )}
-                          </div>
-                        </motion.div>
-                      );
-                    });
-                    })()}
+              {/* Header de la pestaña */}
+              <div style={{
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                borderRadius: 16,
+                padding: '18px 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.01)',
+                marginBottom: 20,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: '240px' }}>
+                    <h4 style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0F172A', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '-0.015em' }}>
+                      <Shield style={{ width: 20, height: 20, color: '#003DA5', strokeWidth: 2.5 }} />
+                      Control de Traza e Historial de Aprobaciones
+                    </h4>
+                    <p style={{ fontSize: '0.74rem', color: '#64748B', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+                      A continuación se muestra el estado de validación granular del Plan de Trabajo Académico. Cada componente y subcomponente de extensión debe ser revisado y aprobado individualmente por las áreas y revisores competentes.
+                    </p>
                   </div>
                 </div>
+
+                {/* Progress Stats & Count Badges */}
+                {(() => {
+                  const total = 9;
+                  const aprobados = componentesAprobacion.filter(c => c.estado === 'aprobado').length;
+                  const devueltos = componentesAprobacion.filter(c => c.estado === 'devuelto').length;
+                  const pendientes = total - aprobados - devueltos;
+                  const pct = Math.round((aprobados / total) * 100);
+                  return (
+                    <div style={{ marginTop: 16 }}>
+                      {/* Stats Badges Grid */}
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                        <div style={{ background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#166534' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+                          Aprobados: {aprobados}
+                        </div>
+                        {devueltos > 0 && (
+                          <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#991B1B' }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444' }} />
+                            Devueltos: {devueltos}
+                          </div>
+                        )}
+                        <div style={{ background: '#FFFBEB', border: '1px solid #FEF3C7', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#92400E' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B' }} className="animate-pulse" />
+                          Pendientes: {pendientes}
+                        </div>
+                      </div>
+
+                      {/* Bar progress */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '0.72rem', fontWeight: 800 }}>
+                        <span style={{ color: '#475569' }}>Progreso de Aprobación Granular</span>
+                        <span style={{ color: aprobados === total ? '#059669' : '#003DA5' }}>
+                          {aprobados} / {total} componentes ({pct}%)
+                        </span>
+                      </div>
+                      <div style={{ width: '100%', height: 8, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden', display: 'flex', gap: 2 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: aprobados === total ? '#10B981' : 'linear-gradient(90deg, #003DA5, #2563EB)', borderRadius: 4, transition: 'width 0.4s ease-out' }} />
+                        {devueltos > 0 && (
+                          <div style={{ height: '100%', width: `${Math.round((devueltos / total) * 100)}%`, background: '#EF4444', borderRadius: 4 }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {loadingComponentesAprobacion ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 0', color: '#9CA3AF' }}>
+                  <Loader2 style={{ width: 28, height: 28 }} className="animate-spin" />
+                  <span style={{ marginTop: 8, fontSize: '0.78rem' }}>Cargando traza de componentes...</span>
+                </div>
               ) : (
-                <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                  <Activity style={{ width: 36, height: 36, color: '#D1D5DB', margin: '0 auto 10px' }} />
-                  <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#6B7280' }}>Sin transiciones registradas</p>
-                  <p style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 4 }}>El historial se genera automáticamente con cada cambio de estado.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* 1. Docencia */}
+                  {renderComponentCard(
+                    'academica',
+                    'Componente Docencia (Asignaturas)',
+                    BookOpen,
+                    PTA_COLORS.DOCENCIA,
+                    `Contenido: ${asignaturas.length} asignatura(s) (${horasDocencia}h)`
+                  )}
+
+                  {/* 2. Investigación */}
+                  {renderComponentCard(
+                    'investigacion',
+                    'Componente Investigación (Proyectos y Actividades)',
+                    FlaskConical,
+                    PTA_COLORS.INVESTIGACION,
+                    `Contenido: ${(investigacion.proyectos?.length || 0)} proyecto(s), ${(investigacion.actividades?.length || 0)} actividad(es) (${horasInvestigacion}h)`
+                  )}
+
+                  {/* 3. Extensión Universitaria (Agrupada) */}
+                  <motion.div
+                    whileHover={{ y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    style={{
+                      background: 'linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 100%)',
+                      borderRadius: 16,
+                      border: '1px solid #A7F3D0',
+                      boxShadow: '0 4px 18px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.01)',
+                      padding: '20px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      position: 'relative',
+                      overflow: 'hidden',
+                      transition: 'border-color 0.25s ease, background 0.25s ease',
+                    }}
+                  >
+                    {/* Indicador lateral de color */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      width: 5,
+                      background: 'linear-gradient(180deg, #059669 0%, #059669CC 100%)',
+                      borderRadius: '4px 0 0 4px'
+                    }} />
+
+                    {/* Encabezado del contenedor de Extensión */}
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', paddingLeft: 6 }}>
+                      <div style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 10,
+                        background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(5, 150, 105, 0.08) 100%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#059669',
+                        border: '1px solid rgba(5, 150, 105, 0.25)',
+                        flexShrink: 0,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                      }}>
+                        <Globe style={{ width: 22, height: 22 }} />
+                      </div>
+                      <div>
+                        <h5 style={{ margin: '0 0 3px 0', fontSize: '0.9rem', fontWeight: 800, color: '#1E293B', letterSpacing: '-0.01em' }}>
+                          Componente Extensión Universitaria
+                        </h5>
+                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: 'rgba(5, 150, 105, 0.08)', padding: '2px 8px', borderRadius: 6 }}>
+                          Total de Actividades de Extensión: {horasExtension}h
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid rgba(5, 150, 105, 0.15)', margin: '6px 0' }} />
+
+                    {/* Lista vertical responsiva de subcomponentes */}
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      paddingLeft: 6,
+                    }}>
+                      {/* Sub 1: Capacitación */}
+                      {renderComponentCard(
+                        'ext_capacitacion',
+                        'Capacitación y Formación',
+                        GraduationCap,
+                        '#059669',
+                        `Horas: ${getSubcomponentHours('capacitacion')}h`,
+                        true
+                      )}
+
+                      {/* Sub 2: Procesos de Selección */}
+                      {renderComponentCard(
+                        'ext_procesos',
+                        'Procesos de Selección',
+                        Briefcase,
+                        '#0284C7',
+                        `Horas: ${getSubcomponentHours('seleccion')}h`,
+                        true
+                      )}
+
+                      {/* Sub 3: Fortalecimiento Institucional */}
+                      {renderComponentCard(
+                        'ext_fortalecimiento',
+                        'Fortalecimiento Institucional',
+                        Building2,
+                        '#7C3AED',
+                        `Horas: ${getSubcomponentHours('fortalecimiento')}h`,
+                        true
+                      )}
+
+                      {/* Sub 4: Escuela de Alto Gobierno */}
+                      {renderComponentCard(
+                        'ext_gobierno',
+                        'Escuela de Alto Gobierno',
+                        Shield,
+                        '#B45309',
+                        `Horas: ${getSubcomponentHours('alto_gobierno')}h`,
+                        true
+                      )}
+
+                      {/* Sub 5: Secciones y Actividades */}
+                      {renderComponentCard(
+                        'ext_secciones',
+                        'Secciones y Actividades',
+                        Layers,
+                        '#0E7490',
+                        `Horas: ${getSubcomponentHours('otras')}h`,
+                        true
+                      )}
+                    </div>
+                  </motion.div>
+
+                  {/* 4. Actividades Complementarias */}
+                  {renderComponentCard(
+                    'complementarias',
+                    'Actividades Complementarias',
+                    Briefcase,
+                    PTA_COLORS.COMPLEMENTARIAS,
+                    `Contenido: ${(complementarias.actividades?.length || 0)} actividad(es) (${horasComplementarias}h)`
+                  )}
+
+                  {/* 5. AADM */}
+                  {renderComponentCard(
+                    'academicas_admin',
+                    'Actividades Académico-Administrativas (AADM)',
+                    Award,
+                    PTA_COLORS.ACAD_ADMIN,
+                    `Contenido: ${(acadAdmin.actividades?.length || 0)} actividad(es) (${horasAcadAdmin}h)`
+                  )}
                 </div>
               )}
 
+              {/* Historial de transiciones de estado completo al final (collapsible) */}
+              <div style={{ marginTop: 24 }}>
+                <SectionCollapsible
+                  title={`Historial de Cambios de Estado del PTA`}
+                  icon={Activity}
+                  color="#6366F1"
+                  count={historialEstados.length}
+                  defaultOpen={false}
+                >
+                  {historialEstados.length > 0 ? (
+                    <div style={{ position: 'relative', marginTop: 10 }}>
+                      <div style={{ position: 'absolute', top: 14, bottom: 14, left: 15, width: 2, background: '#E0E7FF', borderRadius: 1 }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {(() => {
+                          const displayOrder = [...historialEstados].reverse();
+                          const snapshotNums = new Map<string, number>();
+                          let reporteNum = 1;
+                          displayOrder.forEach((s: any, i: number) => {
+                            if (s.snapshotPta && typeof s.snapshotPta === 'object') {
+                              snapshotNums.set(s.id || String(i), reporteNum++);
+                            }
+                          });
+                          return displayOrder.map((step: any, idx: number) => {
+                            const isLatest = idx === 0;
+                            const hsc = getStatusConfig(step.estadoNuevo || '');
+                            const date = step.createdAt ? new Date(step.createdAt) : null;
+                            const snap = step.snapshotPta;
+                            const hasSnapshot = snap && typeof snap === 'object';
+                            const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(idx)) : null;
+                            return (
+                              <motion.div
+                                key={step.id || idx}
+                                initial={{ opacity: 0, x: -8 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: idx * 0.04 }}
+                                onClick={() => { if (hasSnapshot) { setSelectedSnapshot(step); setSelectedSnapshotVersion(reporteNumStep || 1); } }}
+                                style={{
+                                  display: 'flex', gap: 14, position: 'relative', zIndex: 1,
+                                  padding: '10px 12px', borderRadius: 10, marginLeft: 0,
+                                  cursor: hasSnapshot ? 'pointer' : 'default',
+                                  background: isLatest ? `${hsc.bg || '#F3F4F6'}` : 'transparent',
+                                  border: isLatest ? `1px solid ${hsc.color}20` : '1px solid transparent',
+                                  transition: 'all 0.15s',
+                                }}
+                                onMouseEnter={e => { if (hasSnapshot) { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
+                                onMouseLeave={e => { if (!isLatest) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } else { e.currentTarget.style.background = hsc.bg || '#F3F4F6'; e.currentTarget.style.borderColor = `${hsc.color}20`; } }}
+                              >
+                                <div style={{
+                                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                                  background: isLatest ? (hsc.color || '#4F46E5') : 'white',
+                                  border: `2.5px solid ${isLatest ? (hsc.color || '#4F46E5') : '#CBD5E1'}`,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  boxShadow: isLatest ? `0 0 0 3px ${hsc.color}18` : 'none',
+                                }}>
+                                  <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />
+                                </div>
+                                <div style={{ flex: 1, paddingTop: 2, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                                    <span style={{
+                                      padding: '2px 8px', borderRadius: 6,
+                                      background: hsc.bg || '#F3F4F6', color: hsc.color || '#374151',
+                                      fontSize: '0.72rem', fontWeight: 700,
+                                      border: `1px solid ${hsc.color || '#D1D5DB'}20`,
+                                    }}>
+                                      {step.estadoNuevo?.replace(/_/g, ' ')}
+                                    </span>
+                                    {step.version && step.version > 1 && (
+                                      <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 6, background: '#F3E8FF', color: '#6B21A8', fontWeight: 700 }}>v{step.version}</span>
+                                    )}
+                                  </div>
+                                  {date && (
+                                    <div style={{ fontSize: '0.68rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                      <Calendar style={{ width: 11, height: 11, color: '#9CA3AF' }} />
+                                      {date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                      <Clock style={{ width: 11, height: 11, color: '#9CA3AF', marginLeft: 4 }} />
+                                      <span style={{ color: '#374151', fontWeight: 600 }}>
+                                        {date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                                    {step.actorRol && (
+                                      <span style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                        <Users style={{ width: 10, height: 10 }} /> {step.actorRol}
+                                      </span>
+                                    )}
+                                    {hasSnapshot && (
+                                      <span style={{
+                                        fontSize: '0.6rem', color: '#4F46E5', fontWeight: 700,
+                                        display: 'flex', alignItems: 'center', gap: 3,
+                                        padding: '2px 7px', borderRadius: 4, background: '#EEF2FF',
+                                        border: '1px solid #C7D2FE',
+                                      }}>
+                                        <Eye style={{ width: 10, height: 10 }} /> R-{String(reporteNumStep).padStart(2, '0')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {step.comentarios && (
+                                    <p style={{
+                                      fontSize: '0.72rem', color: '#64748B', margin: '5px 0 0',
+                                      padding: '5px 8px', background: '#F8FAFC', borderRadius: 6,
+                                      border: '1px solid #E2E8F0', lineHeight: 1.4, fontStyle: 'italic',
+                                    }}>
+                                      "{step.comentarios}"
+                                    </p>
+                                  )}
+                                </div>
+                              </motion.div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: '0.78rem' }}>
+                      Sin transiciones registradas.
+                    </div>
+                  )}
+                </SectionCollapsible>
+              </div>
             </div>
           )}
 

@@ -21,6 +21,7 @@ export default defineConfig({
       exposes: {
         './Module': path.resolve(__dirname, './src/components/PTAModule.tsx'),
         './Portal': path.resolve(__dirname, './src/components/PTAPortalModule.tsx'),
+        './AutogestionDocenteRUND': path.resolve(__dirname, './src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

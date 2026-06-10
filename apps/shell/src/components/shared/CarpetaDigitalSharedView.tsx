@@ -14,7 +14,7 @@
  * @date 2026-03-09
  */
 
-import React, { useState, useMemo, useCallback, useRef, Fragment } from 'react';
+import React, { useState, useMemo, useCallback, useRef, Fragment, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -26,10 +26,13 @@ import {
   FolderOpen, Award, Briefcase, Mail,
   X, RefreshCw, Loader2,
   AlertTriangle, Check, Plus, Info,
-  FileUp, CircleCheck, CircleAlert, CircleX, Layers
+  FileUp, CircleCheck, CircleAlert, CircleX, Layers,
+  ShieldCheck, ShieldAlert, BookOpen, Send,
+  Phone, GraduationCap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { apiClient } from '../../services/api/apiClient';
 
 // ============================================================================
 // TYPES
@@ -79,6 +82,8 @@ export interface PersonaInfo {
 }
 
 export interface CarpetaDigitalSharedViewProps {
+  /** Persona ID from the Carpeta Digital user selector */
+  personaId?: string;
   /** Info de la persona dueña de la carpeta */
   persona: PersonaInfo;
   /** Documentos de la carpeta */
@@ -191,6 +196,20 @@ const getExpirationStatus = (doc: CarpetaDocumento): 'expired' | 'warning' | 'ok
   const daysLeft = Math.floor((expDate - now) / 86400000);
   if (daysLeft <= 30) return 'warning';
   return 'ok';
+};
+
+const getRundEstadoBadge = (estado: string) => {
+  const norm = String(estado || '').toLowerCase().trim();
+  if (norm === 'aprobado' || norm === 'validado' || norm === 'ok') {
+    return { label: estado || 'Aprobado', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0', icon: CircleCheck };
+  }
+  if (norm === 'rechazado' || norm === 'devuelto' || norm.includes('ajuste')) {
+    return { label: estado || 'Devuelto', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', icon: CircleX };
+  }
+  if (norm === 'en revisión' || norm === 'en revision' || norm === 'en proceso') {
+    return { label: estado || 'En Revisión', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', icon: RefreshCw };
+  }
+  return { label: estado || 'Pendiente', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', icon: Clock };
 };
 
 const getDaysUntilExpiration = (dateStr: string): number => {
@@ -529,10 +548,166 @@ function DetailPanel({ doc, reqTipo, mode, userRole, onClose, onPreview, onDownl
 }
 
 // ============================================================================
+// CATALOGO BR-039 / RUND CONSTANTS
+// ============================================================================
+
+interface CampoDoc {
+  campo: string;
+  documento: string;
+  tipoSoporte: string;
+  obligatorio: 'Sí' | 'Si aplica' | 'Derivado' | 'No';
+  validacion?: string;
+}
+
+const CATALOGO_BR039: Record<string, {
+  label: string;
+  letra: string;
+  subtitle: string;
+  icon: any;
+  color: string;
+  bg: string;
+  campos: CampoDoc[];
+}> = {
+  IDENTIDAD: {
+    label: 'Identidad',
+    letra: 'A',
+    subtitle: 'Documentos que acreditan la identidad del docente',
+    icon: User,
+    color: '#3b82f6',
+    bg: '#EFF6FF',
+    campos: [
+      { campo: 'Tipo y número de documento', documento: 'Documento de identidad (CC/CE/PA/PEP)', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'BR-054: Coherencia tipo↔formato' },
+      { campo: 'Nombre completo', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'BR-040: Debe coincidir con el soporte' },
+      { campo: 'Género', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí' },
+      { campo: 'Fecha de nacimiento', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'Debe ser < hoy' },
+      { campo: 'Edad / Rango de edad', documento: '— (Calculado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'Calculado desde fecha de nacimiento' },
+    ],
+  },
+  CONTACTO: {
+    label: 'Contacto',
+    letra: 'B',
+    subtitle: 'Datos de contacto — no requiere documentos soporte',
+    icon: Phone,
+    color: '#10b981',
+    bg: '#ECFDF5',
+    campos: [
+      { campo: 'Correo institucional', documento: '— (Asignación institucional)', tipoSoporte: '', obligatorio: 'No', validacion: 'Dominio @esap.edu.co' },
+      { campo: 'Correo personal', documento: '— (Autodeclarado)', tipoSoporte: '', obligatorio: 'No', validacion: 'Formato email' },
+      { campo: 'Teléfono', documento: '— (Autodeclarado)', tipoSoporte: '', obligatorio: 'No', validacion: 'Formato teléfono' },
+    ],
+  },
+  FORMACION: {
+    label: 'Formación Académica',
+    letra: 'C',
+    subtitle: 'Títulos académicos y soportes de formación',
+    icon: GraduationCap,
+    color: '#8b5cf6',
+    bg: '#F5F3FF',
+    campos: [
+      { campo: 'Pregrado', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_pregrado', obligatorio: 'Sí', validacion: 'Base mínima requerida' },
+      { campo: 'Especialización', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_especializacion', obligatorio: 'Si aplica' },
+      { campo: 'Maestría', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_maestria', obligatorio: 'Si aplica' },
+      { campo: 'Doctorado', documento: 'Diploma + Acta de grado', tipoSoporte: 'diploma_doctorado', obligatorio: 'Si aplica' },
+      { campo: 'Posdoctorado', documento: 'Certificado de estancia posdoctoral', tipoSoporte: 'certificado_posdoctoral', obligatorio: 'Si aplica' },
+      { campo: 'Título del exterior', documento: 'Resolución de convalidación MEN', tipoSoporte: 'convalidacion_men', obligatorio: 'Si aplica', validacion: 'BR-051' },
+      { campo: 'Nivel de formación', documento: '— (Derivado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'BR-050: Título máximo aprobado' },
+      { campo: 'Perfil académico / PRO', documento: 'Hoja de vida soportada por títulos', tipoSoporte: 'hoja_vida_pro', obligatorio: 'Sí', validacion: 'Coherente con bloque C' },
+    ],
+  },
+  VINCULACION: {
+    label: 'Vinculación',
+    letra: 'D',
+    subtitle: 'Documentos administrativos de la vinculación docente',
+    icon: Briefcase,
+    color: '#f59e0b',
+    bg: '#FFFBEB',
+    campos: [
+      { campo: 'Vinculación (tipo)', documento: 'Acto administrativo de vinculación', tipoSoporte: 'acto_administrativo_vinculacion', obligatorio: 'Sí' },
+      { campo: 'Régimen normativo', documento: '— (Derivado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'BR-049: Coherencia régimen↔vinculación' },
+      { campo: 'Origen de vinculación', documento: 'Acto administrativo / Resolución de convocatoria', tipoSoporte: 'resolucion_convocatoria', obligatorio: 'Sí' },
+      { campo: 'Acto administrativo', documento: 'Resolución o contrato (el documento mismo)', tipoSoporte: 'contrato', obligatorio: 'Sí', validacion: 'BR-040: Fecha = inicio vinculación' },
+      { campo: 'Inicio / Fin de vinculación', documento: 'Acto administrativo / contrato', tipoSoporte: 'contrato', obligatorio: 'Sí', validacion: 'Inicio ≤ Fin' },
+      { campo: 'Dedicación (TC/MT/HC)', documento: 'Acto administrativo', tipoSoporte: 'acto_administrativo_dedicacion', obligatorio: 'Sí' },
+      { campo: 'Situación administrativa', documento: 'Acto administrativo (encargo, comisión, licencia)', tipoSoporte: 'acto_administrativo_situacion', obligatorio: 'Sí' },
+      { campo: 'Territorial / Sede', documento: 'Acto administrativo de adscripción', tipoSoporte: 'acto_adscripcion_territorial', obligatorio: 'Sí', validacion: 'CETAP no va aquí' },
+      { campo: 'Categoría (escalafón)', documento: 'Resolución de escalafón / ubicación en categoría', tipoSoporte: 'resolucion_escalafon', obligatorio: 'Sí', validacion: 'BR-048: Coherencia categoría↔formación' },
+      { campo: 'Puntaje salarial', documento: 'Resolución de ubicación salarial', tipoSoporte: 'resolucion_puntaje_salarial', obligatorio: 'Sí', validacion: 'Rango por categoría' },
+    ],
+  },
+  ACADEMICO: {
+    label: 'Académico',
+    letra: 'E',
+    subtitle: 'Asignaciones académicas, investigación y evaluación',
+    icon: BookOpen,
+    color: '#06b6d4',
+    bg: '#ECFEFF',
+    campos: [
+      { campo: 'Núcleo temático', documento: 'Acto de asignación / definición institucional GGP', tipoSoporte: 'acto_asignacion_nucleo', obligatorio: 'Sí', validacion: 'Lista controlada' },
+      { campo: 'Investigación 2025', documento: 'Acto de convocatoria / certificación de producto', tipoSoporte: 'certificacion_investigacion', obligatorio: 'Si aplica', validacion: 'Coherente con dedicación' },
+      { campo: 'Última evaluación', documento: 'Acta o certificado de evaluación de desempeño (SEDP)', tipoSoporte: 'acta_evaluacion_desempeno', obligatorio: 'Sí', validacion: 'BR-055: Vigencia / caducidad' },
+    ],
+  },
+  TRANSVERSAL: {
+    label: 'Transversal',
+    letra: 'F',
+    subtitle: 'Documentos obligatorios para activar el registro',
+    icon: Shield,
+    color: '#e11d48',
+    bg: '#FFF1F2',
+    campos: [
+      { campo: 'Autorización de tratamiento de datos', documento: 'Formato Habeas Data firmado', tipoSoporte: 'autorizacion_habeas_data', obligatorio: 'Sí', validacion: 'BR-057: Bloquea activación si falta' },
+    ],
+  },
+};
+
+const CAMPO_LABELS: Record<string, string> = {
+  NOMBRE_COMPLETO: 'Nombre completo',
+  DOCUMENTO_IDENTIDAD: 'Número de documento',
+  TIPO_DOCUMENTO: 'Tipo de documento',
+  FECHA_NACIMIENTO: 'Fecha de nacimiento',
+  GENERO: 'Género',
+  NIVEL_FORMACION: 'Nivel de formación',
+  TITULO_PREGRADO: 'Pregrado',
+  TITULO_ESPECIALIZACION: 'Especialización',
+  TITULO_MAESTRIA: 'Maestría',
+  TITULO_DOCTORADO: 'Doctorado',
+  TITULO_POSDOCTORADO: 'Posdoctorado',
+  PERFIL_ACADEMICO: 'Perfil académico',
+  TIPO_VINCULACION: 'Tipo de vinculación',
+  DEDICACION: 'Dedicación',
+  CATEGORIA_ESCALAFON: 'Categoría / escalafón',
+  TERRITORIAL: 'Territorial',
+  REGIMEN_NORMATIVO: 'Régimen normativo',
+  ACTO_ADMINISTRATIVO: 'Acto administrativo',
+  PUNTAJE_SALARIAL: 'Puntaje salarial',
+  SITUACION_ADMINISTRATIVA: 'Situación administrativa',
+  NUCLEO_TEMATICO: 'Núcleo temático',
+  CORREO_INSTITUCIONAL: 'Correo institucional',
+  CORREO_ALTERNATIVO: 'Correo alternativo',
+  TELEFONO: 'Teléfono',
+};
+
+const OBLIG_BADGE: Record<string, { bg: string; text: string; label: string }> = {
+  'Sí':        { bg: '#FEF3C7', text: '#92400E', label: 'Obligatorio' },
+  'Si aplica': { bg: '#EDE9FE', text: '#5B21B6', label: 'Si aplica' },
+  'Derivado':  { bg: '#F1F5F9', text: '#64748B', label: 'Derivado' },
+  'No':        { bg: '#F1F5F9', text: '#94A3B8', label: 'No requiere' },
+};
+
+const RUND_ESTADO_BADGE: Record<string, { bg: string; text: string; border: string; icon: any; label: string }> = {
+  'Aprobado':        { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0', icon: CheckCircle, label: 'Aprobado' },
+  'Pendiente':       { bg: '#FEFCE8', text: '#CA8A04', border: '#FDE68A', icon: Clock,        label: 'Pendiente' },
+  'En revisión':     { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', icon: Eye,          label: 'En revisión' },
+  'Devuelto':        { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA', icon: XCircle,      label: 'Devuelto' },
+  'Soporte faltante': { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA', icon: AlertTriangle, label: 'Falta soporte' },
+};
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
 export function CarpetaDigitalSharedView({
+  personaId,
   persona,
   documentos,
   tiposDocumentos,
@@ -558,6 +733,181 @@ export function CarpetaDigitalSharedView({
   const [detailDoc, setDetailDoc] = useState<CarpetaDocumento | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [searchFocused, setSearchFocused] = useState(false);
+
+  // ========== RUND STATE & HANDLERS ==========
+  const [tarjetaRund, setTarjetaRund] = useState<any | null>(null);
+  const [rundBloques, setRundBloques] = useState<any[]>([]);
+  const [rundAuditLog, setRundAuditLog] = useState<any[]>([]);
+  const [loadingRund, setLoadingRund] = useState(false);
+  const [rundError, setRundError] = useState<string | null>(null);
+  const [expandedRundBloques, setExpandedRundBloques] = useState<Set<string>>(new Set(['IDENTIDAD']));
+  const [isRundExpanded, setIsRundExpanded] = useState(false);
+  const [showRundAudit, setShowRundAudit] = useState(false);
+  const [rundActionLoading, setRundActionLoading] = useState<string | null>(null);
+  const [devolverRundBloque, setDevolverRundBloque] = useState<string | null>(null);
+  const [devolverRundObs, setDevolverRundObs] = useState('');
+  const [uploadingRundDoc, setUploadingRundDoc] = useState<{ bloque: string; tipo: string } | null>(null);
+  const rundFileInputRef = useRef<HTMLInputElement>(null);
+  const [rundPreviewUrl, setRundPreviewUrl] = useState<{ url: string; name: string } | null>(null);
+
+  const cleanPersonaId = useMemo(() => {
+    if (!personaId) return '';
+    return personaId.replace('persona:', '');
+  }, [personaId]);
+
+  const currentUserId = useMemo(() => {
+    if (typeof window === 'undefined') return 'admin-user';
+    const token = sessionStorage.getItem('esap_auth_token');
+    if (token) {
+      try {
+        const payloadPart = token.split('.')[1];
+        if (payloadPart) {
+          const payload = JSON.parse(atob(payloadPart));
+          return payload.id || payload.sub || payload.userId || 'admin-user';
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return 'admin-user';
+  }, []);
+
+  const fetchRundData = useCallback(async () => {
+    if (!cleanPersonaId) {
+      setTarjetaRund(null);
+      setRundBloques([]);
+      setRundAuditLog([]);
+      return;
+    }
+    setLoadingRund(true);
+    setRundError(null);
+    try {
+      const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
+      const data = res?.data || res;
+      if (data && data.docenteId) {
+        setTarjetaRund(data);
+        
+        const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques`);
+        const bloquesData = bloquesRes?.data || bloquesRes;
+        setRundBloques(Array.isArray(bloquesData) ? bloquesData : []);
+
+        const auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
+        const auditData = Array.isArray(auditRes?.data) ? auditRes.data : Array.isArray(auditRes) ? auditRes : [];
+        setRundAuditLog(auditData);
+      } else {
+        setTarjetaRund(null);
+        setRundBloques([]);
+        setRundAuditLog([]);
+      }
+    } catch (err) {
+      setTarjetaRund(null);
+      setRundBloques([]);
+      setRundAuditLog([]);
+    } finally {
+      setLoadingRund(false);
+    }
+  }, [cleanPersonaId]);
+
+  useEffect(() => {
+    fetchRundData();
+  }, [cleanPersonaId, fetchRundData]);
+
+  const toggleRundBloque = (bloque: string) => {
+    setExpandedRundBloques(prev => {
+      const next = new Set(prev);
+      if (next.has(bloque)) next.delete(bloque); else next.add(bloque);
+      return next;
+    });
+  };
+
+  const handleAprobarRund = async (bloque: string) => {
+    if (!tarjetaRund?.docenteId) return;
+    setRundActionLoading(bloque);
+    try {
+      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
+        aprobadorId: currentUserId,
+      });
+      if (res?.success || res) {
+        toast.success(`Bloque ${bloque} aprobado.`);
+        await fetchRundData();
+      } else {
+        toast.error('No se pudo aprobar el bloque.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al aprobar el bloque.');
+    } finally {
+      setRundActionLoading(null);
+    }
+  };
+
+  const handleDevolverRund = async () => {
+    if (!devolverRundBloque || !devolverRundObs.trim() || !tarjetaRund?.docenteId) return;
+    setRundActionLoading(devolverRundBloque);
+    try {
+      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
+        aprobadorId: currentUserId,
+        observacion: devolverRundObs,
+      });
+      if (res?.success || res) {
+        toast.success(`Bloque ${devolverRundBloque} devuelto.`);
+        setDevolverRundBloque(null);
+        setDevolverRundObs('');
+        await fetchRundData();
+      } else {
+        toast.error('No se pudo devolver el bloque.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al devolver el bloque.');
+    } finally {
+      setRundActionLoading(null);
+    }
+  };
+
+  const handleVincularRundClick = (bloque: string, tipo: string) => {
+    setUploadingRundDoc({ bloque, tipo });
+    if (rundFileInputRef.current) {
+      rundFileInputRef.current.value = '';
+      rundFileInputRef.current.click();
+    }
+  };
+
+  const handleRundFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !uploadingRundDoc || !tarjetaRund?.docenteId) return;
+    
+    const { bloque, tipo } = uploadingRundDoc;
+    setRundActionLoading(bloque);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('tipoSoporte', tipo);
+      formData.append('nombreArchivo', file.name);
+      formData.append('cargadoPor', currentUserId);
+
+      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
+      if (res?.success || res) {
+        toast.success(`Documento "${file.name}" cargado exitosamente.`);
+        await fetchRundData();
+      } else {
+        toast.error('Error al cargar el documento.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al cargar el documento.');
+    } finally {
+      setRundActionLoading(null);
+      setUploadingRundDoc(null);
+    }
+  };
+
+  const findRundSoporte = (soportes: any[], tipo: string) =>
+    soportes?.find((s: any) => s.tipo_soporte === tipo || s.tipo === tipo);
+
+  const sortedRundBloques = useMemo(() => {
+    const blockOrder = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
+    return [...rundBloques].sort((a, b) => {
+      return blockOrder.indexOf(a.bloque) - blockOrder.indexOf(b.bloque);
+    });
+  }, [rundBloques]);
 
   // ========== DRAG AND DROP ==========
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1101,6 +1451,468 @@ export function CarpetaDigitalSharedView({
           ═══════════════════════════════════════════════════════════════ */}
       {viewMode === 'tipos' && (
         <div className="flex flex-col gap-4">
+          
+          {/* RUND HIDDEN INPUT & MODALS */}
+          <input
+            type="file"
+            ref={rundFileInputRef}
+            style={{ display: 'none' }}
+            accept=".pdf,.jpg,.jpeg,.png"
+            onChange={handleRundFileChange}
+          />
+
+          {rundPreviewUrl && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+              <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 900, height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ background: '#e0f2fe', color: '#0ea5e9', padding: 8, borderRadius: 8 }}>
+                      <FileText size={20} />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a', fontWeight: 600 }}>Previsualización de Soporte RUND</h3>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>{rundPreviewUrl.name}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setRundPreviewUrl(null)}
+                    style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: '50%', display: 'flex', alignItems: 'center', color: '#64748b', transition: 'background 0.2s' }}
+                  >
+                    <XCircle size={20} color="#64748b" />
+                  </button>
+                </div>
+                <div style={{ flex: 1, background: '#e2e8f0', padding: '16px' }}>
+                  <iframe 
+                    src={rundPreviewUrl.url} 
+                    style={{ width: '100%', height: '100%', border: 'none', borderRadius: 8, background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+                    title="Visor de documento RUND"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VIRTUAL RUND FOLDER */}
+          {tarjetaRund && (
+            <div className="bg-white rounded-xl border overflow-hidden shadow-md border-blue-200">
+              {/* Category Header with Linear Gradient */}
+              <button
+                onClick={() => setIsRundExpanded(!isRundExpanded)}
+                className="w-full min-h-[56px] px-4 sm:px-5 flex items-center gap-3 sm:gap-4 border-none cursor-pointer text-left transition-all hover:brightness-105"
+                style={{
+                  background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
+                }}
+              >
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255, 255, 255, 0.18)', backdropFilter: 'blur(4px)' }}>
+                  <Shield className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-[15px] font-extrabold text-white m-0 truncate">RUND (Soportes y Validación)</h3>
+                  <p className="text-[11px] text-blue-100 font-medium m-0 mt-0.5 truncate">
+                    Registro Único Nacional Docente {tarjetaRund.idRund && `· #${tarjetaRund.idRund}`}
+                  </p>
+                </div>
+                <span className="text-[12px] font-extrabold px-3 py-1.5 rounded-full whitespace-nowrap shadow-sm" style={{
+                  background: tarjetaRund.semaforo?.porcentaje === 100 ? '#ECFDF5' : '#FFFBEB',
+                  color: tarjetaRund.semaforo?.porcentaje === 100 ? '#059669' : '#D97706',
+                }}>
+                  {tarjetaRund.semaforo?.porcentaje}% Validado
+                </span>
+                <ChevronDown className="w-5 h-5 text-blue-200 transition-transform duration-200" style={{ transform: isRundExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+              </button>
+
+              {/* Interactive Workflow Content */}
+              <AnimatePresence>
+                {isRundExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ overflow: 'hidden', background: '#FAFBFC' }}
+                  >
+                    <div className="p-4 sm:p-5">
+                      
+                      {/* Semáforo progress bar */}
+                      <div style={{ padding: '16px 20px', borderRadius: 12, background: 'white', border: '1px solid #E5E7EB', marginBottom: 16, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Completitud de validación
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: '#1F2937' }}>
+                            {rundBloques.filter(b => b.estado === 'Aprobado').length} de {rundBloques.length || 6} bloques aprobados
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: 8, background: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${tarjetaRund.semaforo?.porcentaje || 0}%`, height: '100%', borderRadius: 4,
+                            background: (tarjetaRund.semaforo?.porcentaje || 0) === 100 ? '#10B981' : (tarjetaRund.semaforo?.porcentaje || 0) >= 50 ? '#F59E0B' : '#EF4444',
+                            transition: 'width 0.5s ease',
+                          }} />
+                        </div>
+                      </div>
+
+                      {/* Bloques colapsables list */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {sortedRundBloques.map(b => {
+                          const cfg = CATALOGO_BR039[b.bloque];
+                          if (!cfg) return null;
+                          const isOpen = expandedRundBloques.has(b.bloque);
+                          const est = getRundEstadoBadge(b.estado);
+                          const EstIcon = est.icon;
+                          const canApprove = b.estado !== 'Aprobado';
+                          const isDevolverOpen = devolverRundBloque === b.bloque;
+
+                          return (
+                            <div key={b.bloque} style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${isOpen ? cfg.color + '50' : '#E5E7EB'}`, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                              {/* Block Header */}
+                              <div onClick={() => toggleRundBloque(b.bloque)}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', cursor: 'pointer', background: isOpen ? cfg.bg : 'transparent', transition: 'background 0.2s' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${cfg.color}, ${cfg.color}DD)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.8rem', fontWeight: 800 }}>
+                                    {cfg.letra}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1F2937' }}>{cfg.label}</div>
+                                    <div style={{ fontSize: '0.68rem', color: '#6B7280' }}>{cfg.subtitle}</div>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 700, background: est.bg, color: est.color, border: `1px solid ${est.border}` }}>
+                                    <EstIcon size={11} /> {est.label}
+                                  </span>
+                                  {isOpen ? <ChevronDown size={15} color="#9CA3AF" /> : <ChevronRight size={15} color="#9CA3AF" />}
+                                </div>
+                              </div>
+
+                              {/* Block Content */}
+                              {isOpen && (
+                                <div style={{ borderTop: '1px solid #E5E7EB', padding: 16, background: '#FAFBFC' }}>
+                                  
+                                  {/* Devolution observation if present */}
+                                  {b.observacion && (
+                                    <div style={{ padding: '8px 12px', background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA', fontSize: '0.75rem', color: '#991B1B', marginBottom: 12 }}>
+                                      <strong>📝 Observación de Devolución:</strong> {b.observacion}
+                                    </div>
+                                  )}
+
+                                  {/* Campos de Ficha de Datos (si aplica) */}
+                                  {tarjetaRund?.bloques?.[b.bloque]?.campos && (
+                                    <div style={{ marginBottom: 16 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.04em' }}>
+                                        Ficha de Datos
+                                      </div>
+                                      <div style={{
+                                        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                        gap: 10,
+                                      }}>
+                                        {tarjetaRund.bloques[b.bloque].campos.map((campo: any) => (
+                                          <div key={campo.campo} style={{
+                                            padding: '10px 12px', borderRadius: 8,
+                                            background: 'white', border: '1px solid #E5E7EB',
+                                          }}>
+                                            <div style={{
+                                              fontSize: 9, fontWeight: 600, color: '#9CA3AF',
+                                              textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2,
+                                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            }}>
+                                              <span>{CAMPO_LABELS[campo.campo] || campo.campo}</span>
+                                              {!campo.editable && (
+                                                <span style={{ fontSize: 8, color: '#D1D5DB', fontStyle: 'italic' }}>Solo lectura</span>
+                                              )}
+                                            </div>
+                                            <div style={{
+                                              fontSize: 12, fontWeight: 600,
+                                              color: campo.valor ? '#1F2937' : '#D1D5DB',
+                                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                            }}>
+                                              {campo.valor || '—'}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Checklist de Documentos Soporte */}
+                                  <div>
+                                    <div style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.04em' }}>
+                                      Lista de Chequeo RUND (Catálogo BR-039)
+                                    </div>
+                                    <div style={{ overflowX: 'auto', width: '100%', borderRadius: 8, border: '1px solid #E5E7EB', background: 'white' }}>
+                                      <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse', fontSize: 12 }}>
+                                        <thead>
+                                          <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB', color: '#6B7280', textTransform: 'uppercase', fontSize: 9, fontWeight: 700, letterSpacing: '0.05em' }}>
+                                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Campo RUND</th>
+                                            <th style={{ padding: '8px 12px', textAlign: 'left' }}>Documento Soporte</th>
+                                            <th style={{ padding: '8px 12px', textAlign: 'center', width: 90 }}>Obligatorio</th>
+                                            <th style={{ padding: '8px 12px', textAlign: 'center', width: 90 }}>Estado</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {cfg.campos.map((c, idx) => {
+                                            const soporte = c.tipoSoporte ? findRundSoporte(b.soportes || [], c.tipoSoporte) : null;
+                                            const hasDoc = !!soporte;
+                                            const isDerived = c.obligatorio === 'Derivado';
+                                            const obBadge = OBLIG_BADGE[c.obligatorio] || OBLIG_BADGE['No'];
+
+                                            return (
+                                              <tr key={idx} style={{
+                                                borderBottom: idx < cfg.campos.length - 1 ? '1px solid #F3F4F6' : 'none',
+                                                background: isDerived ? '#FAFBFC' : hasDoc ? '#FCFDFD' : 'transparent',
+                                              }}>
+                                                {/* Campo RUND */}
+                                                <td style={{ padding: '10px 12px' }}>
+                                                  <div style={{ fontWeight: 600, color: isDerived ? '#9CA3AF' : '#374151' }}>{c.campo}</div>
+                                                  {c.validacion && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 1 }}>{c.validacion}</div>}
+                                                </td>
+
+                                                {/* Documento Soporte */}
+                                                <td style={{ padding: '10px 12px' }}>
+                                                  {isDerived ? (
+                                                    <span style={{ color: '#9CA3AF', fontStyle: 'italic', fontSize: 11 }}>{c.documento}</span>
+                                                  ) : hasDoc ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                      <span style={{ color: '#059669', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500 }}>
+                                                        <CircleCheck style={{ width: 12, height: 12, color: '#10B981' }} /> {c.documento}
+                                                      </span>
+                                                      <div style={{ display: 'inline-flex', gap: 4 }}>
+                                                        <button
+                                                          title="Ver documento"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            let dbUrl = soporte?.url;
+                                                            let url = '';
+                                                            if (dbUrl && !dbUrl.includes('w3.org')) {
+                                                              if (dbUrl.startsWith('/api/academic-work-plan-service/')) {
+                                                                dbUrl = dbUrl.replace('/api/academic-work-plan-service/', '/pta/api/v1/');
+                                                              }
+                                                              url = dbUrl;
+                                                            } else {
+                                                              url = 'data:text/html;charset=utf-8,' + encodeURIComponent(`
+                                                                <div style="font-family:sans-serif; text-align:center; padding: 40px; color:#64748b;">
+                                                                  <h3>Documento de prueba</h3>
+                                                                  <p>Este registro tiene una URL de prueba antigua que no permite previsualización.</p>
+                                                                  <p>Por favor, usa el botón <strong>Reemplazar (🔄)</strong> para subir el archivo de nuevo.</p>
+                                                                </div>
+                                                              `);
+                                                            }
+                                                            setRundPreviewUrl({ url, name: soporte?.nombre || c.documento });
+                                                          }}
+                                                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#2563EB' }}
+                                                        >
+                                                          <Eye style={{ width: 12, height: 12 }} />
+                                                        </button>
+                                                        
+                                                        <button
+                                                          title="Reemplazar documento"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleVincularRundClick(b.bloque, c.tipoSoporte);
+                                                          }}
+                                                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: '#6B7280' }}
+                                                        >
+                                                          <RefreshCw style={{ width: 11, height: 11 }} />
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  ) : c.tipoSoporte ? (
+                                                    <button
+                                                      onClick={() => handleVincularRundClick(b.bloque, c.tipoSoporte)}
+                                                      disabled={rundActionLoading === b.bloque}
+                                                      style={{
+                                                        display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px',
+                                                        borderRadius: 6, border: 'none', fontSize: 10, fontWeight: 600,
+                                                        background: c.obligatorio === 'Sí' ? `linear-gradient(135deg, ${cfg.color}, ${cfg.color}DD)` : '#F3F4F6',
+                                                        color: c.obligatorio === 'Sí' ? '#fff' : '#4B5563',
+                                                        cursor: rundActionLoading === b.bloque ? 'wait' : 'pointer',
+                                                      }}
+                                                    >
+                                                      <Upload style={{ width: 10, height: 10 }} />
+                                                      Subir {c.documento.substring(0, 20)}{c.documento.length > 20 ? '…' : ''}
+                                                    </button>
+                                                  ) : (
+                                                    <span style={{ color: '#9CA3AF', fontStyle: 'italic', fontSize: 11 }}>{c.documento}</span>
+                                                  )}
+                                                </td>
+
+                                                {/* Obligatoriedad */}
+                                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                                  <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: obBadge.bg, color: obBadge.text }}>
+                                                    {obBadge.label}
+                                                  </span>
+                                                </td>
+
+                                                {/* Estado */}
+                                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                                  {isDerived ? (
+                                                    <span style={{ fontSize: 9, color: '#9CA3AF' }}>Auto</span>
+                                                  ) : hasDoc ? (
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#ECFDF5', color: '#059669' }}>
+                                                      ✓ OK
+                                                    </span>
+                                                  ) : c.tipoSoporte ? (
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: c.obligatorio === 'Sí' ? '#FEF2F2' : '#F3F4F6', color: c.obligatorio === 'Sí' ? '#DC2626' : '#9CA3AF' }}>
+                                                      {c.obligatorio === 'Sí' ? 'Falta' : '—'}
+                                                    </span>
+                                                  ) : (
+                                                    <span style={{ fontSize: 9, color: '#9CA3AF' }}>—</span>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+
+                                  {/* Devolución Form inline */}
+                                  {isDevolverOpen && (
+                                    <div style={{ margin: '12px 0 0', padding: 12, background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA' }}>
+                                      <div style={{ fontSize: 11, fontWeight: 700, color: '#991B1B', marginBottom: 4 }}>
+                                        Devolver bloque "{cfg.label}" — Observación obligatoria (BR-045)
+                                      </div>
+                                      <textarea
+                                        value={devolverRundObs}
+                                        onChange={e => setDevolverRundObs(e.target.value)}
+                                        placeholder="Indique el motivo de la devolución..."
+                                        rows={2}
+                                        style={{ width: '100%', padding: 8, borderRadius: 6, border: '1.5px solid #FECACA', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+                                      />
+                                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                                        <button
+                                          onClick={handleDevolverRund}
+                                          disabled={!devolverRundObs.trim() || rundActionLoading === b.bloque}
+                                          style={{
+                                            padding: '6px 12px', borderRadius: 6, border: 'none',
+                                            background: devolverRundObs.trim() ? '#DC2626' : '#E5E7EB',
+                                            color: devolverRundObs.trim() ? '#fff' : '#9CA3AF',
+                                            fontSize: 11, fontWeight: 600,
+                                            cursor: devolverRundObs.trim() && rundActionLoading !== b.bloque ? 'pointer' : 'not-allowed'
+                                          }}
+                                        >
+                                          Confirmar devolución
+                                        </button>
+                                        <button
+                                          onClick={() => { setDevolverRundBloque(null); setDevolverRundObs(''); }}
+                                          style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #E5E7EB', background: 'white', color: '#4B5563', fontSize: 11, cursor: 'pointer' }}
+                                        >
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Action Buttons for Validator/Admin */}
+                                  {!isDevolverOpen && (
+                                    <div style={{ padding: '10px 0 0', display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid #E5E7EB', marginTop: 12 }}>
+                                      {mode === 'admin' && canApprove && (
+                                        <>
+                                          <button
+                                            onClick={() => handleAprobarRund(b.bloque)}
+                                            disabled={rundActionLoading === b.bloque || b.estado === 'Soporte faltante'}
+                                            style={{
+                                              display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none',
+                                              background: b.estado === 'Soporte faltante' ? '#E5E7EB' : 'linear-gradient(135deg, #10B981, #059669)',
+                                              color: b.estado === 'Soporte faltante' ? '#9CA3AF' : '#fff',
+                                              fontSize: 11, fontWeight: 700,
+                                              cursor: b.estado === 'Soporte faltante' || rundActionLoading === b.bloque ? 'not-allowed' : 'pointer',
+                                            }}
+                                          >
+                                            {rundActionLoading === b.bloque ? <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear' }} /> : <CheckCircle style={{ width: 12, height: 12 }} />}
+                                            Aprobar bloque
+                                          </button>
+                                          <button
+                                            onClick={() => setDevolverRundBloque(b.bloque)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 6, border: 'none', background: '#EF4444', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                                          >
+                                            <ShieldAlert style={{ width: 12, height: 12 }} />
+                                            Devolver
+                                          </button>
+                                        </>
+                                      )}
+                                      {b.estado === 'Aprobado' && (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: '#ECFDF5', color: '#059669', fontSize: 11, fontWeight: 700 }}>
+                                          <Lock style={{ width: 12, height: 12 }} /> Bloque aprobado y verificado
+                                        </span>
+                                      )}
+                                      <div style={{ marginLeft: 'auto', fontSize: 10, color: '#9CA3AF', display: 'flex', gap: 10 }}>
+                                        {b.cargado_por && <span>📤 {b.cargado_por}</span>}
+                                        {b.revisado_por && <span>✅ {b.revisado_por}</span>}
+                                        <span>v{b.version}</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legend */}
+                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '8px 12px', background: '#F9FAFB', borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 10, color: '#6B7280', marginTop: 12 }}>
+                        <span style={{ fontWeight: 700 }}>Leyenda:</span>
+                        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#FEF3C7', marginRight: 4, verticalAlign: 'middle' }} />Obligatorio</span>
+                        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#EDE9FE', marginRight: 4, verticalAlign: 'middle' }} />Si aplica</span>
+                        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#F1F5F9', marginRight: 4, verticalAlign: 'middle' }} />Derivado</span>
+                      </div>
+
+                      {/* Audit Trail Trail */}
+                      <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 16, paddingTop: 12 }}>
+                        <button
+                          onClick={() => setShowRundAudit(!showRundAudit)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            padding: '8px 16px', cursor: 'pointer', background: 'white', borderRadius: 8,
+                            border: '1px solid #E5E7EB', gap: 6, transition: 'background 0.15s',
+                          }}
+                        >
+                          <History style={{ width: 14, height: 14, color: '#6B7280' }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#4B5563' }}>
+                            {showRundAudit ? 'Ocultar' : 'Ver'} historial de auditoría RUND ({rundAuditLog.length})
+                          </span>
+                        </button>
+
+                        {showRundAudit && rundAuditLog.length > 0 && (
+                          <div style={{ marginTop: 10, maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {rundAuditLog.map(entry => (
+                              <div key={entry.id} style={{
+                                display: 'flex', alignItems: 'flex-start', gap: 10,
+                                padding: '8px 12px', borderRadius: 8, background: '#F9FAFB',
+                                fontSize: 11, border: '1px solid #E5E7EB'
+                              }}>
+                                <CheckCircle style={{
+                                  width: 14, height: 14, flexShrink: 0, marginTop: 2,
+                                  color: entry.accion === 'APROBAR' ? '#10B981' : entry.accion === 'DEVOLVER' ? '#EF4444' : '#6B7280',
+                                }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, color: '#374151' }}>
+                                    {entry.accion}
+                                    {entry.bloque && <span style={{ color: '#9CA3AF', fontWeight: 400 }}> · {entry.bloque}</span>}
+                                  </div>
+                                  {entry.observacion && (
+                                    <div style={{ color: '#6B7280', marginTop: 2 }}>"{entry.observacion}"</div>
+                                  )}
+                                  <div style={{ color: '#9CA3AF', marginTop: 2, fontSize: 10 }}>
+                                    {new Date(entry.createdAt).toLocaleString('es-CO')}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           {groupedTipos.length === 0 && documentos.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 py-16 text-center shadow-sm">
               <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-4">

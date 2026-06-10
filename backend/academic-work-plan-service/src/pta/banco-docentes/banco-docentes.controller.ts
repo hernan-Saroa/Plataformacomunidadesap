@@ -1,12 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { memoryStorage, diskStorage } from 'multer';
+import { extname } from 'path';
+import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
 import { Public } from '../../auth/public.decorator';
+import { RolesGuard } from '../../auth/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @Controller(['banco-docentes', 'pta/banco-docentes'])
+@UseGuards(RolesGuard)
 export class BancoDocentesController {
   constructor(private readonly service: BancoDocentesService) { }
 
@@ -16,6 +22,7 @@ export class BancoDocentesController {
     @Query('dedicacion') dedicacion?: string,
     @Query('estado') estado?: string,
     @Query('search') search?: string,
+    @Query('periodoCarga') periodoCarga?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -24,6 +31,7 @@ export class BancoDocentesController {
       dedicacion,
       estado,
       search,
+      periodoCarga,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -32,10 +40,200 @@ export class BancoDocentesController {
     return { success: true, items: result.data, total: result.total, page: result.page, pages: result.pages, limit: result.limit };
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // RUTAS ESTÁTICAS — DEBEN ir ANTES de @Get(':id') para evitar
+  // que NestJS capture "invitaciones", "stats", etc. como :id
+  // ═══════════════════════════════════════════════════════════════════
+
   @Get('stats')
-  async stats() {
-    return { success: true, data: await this.service.getStats() };
+  async stats(
+    @Query('territorial') territorial?: string,
+    @Query('dedicacion') dedicacion?: string,
+    @Query('estado') estado?: string,
+    @Query('periodoCarga') periodoCarga?: string,
+  ) {
+    return { success: true, data: await this.service.getStats({ territorial, dedicacion, estado, periodoCarga }) };
   }
+
+  @Get('invitaciones')
+  async getInvitaciones() {
+    const result = await this.service.getInvitaciones();
+    return { success: true, data: result };
+  }
+
+  /** BR-055 — Soportes próximos a vencer */
+  @Get('soportes/proximos-vencer')
+  async soportesProximosVencer(@Query('dias') dias?: string) {
+    const result = await this.service.getSoportesProximosVencer(dias ? parseInt(dias, 10) : 30);
+    return { success: true, data: result };
+  }
+
+  /** BR-052 — Validar unicidad de documento y correo */
+  @Post('validar-unicidad')
+  async validarUnicidad(@Body() body: { documentNumber: string; correoInstitucional: string; excludeDocenteId?: string }) {
+    const result = await this.service.validarUnicidad(body.documentNumber, body.correoInstitucional, body.excludeDocenteId);
+    return { success: true, data: result };
+  }
+
+  /** §6.3 / BR-059 — Tarjeta RUND por persona (para Carpeta Digital) */
+  @Get('by-persona/:personaId/tarjeta-rund')
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async getTarjetaRUNDByPersona(@Param('personaId') personaId: string) {
+    const result = await this.service.getTarjetaRUNDByPersona(personaId);
+    if (!result) return { success: false, data: null, message: 'No es docente RUND' };
+    return { success: true, data: result };
+  }
+
+  /** BR-053 — Detectar posible duplicado por nombre + fecha nacimiento */
+  @Post('detectar-duplicado')
+  async detectarDuplicado(@Body() body: { nombreCompleto: string; fechaNacimiento: string }) {
+    const fecha = body.fechaNacimiento ? new Date(body.fechaNacimiento) : null;
+    const result = await this.service.detectarPosibleDuplicado(body.nombreCompleto, fecha);
+    return { success: true, data: result };
+  }
+
+  @Post('invitaciones')
+  async createInvitacion(@Body('correoInstitucional') correoInstitucional: string) {
+    if (!correoInstitucional) return { success: false, message: 'correoInstitucional is required' };
+    const result = await this.service.createInvitacion(correoInstitucional);
+    return { success: true, data: result };
+  }
+
+  @Post('bulk')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async bulkUpload(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: any,
+    @Query('dry_run') dryRunQuery?: string,
+    @Query('omit_errors') omitErrorsQuery?: string,
+  ) {
+    let rows: any[] = [];
+    const dryRun = dryRunQuery === 'true';
+    const omitErrors = omitErrorsQuery === 'true';
+
+    if (file) {
+      const workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
+      
+      // Find the correct sheet containing the data (ignoring README, DICCIONARIO, etc.)
+      const sheetName = workbook.SheetNames.find(name => 
+        name.toUpperCase().includes('CARGA') || 
+        name.toUpperCase().includes('DOCENTES') || 
+        name.toUpperCase().includes('DATOS')
+      ) || workbook.SheetNames[0];
+      
+      const sheet = workbook.Sheets[sheetName];
+      rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+      
+      // Skip title row if present
+      if (rows.length > 0 && Object.values(rows[0]).some(v => typeof v === 'string' && (v.includes('DOCUMENTO_IDENTIDAD') || v.includes('NOMBRE_COMPLETO') || v.includes('Documento de identidad') || v.includes('Documento de Identidad')))) {
+        rows = xlsx.utils.sheet_to_json(sheet, { defval: null, range: 1 });
+      }
+      console.log('[DEBUG_EXCEL] Headers detectados:', rows.length > 0 ? Object.keys(rows[0]) : 'No rows');
+      
+      rows = sanitizeDeepStrings(rows) as any[];
+    } else if (body?.rows) {
+      rows = Array.isArray(body.rows) ? body.rows : [];
+    } else {
+      return { success: false, message: 'Se requiere un archivo Excel o un array de rows en el body.' };
+    }
+
+    if (rows.length === 0) {
+      return { success: false, message: 'El archivo no contiene filas de datos.' };
+    }
+
+    // Validación estructural: verificar que sea un archivo de docentes
+    const sampleKeys = Object.keys(rows[0]).join(' ').toUpperCase();
+    const isDocentesFile = (sampleKeys.includes('DOCUMENT') || sampleKeys.includes('IDENTIFICACI')) 
+      && sampleKeys.includes('NOMBRE') 
+      && sampleKeys.includes('VINCULACI');
+
+    if (!isDocentesFile) {
+      return { 
+        success: false, 
+        message: 'Archivo equivocado o estructura inválida. No se detectaron las columnas mínimas obligatorias (Documento, Nombre, Vinculación). Asegúrese de utilizar la plantilla del Banco de Docentes.' 
+      };
+    }
+
+    // Los duplicados se manejarán dentro del servicio bulkUpsert para no bloquear el archivo completo.
+
+    const result = await this.service.bulkUpsert(rows, { rejectExisting: false, dryRun, omitErrors });
+    return { success: true, data: result };
+  }
+
+  @Post('sync-auth')
+  async syncAuth() {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const result = await this.service.syncToAuthService(authUrl);
+    return { success: true, data: result };
+  }
+
+  @Post('sync-from-auth')
+  async syncFromAuth() {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const result = await this.service.syncFromAuthService(authUrl);
+    return { success: true, data: result };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Autogestión (Canal 3) — Endpoints públicos
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Public()
+  @Post('otp/request')
+  async requestOtp(@Body('email') email: string) {
+    if (!email) return { success: false, message: 'email is required' };
+    try {
+      const result = await this.service.requestOtpByEmail(email);
+      return result;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Error al procesar la solicitud' };
+    }
+  }
+
+  @Public()
+  @Post('otp/validate')
+  async validateOtp(@Body('email') email: string, @Body('otp') otp: string) {
+    if (!email || !otp) return { success: false, message: 'email and otp are required' };
+    try {
+      const result = await this.service.verifyOtpForEmail(email, otp);
+      return result;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Código inválido o expirado' };
+    }
+  }
+
+  @Public()
+  @Get('drafts/:token')
+  async getDraft(@Param('token') token: string) {
+    const result = await this.service.getDraft(token);
+    return { success: true, data: result };
+  }
+
+  @Public()
+  @Get('autogestion/me/:token')
+  async getMyInfo(@Param('token') token: string) {
+    const result = await this.service.getAutogestionInfo(token);
+    return { success: true, data: result };
+  }
+
+  @Public()
+  @Put('drafts/:token')
+  async saveDraft(@Param('token') token: string, @Body() body: any) {
+    const result = await this.service.saveDraft(token, body);
+    return { success: true, data: result };
+  }
+
+  @Public()
+  @Post('submit/:token')
+  async submitFromToken(@Param('token') token: string, @Body() body: any) {
+    const result = await this.service.submitFromToken(token, body);
+    return { success: true, data: result };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // RUTAS DINÁMICAS (:id) — DEBEN ir AL FINAL para no capturar
+  // rutas estáticas como "invitaciones", "stats", "soportes", etc.
+  // ═══════════════════════════════════════════════════════════════════
 
   @Get(':id')
   async getById(@Param('id') id: string) {
@@ -60,45 +258,115 @@ export class BancoDocentesController {
     return { success: true, data: result };
   }
 
-  @Post('bulk')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
-  async bulkUpload(
-    @UploadedFile() file: Express.Multer.File | undefined,
-    @Body() body: any,
+  /** BR-044 — Obtener estados de aprobación por bloque */
+  @Get(':id/bloques')
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async getBloques(@Param('id') id: string) {
+    try {
+      const result = await this.service.getBloques(id);
+      return { success: true, data: result };
+    } catch (e: any) {
+      // If table doesn't exist, try to ensure it and retry
+      if (e.message?.includes('does not exist') || e.message?.includes('no existe')) {
+        try {
+          await this.service.ensureRundTables();
+          const result = await this.service.getBloques(id);
+          return { success: true, data: result };
+        } catch {
+          // Still failed
+        }
+      }
+      return { success: true, data: [], message: e.message };
+    }
+  }
+
+  /** BR-043 — Aprobar un bloque (maker-checker) */
+  @Post(':id/bloques/:bloque/aprobar')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async aprobarBloque(
+    @Param('id') id: string,
+    @Param('bloque') bloque: string,
+    @Body('aprobadorId') aprobadorId: string,
   ) {
-    let rows: any[] = [];
+    if (!aprobadorId) return { success: false, message: 'aprobadorId es requerido' };
+    const result = await this.service.aprobarBloque(id, bloque, aprobadorId);
+    return { success: true, data: result };
+  }
 
+  /** BR-045 — Devolver un bloque con observación obligatoria */
+  @Post(':id/bloques/:bloque/devolver')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async devolverBloque(
+    @Param('id') id: string,
+    @Param('bloque') bloque: string,
+    @Body('aprobadorId') aprobadorId: string,
+    @Body('observacion') observacion: string,
+  ) {
+    if (!aprobadorId) return { success: false, message: 'aprobadorId es requerido' };
+    const result = await this.service.devolverBloque(id, bloque, aprobadorId, observacion);
+    return { success: true, data: result };
+  }
+
+  /** BR-039 — Vincular un soporte a un bloque */
+  @Post(':id/bloques/:bloque/soportes')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => {
+        const uploadPath = './uploads/rund';
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+        cb(null, `${randomName}${extname(file.originalname)}`);
+      }
+    })
+  }))
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async vincularSoporte(
+    @Param('id') id: string,
+    @Param('bloque') bloque: string,
+    @Body() body: any,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     if (file) {
-      const workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
-      rows = sanitizeDeepStrings(rows) as any[];
-    } else if (body?.rows) {
-      rows = Array.isArray(body.rows) ? body.rows : [];
-    } else {
-      return { success: false, message: 'Se requiere un archivo Excel o un array de rows en el body.' };
+      body.nombreArchivo = file.originalname;
+      // Since API gateway proxies `/pta/api/v1/` to root,
+      // the URL will be accessible via the proxy.
+      body.documentoCarpetaId = `/pta/api/v1/uploads/rund/${file.filename}`;
     }
-
-    if (rows.length === 0) {
-      return { success: false, message: 'El archivo no contiene filas de datos.' };
-    }
-
-    const result = await this.service.bulkUpsert(rows, { rejectExisting: false });
+    const result = await this.service.vincularSoporte(id, bloque, body);
     return { success: true, data: result };
   }
 
-  @Post('sync-auth')
-  async syncAuth() {
-    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-    const result = await this.service.syncToAuthService(authUrl);
+  /** BR-047 — Verificar estado de activación del registro */
+  @Get(':id/activacion')
+  async verificarActivacion(@Param('id') id: string) {
+    const result = await this.service.verificarActivacion(id);
     return { success: true, data: result };
   }
 
-  @Post('sync-from-auth')
-  async syncFromAuth() {
-    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-    const result = await this.service.syncFromAuthService(authUrl);
-    return { success: true, data: result };
+  /** §6.3 / BR-059 — Tarjeta RUND para Carpeta Digital */
+  @Get(':id/tarjeta-rund')
+  async getTarjetaRUND(@Param('id') id: string) {
+    try {
+      const result = await this.service.getTarjetaRUND(id);
+      return { success: true, data: result };
+    } catch (e: any) {
+      return { success: false, data: null, message: e.message };
+    }
+  }
+
+  /** BR-056 — Log inmutable de auditoría del docente */
+  @Get(':id/auditoria')
+  async getAuditoria(@Param('id') id: string) {
+    try {
+      const result = await this.service.getAuditoria(id);
+      return { success: true, data: result };
+    } catch (e: any) {
+      return { success: true, data: [], message: e.message };
+    }
   }
 }

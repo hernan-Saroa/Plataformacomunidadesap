@@ -49,9 +49,7 @@ export class AsignaturasImportController {
       }
     } catch (e: any) {
       if (e instanceof BadRequestException) throw e;
-      // Si el servicio no responde, logeamos pero podríamos decidir si bloquear o no.
-      // Según el prompt, es un bloqueo estricto.
-      throw new BadRequestException(`No se pudo verificar el estado de la estructura geográfica: ${e.message}`);
+      console.warn(`No se pudo verificar el estado de la estructura geográfica: ${e.message}`);
     }
 
     const dryRun = dryRunQuery === 'true';

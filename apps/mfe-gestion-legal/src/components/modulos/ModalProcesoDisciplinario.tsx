@@ -1598,7 +1598,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                     profesionalAsignado={proceso.abogadoAsignado}
                     tareas={tareas}
                     actuaciones={actuaciones}
-                    notas={notas}
+                    notas={notasInternas}
                     readOnly={readOnly}
                   />
                 </TabsContent>

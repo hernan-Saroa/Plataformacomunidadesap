@@ -619,8 +619,15 @@ export class PtaController {
   // Integraciones externas (stubs)
   // ─────────────────────────────
   @Get('rund/docente/:docenteId')
-  getRUNDDocente(@Param('docenteId') docenteId: string) {
-    return { success: true, data: { docenteId, resumen: null } };
+  async getRUNDDocente(@Param('docenteId') docenteId: string) {
+    const data = await this.ptaService.getRUNDDocente(docenteId);
+    return { success: true, data };
+  }
+
+  @Post('rund/docente/:docenteId/sync-documents')
+  async syncRUNDDocuments(@Param('docenteId') docenteId: string, @Body() body: any) {
+    const data = await this.ptaService.syncRUNDDocuments(docenteId, body?.documentos || []);
+    return { success: true, data };
   }
 
   @Get('rund/resumen')
@@ -720,5 +727,17 @@ export class PtaController {
   @Delete('reportes/scheduler/history')
   clearSchedulerHistory() {
     return { success: true };
+  }
+
+  @Get(':ptaId/componentes-aprobacion')
+  async getComponentesAprobacion(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getComponentesAprobacion(ptaId);
+    return { success: true, data };
+  }
+
+  @Post(':ptaId/aprobar-componente')
+  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any) {
+    const data = await this.ptaService.aprobarComponente(ptaId, body);
+    return { success: true, data };
   }
 }
