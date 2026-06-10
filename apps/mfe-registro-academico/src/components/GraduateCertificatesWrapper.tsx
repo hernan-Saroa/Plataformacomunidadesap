@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { FileSearch, Award, AlertCircle, ShieldCheck, ClipboardCheck } from 'lucide-react';
+import { FileSearch, Award, AlertCircle, ShieldCheck, ClipboardCheck, ChevronRight } from 'lucide-react';
 import { ReviewRequestsModule } from './ReviewRequestsModule';
 import { ApprovalRequestsModule } from './ApprovalRequestsModule';
 import { VerificationCertificatesModule } from './VerificationCertificatesModule';
@@ -163,20 +163,25 @@ export function GraduateCertificatesWrapper({
               return (
                 <button
                   key={tab.id}
+                  type="button"
+                  aria-pressed={isActive}
                   onClick={() => setActiveTab(tab.id)}
-                  className="flex-1 p-4 rounded-xl border-2 transition-all text-left"
+                  className="group flex-1 rounded-xl border-2 p-4 text-left shadow-sm transition-colors duration-200 hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer"
                   style={{
                     borderColor: isActive ? tab.color : '#E5E7EB',
-                    background: isActive ? `${tab.color}08` : '#FFFFFF',
-                    boxShadow: isActive ? `0 0 0 3px ${tab.color}20` : 'none',
+                    background: isActive ? `${tab.color}0D` : '#FFFFFF',
+                    boxShadow: isActive
+                      ? `0 0 0 3px ${tab.color}14`
+                      : '0 1px 2px rgba(15, 23, 42, 0.06)',
+                    ['--tw-ring-color' as string]: `${tab.color}55`,
                   }}
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
+                      className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-colors duration-200"
                       style={{
                         background: isActive
-                          ? `linear-gradient(135deg, ${tab.color} 0%, ${tab.color}DD 100%)`
+                          ? tab.color
                           : '#F3F4F6',
                       }}
                     >
@@ -185,24 +190,38 @@ export function GraduateCertificatesWrapper({
                         style={{ color: isActive ? '#FFFFFF' : '#6B7280' }}
                       />
                     </div>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p
-                          className="font-semibold text-sm"
+                          className="truncate font-semibold text-sm"
                           style={{ color: isActive ? tab.color : '#1F2937' }}
                         >
                           {tab.label}
                         </p>
                         {'badge' in tab && tab.badge > 0 && (
-                          <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white">
+                          <span
+                            className="inline-flex min-w-5 h-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold"
+                            style={{
+                              background: '#DC2626',
+                              color: '#FFFFFF',
+                            }}
+                          >
                             {tab.badge}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                      <p
+                        className="truncate text-xs"
+                        style={{ color: '#6B7280' }}
+                      >
                         {tab.subtitle}
                       </p>
                     </div>
+                    <ChevronRight
+                      className="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
+                      style={{ color: isActive ? tab.color : '#9CA3AF' }}
+                      aria-hidden="true"
+                    />
                   </div>
                 </button>
               );
