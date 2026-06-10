@@ -531,6 +531,7 @@ const graduadosService = {
         formData,
         {
           onProgress,
+          skipAuth: true,
           skipAuthRefresh: true,
         },
       );
