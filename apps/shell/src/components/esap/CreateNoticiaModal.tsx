@@ -154,7 +154,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         setTerritoriales(list);
 
         // También agregar las seccionales a las dependencias
-        const merged = Array.from(new Set([...DEPENDENCIAS_ESAP, ...list]));
+        const merged = Array.from(new Set(["Por determinar", ...list]));
         setDependencias(merged);
       } catch (_) {
         setTerritoriales([]);
@@ -907,7 +907,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         </div>
 
         {/* ✅ NUEVO: Resumen de datos actuales en modo edición */}
-        {isEditMode && noticiaToEdit && (
+        {/* {isEditMode && noticiaToEdit && (
           <div className="px-6 py-4 border-b border-gray-200 bg-amber-50">
             <div className="max-w-4xl mx-auto">
               <h3 className="text-lg font-semibold text-amber-900 mb-4 flex items-center gap-2">
@@ -980,7 +980,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">

@@ -18,6 +18,7 @@ services:
         VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
         VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
+        ESAP_BUILD_DATE: ${ESAP_BUILD_DATE:-}
     container_name: superapp-frontend
     ports:
       - "80:80"
@@ -74,7 +75,7 @@ services:
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service:3010
       AUDIT_SERVICE_URL: http://audit-service:3011
     ports:
-      - "3000:3000"
+      - "${API_GATEWAY_PORT:-3000}:3000"
     depends_on:
       - auth-service
       - academic-registration-service

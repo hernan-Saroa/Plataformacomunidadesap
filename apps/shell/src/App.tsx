@@ -46,6 +46,20 @@ const LEGACY_DISCIPLINARY_ROLES = new Set([
   'PROFESIONAL',
 ]);
 
+/** Roles académicos del portal (no incluye roles administrativos del backoffice). */
+const PORTAL_ACADEMIC_ROLE_CODES = new Set([
+  'ESTUDIANTE',
+  'DOCENTE',
+  'GRADUADO',
+  'EGRESADO',
+  'ASPIRANTE',
+  'USUARIO_AUDITADO',
+]);
+
+function filterPortalRoleCodes(roleCodes: string[]): string[] {
+  return roleCodes.filter((code) => PORTAL_ACADEMIC_ROLE_CODES.has(code));
+}
+
 function hasDisciplinaryAccess(roles: string[]): boolean {
   return roles.some(role =>
     LEGACY_DISCIPLINARY_ROLES.has(role) ||
@@ -247,10 +261,17 @@ function resolveDestino(user: any): {
   // Si ningún rol tiene sistema_destino, usar fallback por código
   if (!destinos.length) {
     const isAdmin = roleCodes.includes('ADMIN') || roleCodes.includes('SUPER_ADMIN');
-    const isPortalOnly = roleCodes.some(c => ['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIRANTE', 'USUARIO_AUDITADO'].includes(c));
-    if (isAdmin) destino = 'backoffice';
-    else if (!isPortalOnly) destino = 'backoffice';
-    else destino = 'portal';
+    const hasPortalRole = roleCodes.some((c) => PORTAL_ACADEMIC_ROLE_CODES.has(c));
+    const hasBackofficeRole = roleCodes.some((c) => !PORTAL_ACADEMIC_ROLE_CODES.has(c));
+    if (hasPortalRole && hasBackofficeRole) {
+      destino = 'ambos';
+    } else if (isAdmin) {
+      destino = 'backoffice';
+    } else if (hasBackofficeRole) {
+      destino = 'backoffice';
+    } else if (hasPortalRole) {
+      destino = 'portal';
+    }
   }
 
   // Nombres de rol para mostrar en el portal/backoffice
@@ -283,6 +304,17 @@ const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
 const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
 /** Persiste la elección manual del usuario (portal ↔ backoffice) entre recargas */
 const SYSTEM_OVERRIDE_KEY = 'esap-system-override';
+
+function resolveEffectiveDestino(
+  destino: 'portal' | 'backoffice' | 'ambos',
+  hasBoth: boolean,
+): 'portal' | 'backoffice' {
+  const savedOverride = sessionStorage.getItem(SYSTEM_OVERRIDE_KEY) as 'portal' | 'backoffice' | null;
+  if (hasBoth && savedOverride) return savedOverride;
+  if (destino === 'ambos') return 'backoffice';
+  return destino;
+}
+
 const SENSITIVE_SESSION_STORAGE_KEYS = [
   USER_DATA_STORAGE_KEY,
 ];
@@ -334,6 +366,8 @@ function clearSensitiveSessionState() {
 
 
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
+const INTERVALO_REFRESH_SESION_ACTIVA = 10 * 60 * 1000; // 10 minutos
+const INTERVALO_GUARDADO_ACTIVIDAD = 30 * 1000; // 30 segundos
 
 function DemoNoDisponible({ title }: { title: string }) {
   return (
@@ -341,7 +375,7 @@ function DemoNoDisponible({ title }: { title: string }) {
       <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
         <p className="mt-3 text-sm text-slate-600">
-          Esta vista demo no fue migrada al shell. Revise el MFE correspondiente o `_src_legacy_backup`.
+          Esta vista demo no fue migrada al shell. Revise el MFE correspondiente.
         </p>
       </div>
     </div>
@@ -359,7 +393,7 @@ export default function App() {
       <>
         <DemoNoDisponible title="Demo de Control Disciplinario" />
         <Toaster
-          position="top-right"
+          position="bottom-right"
           richColors
           closeButton
           duration={4000}
@@ -393,6 +427,8 @@ export default function App() {
 
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
+  const ultimaActividadGuardadaRef = useRef(0);
+  const ultimoRefreshSesionRef = useRef(0);
 
   // ============================================
   // PERSISTENCIA DE SESIÓN
@@ -437,12 +473,12 @@ export default function App() {
 
       const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
 
-      const portalRoles = roleNames.length > 0 ? roleNames : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
+      const portalRoleCodes = filterPortalRoleCodes(roleCodes);
+      const portalRoles = portalRoleCodes.length > 0
+        ? portalRoleCodes
+        : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
 
-      // Respetar la elección manual del usuario si tiene acceso a ambos sistemas
-      const savedOverride = sessionStorage.getItem(SYSTEM_OVERRIDE_KEY) as 'portal' | 'backoffice' | null;
-      const effectiveDestino = (hasBoth && savedOverride) ? savedOverride : (destino === 'ambos' ? 'backoffice' : destino);
-
+      const effectiveDestino = resolveEffectiveDestino(destino, hasBoth);
       const goToBackoffice = effectiveDestino === 'backoffice';
       const nextView: Vista = goToBackoffice ? 'backoffice' : 'portal';
       const nextCurrentView: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
@@ -572,6 +608,47 @@ export default function App() {
   // SISTEMA DE DETECCIÓN DE INACTIVIDAD
   // ============================================
 
+  const guardarActividadSesion = useCallback(() => {
+    if (!usuarioActual || (vistaActual !== 'portal' && vistaActual !== 'backoffice')) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - ultimaActividadGuardadaRef.current < INTERVALO_GUARDADO_ACTIVIDAD) {
+      return;
+    }
+
+    ultimaActividadGuardadaRef.current = now;
+    sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
+      vista: vistaActual,
+      timestamp: now,
+    }));
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+  }, [usuarioActual, vistaActual]);
+
+  const refrescarSesionActiva = useCallback(async (force = false) => {
+    if (!usuarioActual) {
+      return false;
+    }
+
+    const now = Date.now();
+    if (!force && now - ultimoRefreshSesionRef.current < INTERVALO_REFRESH_SESION_ACTIVA) {
+      return false;
+    }
+
+    ultimoRefreshSesionRef.current = now;
+
+    try {
+      await authService.refreshToken();
+      return true;
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[Auth] No se pudo refrescar la sesion activa:', error);
+      }
+      return false;
+    }
+  }, [usuarioActual]);
+
   const resetearTimerInactividad = useCallback(() => {
     // Limpiar timers existentes
     if (timerInactividadRef.current) {
@@ -584,6 +661,9 @@ export default function App() {
 
     // Solo activar si hay usuario autenticado
     if (!usuarioActual) return;
+
+    guardarActividadSesion();
+    void refrescarSesionActiva();
 
     // Timer para mostrar alerta (14 minutos)
     timerAlertaRef.current = setTimeout(() => {
@@ -598,7 +678,7 @@ export default function App() {
     timerInactividadRef.current = setTimeout(() => {
       handleLogoutPorInactividad();
     }, TIMEOUT_INACTIVIDAD);
-  }, [usuarioActual]);
+  }, [usuarioActual, guardarActividadSesion, refrescarSesionActiva]);
 
   // Detectar actividad del usuario
   useEffect(() => {
@@ -678,12 +758,16 @@ export default function App() {
       const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
       console.log('🔑 User roles:', roleCodes, '| sistema_destino resuelto:', destino, '| hasBoth:', hasBoth);
 
-      const goToBackoffice = destino === 'backoffice' || destino === 'ambos';
+      const effectiveDestino = resolveEffectiveDestino(destino, hasBoth);
+      const goToBackoffice = effectiveDestino === 'backoffice';
       const vistaActualNext: Vista = goToBackoffice ? 'backoffice' : 'portal';
       const currentViewNext: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
 
-      // Nombres de rol para el Portal (RoleSelector)
-      const portalRoles = roleNames.length > 0 ? roleNames : (goToBackoffice ? ['Administrativo'] : ['Estudiante']);
+      // Roles del portal para el selector (solo académicos, sin roles de backoffice)
+      const portalRoleCodes = filterPortalRoleCodes(roleCodes);
+      const portalRoles = portalRoleCodes.length > 0
+        ? portalRoleCodes
+        : (goToBackoffice ? ['Administrativo'] : ['Estudiante']);
 
       setUserType(goToBackoffice ? 'administrativo' : 'portal');
       setIsAuthenticated(true);
@@ -714,9 +798,12 @@ export default function App() {
       if (rememberMe) {
         localStorage.setItem('esap-remember-session', JSON.stringify({ email: userEmail }));
       }
+      const now = Date.now();
+      ultimaActividadGuardadaRef.current = now;
+      ultimoRefreshSesionRef.current = now;
       sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
         vista: vistaActualNext,
-        timestamp: Date.now(),
+        timestamp: now,
       }));
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       resetearTimerInactividad();
@@ -845,12 +932,22 @@ export default function App() {
     }
   };
 
-  const handleContinuarSesion = () => {
+  const handleContinuarSesion = async () => {
     setMostrarAlertaInactividad(false);
+
+    const refreshed = await refrescarSesionActiva(true);
+    guardarActividadSesion();
     resetearTimerInactividad();
-    toast.success('Sesión extendida', {
-      description: 'Has renovado tu sesión exitosamente',
-    });
+
+    if (refreshed) {
+      toast.success('Sesión extendida', {
+        description: 'Has renovado tu sesión exitosamente',
+      });
+    } else {
+      toast.warning('Sesión activa', {
+        description: 'No se pudo confirmar la renovación con el servidor. Continúa trabajando mientras haya conexión.',
+      });
+    }
   };
 
   // ============================================
@@ -934,10 +1031,10 @@ export default function App() {
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
             onSystemChange={(system) => {
-              if (system === 'portal') {
-                setVistaActual('portal');
-                toast.success('Cambiado al Portal Transaccional');
-              }
+              handleSystemChange(system);
+              toast.success(
+                system === 'portal' ? 'Cambiado al Portal Transaccional' : 'Cambiado al Backoffice',
+              );
             }}
             userData={userData}
             userRoles={userRoles}
@@ -996,27 +1093,29 @@ export default function App() {
         <style>{`
         [data-sonner-toaster] { 
           position: fixed !important; 
-          top: 20px !important; 
+          bottom: 20px !important; 
           right: 20px !important; 
-          bottom: auto !important;
+          top: auto !important;
           left: auto !important;
           z-index: 100010 !important; 
         }
         [data-sonner-toast] { 
           background: white !important; 
           border: 1px solid #e5e7eb !important; 
-          border-radius: 12px !important; 
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; 
-          padding: 16px !important; 
-          animation: slideIn 0.3s ease-out !important;
+          border-radius: 8px !important; 
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important; 
+          padding: 10px 14px !important; 
+          width: 320px !important;
+          max-width: 100% !important;
+          animation: slideInBottom 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
-        @keyframes slideIn {
+        @keyframes slideInBottom {
           from {
-            transform: translateX(100%);
+            transform: translateY(20px);
             opacity: 0;
           }
           to {
-            transform: translateX(0);
+            transform: translateY(0);
             opacity: 1;
           }
         }
@@ -1024,8 +1123,8 @@ export default function App() {
         [data-sonner-toast][data-type=\"error\"] { border-left: 4px solid #ef4444 !important; }
         [data-sonner-toast][data-type=\"warning\"] { border-left: 4px solid #f59e0b !important; }
         [data-sonner-toast][data-type=\"info\"] { border-left: 4px solid #3b82f6 !important; }
-        [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
-        [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
+        [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 12px !important; }
+        [data-description] { color: #4b5563 !important; font-size: 11px !important; margin-top: 2px !important; }
       `}</style>
 
         <Routes>
@@ -1118,7 +1217,7 @@ export default function App() {
           </div>
         )}
 
-      <Toaster position="top-right" richColors expand={true} closeButton />
+      <Toaster position="bottom-right" richColors expand={true} closeButton />
 
         {/* INDICADOR GLOBAL DE MODO OFFLINE */}
         {!isOnline && (

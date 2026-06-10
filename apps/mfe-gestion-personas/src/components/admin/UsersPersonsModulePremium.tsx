@@ -63,7 +63,7 @@ import { DigitalFolderSection } from './DigitalFolderSection';
 import { UserExpandedView } from './UserExpandedView';  
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../hooks';
 import { ModalCambiarContrasena } from "./ModalCambiarContrasena"; 
 import { estructuraService } from '../../services/estructuraService';
@@ -138,6 +138,8 @@ export function UsersPersonsModulePremium() {
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesSaving, setRolesSaving] = useState(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+  const [isRoleFilterOpen, setIsRoleFilterOpen] = useState(false);
+  const [roleFilterSearch, setRoleFilterSearch] = useState('');
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false); // ✅ MODAL CAMBIAR CONTRASEÑA
   const [showPasswordHistoryModal, setShowPasswordHistoryModal] = useState(false);
   const [passwordHistory, setPasswordHistory] = useState<any[]>([]);
@@ -148,6 +150,27 @@ export function UsersPersonsModulePremium() {
   const isMountedRef = useRef(true);
   const latestLoadUsersRequestRef = useRef(0);
   const { visibleCols, setVisibleCols } = useTableColumns('personas', PERSONAS_COLUMNS);
+
+  const sortedAvailableRoles = useMemo(
+    () => [...availableRoles].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })
+    ),
+    [availableRoles]
+  );
+
+  const filteredRoleOptions = useMemo(() => {
+    const query = roleFilterSearch.trim().toLowerCase();
+    if (!query) return sortedAvailableRoles;
+    return sortedAvailableRoles.filter((role) =>
+      (role.name || '').toLowerCase().includes(query) ||
+      (role.code || '').toLowerCase().includes(query)
+    );
+  }, [roleFilterSearch, sortedAvailableRoles]);
+
+  const selectedRoleFilter = useMemo(
+    () => sortedAvailableRoles.find((role) => role.id === roleFilter),
+    [roleFilter, sortedAvailableRoles]
+  );
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
@@ -529,6 +552,11 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const userId = selectedUser?.id_user || selectedUser?.id;
+      if (!userId) {
+        throw new Error("No se pudo identificar el usuario a editar.");
+      }
+
       const principalAsignacion =
         userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
         userData.asignacionesSedes?.[0];
@@ -549,6 +577,17 @@ export function UsersPersonsModulePremium() {
         }
       }
 
+      // Map single string role to roleIds array
+      let mappedRoleIds = userData.roleIds || [];
+      if (mappedRoleIds.length === 0 && userData.role) {
+        const roleObj = availableRoles.find(
+          (r: any) => r.name === userData.role || r.nombre === userData.role || r.code === userData.role
+        );
+        if (roleObj) {
+          mappedRoleIds = [roleObj.id];
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const updateUserData = {
         first_name: userData.firstName,
@@ -558,13 +597,36 @@ export function UsersPersonsModulePremium() {
         email: userData.email,
         phone: userData.phone || '',
         gender: userData.gender || '',
-        roleIds: userData.roleIds || [],
+        birth_date: userData.birthDate,
+        address: userData.address,
+        city: userData.city,
+        empresa_contratista: userData.empresaContratista,
+        dependencia_grupo_programa: userData.dependenciaGrupoPrograma,
+        cargo_semestre: userData.cargoSemestre,
+        contrato: userData.contrato,
+        enrollment_date: userData.enrollmentDate,
+        fecha_fin_contrato: userData.fechaFinContrato,
+        observaciones: userData.observaciones,
+        tipo_vinculacion: userData.tipoVinculacion,
+        horas_asignables: userData.horasAsignables,
+        pregrado_detalle: userData.pregradoDetalle,
+        doctorado_detalle: userData.doctoradoDetalle,
+        puntaje_salarial: userData.puntajeSalarial,
+        roleIds: mappedRoleIds,
+        status: userData.status,
         // Agregar seccional y sede si están definidos
         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
-      await usersService.updateUser(userData.id_user || userData.id, updateUserData);
+      await usersService.updateUser(userId, updateUserData);
+
+      // Si el estado cambió, actualizarlo usando el endpoint específico
+      const wasActive = selectedUser?.status === 'active' || selectedUser?.is_active === true;
+      const isNowActive = userData.status === 'active';
+      if (wasActive !== isNowActive) {
+        await usersService.updateUserStatus(userId, isNowActive);
+      }
 
       toast.success('Usuario Actualizado', {
         description: `${userData.firstName} ${userData.lastName} ha sido actualizado exitosamente.`
@@ -776,6 +838,37 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const principalAsignacion =
+        userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
+        userData.asignacionesSedes?.[0];
+      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
+      let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
+
+      // Si hay sede seleccionada y no viene seccional en el formulario, resolverla desde estructura-organizacional
+      if (!Number.isFinite(seccionalIdNumerica as number) && Number.isFinite(sedeIdNumerica as number)) {
+        try {
+          const sedeResponse = await estructuraService.obtenerSedePorId(sedeIdNumerica as number);
+          const resolvedSeccionalId = sedeResponse?.data?.idSeccional;
+          if (resolvedSeccionalId) {
+            seccionalIdNumerica = Number(resolvedSeccionalId);
+          }
+        } catch (error) {
+          console.warn('No se pudo resolver idSeccional desde idSede:', error);
+        }
+      }
+
+      // Map single string role to roleIds array
+      let mappedRoleIds = userData.roleIds || [];
+      if (mappedRoleIds.length === 0 && userData.role) {
+        const roleObj = availableRoles.find(
+          (r: any) => r.name === userData.role || r.nombre === userData.role || r.code === userData.role
+        );
+        if (roleObj) {
+          mappedRoleIds = [roleObj.id];
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const createUserData = {
         first_name: String(userData.firstName || '').trim(),
@@ -787,10 +880,25 @@ export function UsersPersonsModulePremium() {
         email: String(userData.email || '').trim().toLowerCase(),
         phone: String(userData.phone || '').trim(),
         gender: userData.gender || '',
-        roleIds: userData.roleIds || [],
+        birth_date: userData.birthDate,
+        address: userData.address,
+        city: userData.city,
+        empresa_contratista: userData.empresaContratista,
+        dependencia_grupo_programa: userData.dependenciaGrupoPrograma,
+        cargo_semestre: userData.cargoSemestre,
+        contrato: userData.contrato,
+        enrollment_date: userData.enrollmentDate,
+        fecha_fin_contrato: userData.fechaFinContrato,
+        observaciones: userData.observaciones,
+        tipo_vinculacion: userData.tipoVinculacion,
+        horas_asignables: userData.horasAsignables,
+        pregrado_detalle: userData.pregradoDetalle,
+        doctorado_detalle: userData.doctoradoDetalle,
+        puntaje_salarial: userData.puntajeSalarial,
+        roleIds: mappedRoleIds,
         // Agregar seccional y sede si están definidos
-        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
-        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
       const newUser = await usersService.createUser(createUserData);
@@ -1021,20 +1129,132 @@ export function UsersPersonsModulePremium() {
               <option value="inactive">Inactivos</option>
             </select>
 
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-[#D1D5DB] rounded-lg bg-white cursor-pointer font-medium text-sm transition-all"
-              style={{ height: "44px" }}
-            >
-              <option value="all">Todos los roles</option>
-              {rolesLoading && <option value="" disabled>Cargando roles...</option>}
-              {availableRoles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative" style={{ minWidth: "280px" }}>
+              <button
+                type="button"
+                onClick={() => setIsRoleFilterOpen(!isRoleFilterOpen)}
+                className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#003DA5] hover:border-[#003DA5] transition-colors flex items-center justify-between bg-white"
+                style={{ height: "44px" }}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Shield className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  {selectedRoleFilter ? (
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: selectedRoleFilter.color || "#003DA5" }}
+                      />
+                      <span className="text-gray-900 truncate">{selectedRoleFilter.name}</span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">{rolesLoading ? "Cargando roles..." : "Todos los roles"}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {roleFilter !== "all" && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setRoleFilter("all");
+                        setRoleFilterSearch("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setRoleFilter("all");
+                          setRoleFilterSearch("");
+                        }
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Limpiar filtro"
+                    >
+                      <X className="w-3 h-3 text-gray-500" />
+                    </span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isRoleFilterOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+
+              {isRoleFilterOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsRoleFilterOpen(false)} />
+                  <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-hidden">
+                    <div className="p-3 border-b border-gray-200">
+                      <input
+                        type="text"
+                        placeholder="Buscar rol..."
+                        value={roleFilterSearch}
+                        onChange={(e) => setRoleFilterSearch(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+
+                    <div className="overflow-y-auto max-h-80">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter("all");
+                          setIsRoleFilterOpen(false);
+                          setRoleFilterSearch("");
+                        }}
+                        className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 ${
+                          roleFilter === "all" ? "bg-blue-50" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-sm font-medium text-gray-900">Todos los roles</span>
+                        </div>
+                      </button>
+
+                      {rolesLoading ? (
+                        <div className="p-4 text-center text-sm text-gray-500">Cargando roles...</div>
+                      ) : filteredRoleOptions.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">No se encontraron roles</div>
+                      ) : (
+                        filteredRoleOptions.map((role) => (
+                          <button
+                            key={role.id}
+                            type="button"
+                            onClick={() => {
+                              setRoleFilter(role.id);
+                              setIsRoleFilterOpen(false);
+                              setRoleFilterSearch("");
+                            }}
+                            className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+                              roleFilter === role.id ? "bg-blue-50" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: role.color || "#003DA5" }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-900 truncate">{role.name}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="bg-gray-50 px-3 py-2 border-t border-gray-200 text-xs text-gray-600">
+                      <div className="flex items-center justify-between">
+                        <span>Total: {filteredRoleOptions.length} roles</span>
+                        <span className="text-gray-500">Orden alfabético</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             <select
               value={locationFilter}
@@ -1097,7 +1317,7 @@ export function UsersPersonsModulePremium() {
             )}
             {roleFilter !== "all" && (
               <Badge variant="outline" className="gap-1">
-                Rol: {availableRoles.find(r => r.id === roleFilter)?.name}
+                Rol: {selectedRoleFilter?.name}
                 <button
                   onClick={() => setRoleFilter("all")}
                   className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
@@ -1436,9 +1656,9 @@ export function UsersPersonsModulePremium() {
               <tbody style={{ background: "#FFFFFF" }}>
                 <AnimatePresence mode="popLayout">
                   {displayUsers.map((user, index) => (
-                    <React.Fragment key={user.id}>
+                    <React.Fragment key={user.id || `frag-${index}`}>
                       <motion.tr
-                        key={`row-${user.id}`}
+                        key={user.id ? `row-${user.id}` : `row-${index}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -1864,7 +2084,7 @@ export function UsersPersonsModulePremium() {
                       {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
                       {expandedUserId === user.id && (
                         <motion.tr
-                          key={`${user.id}-expanded`}
+                          key={user.id ? `${user.id}-expanded` : `expanded-${index}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -1997,8 +2217,7 @@ export function UsersPersonsModulePremium() {
                               setSelectedUser(user);
                               setViewMode("digital-folder");
                             }}
-                            className="bg-blue-50 hover:bg-blue-100"
-                            style={{ color: "#003DA5" }}
+                            className="text-blue-700 focus:bg-blue-600 focus:text-white"
                           >
                             <FolderOpen className="w-4 h-4 mr-2" />
                             Ver Carpeta Digital
@@ -2013,8 +2232,7 @@ export function UsersPersonsModulePremium() {
                           {!hasSuperAdminRole(user) && (
                             <DropdownMenuItem
                               onClick={() => handleAssignRoles(user)}
-                              className="bg-blue-50 hover:bg-blue-100"
-                              style={{ color: '#003DA5' }}
+                              className="text-blue-700 focus:bg-blue-600 focus:text-white"
                             >
                               <Users className="w-4 h-4 mr-2" />
                               Asignar Roles
@@ -2032,7 +2250,7 @@ export function UsersPersonsModulePremium() {
                           {user.status === 'active' || user.is_active ? (
                             <DropdownMenuItem
                               onClick={() => handleBlockUser(user)}
-                              style={{ color: '#F59E0B' }}
+                              className="text-amber-600 focus:bg-amber-500 focus:text-white"
                             >
                               <Lock className="w-4 h-4 mr-2" />
                               Bloquear Usuario
@@ -2040,8 +2258,7 @@ export function UsersPersonsModulePremium() {
                           ) : (
                             <DropdownMenuItem
                               onClick={() => handleActivateUser(user)}
-                              className="bg-green-50 hover:bg-green-100"
-                              style={{ color: '#10B981' }}
+                              className="text-green-600 focus:bg-green-600 focus:text-white"
                             >
                               <Unlock className="w-4 h-4 mr-2" />
                               Activar Usuario
@@ -2050,7 +2267,7 @@ export function UsersPersonsModulePremium() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDelete(user)}
-                            style={{ color: "#EF4444" }}
+                            className="text-red-600 focus:bg-red-600 focus:text-white"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Eliminar
@@ -2223,16 +2440,17 @@ export function UsersPersonsModulePremium() {
         />
       )}
 
-      {/* ✅ Modal Editar Usuario con Sedes */}
+      {/* ✅ Modal Editar Usuario Unificado */}
       {showEditModal && selectedUser && (
-        <EditUserModal
+        <CreatePersonModal
           isOpen={showEditModal}
           onClose={() => {
             setShowEditModal(false);
             setSelectedUser(null);
           }}
-          user={selectedUser}
-          onSave={handleSaveEdit}
+          initialData={selectedUser}
+          onCreate={handleSaveEdit}
+          editMode={true}
         />
       )}
 

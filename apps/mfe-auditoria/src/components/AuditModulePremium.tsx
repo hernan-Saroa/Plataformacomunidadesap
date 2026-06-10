@@ -1226,7 +1226,7 @@ export function AuditModulePremium() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <div className="space-y-4 md:space-y-6 pb-6">
       {/* Header */}
       <motion.div

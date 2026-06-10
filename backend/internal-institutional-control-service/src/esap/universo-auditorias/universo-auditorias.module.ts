@@ -6,6 +6,7 @@ import { ProcesoAuditable } from './entities/proceso-auditable.entity';
 import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { EvaluacionProcesoController } from './evaluacion-proceso.controller';
 import { EvaluacionProcesoService } from './evaluacion-proceso.service';
+import { EvaluacionRol4TareaSyncService } from './evaluacion-rol4-tarea-sync.service';
 import { AuthModule } from '../../auth/auth.module';
 
 @Module({
@@ -14,8 +15,17 @@ import { AuthModule } from '../../auth/auth.module';
     AuthModule,
   ],
   controllers: [UniversoAuditoriasController, EvaluacionProcesoController],
-  providers: [UniversoAuditoriasService, EvaluacionProcesoService],
-  exports: [UniversoAuditoriasService, EvaluacionProcesoService, TypeOrmModule],
+  providers: [
+    UniversoAuditoriasService,
+    EvaluacionProcesoService,
+    EvaluacionRol4TareaSyncService,
+  ],
+  exports: [
+    UniversoAuditoriasService,
+    EvaluacionProcesoService,
+    EvaluacionRol4TareaSyncService,
+    TypeOrmModule,
+  ],
 })
 export class UniversoAuditoriasModule {}
 

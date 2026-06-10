@@ -32,7 +32,7 @@ import {
   ApiResponse,
   FiltrosPlanAnual,
 } from './types';
-import { getServiceUrl, API_MODE } from '../../../../../config/environment';
+import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../../../config/environment';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -438,6 +438,221 @@ export const estadisticasApi = {
 
 import type { AdjuntoActividad, CreateAdjuntoDto, UpdateActividadExtendidoDto } from './types';
 
+export interface AdjuntoTareaPersistido {
+  id: string;
+  nombre: string;
+  url: string;
+  fecha: string;
+}
+
+export interface AdjuntoTareaUploadResponse {
+  id: string;
+  nombre: string;
+  tipo: string;
+  tamanio: number;
+  fecha: string;
+  urlDownload: string;
+  urlPreview: string;
+  tareaId?: string;
+}
+
+function extraerIdAdjuntoDeUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  const match = url.match(/\/adjuntos\/([0-9a-f-]{36})(?:\/|$)/i);
+  return match?.[1];
+}
+
+/** Normaliza adjuntos de tarea al cargar desde BD (reemplaza blob: por URLs del API). */
+export function normalizarAdjuntosTareaDesdeBackend(
+  adjuntos: Array<{ id?: string; nombre?: string; url?: string; fecha?: string }> = [],
+): AdjuntoTareaPersistido[] {
+  return adjuntos
+    .map((adj) => {
+      const id = adj.id || extraerIdAdjuntoDeUrl(adj.url);
+      if (!id) {
+        if (!adj.url || adj.url.startsWith('blob:')) return null;
+        return {
+          id: '',
+          nombre: adj.nombre || 'Archivo',
+          url: adj.url,
+          fecha: adj.fecha || new Date().toISOString(),
+        };
+      }
+      return {
+        id,
+        nombre: adj.nombre || 'Archivo',
+        url: `${PLAN_ANUAL_ENDPOINT}/adjuntos/${id}/download`,
+        fecha: adj.fecha || new Date().toISOString(),
+      };
+    })
+    .filter((a): a is AdjuntoTareaPersistido => a !== null && !!a.nombre);
+}
+
+/** URL absoluta para descargar/previsualizar un adjunto de tarea. */
+export function resolverUrlAdjuntoTarea(
+  adj: { id?: string; url?: string },
+  action: 'download' | 'preview' = 'download',
+): string | null {
+  if (adj.id) {
+    return `${API_BASE_URL}${PLAN_ANUAL_ENDPOINT}/adjuntos/${adj.id}/${action}`;
+  }
+  const url = (adj.url || '').trim();
+  if (!url || url.startsWith('blob:')) return null;
+  if (url.startsWith('http')) return url.replace(/\/download$/, `/${action}`);
+  if (url.startsWith('/services/')) {
+    return `${typeof window !== 'undefined' ? window.location.origin : ''}${url}`.replace(
+      /\/download$/,
+      `/${action}`,
+    );
+  }
+  const path = url.startsWith(PLAN_ANUAL_ENDPOINT) ? url : `${PLAN_ANUAL_ENDPOINT}${url}`;
+  const withAction = path.includes(`/adjuntos/`) && !path.endsWith(`/${action}`)
+    ? path.replace(/\/download$/, `/${action}`)
+    : path;
+  return `${API_BASE_URL}${withAction}`;
+}
+
+export type TipoPreviewAdjuntoTarea = 'pdf' | 'imagen' | 'docx' | 'xlsx' | 'otro';
+
+export function tipoPreviewAdjuntoTarea(nombre: string): TipoPreviewAdjuntoTarea {
+  const ext = (nombre.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return 'pdf';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'imagen';
+  if (ext === 'docx') return 'docx';
+  if (ext === 'xls' || ext === 'xlsx') return 'xlsx';
+  return 'otro';
+}
+
+/** Descarga el binario del adjunto (autenticado). */
+export async function obtenerArrayBufferAdjuntoTarea(
+  adj: { id?: string; nombre: string; url?: string },
+): Promise<ArrayBuffer> {
+  if (adj.url?.startsWith('blob:')) {
+    const res = await fetch(adj.url);
+    if (!res.ok) throw new Error('No se pudo leer el archivo local');
+    return res.arrayBuffer();
+  }
+
+  const downloadUrl = resolverUrlAdjuntoTarea(adj, 'download');
+  if (!downloadUrl) {
+    throw new Error('No hay archivo disponible en el servidor');
+  }
+
+  const res = await fetch(downloadUrl, {
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+  }
+  return res.arrayBuffer();
+}
+
+export interface ContenidoPreviewEvidencia {
+  tipo: TipoPreviewAdjuntoTarea;
+  blobUrl?: string;
+  docxHtml?: string;
+  xlsxHtml?: string;
+}
+
+/** Carga contenido para el visor (PDF/imagen vía preview; Office vía download + conversión). */
+export async function cargarPreviewEvidenciaPlanAnual(
+  adj: { id?: string; nombre: string; url?: string },
+): Promise<ContenidoPreviewEvidencia> {
+  const tipo = tipoPreviewAdjuntoTarea(adj.nombre);
+  if (tipo === 'otro') {
+    throw new Error('PREVIEW_NO_SOPORTADO');
+  }
+
+  if (tipo === 'docx') {
+    const mammoth = await import('mammoth');
+    const buffer = await obtenerArrayBufferAdjuntoTarea(adj);
+    const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
+    return { tipo, docxHtml: result.value || '<p>(documento vacío)</p>' };
+  }
+
+  if (tipo === 'xlsx') {
+    const XLSX = await import('xlsx');
+    const buffer = await obtenerArrayBufferAdjuntoTarea(adj);
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return { tipo, xlsxHtml: '<p>Hoja de cálculo vacía</p>' };
+    }
+    const html = XLSX.utils.sheet_to_html(workbook.Sheets[sheetName], { id: 'plan-anual-xlsx-preview' });
+    return { tipo, xlsxHtml: html };
+  }
+
+  if (adj.url?.startsWith('blob:')) {
+    return { tipo, blobUrl: adj.url };
+  }
+
+  const previewUrl = resolverUrlAdjuntoTarea(adj, 'preview');
+  if (!previewUrl) {
+    throw new Error('No hay vista previa disponible para este archivo');
+  }
+
+  const res = await fetch(previewUrl, {
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+  }
+  const blob = await res.blob();
+  return { tipo, blobUrl: URL.createObjectURL(blob) };
+}
+
+/** @deprecated Usar cargarPreviewEvidenciaPlanAnual */
+export async function obtenerBlobPreviewAdjuntoTarea(
+  adj: { id?: string; nombre: string; url?: string },
+): Promise<{ blobUrl: string; mimeType: string; tipo: TipoPreviewAdjuntoTarea }> {
+  const contenido = await cargarPreviewEvidenciaPlanAnual(adj);
+  if (!contenido.blobUrl) {
+    throw new Error('PREVIEW_NO_SOPORTADO');
+  }
+  return { blobUrl: contenido.blobUrl, mimeType: '', tipo: contenido.tipo };
+}
+
+/** Descarga autenticada de evidencia de tarea (persistida en servidor o blob legacy). */
+export async function descargarAdjuntoTareaPlanAnual(
+  adj: { id?: string; nombre: string; url?: string },
+): Promise<void> {
+  if (adj.url?.startsWith('blob:')) {
+    const enlace = document.createElement('a');
+    enlace.href = adj.url;
+    enlace.download = adj.nombre || 'evidencia';
+    enlace.rel = 'noopener noreferrer';
+    enlace.target = '_blank';
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    return;
+  }
+
+  const downloadUrl = resolverUrlAdjuntoTarea(adj, 'download');
+  if (!downloadUrl) {
+    throw new Error('No hay archivo disponible para descargar');
+  }
+
+  const res = await fetch(downloadUrl, {
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+  }
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = adj.nombre || 'evidencia';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(blobUrl);
+}
+
 export const adjuntosApi = {
   /**
    * Obtener adjuntos de una actividad
@@ -463,6 +678,47 @@ export const adjuntosApi = {
     return apiRequest<void>(`${PLAN_ANUAL_ENDPOINT}/adjuntos/${adjuntoId}`, {
       method: 'DELETE',
     });
+  },
+
+  /**
+   * Subir archivo real al servidor (evidencia de tarea del plan anual).
+   */
+  uploadTarea: async (
+    actividadId: string,
+    file: File,
+    tareaId?: string,
+  ): Promise<ApiResponse<AdjuntoTareaUploadResponse>> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (tareaId) {
+        formData.append('tareaId', tareaId);
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}${PLAN_ANUAL_ENDPOINT}/actividades/${actividadId}/adjuntos/upload`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          body: formData,
+        },
+      );
+
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+
+      if (!response.ok) {
+        const errorMsg = data?.message || data?.error || `Error ${response.status}`;
+        return { success: false, error: Array.isArray(errorMsg) ? errorMsg.join(', ') : errorMsg };
+      }
+
+      return { success: true, data: data as AdjuntoTareaUploadResponse };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error subiendo archivo',
+      };
+    }
   },
 
   /**

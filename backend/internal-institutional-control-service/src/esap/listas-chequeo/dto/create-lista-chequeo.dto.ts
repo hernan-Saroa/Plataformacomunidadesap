@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsUUID, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsUUID, IsIn, IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateItemListaChequeoDto {
@@ -127,4 +127,12 @@ export class CreateListaChequeoDto {
   @IsOptional()
   @IsString()
   etapaNombreKanban?: string;
+
+  @IsOptional()
+  @IsInt()
+  planAnualVigencia?: number;
+
+  @IsOptional()
+  @IsUUID()
+  planAnualId?: string;
 }

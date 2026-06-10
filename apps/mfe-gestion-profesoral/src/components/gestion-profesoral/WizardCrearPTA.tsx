@@ -427,8 +427,8 @@ export function WizardCrearPTA({
             )}
           </div>
 
-          {/* Pasos del Wizard */}
-          <div className="flex items-center justify-between">
+          {/* Pasos del Wizard (Escritorio / Tablet) */}
+          <div className="hidden md:flex items-center justify-between">
             {PASOS.map((paso, index) => {
               const Icon = paso.icono;
               const esActual = paso.id === pasoActual;
@@ -452,7 +452,7 @@ export function WizardCrearPTA({
                         <Icon className="w-5 h-5" />
                       )}
                     </div>
-                    <div className="hidden md:block">
+                    <div>
                       <p
                         className={`text-sm font-medium ${
                           esActual ? 'text-white' : 'text-blue-200'
@@ -479,6 +479,24 @@ export function WizardCrearPTA({
                 </div>
               );
             })}
+          </div>
+
+          {/* Pasos del Wizard (Móvil) */}
+          <div className="flex md:hidden flex-col gap-2 w-full">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-blue-200 uppercase tracking-wider">
+                Paso {pasoActual} de 5
+              </span>
+              <span className="text-xs font-bold text-white">
+                {PASOS[pasoActual - 1].nombre}
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-blue-500/30 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-white transition-all duration-300"
+                style={{ width: `${(pasoActual / PASOS.length) * 100}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -570,20 +588,20 @@ export function WizardCrearPTA({
               </AnimatePresence>
 
               {/* Navegación */}
-              <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200">
                 <button
                   onClick={handleAnterior}
                   disabled={pasoActual === 1}
-                  className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50 border border-gray-300 sm:border-0 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   Anterior
                 </button>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
                   <button
                     onClick={handleGuardarBorrador}
-                    className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm sm:text-base"
                   >
                     <Save className="w-4 h-4" />
                     Guardar Borrador
@@ -592,7 +610,7 @@ export function WizardCrearPTA({
                   {pasoActual === PASOS.length ? (
                     <button
                       onClick={handleEnviarAprobacion}
-                      className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-semibold text-sm sm:text-base"
                     >
                       <Send className="w-4 h-4" />
                       Enviar a Aprobación
@@ -600,7 +618,7 @@ export function WizardCrearPTA({
                   ) : (
                     <button
                       onClick={handleSiguiente}
-                      className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm sm:text-base"
                     >
                       Siguiente
                       <ChevronRight className="w-4 h-4" />

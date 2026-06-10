@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { existsSync, mkdirSync, unlinkSync, renameSync } from 'fs';
+import { extname, resolve as pathResolve } from 'path';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
@@ -832,7 +834,7 @@ export class PlanAnual5RolesService {
       TipoEventoPlanAnual.CAMBIO_ESTADO,
       'Eliminación de Plan Anual',
       `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
-      usuarioId || 1, 
+      usuarioId,
       JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
       'completado'
     );
@@ -957,6 +959,69 @@ export class PlanAnual5RolesService {
     });
   }
 
+  private readonly uuidRegexHistorial =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Resuelve auth.personas.id_person para historial_plan_anual.usuario_id (tipo UUID).
+   * Acepta JWT sub (auth.user.id_user), id_person directo o id_tercero numérico legacy.
+   */
+  private async resolverIdPersonParaHistorial(
+    usuarioId?: string | number,
+  ): Promise<string | null> {
+    if (usuarioId == null || usuarioId === '' || usuarioId === 'system') {
+      return null;
+    }
+
+    const raw = String(usuarioId).trim();
+    if (!this.uuidRegexHistorial.test(raw)) {
+      const num = parseInt(raw, 10);
+      if (Number.isNaN(num) || String(num) !== raw) {
+        return null;
+      }
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT id_person::text AS id_person
+           FROM auth.personas
+           WHERE id_tercero::text = $1
+           LIMIT 1`,
+          [raw],
+        );
+        return rows?.[0]?.id_person ? String(rows[0].id_person) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const porUser = await this.dataSource.query(
+        `SELECT u.id_person::text AS id_person
+         FROM auth."user" u
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [raw],
+      );
+      if (porUser?.[0]?.id_person) {
+        return String(porUser[0].id_person);
+      }
+
+      const porPersona = await this.dataSource.query(
+        `SELECT id_person::text AS id_person
+         FROM auth.personas
+         WHERE id_person::text = $1
+         LIMIT 1`,
+        [raw],
+      );
+      if (porPersona?.[0]?.id_person) {
+        return String(porPersona[0].id_person);
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   /**
    * Registra un evento en el historial del plan anual
    */
@@ -980,25 +1045,7 @@ export class PlanAnual5RolesService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      // Convertir usuarioId a número (bigint)
-      // La columna usuario_id es BIGINT NOT NULL y referencia auth.personas(id_tercero)
-      // Si viene como string (incluyendo 'system'), convertir a número o usar 1 como valor por defecto
-      // Si viene como número, usarlo directamente
-      if (typeof usuarioId === 'number') {
-        historial.usuarioId = usuarioId;
-      } else if (typeof usuarioId === 'string') {
-        // Intentar convertir string a número si es posible
-        // Si es 'system' o cualquier string no numérico, usar 1 como valor por defecto
-        const usuarioIdNum = parseInt(usuarioId, 10);
-        if (isNaN(usuarioIdNum) || usuarioId === 'system' || usuarioId.trim() === '') {
-          historial.usuarioId = 1; // Usar 1 como valor por defecto para sistema
-        } else {
-          historial.usuarioId = usuarioIdNum;
-        }
-      } else {
-        // Si no hay usuarioId, usar 1 como valor por defecto (sistema)
-        historial.usuarioId = 1;
-      }
+      historial.usuarioId = await this.resolverIdPersonParaHistorial(usuarioId);
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.estadoAnterior = estadoAnterior;
@@ -1673,10 +1720,106 @@ export class PlanAnual5RolesService {
     return this.adjuntoRepository.save(adjunto);
   }
 
+  private static readonly EXTENSIONES_ADJUNTO_PERMITIDAS = new Set([
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.zip',
+  ]);
+
+  async uploadAdjuntoArchivo(
+    actividadId: string,
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      path: string;
+    },
+    meta?: { tareaId?: string; cargadoPor?: string },
+  ): Promise<{
+    id: string;
+    nombre: string;
+    tipo: string;
+    tamanio: number;
+    fecha: string;
+    urlDownload: string;
+    urlPreview: string;
+    tareaId?: string;
+  }> {
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    const ext = extname(file.originalname || '').toLowerCase();
+    if (!PlanAnual5RolesService.EXTENSIONES_ADJUNTO_PERMITIDAS.has(ext)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido (${ext || 'sin extensión'}). Use PDF, Word, Excel, imágenes o ZIP.`,
+      );
+    }
+
+    const uploadBase = process.env.PLAN_ANUAL_UPLOAD_PATH
+      || process.env.UPLOAD_PATH
+      || './uploads/plan-anual';
+    const dir = `${uploadBase}/${actividadId}`.replace(/\\/g, '/');
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const storedRelative = `${actividadId}/${randomName}${ext}`;
+    const rutaFinal = `${uploadBase}/${storedRelative}`.replace(/\\/g, '/');
+
+    renameSync(file.path, rutaFinal);
+
+    const adjunto = this.adjuntoRepository.create({
+      actividadId,
+      nombre: file.originalname,
+      tipo: file.mimetype,
+      tamanio: file.size,
+      rutaArchivo: rutaFinal,
+      cargadoPor: meta?.cargadoPor,
+      url: `/plan-anual-5-roles/adjuntos/{id}/download`,
+    });
+    const saved = await this.adjuntoRepository.save(adjunto);
+    saved.url = `/plan-anual-5-roles/adjuntos/${saved.id}/download`;
+    await this.adjuntoRepository.save(saved);
+
+    return {
+      id: saved.id,
+      nombre: saved.nombre,
+      tipo: saved.tipo,
+      tamanio: Number(saved.tamanio) || file.size,
+      fecha: (saved.fechaCarga || new Date()).toISOString(),
+      urlDownload: `/plan-anual-5-roles/adjuntos/${saved.id}/download`,
+      urlPreview: `/plan-anual-5-roles/adjuntos/${saved.id}/preview`,
+      tareaId: meta?.tareaId,
+    };
+  }
+
+  async obtenerAdjuntoParaDescarga(adjuntoId: string): Promise<AdjuntoActividadPlanAnual5> {
+    const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
+    if (!adjunto) {
+      throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+    if (!adjunto.rutaArchivo || !existsSync(adjunto.rutaArchivo)) {
+      throw new BadRequestException('El archivo no existe en el servidor');
+    }
+    return adjunto;
+  }
+
   async deleteAdjunto(adjuntoId: string): Promise<void> {
     const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
     if (!adjunto) {
       throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+
+    if (adjunto.rutaArchivo && existsSync(adjunto.rutaArchivo)) {
+      try {
+        unlinkSync(adjunto.rutaArchivo);
+      } catch {
+        // No bloquear borrado en BD si el archivo ya no está en disco
+      }
     }
 
     await this.adjuntoRepository.remove(adjunto);

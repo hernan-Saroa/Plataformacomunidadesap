@@ -63,8 +63,33 @@ export class PlanesMejoramientoController {
   findAll(
     @Query('estado') estado?: string,
     @Query('area') area?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
   ) {
-    return this.planesMejoramientoService.findAll({ estado, area });
+    const vigenciaNum =
+      planAnualVigencia != null && planAnualVigencia !== ''
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
+    return this.planesMejoramientoService.findAll({
+      estado,
+      area,
+      planAnualVigencia:
+        vigenciaNum != null && !Number.isNaN(vigenciaNum) ? vigenciaNum : undefined,
+    });
+  }
+
+  /**
+   * POST /planes-mejoramiento/sync-rol4-tareas?vigencia=2026
+   * Backfill de tareas de seguimiento Rol 4 (actividad planes de mejoramiento).
+   */
+  @Post('sync-rol4-tareas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
+  syncRol4Tareas(@Query('vigencia') vigencia?: string) {
+    const año = vigencia ? parseInt(vigencia, 10) : new Date().getFullYear();
+    if (Number.isNaN(año)) {
+      throw new BadRequestException('Parámetro vigencia inválido');
+    }
+    return this.planesMejoramientoService.sincronizarTareasRol4Vigencia(año);
   }
 
   /**

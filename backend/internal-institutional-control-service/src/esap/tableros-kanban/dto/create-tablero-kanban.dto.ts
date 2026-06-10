@@ -23,5 +23,8 @@ export class CreateTableroKanbanDto {
   @ValidateNested({ each: true })
   @Type(() => CreateEtapaKanbanDto)
   etapas?: CreateEtapaKanbanDto[];
+
+  @IsOptional()
+  configuracionVisual?: Record<string, any>;
 }
 

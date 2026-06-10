@@ -22,10 +22,18 @@ import { motion, AnimatePresence } from 'motion/react';
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
-import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi, invalidatePlanAnualListCache } from './services/plan-anual';
+import {
+  usePlanAnualCompleto,
+  useCreatePlanAnual,
+  actividadesApi,
+  planAnualApi,
+  invalidatePlanAnualListCache,
+  normalizarAdjuntosTareaDesdeBackend,
+} from './services/plan-anual';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { esUuidPersona, idPersonaParaPlanAnual } from '../utils/persona-id-plan-anual';
+import { normalizarTareasConCortes } from '../utils/avancePlanAnual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft, ArrowRight,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
@@ -1417,6 +1425,39 @@ function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[
   });
 }
 
+/** Tareas con puntoControlId alineado a los cortes de la actividad (BD o por índice). */
+function mapTareasSeguimientoDesdeBackend(
+  tareasRaw: unknown,
+  puntosControl: Array<{ id: string }>,
+  vigencia: number,
+): any[] {
+  const lista = Array.isArray(tareasRaw) ? tareasRaw : [];
+  return normalizarTareasConCortes(lista, puntosControl).map((t: any) => ({
+    id: t.id,
+    descripcion: t.descripcion || '',
+    completada: !!t.completada,
+    responsables: t.responsables || [],
+    fechaLimite: (() => {
+      const raw = t.fechaLimite ?? t.fecha_limite ?? t.fechaEntrega ?? t.fecha_entrega;
+      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+    })(),
+    fechaEntrega: (() => {
+      const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
+      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+    })(),
+    fechaCompletada: (() => {
+      const raw = t.fechaCompletada ?? t.fecha_completada;
+      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+    })(),
+    completadaPor: t.completadaPor || t.completada_por || undefined,
+    requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+    requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+    observaciones: t.observaciones || '',
+    adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
+    puntoControlId: t.puntoControlId,
+  }));
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -1680,6 +1721,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               }];
             }
 
+            const puntosControlAct = mapPuntosControlFechasVigencia(
+              actExtendido.puntos_control || actExtendido.puntosControl,
+              vigenciaSafe,
+            );
+
             return {
               id: act.id, // UUID string desde el backend
               nombre: act.nombre,
@@ -1688,6 +1734,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               fechaFin: formatearFecha(act.fecha_fin) || formatearFecha(act.fechaFin),
               responsable: responsableSingular,
               porcentajeAvance: act.porcentaje_avance ?? 0,
+              tipoCalculo: actExtendido.tipo_calculo || actExtendido.tipoCalculo || 'manual',
+              totalAuditoriasProgramadas: actExtendido.total_auditorias_programadas ?? actExtendido.totalAuditoriasProgramadas ?? 0,
+              totalAuditoriasFinalizadas: actExtendido.total_auditorias_finalizadas ?? actExtendido.totalAuditoriasFinalizadas ?? 0,
               estado: estadoFront,
               control: actExtendido.control || '',
               evaluacion: actExtendido.evaluacion || '',
@@ -1712,34 +1761,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               bitacoraObservaciones: actExtendido.bitacoraObservaciones || [],
               activo: actExtendido.activo ?? act.activo ?? true,
               responsables: responsablesLista,
-              // Puntos de control persistidos
-              puntosControl: mapPuntosControlFechasVigencia(actExtendido.puntos_control || actExtendido.puntosControl, vigenciaSafe),
+              puntosControl: puntosControlAct,
               frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
               entradasSeguimiento: actExtendido.entradas_seguimiento || actExtendido.entradasSeguimiento || [],
-              // Tareas de seguimiento (sub-tareas)
-              tareasSeguimiento: (actExtendido.tareas_seguimiento || actExtendido.tareasSeguimiento || []).map((t: any) => ({
-                id: t.id,
-                descripcion: t.descripcion,
-                completada: t.completada || false,
-                responsables: t.responsables || [],
-                fechaLimite: (() => {
-                  const raw = t.fechaLimite ?? t.fecha_limite;
-                  return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaSafe) : undefined;
-                })(),
-                fechaEntrega: (() => {
-                  const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
-                  return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaSafe) : undefined;
-                })(),
-                fechaCompletada: (() => {
-                  const raw = t.fechaCompletada ?? t.fecha_completada;
-                  return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaSafe) : undefined;
-                })(),
-                completadaPor: t.completadaPor || t.completada_por || undefined,
-                requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-                requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
-                observaciones: t.observaciones || '',
-                adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
-              })),
+              tareasSeguimiento: mapTareasSeguimientoDesdeBackend(
+                actExtendido.tareas_seguimiento || actExtendido.tareasSeguimiento,
+                puntosControlAct,
+                vigenciaSafe,
+              ),
               fechaCorte: formatearFecha(actExtendido.fecha_corte) || '',
             };
           })
@@ -1811,6 +1840,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 fechaFin: String(act.fecha_fin || act.fechaFin || '').split('T')[0],
                 fechaCorte: String(act.fecha_corte || act.fechaCorte || '').split('T')[0],
                 porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+                tipoCalculo: act.tipo_calculo || act.tipoCalculo || 'manual',
+                totalAuditoriasProgramadas: act.total_auditorias_programadas ?? act.totalAuditoriasProgramadas ?? 0,
+                totalAuditoriasFinalizadas: act.total_auditorias_finalizadas ?? act.totalAuditoriasFinalizadas ?? 0,
                 estado: (act.estado || 'pendiente').toLowerCase() === 'completada'
                   ? 'COMPLETADA'
                   : (String(act.estado || '').toLowerCase().replace(/_/g, '-') === 'en-progreso' || String(act.estado || '').toLowerCase() === 'retrasada')
@@ -1836,32 +1868,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                   }
                   return { responsable: respSing, responsables: respList };
                 })(),
-                puntosControl: mapPuntosControlFechasVigencia(act.puntos_control || act.puntosControl, vigenciaLista),
-                frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
-                entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
-                tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
-                  id: t.id,
-                  descripcion: t.descripcion || '',
-                  completada: !!t.completada,
-                  responsables: t.responsables || [],
-                  fechaLimite: (() => {
-                    const raw = t.fechaLimite ?? t.fecha_limite ?? t.fechaEntrega ?? t.fecha_entrega;
-                    return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaLista) : undefined;
-                  })(),
-                  fechaEntrega: (() => {
-                    const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
-                    return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaLista) : undefined;
-                  })(),
-                  fechaCompletada: (() => {
-                    const raw = t.fechaCompletada ?? t.fecha_completada;
-                    return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaLista) : undefined;
-                  })(),
-                  completadaPor: t.completadaPor || t.completada_por || undefined,
-                  requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-                  requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
-                  observaciones: t.observaciones || '',
-                  adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
-                })),
+                ...(() => {
+                  const pcs = mapPuntosControlFechasVigencia(act.puntos_control || act.puntosControl, vigenciaLista);
+                  return {
+                    puntosControl: pcs,
+                    frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
+                    entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
+                    tareasSeguimiento: mapTareasSeguimientoDesdeBackend(
+                      act.tareas_seguimiento || act.tareasSeguimiento,
+                      pcs,
+                      vigenciaLista,
+                    ),
+                  };
+                })(),
               })),
             }));
 
@@ -1870,7 +1889,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               id: planBackend.id,
               vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
               version: planBackend.version || 1,
-              estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+              estado: mapearEstadoPlan(planBackend.estado || 'borrador'),
               nombrePlan:
                 planBackend.nombre
                 || planBackend.nombre_plan
@@ -2009,6 +2028,69 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     });
   }, [vigenciaContext?.planActivoId, vista, planActual?.id, planesAnteriores]);
 
+  const prioridadPlanTrasEliminar = (estado: EstadoPlan): number => {
+    if (estado === 'VIGENTE') return 0;
+    if (estado === 'APROBADO') return 1;
+    if (estado === 'EN_REVISION') return 2;
+    if (estado === 'BORRADOR') return 3;
+    return 4;
+  };
+
+  const handlePlanEliminado = async (planIdEliminado: string) => {
+    invalidatePlanAnualListCache();
+
+    try {
+      const stored = localStorage.getItem('esap:plan_anual_activo');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id === planIdEliminado) {
+          localStorage.removeItem('esap:plan_anual_activo');
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const vigenciaEliminada = planesAnteriores.find((p) => p.id === planIdEliminado)?.vigencia;
+    const restantes = planesAnteriores.filter((p) => p.id !== planIdEliminado);
+    setPlanesAnteriores(restantes);
+    setPlanesListVersion((v) => v + 1);
+
+    if (planActual?.id !== planIdEliminado) {
+      toast.success('Plan en borrador eliminado', {
+        description: vigenciaEliminada
+          ? `Vigencia ${vigenciaEliminada} — sigues en el plan que tenías abierto.`
+          : 'Sigues en el plan que tenías abierto.',
+        duration: 5000,
+      });
+      return;
+    }
+
+    const candidatos = [...restantes].sort((a, b) => {
+      const pa = prioridadPlanTrasEliminar(a.estado);
+      const pb = prioridadPlanTrasEliminar(b.estado);
+      if (pa !== pb) return pa - pb;
+      return (b.vigencia ?? 0) - (a.vigencia ?? 0);
+    });
+
+    if (candidatos.length > 0) {
+      const siguiente = candidatos[0];
+      toast.info(`Se abrió el plan ${siguiente.vigencia}`, {
+        description: 'El plan eliminado ya no está disponible.',
+        duration: 6000,
+      });
+      await handleCambiarPlan(siguiente.id);
+      return;
+    }
+
+    setPlanActual(null);
+    setVista('inicio');
+    toast.success('Plan eliminado', {
+      description: 'No quedan otros planes registrados. Puedes crear uno nuevo.',
+      duration: 6000,
+    });
+  };
+
   const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean) => {
     setDashboardSeccionForzada(null);
     setWizardSoloLectura(soloLectura);
@@ -2092,7 +2174,12 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           responsable: rol.responsable,
           responsable_id: rol.responsable_id,
           responsables: mapResponsablesRolDesdeBackend(rol),
-          actividades: (rol.actividades || []).map((act: any) => ({
+          actividades: (rol.actividades || []).map((act: any) => {
+            const pcsWizard = mapPuntosControlFechasVigencia(
+              act.puntos_control || act.puntosControl,
+              vigenciaPlan,
+            );
+            return {
             ...act,
             id: act.id,
             nombre: act.nombre,
@@ -2100,13 +2187,16 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             fechaInicio: formatearFechaPlanBackend(act.fecha_inicio ?? act.fechaInicio, `${vigenciaPlan}-01-01`),
             fechaFin: formatearFechaPlanBackend(act.fecha_fin ?? act.fechaFin, `${vigenciaPlan}-12-31`),
             porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+            tipoCalculo: act.tipo_calculo || act.tipoCalculo || 'manual',
+            totalAuditoriasProgramadas: act.total_auditorias_programadas ?? act.totalAuditoriasProgramadas ?? 0,
+            totalAuditoriasFinalizadas: act.total_auditorias_finalizadas ?? act.totalAuditoriasFinalizadas ?? 0,
             estado: (act.estado || 'pendiente').toUpperCase(),
             control: act.control || '',
             evaluacion: act.evaluacion || '',
             seguimiento: act.seguimiento || '',
             activo: act.activo !== false,
             incluidaEnPlan: act.incluidaEnPlan !== false,
-            puntosControl: act.puntos_control || act.puntosControl || [],
+            puntosControl: pcsWizard,
             frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
             fechaCorte: formatearFechaPlanBackend(
               act.fecha_corte ?? act.fechaCorte,
@@ -2140,22 +2230,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               if (respList.length === 0 && respSing) respList = [{ ...respSing }];
               return { responsable: respSing, responsables: respList };
             })(),
-            tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
-              id: t.id,
-              descripcion: t.descripcion || '',
-              completada: !!t.completada,
-              responsables: t.responsables || [],
-              fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
-              fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
-              fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
-              completadaPor: t.completadaPor || t.completada_por || undefined,
-              requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-              requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
-              observaciones: t.observaciones || '',
-              adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
-            })),
+            tareasSeguimiento: mapTareasSeguimientoDesdeBackend(
+              act.tareas_seguimiento || act.tareasSeguimiento,
+              pcsWizard,
+              vigenciaPlan,
+            ),
             entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
-          })),
+          };
+          }),
         })),
       };
 
@@ -2331,6 +2413,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                     requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
                     observaciones: t.observaciones || '',
                     adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+                    puntoControlId: t.puntoControlId || t.punto_control_id || null,
                   }))
                 : [],
             };
@@ -2553,6 +2636,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                     requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
                     observaciones: t.observaciones || '',
                     adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+                    puntoControlId: t.puntoControlId || t.punto_control_id || null,
                   }))
                 : undefined,
             });
@@ -2776,6 +2860,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}
+            onPlanEliminado={handlePlanEliminado}
           />
         )}
 

@@ -30,11 +30,16 @@ import { Card } from '../ui/card';
 import graduadosService from '../../services/api/graduados.service';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { buildServiceAssetUrl } from '../../config/environment';
+import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { ESAPLogo } from '../assets/ESAPLogo';
+
+const getRuntimePublicBaseUrl = () =>
+  typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : getPublicBaseUrl();
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -252,17 +257,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
-      // Registrar la descarga (no bloquea la descarga si falla)
-      if (certificate?.id) {
-        try {
-          await graduadosService.descargas.registrar(certificate.id, {
-            skipErrorToast: true,
-          });
-        } catch (error) {
-          console.warn('No se pudo registrar la descarga:', error);
-        }
-      }
-
       let pdfBlob: Blob;
 
       try {
@@ -283,7 +277,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
       downloadBlobAsFile(pdfBlob);
 
-      toast.success('Certificado descargado exitosamente!', {
+      toast.success('¡Certificado descargado exitosamente!', {
         id: 'pdf-generation',
         description: `Archivo: Certificado_ESAP_${certificate.certificateNumber}.pdf`
       });
@@ -291,7 +285,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       console.error('Error al descargar certificado:', error);
       toast.error('Error al descargar certificado', {
         id: 'pdf-generation',
-        description: error.message || 'Por favor intenta de nuevo'
+        description: error.message || 'Por favor, intenta de nuevo'
       });
     } finally {
       setIsDownloading(false);
@@ -318,7 +312,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       lastEmailSentRef.current = certificate.certificateNumber;
       toast.success('Certificado enviado por correo', {
         id: 'auto-email-certificate',
-        description: `Se envio a ${destinatario}`,
+        description: `Se envió a ${destinatario}`,
         duration: 4000,
       });
     } catch (error: any) {
@@ -333,13 +327,13 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
-  // NOTA: El backend ya envia el correo automaticamente al crear el certificado
+  // NOTA: El backend ya envía el correo automáticamente al crear el certificado
   // en solicitarCertificadoLanding -> notifyCertificateDelivery
   // Por eso eliminamos el useEffect que llamaba a enviarCertificadoPorEmail()
   // para evitar enviar correos duplicados.
 
   const handleCopyVerificationUrl = async () => {
-    const shareUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
+    const shareUrl = `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificate.qrCode}`;
 
     try {
       const copied = await copyToClipboard(shareUrl);
@@ -360,7 +354,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
-  const verificationUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
+  const verificationUrl = `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificate.qrCode}`;
   const templateFechaExpedicion = formatDateLong(certificate.generatedAt);
   const templateLugarFecha = `Bogotá D.C. ${formatDateLong(certificate.graduate.graduationDate)}`;
   const templateRegistroFolio = certificate.graduate.diplomaNumber || 'N/A';
@@ -545,7 +539,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
                 <div className="bg-white rounded-xl p-3 shadow-lg">
-                  <ESAPLogo variant="color" className="h-16 w-auto" />
+                  <ESAPLogo variant="color" className="shrink-0" style={{ width: '216px', height: '64px' }} />
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
                   <Shield className="w-5 h-5 text-white" />
@@ -779,7 +773,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                   </div>
                 </div>
 
-                {/* Digital Signature Section - ONAC */}
+                {/* Digital Verification Section */}
                 <div className="mt-8 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 rounded-2xl border-2 border-emerald-300 p-6 shadow-sm">
                   <div className="flex items-start gap-4 mb-5">
                     <div className="w-14 h-14 bg-gradient-to-br from-emerald-600 to-green-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
@@ -787,80 +781,80 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                     </div>
                     <div className="flex-1">
                       <h4 className="text-lg font-bold text-emerald-900 mb-2 flex items-center gap-2">
-                        Certificado Digital con Firma Electrónica
+                        Verificación Digital del Certificado
                         <Lock className="w-5 h-5 text-emerald-700" />
                       </h4>
                       <p className="text-sm text-emerald-800 leading-relaxed">
-                        Este documento PDF incluye una <strong>firma digital certificada</strong> emitida por una
-                        entidad certificadora avalada por el <strong>ONAC</strong> (Organismo Nacional de Acreditación de Colombia)
+                        Este certificado cuenta con un <strong>código QR único</strong> y una URL pública para
+                        consultar su autenticidad directamente en la plataforma institucional de ESAP.
                       </p>
                     </div>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
-                    {/* Digital Certificate Info */}
+                    {/* Digital Verification Info */}
                     <div className="bg-white/80 backdrop-blur rounded-xl border border-emerald-200 p-4">
                       <div className="flex items-center gap-2 mb-3">
                         <FileCheck className="w-5 h-5 text-emerald-600" />
-                        <h5 className="font-bold text-gray-900 text-sm">Información de la Firma Digital</h5>
+                        <h5 className="font-bold text-gray-900 text-sm">Información de Validación</h5>
                       </div>
                       <div className="space-y-2 text-xs text-gray-700">
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Emisor:</span> Entidad Certificadora ONAC
+                            <span className="font-semibold">Emisor:</span> Escuela Superior de Administración Pública - ESAP
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Algoritmo:</span> RSA 4096 bits + SHA-256
+                            <span className="font-semibold">Código:</span> {certificate.qrCode}
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Estándar:</span> ISO/IEC 27001:2013
+                            <span className="font-semibold">Canal:</span> Consulta pública por QR y URL
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Validez:</span> Permanente
+                            <span className="font-semibold">Estado:</span> {certificate.status === 'active' ? 'Válido' : certificate.status}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* ONAC Accreditation */}
+                    {/* Document Traceability */}
                     <div className="bg-white/80 backdrop-blur rounded-xl border border-emerald-200 p-4">
                       <div className="flex items-center gap-2 mb-3">
                         <Shield className="w-5 h-5 text-emerald-600" />
-                        <h5 className="font-bold text-gray-900 text-sm">Acreditación ONAC</h5>
+                        <h5 className="font-bold text-gray-900 text-sm">Trazabilidad del Documento</h5>
                       </div>
                       <div className="space-y-2 text-xs text-gray-700">
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Organismo:</span> ONAC Colombia
+                            <span className="font-semibold">Certificado:</span> {certificate.certificateNumber}
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Norma:</span> ISO/IEC 17065:2012
+                            <span className="font-semibold">Emisión:</span> {formatDateOnly(certificate.generatedAt)}
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Ley:</span> Ley 527 de 1999 (Firma Digital)
+                            <span className="font-semibold">Método:</span> Verificación en línea
                           </div>
                         </div>
                         <div className="flex items-start gap-2">
                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5"></div>
                           <div>
-                            <span className="font-semibold">Decreto:</span> 2364 de 2012
+                            <span className="font-semibold">Protección:</span> Sin datos de contacto personales
                           </div>
                         </div>
                       </div>
@@ -871,12 +865,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                     <div className="flex items-start gap-3">
                       <CheckCircle className="w-5 h-5 text-emerald-700 flex-shrink-0 mt-0.5" />
                       <div className="text-xs text-emerald-900 leading-relaxed">
-                        <p className="font-semibold mb-1">Garantía de Autenticidad e Integridad</p>
+                        <p className="font-semibold mb-1">Autenticidad e Integridad Verificable</p>
                         <p>
-                          La firma digital garantiza que el documento no ha sido alterado desde su emisión
-                          y certifica la identidad de ESAP como emisor oficial. El PDF descargado incluye
-                          metadatos de firma electrónica verificables mediante Adobe Reader, Foxit Reader
-                          o cualquier lector PDF compatible con firmas digitales según estándar PAdES.
+                          El código QR y la URL pública permiten contrastar el certificado emitido con el
+                          registro disponible en la plataforma institucional. La verificación muestra el estado,
+                          los datos académicos esenciales y el identificador único del documento.
                         </p>
                       </div>
                     </div>
@@ -885,7 +878,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                   <div className="mt-4 flex items-center justify-center gap-2">
                     <div className="h-px flex-1 bg-gradient-to-r from-transparent to-emerald-300"></div>
                     <span className="text-xs font-mono font-bold text-emerald-700 px-3 py-1 bg-emerald-100 rounded-full">
-                      CERTIFICADO DIGITAL ONAC
+                      VERIFICACIÓN DIGITAL ESAP
                     </span>
                     <div className="h-px flex-1 bg-gradient-to-l from-transparent to-emerald-300"></div>
                   </div>
@@ -900,9 +893,8 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         <h5 className="font-bold text-amber-900 mb-2 text-sm">Validez Legal y Autenticidad</h5>
                         <p className="text-xs text-amber-800 leading-relaxed">
                           Este certificado es un documento oficial emitido por la Escuela Superior de Administración Pública (ESAP)
-                          con <strong>firma digital certificada por ONAC</strong>, lo que le otorga plena validez legal según
-                          la Ley 527 de 1999 y el Decreto 2364 de 2012. La autenticidad puede ser verificada en cualquier momento
-                          mediante el código QR, la URL proporcionada, o validando la firma digital en el PDF.
+                          para validar la autenticidad de un título académico registrado por la institución. La autenticidad puede
+                          ser verificada en cualquier momento mediante el código QR o la URL pública proporcionada.
                           <strong> No contiene datos de contacto para protección de información personal.</strong>
                         </p>
                       </div>
@@ -919,7 +911,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                       <div className="h-px w-12 bg-gray-300"></div>
                       <div className="flex items-center gap-2">
                         <Lock className="w-3.5 h-3.5 text-emerald-600" />
-                        <p className="text-xs text-gray-700 font-semibold">Documento Digital con Firma Electrónica Certificada</p>
+                        <p className="text-xs text-gray-700 font-semibold">Documento Digital con Verificación Pública</p>
                       </div>
                       <div className="h-px w-12 bg-gray-300"></div>
                     </div>
@@ -927,7 +919,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                       ID: {certificate.id} • Generado: {new Date(certificate.generatedAt).toISOString().split('T')[0]}
                     </p>
                     <p className="text-xs text-emerald-700 font-semibold mt-1">
-                      ✓ Certificado digital ONAC incluido en el PDF
+                      ✓ Verificación pública mediante QR y URL
                     </p>
                   </div>
                 </div>
@@ -936,12 +928,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
             {/* Footer Actions */}
             <div className="bg-gradient-to-r from-emerald-50 via-blue-50 to-emerald-50 px-8 py-6 border-t-4 border-emerald-500">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <p className="text-xs font-semibold text-emerald-800">
-                  El PDF incluye firma digital certificada por ONAC
-                </p>
-              </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   onClick={handleDownload}
@@ -957,7 +943,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                   ) : (
                     <>
                       <Download className="w-5 h-5 mr-2" />
-                      Descargar PDF con Firma Digital
+                      Descargar PDF
                     </>
                   )}
                 </Button>
@@ -994,7 +980,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              <ESAPLogo variant="white" className="h-14" />
+              <ESAPLogo variant="white" className="shrink-0" style={{ width: '189px', height: '56px' }} />
               <div>
                 <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>

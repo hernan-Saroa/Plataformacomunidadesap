@@ -116,11 +116,14 @@ class AuthService {
    * el backend lo lee directamente y emite una nueva cookie.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    return apiClient.post<RefreshTokenResponse>(
+    const response = await apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
       {},
       { skipAuth: true }
     );
+
+    this.saveTokens(response.accessToken, response.refreshToken || response.accessToken);
+    return response;
   }
 
   /**
@@ -364,6 +367,20 @@ class AuthService {
     console.log('[DEBUG getAbogadosRolResuelve] total:', users.length, '→ filtrados:', filtered.length);
     return filtered.map((u: any) => ({
       id: u.user?.id_user ?? u.id_user ?? u.id,
+      nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      email: u.email ?? u.person?.email ?? '',
+    }));
+  }
+
+  async getTodosLosUsuariosActivos(): Promise<AbogadoResuelve[]> {
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    return users.map((u: any) => ({
+      id: u.user?.id_user ?? u.id_user ?? u.id ?? u.person?.id,
       nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
       nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
       email: u.email ?? u.person?.email ?? '',

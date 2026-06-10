@@ -473,13 +473,28 @@ export class ProcessService {
           abogadoNombre: createProcessDto.abogadoNombre
         });
 
+        const emailProfesional = `${createProcessDto.abogadoNombre?.toLowerCase().replace(/\s+/g, '.')}@esap.edu.co`;
+        let idUser = null;
+        try {
+          const result = await this.processRepository.manager.query(
+            'SELECT id_user FROM auth.user WHERE username = $1',
+            [emailProfesional]
+          );
+          if (result.length > 0) {
+            idUser = result[0].id_user;
+          }
+        } catch (error) {
+          console.warn('Could not fetch id_user from auth.user for email:', emailProfesional, error);
+        }
+
         abogado = this.professionalRepository.create({
           id: createProcessDto.abogadoId, // Usar el mismo ID del candidato
           nombreCompleto: createProcessDto.abogadoNombre || 'Profesional Asignado',
-          email: `${createProcessDto.abogadoNombre?.toLowerCase().replace(/\s+/g, '.')}@esap.edu.co`,
+          email: emailProfesional,
           cargo: 'Profesional Universitario',
           estado: 'ACTIVO',
           capacidadMaxima: 10,
+          idUser: idUser,
         });
 
         try {
@@ -855,11 +870,30 @@ export class ProcessService {
    * Obtiene procesos asignados a un abogado específico
    */
   async findByAbogadoId(abogadoId: string): Promise<any[]> {
-    const processes = await this.processRepository.find({
+    let processes = await this.processRepository.find({
       where: { abogadoAsignadoId: abogadoId },
       relations: ['news', 'evidence', 'autos'],
       order: { createdAt: 'DESC' },
     });
+
+    
+    
+
+    if (processes.length == 0) {
+      
+      const profesional = await this.professionalRepository.findOne({where: {idUser: abogadoId}});
+
+      console.log("profesional", profesional);
+      console.log("abogadoId", profesional?.id);
+      
+      
+      processes = await this.processRepository.find({
+      where: { abogadoAsignadoId: profesional?.id },
+      relations: ['news', 'evidence', 'autos'],
+      order: { createdAt: 'DESC' },
+    });
+      console.log("processes", processes);
+    }
 
     // Calcular estadísticas dinámicas para cada proceso
     const actuacionesResumen = await this.buildActuacionesResumen(
@@ -930,6 +964,10 @@ export class ProcessService {
   /**
    * Cambia la etapa del proceso (US-009)
    */
+  private isUUID(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  }
+
   async changeStage(
     id: string,
     stageId: string,
@@ -938,20 +976,28 @@ export class ProcessService {
     try {
       const proceso = await this.findById(id, false);
 
-      if (proceso.estado === ProcessStatus.CERRADO) {
-        throw new HttpException(
-          'No se puede cambiar la etapa de un proceso CERRADO',
-          HttpStatus.FORBIDDEN,
-        );
+      // if (proceso.estado === ProcessStatus.CERRADO) {
+      //   throw new HttpException(
+      //     'No se puede cambiar la etapa de un proceso CERRADO',
+      //     HttpStatus.FORBIDDEN,
+      //   );
+      // }
+
+      let newStageConfig: StageConfiguration | null;
+
+      if (this.isUUID(stageId)) {
+        newStageConfig = await this.stageConfigurationRepository.findOne({
+          where: { id: stageId, activo: true },
+        });
+      } else {
+        newStageConfig = await this.stageConfigurationRepository.findOne({
+          where: { etapa: stageId, activo: true },
+        });
       }
 
-      // Get the new stage configuration
-      const newStageConfig = await this.stageConfigurationRepository.findOne({
-        where: { id: stageId, activo: true },
-      });
       if (!newStageConfig) {
         throw new HttpException(
-          `Stage configuration with id ${stageId} not found`,
+          `Stage configuration not found for identifier: ${stageId}`,
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -972,8 +1018,9 @@ export class ProcessService {
       }
 
       if (proceso.etapaActual !== newStageConfig.etapa) {
-        // Validar transicion de etapa using orden
-        this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+        if (proceso.estado === ProcessStatus.ACTIVO) {
+          this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
+        }
 
         // Calcular nuevo vencimiento
         const { fechaVencimiento } =
@@ -1000,8 +1047,10 @@ export class ProcessService {
     id: string,
     nuevaEtapa: ProcessStage,
     fechaAprobacion: Date,
+    aprobadoPorId: string,
   ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
     const proceso = await this.findById(id, false);
+    const etapaAnterior = proceso.etapaActual;
 
     let tiempoAcumuladoDias: number | null = null;
     const fechaInicioReferencia =
@@ -1029,6 +1078,17 @@ export class ProcessService {
     }
 
     const procesoGuardado = await this.processRepository.save(proceso);
+
+    await this.actuacionesRepository.save({
+      processId: id,
+      tipo: 'cambio_etapa',
+      etapa: nuevaEtapa,
+      descripcion: `Cambio de etapa aprobado mediante auto de apertura. Etapa anterior: ${etapaAnterior}.`,
+      responsableNombre: aprobadoPorId,
+      fechaActuacion: fechaAprobacion,
+      observaciones: `Etapa anterior: ${etapaAnterior} | Nueva etapa: ${nuevaEtapa}`,
+    });
+
     return { proceso: procesoGuardado, tiempoAcumuladoDias };
   }
 
@@ -1711,38 +1771,125 @@ export class ProcessService {
     return procesoOrigenActualizado;
   }
 
-  /**
-   * Restaura un proceso archivado al flujo activo
-   */
-  async restore(id: string): Promise<DisciplinaryProcess> {
-    const proceso = await this.processRepository.findOne({
-      where: { id },
-      relations: ['news'],
-    });
+/**
+     * Restaura un proceso archivado o cerrado al flujo activo
+     */
+    async restore(id: string): Promise<DisciplinaryProcess> {
+      const proceso = await this.processRepository.findOne({
+        where: { id },
+        relations: ['news'],
+      });
 
-    if (!proceso) {
-      throw new HttpException(
-        `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
-        HttpStatus.NOT_FOUND,
-      );
+      if (!proceso) {
+        throw new HttpException(
+          `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Verificar que el proceso esté archivado o cerrado
+//       if (proceso.estado !== ProcessStatus.ARCHIVADO && proceso.estado !== ProcessStatus.CERRADO) {
+//         throw new HttpException(
+//           `El proceso ${proceso.radicadoProceso} no está archivado o cerrado (estado actual: ${proceso.estado}). Solo los procesos archivados o cerrados pueden ser restaurados.`,
+//           HttpStatus.BAD_REQUEST,
+//         );
+// }
+
+      // Guardar estado original para el mensaje
+      const estadoAnterior = proceso.estado;
+
+      // Cambiar estado a ACTIVO y marcar como restaurado
+      proceso.estado = ProcessStatus.ACTIVO;
+      proceso.restaurado = true;
+
+      // Limpiar campos de cierre si el proceso estaba cerrado
+      if (estadoAnterior === ProcessStatus.CERRADO) {
+        proceso.fechaCierre = null;
+        proceso.etapaAlCierre = null;
+        proceso.cerradoPorId = null;
+        
+      }
+
+      
+
+      return await this.processRepository.save(proceso);
     }
 
-    // Verificar que el proceso esté archivado
-    if (proceso.estado !== ProcessStatus.ARCHIVADO) {
-      throw new HttpException(
-        `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+   /**
+    * Obtiene todas las noticias en estado RADICADA que tienen documentos adjuntos
+    * Estas noticias no tienen proceso asociado aún
+    */
+async findRadicatedNewsWithDocuments(): Promise<any[]> {
+      // Buscar noticias RADICADA que NO tienen proceso asociado (con o sin adjuntos)
+      const noticiasRadicadas = await this.newsRepository
+        .createQueryBuilder('noticia')
+        .where('noticia.estado = :estado', { estado: NewsStatus.RADICADA })
+        .andWhere('noticia.proceso_asociado_id IS NULL')
+        .orderBy('noticia.createdAt', 'DESC')
+        .getMany();
 
-    // Cambiar estado a ACTIVO y marcar como restaurado
-    proceso.estado = ProcessStatus.ACTIVO;
-    proceso.restaurado = true;
+     // Mapear noticias a formato de expediente virtual para el frontend
+     return noticiasRadicadas.map(noticia => {
+const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
+          ? noticia.adjuntos.map((adjPath: string, index: number) => {
+              const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+              return {
+                id: `adj-noticia-${noticia.id}-${index}`,
+                nombre: filename,
+                archivoNombre: filename,
+                tipo: 'queja',
+                etapa: 'Recepción (Noticia Inicial)',
+                version: 1,
+                tamaño: 'N/A',
+                fechaCarga: noticia.createdAt?.toISOString() || new Date().toISOString(),
+                usuarioCarga: noticia.radicadorId ? 'Radicador' : 'Sistema',
+                descripcion: 'Archivo adjunto a la noticia disciplinaria original',
+                url: null,
+                urlExterna: null,
+                downloadUrl: `/files/${filename}`,
+                processId: null,
+                expedienteId: `noticia-${noticia.id}`,
+                fileType: 'application/octet-stream',
+                fileSize: 0,
+                versiones: [{
+                  numero: 1,
+                  fecha: noticia.createdAt?.toISOString() || new Date().toISOString(),
+                  usuario: 'Radicador',
+                  cambios: 'Adjunto de noticia inicial',
+                  tamaño: 'N/A',
+                  downloadUrl: `/files/${filename}`,
+                }],
+                metadatos: {
+                  firmado: false,
+                  notificado: false,
+                  esAutoDigital: false,
+                  esNoticiaRadica: true,
+                  estado: 'radicada',
+                },
+              };
+            })
+          : [];
 
-    // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
-    console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+       const disciplinableData = noticia.disciplinable;
+       const disciplinable = Array.isArray(disciplinableData) ? disciplinableData[0] : disciplinableData;
 
-    return await this.processRepository.save(proceso);
-  }
-}
+       return {
+         id: `noticia-${noticia.id}`,
+         radicadoProceso: noticia.radicado,
+         radicadoNoticia: noticia.radicado,
+         estado: 'radicada' as const,
+         etapaActual: 'Recepción',
+         nombreDisciplinado: disciplinable?.nombre || 'Sin nombre',
+         tipoProceso: noticia.hechos?.substring(0, 50) || 'Proceso Disciplinario',
+         responsable: 'Pendiente de Asignación',
+         fechaInicio: noticia.fechaRecepcion?.toISOString().split('T')[0] || noticia.createdAt?.toISOString().split('T')[0],
+         totalDocumentos: documentos.length,
+         documentosPorTipo: { queja: documentos.length },
+         esNoticiaRadica: true,
+         noticiaId: noticia.id,
+         documentos: documentos,
+       };
+     });
+   }
+ }
 

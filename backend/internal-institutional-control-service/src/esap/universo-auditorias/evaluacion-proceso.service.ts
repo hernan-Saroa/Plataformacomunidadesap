@@ -9,21 +9,88 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { ProcesoAuditable } from './entities/proceso-auditable.entity';
 import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto } from './dto/evaluacion-proceso.dto';
+import { EvaluacionRol4TareaSyncService } from './evaluacion-rol4-tarea-sync.service';
+import { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
+
+export { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
 
 @Injectable()
-export class EvaluacionProcesoService {
+export class EvaluacionProcesoService implements OnModuleInit {
+  private readonly logger = new Logger(EvaluacionProcesoService.name);
+
   constructor(
     @InjectRepository(EvaluacionProceso)
     private readonly evaluacionRepository: Repository<EvaluacionProceso>,
     @InjectRepository(ProcesoAuditable)
     private readonly procesoRepository: Repository<ProcesoAuditable>,
+    private readonly rol4TareaSync: EvaluacionRol4TareaSyncService,
   ) {}
+
+  private async syncTareaRol4(evaluacion: EvaluacionProceso): Promise<void> {
+    const conProceso = evaluacion.proceso
+      ? evaluacion
+      : await this.findOne(evaluacion.id);
+    await this.rol4TareaSync.sincronizarDesdeEvaluacion(conProceso);
+  }
+
+  async onModuleInit() {
+    try {
+      this.logger.log('Limpiando restricciones únicas antiguas en la base de datos...');
+      const queryRunner = this.evaluacionRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      
+      try {
+        const table = await queryRunner.getTable('control_interno.evaluacion_proceso');
+        if (table) {
+          const isTargetConstraint = (columnNames: string[]) => 
+            columnNames.length === 3 && 
+            columnNames.includes('proceso_id') && 
+            columnNames.includes('vigencia') && 
+            columnNames.includes('fecha_corte');
+
+          // Eliminar índices únicos antiguos de 3 columnas
+          const indicesToDrop = table.indices.filter(idx => idx.isUnique && isTargetConstraint(idx.columnNames));
+          for (const idx of indicesToDrop) {
+            await queryRunner.dropIndex(table, idx);
+            this.logger.log(`Índice único antiguo eliminado: ${idx.name}`);
+          }
+          
+          // Eliminar constraints únicos antiguos de 3 columnas
+          const uniquesToDrop = table.uniques.filter(uq => isTargetConstraint(uq.columnNames));
+          for (const uq of uniquesToDrop) {
+            await queryRunner.dropUniqueConstraint(table, uq);
+            this.logger.log(`Constraint único antiguo eliminado: ${uq.name}`);
+          }
+
+          // Crear la nueva restricción única de 4 columnas (si no existe)
+          const newConstraintColumns = ['proceso_id', 'vigencia', 'fecha_corte', 'dependencia_responsable'];
+          const hasNewConstraint = table.uniques.some(uq => 
+            uq.columnNames.length === 4 && 
+            newConstraintColumns.every(col => uq.columnNames.includes(col))
+          );
+
+          if (!hasNewConstraint) {
+            // Utilizamos query directa para evitar importar la clase TableUnique y simplificar
+            await queryRunner.query(
+              `ALTER TABLE control_interno.evaluacion_proceso ADD CONSTRAINT "UQ_evaluacion_proceso_4cols" UNIQUE (proceso_id, vigencia, fecha_corte, dependencia_responsable)`
+            );
+            this.logger.log('Nueva restricción única de 4 columnas creada con éxito (migración completada).');
+          }
+        }
+      } finally {
+        await queryRunner.release();
+      }
+      this.logger.log('Restricciones de base de datos validadas con éxito.');
+    } catch (error) {
+      this.logger.warn('No se pudieron limpiar las restricciones antiguas (puedes ignorar esto si la BD está limpia):', error);
+    }
+  }
 
   /**
    * Obtiene todas las evaluaciones con filtros opcionales
@@ -100,18 +167,19 @@ export class EvaluacionProcesoService {
       throw new NotFoundException(`Proceso con ID ${dto.procesoId} no encontrado`);
     }
 
-    // Verificar que no exista otra evaluación con la misma vigencia + fecha corte
+    // Verificar que no exista otra evaluación con la misma vigencia + fecha corte + dependencia
     const existente = await this.evaluacionRepository.findOne({
       where: {
         procesoId: dto.procesoId,
         vigencia: dto.vigencia,
         fechaCorte: new Date(dto.fechaCorte),
+        dependenciaResponsable: dto.dependenciaResponsable,
       },
     });
 
     if (existente) {
       throw new ConflictException(
-        `Ya existe una evaluación para este proceso con vigencia ${dto.vigencia} y fecha de corte ${dto.fechaCorte}`
+        `Ya existe una evaluación para este proceso con vigencia ${dto.vigencia}, fecha de corte ${dto.fechaCorte} y unidad auditable ${dto.dependenciaResponsable}`
       );
     }
 
@@ -162,9 +230,22 @@ export class EvaluacionProcesoService {
       prioridadRegla: dto.prioridadRegla,
       creadoPor: dto.creadoPor,
       activo: true,
+      auditableCalculado: calcularAuditableDesdeCiclo(dto.cicloRotacionDafp),
+      auditableManual: dto.auditableManual ?? null,
     });
 
-    return this.evaluacionRepository.save(evaluacion);
+    try {
+      const saved = await this.evaluacionRepository.save(evaluacion);
+      const conProceso = await this.findOne(saved.id);
+      await this.syncTareaRol4(conProceso);
+      return conProceso;
+    } catch (error) {
+      this.logger.error(`Error guardando evaluación: ${error.message}`, error.stack);
+      if (error.code === '23505') { // Postgres unique violation
+        throw new ConflictException(`Conflicto de unicidad en la base de datos: ${error.detail || error.message}`);
+      }
+      throw new ConflictException(`Error interno en la BD: ${error.message}`);
+    }
   }
 
   /**
@@ -173,22 +254,24 @@ export class EvaluacionProcesoService {
   async update(id: string, dto: UpdateEvaluacionProcesoDto): Promise<EvaluacionProceso> {
     const evaluacion = await this.findOne(id);
 
-    // Si cambia vigencia o fechaCorte, verificar unicidad
-    if (dto.vigencia !== undefined || dto.fechaCorte !== undefined) {
+    // Si cambia vigencia, fechaCorte o dependenciaResponsable, verificar unicidad
+    if (dto.vigencia !== undefined || dto.fechaCorte !== undefined || dto.dependenciaResponsable !== undefined) {
       const newVigencia = dto.vigencia ?? evaluacion.vigencia;
       const newFechaCorte = dto.fechaCorte ? new Date(dto.fechaCorte) : evaluacion.fechaCorte;
+      const newDependencia = dto.dependenciaResponsable ?? evaluacion.dependenciaResponsable;
 
       const existente = await this.evaluacionRepository.findOne({
         where: {
           procesoId: evaluacion.procesoId,
           vigencia: newVigencia,
           fechaCorte: newFechaCorte,
+          dependenciaResponsable: newDependencia,
         },
       });
 
       if (existente && existente.id !== id) {
         throw new ConflictException(
-          `Ya existe una evaluación para este proceso con vigencia ${newVigencia} y fecha de corte`
+          `Ya existe una evaluación para este proceso con vigencia ${newVigencia}, fecha de corte y unidad auditable ${newDependencia}`
         );
       }
     }
@@ -229,6 +312,13 @@ export class EvaluacionProcesoService {
     if (dto.motivoDecision !== undefined) evaluacion.motivoDecision = dto.motivoDecision;
     if (dto.prioridadRegla !== undefined) evaluacion.prioridadRegla = dto.prioridadRegla;
     if (dto.activo !== undefined) evaluacion.activo = dto.activo;
+    if (dto.auditableManual !== undefined) evaluacion.auditableManual = dto.auditableManual;
+
+    if (dto.cicloRotacionDafp !== undefined) {
+      evaluacion.auditableCalculado = calcularAuditableDesdeCiclo(dto.cicloRotacionDafp);
+    } else if (dto.auditableCalculado !== undefined) {
+      evaluacion.auditableCalculado = dto.auditableCalculado;
+    }
 
     // Recalcular totales si cambiaron los riesgos individuales
     evaluacion.totalRiesgos = 
@@ -241,7 +331,38 @@ export class EvaluacionProcesoService {
       evaluacion.criticidad + evaluacion.exposicion - evaluacion.mitigantes
     ));
 
-    return this.evaluacionRepository.save(evaluacion);
+    try {
+      const saved = await this.evaluacionRepository.save(evaluacion);
+      const conProceso = await this.findOne(saved.id);
+      await this.syncTareaRol4(conProceso);
+      return conProceso;
+    } catch (error) {
+      this.logger.error(`Error actualizando evaluación: ${error.message}`, error.stack);
+      if (error.code === '23505') {
+        throw new ConflictException(`Conflicto de unicidad en la base de datos: ${error.detail || error.message}`);
+      }
+      throw new ConflictException(`Error interno en la BD: ${error.message}`);
+    }
+  }
+
+  /**
+   * Override manual de priorización auditable (columna Aud. en tabla).
+   * auditableManual = null restaura el valor calculado por DAFP.
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    const evaluacion = await this.findOne(id);
+
+    if (!evaluacion.ponderacionFinalDafp && evaluacion.ponderacionFinalDafp !== 0) {
+      throw new BadRequestException(
+        'Complete la evaluación DAFP antes de definir la priorización auditable.',
+      );
+    }
+
+    evaluacion.auditableManual = auditableManual;
+    const saved = await this.evaluacionRepository.save(evaluacion);
+    const conProceso = await this.findOne(saved.id);
+    await this.syncTareaRol4(conProceso);
+    return conProceso;
   }
 
   /**
@@ -250,7 +371,8 @@ export class EvaluacionProcesoService {
   async delete(id: string): Promise<void> {
     const evaluacion = await this.findOne(id);
     evaluacion.activo = false;
-    await this.evaluacionRepository.save(evaluacion);
+    const saved = await this.evaluacionRepository.save(evaluacion);
+    await this.syncTareaRol4(saved);
   }
 
   /**
@@ -258,6 +380,8 @@ export class EvaluacionProcesoService {
    */
   async hardDelete(id: string): Promise<void> {
     const evaluacion = await this.findOne(id);
+    evaluacion.activo = false;
+    await this.syncTareaRol4(evaluacion);
     await this.evaluacionRepository.remove(evaluacion);
   }
 

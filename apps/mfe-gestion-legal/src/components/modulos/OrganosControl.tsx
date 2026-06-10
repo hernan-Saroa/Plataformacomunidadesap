@@ -95,7 +95,7 @@ export function OrganosControl() {
 
   const [tipoVista, setTipoVista] = useState<'lista' | 'archivados'>('lista');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
+  const [filtroOrganismo, setFiltroOrganismo] = useState<string>('TODOS');
   const [filtroSemaforo, setFiltroSemaforo] = useState<string>('TODOS');
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 10;
@@ -770,7 +770,7 @@ function TarjetaRequerimiento({
           </div>
 
           {/* Última actuación */}
-          <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+          <div className="mt-3 mb-2 p-2 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
             <p className="text-xs font-semibold mb-1 flex items-center gap-1.5" style={{ color: '#003DA5' }}>
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#003DA5' }}></span>
               ÚLTIMA ACTUACIÓN
@@ -879,7 +879,7 @@ function VistaLista({
         req.organismo.toLowerCase().includes(q) ||
         req.responsable.toLowerCase().includes(q);
 
-      const matchesOrganismo = !filtroOrganismo || req.organismo === filtroOrganismo;
+      const matchesOrganismo = filtroOrganismo === 'TODOS' || req.organismo === filtroOrganismo;
 
       const matchesSemaforo =
         filtroSemaforo === 'TODOS' ||
@@ -908,7 +908,7 @@ function VistaLista({
             value: filtroOrganismo,
             onChange: setFiltroOrganismo,
             options: [
-              { value: '', label: 'Todos los organismos' },
+              { value: 'TODOS', label: 'Todos los organismos' },
               ...organos.map((o) => ({ value: o, label: o }))
             ]
           },
@@ -928,7 +928,7 @@ function VistaLista({
         filteredItems={requerimientosFiltrados.length}
         onClearFilters={() => {
           setSearchTerm('');
-          setFiltroOrganismo('');
+          setFiltroOrganismo('TODOS');
           setFiltroSemaforo('TODOS');
           setPaginaActual(1);
         }}

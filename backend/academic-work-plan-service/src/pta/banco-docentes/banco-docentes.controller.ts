@@ -4,7 +4,9 @@ import { memoryStorage } from 'multer';
 import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
+import { Public } from '../../auth/public.decorator';
 
+@Public()
 @Controller('pta/banco-docentes')
 export class BancoDocentesController {
   constructor(private readonly service: BancoDocentesService) {}

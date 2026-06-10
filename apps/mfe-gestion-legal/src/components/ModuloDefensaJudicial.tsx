@@ -143,6 +143,14 @@ export function ModuloDefensaJudicial({
                 diasRestantes = -calcularDiasHabiles(fechaVencimiento, now);
                 tiempoRestante = `Vencido hace ${Math.abs(diasRestantes)} días hábiles`;
               }
+            } else if (tipoConteo === 'HORAS') {
+              const diff = fechaVencimiento.getTime() - now.getTime();
+              diasRestantes = Math.ceil(diff / (1000 * 60 * 60));
+              if (diff > 0) {
+                tiempoRestante = `${diasRestantes} horas`;
+              } else {
+                tiempoRestante = `Vencido hace ${Math.abs(diasRestantes)} horas`;
+              }
             } else {
               const diff = fechaVencimiento.getTime() - now.getTime();
               const dayMs = 1000 * 60 * 60 * 24;
@@ -155,7 +163,7 @@ export function ModuloDefensaJudicial({
             }
           } else {
             diasRestantes = item.terminoProcesalDias || 30;
-            const tipoLabel = tipoConteo === 'HABILES' ? 'hábiles' : 'calendario';
+            const tipoLabel = tipoConteo === 'HABILES' ? 'hábiles' : tipoConteo === 'HORAS' ? 'horas' : 'calendario';
             tiempoRestante = `${diasRestantes} días ${tipoLabel}`;
           }
 
@@ -286,6 +294,7 @@ export function ModuloDefensaJudicial({
         fechaVencimientoTermino: demandaData.fechaVencimiento,
         etapaProcesal: demandaData.etapa,
         ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
+        camposAdicionales: (demandaData as any).camposAdicionales,
 
         // Mapeo unificado de actores
         actors: [
@@ -340,7 +349,34 @@ export function ModuloDefensaJudicial({
         tipoConteoTermino: demandaData.tipoConteoTermino || 'HABILES',
       };
 
-      await legalService.crearExpediente(expedienteData);
+      const created = await legalService.crearExpediente(expedienteData);
+
+      // Subir documentos de campos adicionales dinámicos si son nuevos
+      const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
+      if (id && demandaData.camposAdicionales) {
+        for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
+          if (val && typeof val === 'object' && val.base64 && val.nombre && val.esNuevo) {
+            try {
+              const res = await fetch(val.base64);
+              const blob = await res.blob();
+              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
+
+              const formDataDoc = new FormData();
+              formDataDoc.append('archivo', file);
+              formDataDoc.append('expedienteId', id);
+              formDataDoc.append('nombre', val.nombre);
+              formDataDoc.append('tipo', 'DATO_ADICIONAL');
+              formDataDoc.append('origen', 'CARGA_DIRECTA');
+              formDataDoc.append('categoria', 'documentos');
+              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
+
+              await legalService.crearDocumento(formDataDoc);
+            } catch (err) {
+              console.error('Error uploading dynamic document:', err);
+            }
+          }
+        }
+      }
 
       fetchExpedientes();
       setModalNuevaDemandaOpen(false);
@@ -649,15 +685,15 @@ export function ModuloDefensaJudicial({
                     <p className="font-medium text-red-600">{formatDate(expedienteSeleccionado.fechaVencimiento)}</p>
                   </div>
                   <div className="pt-3 border-t">
-                    <p className="text-gray-500">Días restantes</p>
+                    <p className="text-gray-500">{expedienteSeleccionado.tipoConteoTermino === 'HORAS' ? 'Horas restantes' : 'Días restantes'}</p>
                     <p className={`text-2xl font-bold ${expedienteSeleccionado.diasRestantes < 0 ? 'text-red-600' :
                       expedienteSeleccionado.diasRestantes < 5 ? 'text-red-600' :
                         expedienteSeleccionado.diasRestantes < 10 ? 'text-yellow-600' :
                           'text-green-600'
                       }`}>
                       {expedienteSeleccionado.diasRestantes < 0 ?
-                        `Vencido hace ${Math.abs(expedienteSeleccionado.diasRestantes)} días` :
-                        `${expedienteSeleccionado.diasRestantes} días`
+                        `Vencido hace ${Math.abs(expedienteSeleccionado.diasRestantes)} ${expedienteSeleccionado.tipoConteoTermino === 'HORAS' ? 'horas' : 'días'}` :
+                        `${expedienteSeleccionado.diasRestantes} ${expedienteSeleccionado.tipoConteoTermino === 'HORAS' ? 'horas' : 'días'}`
                       }
                     </p>
                   </div>
@@ -921,8 +957,8 @@ export function ModuloDefensaJudicial({
                               'text-green-600'
                           }`}>
                           {expediente.diasRestantes < 0 ?
-                            `VENCIDO (${Math.abs(expediente.diasRestantes)}d)` :
-                            `${expediente.diasRestantes} días`
+                            `VENCIDO (${Math.abs(expediente.diasRestantes)}${expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd'})` :
+                            `${expediente.diasRestantes} ${expediente.tipoConteoTermino === 'HORAS' ? 'horas' : 'días'}`
                           }
                         </p>
                       </td>

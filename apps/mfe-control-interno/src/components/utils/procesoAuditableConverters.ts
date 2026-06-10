@@ -107,6 +107,14 @@ export function convertirProcesoAFormularioDafp(
     const nivelRiesgoCEM =
       scoreRiesgoCEM >= 10 ? 'Crítico' : scoreRiesgoCEM >= 7 ? 'Alto' : scoreRiesgoCEM >= 4 ? 'Moderado' : 'Bajo';
 
+    let dep = ev.dependenciaResponsable || proceso._dependencia || proceso.dependenciaResponsable || '';
+    let mac = proceso._macroproceso || proceso.macroproceso || proceso.categoria || 'General';
+    if (ev.dependenciaResponsable && ev.dependenciaResponsable.includes('||')) {
+      const parts = ev.dependenciaResponsable.split('||');
+      dep = parts[0].trim();
+      mac = parts[1].trim();
+    }
+
     return {
       id: proceso.id,
       nombre: proceso.nombre,
@@ -143,9 +151,9 @@ export function convertirProcesoAFormularioDafp(
       nivelCriticidadDafp: ev.nivelCriticidadDafp || '',
       cicloRotacionDafp: ev.cicloRotacionDafp || '',
       codigo: proceso._codigo || proceso.codigo || '',
-      macroproceso: proceso._macroproceso || proceso.macroproceso || proceso.categoria || 'General',
+      macroproceso: mac,
       tipoProceso: proceso.tipo,
-      dependenciaResponsable: ev.dependenciaResponsable || proceso._dependencia || proceso.dependenciaResponsable || '',
+      dependenciaResponsable: dep,
       nivelRiesgo: proceso.nivelRiesgo,
       scoreRiesgo: scoreRiesgoCEM ?? proceso.puntajeRiesgo,
       numeroAuditorias: 0,

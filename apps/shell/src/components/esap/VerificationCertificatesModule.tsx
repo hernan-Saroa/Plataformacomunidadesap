@@ -67,9 +67,9 @@ import {
 import React from 'react';
 import { copyToClipboard } from '@/utils/browser';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import headerLogoPreviewFallback from '../../assets/graduation-certificates/img_primera.png';
 import graduadosService, {
   CertificadoGraduado,
-  DescargaCertificado,
   GraduationCertificateTemplateConfig,
   GraduationCertificateTemplateTexts,
   SolicitudCertificadoGraduado,
@@ -79,7 +79,12 @@ import graduadosService, {
 import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
-import { buildServiceAssetUrl } from '../../config/environment';
+import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
+
+const getRuntimePublicBaseUrl = () =>
+  typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : getPublicBaseUrl();
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
@@ -118,10 +123,9 @@ interface CertificateRequest {
   lastRequestedAt: string; // Última solicitud
   generatedAt: string; // Fecha de generación del certificado
   generatedBy: string;
-  requestCount: number; // Numero de solicitudes asociadas al certificado
+  requestCount: number; // Número de solicitudes asociadas al certificado
   qrScanCount: number; // Número de veces que se ha escaneado el QR
   viewCount: number;
-  downloadCount: number;
   lastActivity: string;
   requestHistory: Array<{
     id: string;
@@ -147,21 +151,23 @@ interface VerificationCertificatesModuleProps {
 }
 
 const DEFAULT_CERTIFICATE_TEMPLATE_TEXTS: GraduationCertificateTemplateTexts = {
-  cityDatePrefix: 'Bogota, D.C.,',
-  institutionTitle: 'ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA - ESAP',
-  certificateTitle: 'Verificacion de titulo',
+  cityDatePrefix: 'Bogotá, D.C.,',
+  institutionTitle: 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP',
+  certificateTitle: 'Verificación de título',
   addressee: 'A QUIEN INTERESE',
   introParagraph:
-    'De conformidad con los registros en el Sistema de Control Academico de la Escuela Superior de Administracion Publica -ESAP-, nos permitimos informar la verificacion del siguiente titulo academico:',
-  degreeLabel: 'Titulo otorgado:',
+    'De conformidad con los registros en el Sistema de Control Académico de la Escuela Superior de Administración Pública -ESAP-, nos permitimos informar la verificación del siguiente título académico:',
+  degreeLabel: 'Título otorgado:',
   graduateNameLabel: 'Nombres y apellidos del egresado graduado:',
-  documentLabel: 'Numero de documento de identificacion:',
-  issuePlaceDateLabel: 'Lugar y fecha de expedicion del titulo:',
+  documentLabel: 'Número de documento de identificación:',
+  issuePlaceDateLabel: 'Lugar y fecha de expedición del título:',
   registryLabel: 'Registro - Folio - Libro:',
   closingText: 'Cordialmente,',
-  signerTitle: 'Direccion Tecnica Registro y Control',
+  signerTitle: 'Dirección Técnica Registro y Control',
   validationMessage:
-    'Puede validar la autenticidad de esta verificacion en',
+    'Puede validar la autenticidad de esta verificación en',
+  footerAddress:
+    'Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN\nPBX: 2202790 - Fax: (091) 2202790 Ext. 7205\nCorreo Electrónico: ventanillaunica@esap.edu.co\nwww.esap.edu.co',
 };
 
 const TEMPLATE_TEXT_FIELDS: Array<{
@@ -170,17 +176,18 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   rows?: number;
 }> = [
   { key: 'cityDatePrefix', label: 'Ciudad y prefijo de fecha' },
-  { key: 'institutionTitle', label: 'Titulo institucional' },
-  { key: 'certificateTitle', label: 'Titulo del certificado' },
+  { key: 'institutionTitle', label: 'Título institucional' },
+  { key: 'certificateTitle', label: 'Título del certificado' },
   { key: 'addressee', label: 'Encabezado destinatario' },
-  { key: 'introParagraph', label: 'Parrafo introductorio', rows: 4 },
-  { key: 'degreeLabel', label: 'Etiqueta titulo otorgado' },
+  { key: 'introParagraph', label: 'Párrafo introductorio', rows: 4 },
+  { key: 'degreeLabel', label: 'Etiqueta título otorgado' },
   { key: 'graduateNameLabel', label: 'Etiqueta nombre del graduado' },
   { key: 'documentLabel', label: 'Etiqueta documento' },
   { key: 'issuePlaceDateLabel', label: 'Etiqueta lugar y fecha' },
   { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
   { key: 'closingText', label: 'Texto de cierre' },
-  { key: 'validationMessage', label: 'Mensaje de validacion', rows: 2 },
+  { key: 'validationMessage', label: 'Mensaje de validación', rows: 2 },
+  { key: 'footerAddress', label: 'Dirección pie de página', rows: 4 },
 ];
 
 const DEFAULT_TEMPLATE_SIGNATURE_FORM = {
@@ -190,6 +197,31 @@ const DEFAULT_TEMPLATE_SIGNATURE_FORM = {
   signatureFilename: '',
   signatureImageDataUrl: '',
   signatureImageFilename: '',
+};
+
+const DEFAULT_TEMPLATE_LOGO_FORM = { filename: '', dataUrl: '' };
+
+const createLogoPreviewImageStyle = (
+  position: React.CSSProperties['objectPosition'] = 'left center',
+): React.CSSProperties => ({
+  position: 'absolute',
+  inset: 0,
+  display: 'block',
+  width: '100%',
+  height: '100%',
+  maxWidth: '100%',
+  maxHeight: '100%',
+  objectFit: 'contain',
+  objectPosition: position,
+});
+
+const resolveTemplateImagePreviewUrl = (value?: string | null) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^data:image\/(png|jpe?g|svg\+xml|webp);base64,/i.test(raw)) {
+    return raw;
+  }
+  return buildServiceAssetUrl('registro-academico', raw);
 };
 
 export function VerificationCertificatesModule({ onPendingCountChange }: VerificationCertificatesModuleProps = {}) {
@@ -245,6 +277,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [templateSignatureForm, setTemplateSignatureForm] = useState(
     DEFAULT_TEMPLATE_SIGNATURE_FORM,
   );
+  const [newHeaderLogoFile, setNewHeaderLogoFile] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [newFooterLogoFile, setNewFooterLogoFile] = useState<{ filename: string; dataUrl: string } | null>(null);
+  const [headerLogoPreviewFailed, setHeaderLogoPreviewFailed] = useState(false);
   const canEditCertificates = authService.hasPermission(
     Permissions.GRADUATES_CERTIFICATES_EDIT,
   );
@@ -422,17 +457,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     isLoadingCertificatesRef.current = true;
     setIsLoading(true);
     try {
-      const [certificatesResponse, requestsResponse, validationsResponse, downloadsResponse] = await Promise.all([
+      const [certificatesResponse, requestsResponse, validationsResponse] = await Promise.all([
         graduadosService.certificados.listar(),
         graduadosService.solicitudes.listar(),
         graduadosService.validaciones.listar(),
-        graduadosService.descargas.listar(),
       ]);
 
       const certificatesData = ensureArray<CertificadoGraduado>(certificatesResponse);
       const requestsData = ensureArray<SolicitudCertificadoGraduado>(requestsResponse);
       const validationsData = ensureArray<ValidacionCertificado>(validationsResponse);
-      const downloadsData = ensureArray<DescargaCertificado>(downloadsResponse);
 
       const requestsById = new Map<string, SolicitudCertificadoGraduado>();
       requestsData.forEach((request) => {
@@ -445,14 +478,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           validationsByCertificate.set(validation.certificateId, []);
         }
         validationsByCertificate.get(validation.certificateId)!.push(validation);
-      });
-
-      const downloadsByCertificate = new Map<string, DescargaCertificado[]>();
-      downloadsData.forEach((download) => {
-        if (!downloadsByCertificate.has(download.certificateId)) {
-          downloadsByCertificate.set(download.certificateId, []);
-        }
-        downloadsByCertificate.get(download.certificateId)!.push(download);
       });
 
       const mappedCertificates = certificatesData.map((certificate) => {
@@ -482,7 +507,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const scanHistory = mapScanHistory(
             validationsByCertificate.get(certificate.id) || []
           );
-          const downloadCount = (downloadsByCertificate.get(certificate.id) || []).length;
 
           const lastScan = scanHistory.length
             ? scanHistory[0].scannedAt
@@ -553,11 +577,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             lastRequestedAt,
             generatedAt: normalizeDate(certificate.issueDate),
             acceptedAt: normalizeDate(acceptedAtRaw),
-            generatedBy: certificate.signerName || 'Registro Academico',
+            generatedBy: certificate.signerName || 'Registro Académico',
             requestCount: 1,
             qrScanCount: 0,
             viewCount: 1,
-            downloadCount,
             lastActivity,
             requestHistory: mainRequest
               ? [
@@ -593,7 +616,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
-        description: 'Verifica la conexion con el servicio academico.',
+        description: 'Verifica la conexión con el servicio académico.',
       });
       setCertificates([]);
     } finally {
@@ -814,7 +837,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      toast.error('El email no tiene un formato valido');
+      toast.error('El email no tiene un formato válido');
       return;
     }
     if (!trimmedProgramName) {
@@ -835,7 +858,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         return;
       }
       if (!trimmedGraduationDate) {
-        toast.error('La fecha de graduacion es obligatoria');
+        toast.error('La fecha de graduación es obligatoria');
         return;
       }
     }
@@ -1027,7 +1050,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('La imagen de la firma debe pesar maximo 2 MB');
+      toast.error('La imagen de la firma debe pesar máximo 2 MB');
       return;
     }
 
@@ -1052,6 +1075,35 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     reader.readAsDataURL(file);
   };
 
+  const makeLogoFileChangeHandler = (
+    setter: React.Dispatch<React.SetStateAction<{ filename: string; dataUrl: string } | null>>,
+    label: string,
+  ) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp']);
+    if (!allowedTypes.has(file.type)) {
+      toast.error(`${label} debe ser una imagen PNG, JPEG, SVG o WebP`);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error(`${label} no debe superar los 10 MB`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) { toast.error(`No se pudo leer ${label}`); return; }
+      setter({ filename: file.name, dataUrl: result });
+    };
+    reader.onerror = () => { toast.error(`No se pudo leer ${label}`); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleHeaderLogoFileChange = makeLogoFileChangeHandler(setNewHeaderLogoFile, 'el logo de cabecera');
+  const handleFooterLogoFileChange = makeLogoFileChangeHandler(setNewFooterLogoFile, 'el logo de pie de página');
+
   const handleOpenTemplateEditor = async () => {
     if (!canEditCertificates) {
       toast.error('Permiso requerido', {
@@ -1068,11 +1120,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setTemplateConfig(config);
       setTemplateForm(config?.texts || DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
       setTemplateSignatureForm(getSignatureFormFromConfig(config));
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
     } catch (error: any) {
-      console.error('Error cargando plantilla academica:', error);
+      console.error('Error cargando plantilla académica:', error);
       setTemplateConfig(null);
       setTemplateForm(DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
       setTemplateSignatureForm(DEFAULT_TEMPLATE_SIGNATURE_FORM);
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
       toast.error('No se pudo cargar la plantilla', {
         description: error?.response?.data?.message || error?.message,
       });
@@ -1143,17 +1199,23 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           templateSignatureForm.signatureImageFilename ||
           templateSignatureForm.signatureFilename ||
           undefined,
+        headerLogoDataUrl: newHeaderLogoFile ? newHeaderLogoFile.dataUrl : undefined,
+        headerLogoFilename: newHeaderLogoFile ? newHeaderLogoFile.filename : undefined,
+        footerLogoDataUrl: newFooterLogoFile ? newFooterLogoFile.dataUrl : undefined,
+        footerLogoFilename: newFooterLogoFile ? newFooterLogoFile.filename : undefined,
         updatedBy: resolveTemplateActor(),
       });
       setTemplateConfig(response);
       setTemplateForm(response.texts);
       setTemplateSignatureForm(getSignatureFormFromConfig(response));
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
       toast.success('Plantilla actualizada', {
         description:
-          'Los textos del certificado de registro academico quedaron guardados.',
+          'Los textos del certificado de registro académico quedaron guardados.',
       });
     } catch (error: any) {
-      console.error('Error guardando plantilla academica:', error);
+      console.error('Error guardando plantilla académica:', error);
       toast.error('No se pudo guardar la plantilla', {
         description: error?.response?.data?.message || error?.message,
       });
@@ -1171,11 +1233,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setTemplateConfig(response);
       setTemplateForm(response.texts);
       setTemplateSignatureForm(getSignatureFormFromConfig(response));
+      setNewHeaderLogoFile(null);
+      setNewFooterLogoFile(null);
       toast.success('Textos restablecidos', {
-        description: 'Se recupero la plantilla base del certificado.',
+        description: 'Se recuperó la plantilla base del certificado.',
       });
     } catch (error: any) {
-      console.error('Error restableciendo plantilla academica:', error);
+      console.error('Error restableciendo plantilla académica:', error);
       toast.error('No se pudo restablecer la plantilla', {
         description: error?.response?.data?.message || error?.message,
       });
@@ -1390,24 +1454,24 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   const handleCopyValidationUrl = async () => {
     if (!qrPreviewCertificate?.qrCode) {
-      toast.error('No hay URL de validacion disponible');
+      toast.error('No hay URL de validación disponible');
       return;
     }
 
     const url = getPublicValidationUrl(qrPreviewCertificate.qrCode);
     const copied = await copyToClipboard(url);
     if (copied) {
-      toast.success('URL de validacion copiada al portapapeles');
+      toast.success('URL de validación copiada al portapapeles');
       return;
     }
 
     const copiedFromCode = copyFromElementFallback(validationUrlCodeRef.current);
     if (copiedFromCode) {
-      toast.success('URL de validacion copiada al portapapeles');
+      toast.success('URL de validación copiada al portapapeles');
       return;
     }
 
-    toast.error('No se pudo copiar. Por favor, copialo manualmente.');
+    toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
   };
 
   const releaseCertificatePdfUrl = useCallback((clearState = true) => {
@@ -1499,7 +1563,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleResendCertificate = async (cert: CertificateRecord) => {
     if (!canResendCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Reenviar Certificados para ejecutar esta accion.',
+        description: 'Necesitas el permiso Reenviar Certificados para ejecutar esta acción.',
       });
       return;
     }
@@ -1517,7 +1581,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const response = await graduadosService.certificados.reenviar(cert.id);
       toast.success('Certificado reenviado', {
         id: resendToastId,
-        description: response?.mensaje || `Se reenvio el certificado a ${cert.requester.email}`,
+        description: response?.mensaje || `Se reenvió el certificado a ${cert.requester.email}`,
       });
     } catch (error: any) {
       console.error('Error reenviando certificado:', error);
@@ -1536,7 +1600,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       if (isGatewayEmpty400) {
         toast.success('Certificado reenviado', {
           id: resendToastId,
-          description: `Se reenvio el certificado a ${cert.requester.email}`,
+          description: `Se reenvió el certificado a ${cert.requester.email}`,
         });
         return;
       }
@@ -1554,7 +1618,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const getPublicValidationUrl = (qrCode: string) => {
-    return `${window.location.origin}/verificar-certificado/${qrCode}`;
+    return `${getRuntimePublicBaseUrl()}/verificar-certificado/${qrCode}`;
   };
 
   const buildExportRows = (items: CertificateRecord[]) => {
@@ -1615,7 +1679,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleOpenExportModal = () => {
     if (!canExportCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Certificados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Certificados para descargar esta información.',
       });
       return;
     }
@@ -1626,7 +1690,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleExportCertificates = () => {
     if (!canExportCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Certificados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Certificados para descargar esta información.',
       });
       return;
     }
@@ -1640,12 +1704,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     const end = exportEndDate ? new Date(`${exportEndDate}T23:59:59.999`) : null;
   
     if (start && Number.isNaN(start.getTime())) {
-      toast.error('Fecha inicial invalida');
+      toast.error('Fecha inicial inválida');
       return;
     }
   
     if (end && Number.isNaN(end.getTime())) {
-      toast.error('Fecha final invalida');
+      toast.error('Fecha final inválida');
       return;
     }
   
@@ -1672,7 +1736,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     try {
       const rows = buildExportRows(filteredByDate);
       descargarCSV(rows);
-      toast.success('Exportacion completada', {
+      toast.success('Exportación completada', {
         description: `${rows.length} registros exportados`,
       });
       setIsExportModalOpen(false);
@@ -1718,10 +1782,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillText('ESAP', width / 2, 70);
   
       ctx.font = '20px Arial';
-      ctx.fillText('Escuela Superior de Administracion Publica', width / 2, 110);
+      ctx.fillText('Escuela Superior de Administración Pública', width / 2, 110);
   
       ctx.font = 'bold 24px Arial';
-      ctx.fillText('Codigo QR de Validacion', width / 2, 150);
+      ctx.fillText('Código QR de Validación', width / 2, 150);
   
       const qrSize = 400;
       const qrX = (width - qrSize) / 2;
@@ -1790,19 +1854,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         document.body.removeChild(link);
         URL.revokeObjectURL(downloadUrl);
 
-        setQrPreviewCertificate((prev) =>
-          prev ? { ...prev, downloadCount: prev.downloadCount + 1 } : prev
-        );
-        setCertificates((prev) =>
-          prev.map((item) =>
-            item.id === qrPreviewCertificate.id
-              ? { ...item, downloadCount: item.downloadCount + 1 }
-              : item
-          )
-        );
-
         toast.success('QR descargado exitosamente', {
-          description: `El codigo QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
+          description: `El código QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
         });
       }, 'image/png');
   
@@ -1828,7 +1881,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         degreeTitle:
           latestCertificate.degreeTitle || latestCertificate.graduate.program,
         idNumber: `CC ${latestCertificate.graduate.document}`,
-        issuePlaceDate: `${latestCertificate.campus || latestCertificate.graduate.campus || 'Bogota'} ${formatDateOnly(latestCertificate.graduate.graduationDate, {
+        issuePlaceDate: `${latestCertificate.campus || latestCertificate.graduate.campus || 'Bogotá'} ${formatDateOnly(latestCertificate.graduate.graduationDate, {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
@@ -1840,14 +1893,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
 
     return {
-      fullName: 'EDGAR ZUNIGA CABARCAS',
-      degreeTitle: 'MAESTRIA EN ADMINISTRACION PUBLICA',
+      fullName: 'EDGAR ZÚÑIGA CABARCAS',
+      degreeTitle: 'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
       idNumber: 'CC 1047430674',
       issuePlaceDate:
-        'Bolivar - Cordoba - Sucre - San Andres 26 DE FEBRERO DE 2026',
+        'Bolívar - Córdoba - Sucre - San Andrés 26 DE FEBRERO DE 2026',
       registry: '3213-79-28',
       validationCode: 'QR-GR-2026-0005-ao3uf5yrxp',
-      validationUrl: `${window.location.origin}/verificar-certificado/QR-GR-2026-0005-ao3uf5yrxp`,
+      validationUrl: getPublicValidationUrl('QR-GR-2026-0005-ao3uf5yrxp'),
     };
   }, [certificates]);
   const hasTemplateChanges = useMemo(() => {
@@ -1858,12 +1911,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       baseSignature.signerName !== templateSignatureForm.signerName ||
       baseSignature.signatureUrl !== templateSignatureForm.signatureUrl ||
       Boolean(templateSignatureForm.signatureImageDataUrl);
+    const logoChanged = Boolean(newHeaderLogoFile) || Boolean(newFooterLogoFile);
 
     return (
       JSON.stringify(baseTexts) !== JSON.stringify(templateForm) ||
-      signatureChanged
+      signatureChanged ||
+      logoChanged
     );
-  }, [templateConfig, templateForm, templateSignatureForm]);
+  }, [templateConfig, templateForm, templateSignatureForm, newHeaderLogoFile, newFooterLogoFile]);
 
   const signaturePreviewUrl = useMemo(() => {
     if (templateSignatureForm.signatureImageDataUrl) {
@@ -1880,6 +1935,49 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
     return '';
   }, [templateSignatureForm.signatureImageDataUrl, templateSignatureForm.signatureUrl]);
+
+  const hasCustomHeaderLogo = Boolean(
+    newHeaderLogoFile || templateConfig?.logos?.headerLogoDataUrl,
+  );
+  const hasCustomFooterLogo = Boolean(
+    newFooterLogoFile || templateConfig?.logos?.footerLogoDataUrl,
+  );
+
+  const headerLogoPreviewUrl = useMemo(
+    () =>
+      resolveTemplateImagePreviewUrl(
+        newHeaderLogoFile?.dataUrl ||
+          templateConfig?.logos?.headerLogoDataUrl ||
+          templateConfig?.logos?.defaultHeaderLogoDataUrl,
+      ) || headerLogoPreviewFallback,
+    [
+      newHeaderLogoFile?.dataUrl,
+      templateConfig?.logos?.headerLogoDataUrl,
+      templateConfig?.logos?.defaultHeaderLogoDataUrl,
+    ],
+  );
+
+  const footerLogoPreviewUrl = useMemo(
+    () =>
+      resolveTemplateImagePreviewUrl(
+        newFooterLogoFile?.dataUrl ||
+          templateConfig?.logos?.footerLogoDataUrl ||
+          templateConfig?.logos?.defaultFooterLogoDataUrl,
+      ),
+    [
+      newFooterLogoFile?.dataUrl,
+      templateConfig?.logos?.footerLogoDataUrl,
+      templateConfig?.logos?.defaultFooterLogoDataUrl,
+    ],
+  );
+
+  useEffect(() => {
+    setHeaderLogoPreviewFailed(false);
+  }, [headerLogoPreviewUrl]);
+
+  const headerLogoDisplayUrl = headerLogoPreviewFailed
+    ? headerLogoPreviewFallback
+    : headerLogoPreviewUrl;
 
   return (
     <div className="space-y-6">
@@ -1900,7 +1998,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               color: '#1F2937'
             }}
           >
-            Cada solicitud genera <strong>un certificado con QR unico</strong>. Los certificados previos se mantienen como historial, pero no se reutilizan.
+            Cada solicitud genera <strong>un certificado con QR único</strong>. Los certificados previos se mantienen como historial, pero no se reutilizan.
           </p>
         </div>
       </motion.div>
@@ -1976,7 +2074,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-sm text-gray-900 mb-1">
-              Logica de QR unico
+              Lógica de QR único
             </h3>
             <p className="text-sm text-gray-700">
               <strong>1)</strong> Se solicita certificado (graduado + entidad) {'->'}
@@ -2133,7 +2231,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Cargando certificados...
             </h3>
             <p className="text-sm text-[#6B7280]">
-              Consultando la base de datos academica.
+              Consultando la base de datos académica.
             </p>
           </div>
         ) : paginatedCertificates.length === 0 ? (
@@ -2181,10 +2279,31 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-r border-b border-l-4 border-r-[#E5E7EB] border-b-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedCertId === cert.id
+                    ? 'relative z-[1] border-l-[#003DA5] bg-[#F8FBFF]'
+                    : 'border-l-transparent hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedCertId === cert.id}
+                  aria-label={`Ver trazabilidad del certificado ${cert.certificateNumber}`}
+                  onClick={() => handleViewDetails(cert)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(cert);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedCertId === cert.id
+                      ? 'bg-gradient-to-r from-[#EFF6FF] via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado */}
                     <div className="col-span-3">
@@ -2234,7 +2353,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleViewQR(cert)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleViewQR(cert);
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
                           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 relative"
                           style={{ background: '#F3F4F6', cursor: 'pointer' }}
                           title="Ver código QR único"
@@ -2276,9 +2399,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(cert)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(cert);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedCertId === cert.id ? '#F0F6FF' : '#F9FAFB',
@@ -2298,6 +2428,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
@@ -2355,16 +2486,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
-                      <div className="p-6 space-y-4">
+                      <div className="space-y-5 p-4 sm:p-6">
                         {/* Título */}
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: '#1F2937' }}>
-                            <Shield className="w-5 h-5" style={{ color: '#003DA5' }} />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="flex min-w-0 items-center gap-3 text-base font-semibold text-slate-900">
+                            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50">
+                              <Shield className="h-5 w-5 text-blue-700" />
+                            </span>
                             Trazabilidad Completa del Certificado
                           </h3>
-                          <Badge className="bg-blue-100 text-blue-800 border-blue-200 border text-xs">
+                          <Badge className="max-w-full truncate rounded-md border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-700 shadow-sm">
                             ID: {cert.id}
                           </Badge>
                         </div>
@@ -2372,12 +2505,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         {/* Grid 2 columnas - Info Graduado y Solicitante */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           {/* Info Graduado */}
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <Award className="w-4 h-4 text-blue-600" />
+                          <div className="rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
+                            <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                                <Award className="h-4 w-4 text-blue-600" />
+                              </span>
                               Información del Graduado
                             </h4>
-                            <div className="space-y-2.5 text-sm">
+                            <div className="space-y-3 text-sm [&>div>div]:min-w-0 [&>div>svg]:mt-0.5 [&>div>svg]:h-4 [&>div>svg]:w-4 [&>div>svg]:flex-none [&>div>svg]:text-blue-500 [&>div>div>p:first-child]:text-[11px] [&>div>div>p:first-child]:font-medium [&>div>div>p:first-child]:uppercase [&>div>div>p:first-child]:tracking-wide [&>div>div>p:first-child]:text-slate-500 [&>div>div>p:last-child]:break-words [&>div>div>p:last-child]:leading-snug [&>div>div>p:last-child]:text-slate-900">
                               <div className="flex items-start gap-2">
                                 <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
@@ -2434,12 +2569,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </div>
 
                           {/* Info Solicitante */}
-                          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <Building2 className="w-4 h-4 text-purple-600" />
+                          <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm">
+                            <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50">
+                                <Building2 className="h-4 w-4 text-violet-600" />
+                              </span>
                               Información del Solicitante
                             </h4>
-                            <div className="space-y-2.5 text-sm">
+                            <div className="space-y-3 text-sm [&>div>div]:min-w-0 [&>div>svg]:mt-0.5 [&>div>svg]:h-4 [&>div>svg]:w-4 [&>div>svg]:flex-none [&>div>svg]:text-violet-500 [&>div>div>p:first-child]:text-[11px] [&>div>div>p:first-child]:font-medium [&>div>div>p:first-child]:uppercase [&>div>div>p:first-child]:tracking-wide [&>div>div>p:first-child]:text-slate-500 [&>div>div>p:last-child]:break-words [&>div>div>p:last-child]:leading-snug [&>div>div>p:last-child]:text-slate-900">
                               <div className="flex items-start gap-2">
                                 {cert.requester.type === 'entidad' && <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 {cert.requester.type === 'graduado' && <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
@@ -2510,40 +2647,42 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </div>
 
                         {/* Hash y Seguridad */}
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                          <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                            <Hash className="w-4 h-4 text-gray-700" />
+                        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                          <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+                              <Hash className="h-4 w-4 text-slate-700" />
+                            </span>
                             Seguridad y Verificación Digital
                           </h4>
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             <div>
-                              <p className="text-xs text-gray-600 mb-1.5">Hash SHA-256 del Certificado</p>
-                              <div className="flex items-center gap-2 bg-white p-3 rounded border border-gray-200">
-                                <p className="text-xs font-mono flex-1 break-all text-gray-900">
+                              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Hash SHA-256 del Certificado</p>
+                              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                                <p className="min-w-0 flex-1 break-all rounded-md bg-white px-3 py-2 text-xs font-mono leading-relaxed text-slate-900">
                                   {cert.certificateHash}
                                 </p>
                                 <button
                                   onClick={() => handleCopyToClipboard(cert.certificateHash, 'Hash')}
-                                  className="p-2 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+                                  className="flex-shrink-0 rounded-md p-2 transition-colors hover:bg-blue-50"
                                   title="Copiar hash"
                                 >
-                                  <Copy className="w-4 h-4 text-gray-600" />
+                                  <Copy className="h-4 w-4 text-slate-600" />
                                 </button>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div>p:first-child]:mb-1.5 [&>div>p:first-child]:text-[11px] [&>div>p:first-child]:font-medium [&>div>p:first-child]:uppercase [&>div>p:first-child]:tracking-wide [&>div>p:first-child]:text-slate-500">
                               <div>
                                 <p className="text-xs text-gray-600 mb-1.5">Código QR</p>
-                                <div className="flex items-center gap-2 bg-white p-2 rounded border border-gray-200">
-                                  <QrCode className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                  <p className="text-xs font-mono text-gray-900">{cert.qrCode}</p>
+                                <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                                  <QrCode className="h-4 w-4 flex-shrink-0 text-amber-600" />
+                                  <p className="min-w-0 break-all text-xs font-mono text-slate-900">{cert.qrCode}</p>
                                 </div>
                               </div>
                               <div>
                                 <p className="text-xs text-gray-600 mb-1.5">Generado por</p>
-                                <div className="flex items-center gap-2 bg-white p-2 rounded border border-gray-200">
-                                  <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                  <p className="text-xs font-semibold text-gray-900">{cert.generatedBy}</p>
+                                <div className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                                  <Shield className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                                  <p className="min-w-0 break-words text-xs font-semibold text-slate-900">{cert.generatedBy}</p>
                                 </div>
                               </div>
                             </div>
@@ -2556,7 +2695,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <TrendingUp className="w-4 h-4 text-green-600" />
                             Estadísticas de Uso
                           </h4>
-                          <div className="grid grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="bg-white border border-amber-200 rounded-lg p-3 text-center">
                               <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mx-auto mb-2">
                                 <QrCode className="w-5 h-5 text-amber-600" />
@@ -2571,18 +2710,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               <p className="text-2xl font-bold text-gray-900">{cert.viewCount}</p>
                               <p className="text-xs text-gray-600">Visualizaciones</p>
                             </div>
-                            <div className="bg-white border border-green-200 rounded-lg p-3 text-center">
-                              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mx-auto mb-2">
-                                <Download className="w-5 h-5 text-green-600" />
-                              </div>
-                              <p className="text-2xl font-bold text-gray-900">{cert.downloadCount}</p>
-                              <p className="text-xs text-gray-600">Descargas</p>
-                            </div>
                           </div>
                         </div>
 
                         {/* Historial de Escaneos */}
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100">
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                               <Monitor className="w-4 h-4 text-gray-700" />
@@ -2619,7 +2751,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               {cert.scanHistory.map((scan, idx) => (
                                 <div 
                                   key={scan.id} 
-                                  className="bg-gray-50 p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                                  className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
                                 >
                                   <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -2882,7 +3014,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Ver Certificado
             </DialogTitle>
             <DialogDescription>
-              Consulta los datos de verificacion del certificado y del graduado asociado.
+              Consulta los datos de verificación del certificado y del graduado asociado.
             </DialogDescription>
           </DialogHeader>
 
@@ -2906,7 +3038,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <Input
                   id="edit-id-number"
                   value={editCertificateForm.idNumber}
-                  placeholder="Numero de documento"
+                  placeholder="Número de documento"
                   disabled
                 />
               </div>
@@ -2939,7 +3071,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-graduation-date">Fecha de graduacion</Label>
+                <Label htmlFor="edit-graduation-date">Fecha de graduación</Label>
                 <Input
                   id="edit-graduation-date"
                   type="date"
@@ -2949,7 +3081,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-num-registro">Numero de registro</Label>
+                <Label htmlFor="edit-num-registro">Número de registro</Label>
                 <Input
                   id="edit-num-registro"
                   value={formatRegistroValue(editCertificateForm.numRegistro)}
@@ -2958,7 +3090,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-num-folio">Numero de folio</Label>
+                <Label htmlFor="edit-num-folio">Número de folio</Label>
                 <Input
                   id="edit-num-folio"
                   value={formatRegistroValue(editCertificateForm.numFolio)}
@@ -2967,7 +3099,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-num-libro">Numero de libro</Label>
+                <Label htmlFor="edit-num-libro">Número de libro</Label>
                 <Input
                   id="edit-num-libro"
                   value={formatRegistroValue(editCertificateForm.numLibro)}
@@ -3092,84 +3224,261 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Editar plantilla del certificado academico */}
+      {/* Modal: Editar plantilla del certificado académico */}
       <Dialog open={isTemplateEditorOpen} onOpenChange={setIsTemplateEditorOpen}>
-        <DialogContent className="w-[96vw] max-w-7xl h-[92vh] max-h-[92vh] p-0 sm:p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-5 pt-5 sm:px-6 sm:pt-6 shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <PencilLine className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Editar Certificado
-            </DialogTitle>
-            <DialogDescription>
-              Edita solo los textos del certificado de registro academico. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
-            </DialogDescription>
+        <DialogContent className="w-[96vw] max-w-7xl h-[92vh] max-h-[92vh] overflow-hidden border border-slate-200 bg-slate-50 p-0 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.45)] sm:p-0 flex flex-col">
+          <DialogHeader className="relative shrink-0 overflow-hidden border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#003DA5] via-[#0052CC] to-[#C79A2B]" />
+            <div className="flex flex-col gap-4 pr-8 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#003DA5] text-white shadow-sm">
+                  <PencilLine className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-xl font-bold text-slate-900">
+                    Editar Certificado
+                  </DialogTitle>
+                  <DialogDescription className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
+                    Edita solo los textos del certificado de registro académico. El QR, el código de validación, los datos dinámicos y la URL pública siguen protegidos.
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="border-[#BFD6FF] bg-[#EEF5FF] px-2.5 py-1 text-[#003DA5]">
+                  <Shield className="h-3.5 w-3.5" />
+                  Protegido
+                </Badge>
+                <Badge
+                  className={
+                    hasTemplateChanges
+                      ? 'border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800'
+                      : 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                  }
+                >
+                  {hasTemplateChanges ? 'Cambios pendientes' : 'Sin cambios'}
+                </Badge>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 sm:px-6 sm:pb-6">
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] gap-6 py-2">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-5 sm:px-6 sm:pb-6">
+            <div className="grid grid-cols-1 gap-5 py-5 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
               <div className="space-y-4 min-w-0">
-                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                  <p className="font-semibold mb-1">Edicion controlada</p>
-                  <p>
-                    Aqui solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, codigos QR, enlaces de validacion ni numeraciones ya emitidas.
-                  </p>
-                </div>
-
-                {templateConfig && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Version</p>
-                      <p className="text-sm font-semibold text-gray-900">{templateConfig.version}</p>
+                <section className="overflow-hidden rounded-lg border border-[#C8DAF5] bg-white shadow-sm">
+                  <div className="flex items-start gap-3 bg-[#F2F7FF] px-4 py-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#003DA5] shadow-sm">
+                      <Shield className="h-4 w-4" />
                     </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Actualizado por</p>
-                      <p className="text-sm font-semibold text-gray-900">{templateConfig.updatedBy || 'Sistema'}</p>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Ultima actualizacion</p>
-                      <p className="text-sm font-semibold text-gray-900">
-                        {templateConfig.updatedAt
-                          ? new Date(templateConfig.updatedAt).toLocaleString('es-CO')
-                          : 'Sin registro'}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#003DA5]">Edición controlada</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">
+                        Aquí solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, códigos QR, enlaces de validación ni numeraciones ya emitidas.
                       </p>
                     </div>
                   </div>
-                )}
+
+                  {templateConfig && (
+                    <div className="grid grid-cols-1 gap-3 border-t border-[#DCE8FA] p-4 md:grid-cols-3">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <FileText className="h-3.5 w-3.5 text-[#003DA5]" />
+                          Versión
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">{templateConfig.version}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <User className="h-3.5 w-3.5 text-[#003DA5]" />
+                          Actualizado por
+                        </div>
+                        <p className="truncate text-sm font-bold text-slate-900">{templateConfig.updatedBy || 'Sistema'}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                          <Clock className="h-3.5 w-3.5 text-[#003DA5]" />
+                          Última actualización
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">
+                          {templateConfig.updatedAt
+                            ? new Date(templateConfig.updatedAt).toLocaleString('es-CO')
+                            : 'Sin registro'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </section>
 
                 {isLoadingTemplateConfig ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-5 text-sm text-gray-600">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Cargando configuracion de la plantilla...
+                  <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-5 text-sm font-medium text-slate-600 shadow-sm">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#003DA5]" />
+                    Cargando configuración de la plantilla...
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {TEMPLATE_TEXT_FIELDS.map((field) => (
-                      <div key={field.key} className="space-y-2">
-                        <Label htmlFor={`template-${field.key}`}>{field.label}</Label>
-                        {field.rows ? (
-                          <Textarea
-                            id={`template-${field.key}`}
-                            rows={field.rows}
-                            value={templateForm[field.key]}
-                            onChange={(e) =>
-                              handleTemplateTextChange(field.key, e.target.value)
-                            }
-                            placeholder={field.label}
-                          />
-                        ) : (
-                          <Input
-                            id={`template-${field.key}`}
-                            value={templateForm[field.key]}
-                            onChange={(e) =>
-                              handleTemplateTextChange(field.key, e.target.value)
-                            }
-                            placeholder={field.label}
-                          />
-                        )}
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Textos editables</p>
+                        <p className="text-xs text-slate-500">Campos fijos de la plantilla académica</p>
                       </div>
-                    ))}
-                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                      <div className="flex items-start gap-3">
+                      <Badge className="border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600">
+                        {TEMPLATE_TEXT_FIELDS.length} campos
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 p-4">
+                      {TEMPLATE_TEXT_FIELDS.map((field) => (
+                        <div
+                          key={field.key}
+                          className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-colors focus-within:border-[#8BB8F6] focus-within:bg-[#FBFDFF]"
+                        >
+                          <Label
+                            htmlFor={`template-${field.key}`}
+                            className="text-[13px] font-semibold text-slate-800"
+                          >
+                            {field.label}
+                          </Label>
+                          {field.rows ? (
+                            <Textarea
+                              id={`template-${field.key}`}
+                              rows={field.rows}
+                              value={templateForm[field.key]}
+                              onChange={(e) =>
+                                handleTemplateTextChange(field.key, e.target.value)
+                              }
+                              placeholder={field.label}
+                              className="mt-2 min-h-[104px] border-slate-200 bg-slate-50/80 text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:ring-[#003DA5]/20"
+                            />
+                          ) : (
+                            <Input
+                              id={`template-${field.key}`}
+                              value={templateForm[field.key]}
+                              onChange={(e) =>
+                                handleTemplateTextChange(field.key, e.target.value)
+                              }
+                              placeholder={field.label}
+                              className="mt-2 border-slate-200 bg-slate-50/80 text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {!isLoadingTemplateConfig && (
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#F7FAFF] px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Logo institucional (cabecera)</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Logo que aparece en la parte superior izquierda del certificado. Si no se sube, se usa el logo predeterminado de Función Pública.
+                        </p>
+                      </div>
+                      <Badge className={
+                        hasCustomHeaderLogo
+                          ? 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                          : 'border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600'
+                      }>
+                        {hasCustomHeaderLogo ? 'Personalizado' : 'Predeterminado'}
+                      </Badge>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#8BB8F6] bg-white px-4 py-5 text-center transition-colors hover:border-[#003DA5] hover:bg-[#FAFCFF]">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          className="hidden"
+                          onChange={handleHeaderLogoFileChange}
+                          disabled={isSavingTemplateConfig}
+                        />
+                        <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF5FF] text-[#003DA5]">
+                          <Upload className="h-5 w-5" />
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">Subir logo PNG, JPEG, SVG o WebP</span>
+                        <span className="mt-1 text-xs text-slate-500">Máximo 10 MB. Se ajustará al espacio del certificado.</span>
+                      </label>
+                      {headerLogoPreviewUrl ? (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <ImageIcon className="h-4 w-4 text-[#003DA5]" />
+                            {newHeaderLogoFile?.filename || templateConfig?.logos?.headerLogoFilename || 'Logo Funcion Publica predeterminado'}
+                            {newHeaderLogoFile && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Nuevo</span>}
+                            {!hasCustomHeaderLogo && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Base</span>}
+                          </div>
+                          <div className="relative h-16 w-full max-w-[300px] overflow-hidden rounded-md border border-slate-100 bg-slate-50 p-2">
+                            <div className="relative h-full w-full overflow-hidden">
+                              <img
+                                src={headerLogoPreviewUrl}
+                                alt="Vista previa logo cabecera"
+                                style={createLogoPreviewImageStyle()}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                )}
+
+                {!isLoadingTemplateConfig && (
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-[#F7FAFF] px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Logo ESAP (pie de página)</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Logo que aparece en la parte inferior derecha del certificado, junto a la dirección de la sede.
+                        </p>
+                      </div>
+                      <Badge className={
+                        hasCustomFooterLogo
+                          ? 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                          : 'border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600'
+                      }>
+                        {hasCustomFooterLogo ? 'Personalizado' : 'Predeterminado'}
+                      </Badge>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#8BB8F6] bg-white px-4 py-5 text-center transition-colors hover:border-[#003DA5] hover:bg-[#FAFCFF]">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          className="hidden"
+                          onChange={handleFooterLogoFileChange}
+                          disabled={isSavingTemplateConfig}
+                        />
+                        <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF5FF] text-[#003DA5]">
+                          <Upload className="h-5 w-5" />
+                        </span>
+                        <span className="text-sm font-bold text-slate-900">Subir logo PNG, JPEG, SVG o WebP</span>
+                        <span className="mt-1 text-xs text-slate-500">Máximo 10 MB. Se ajustará al espacio del certificado.</span>
+                      </label>
+                      {footerLogoPreviewUrl ? (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                            <ImageIcon className="h-4 w-4 text-[#003DA5]" />
+                            {newFooterLogoFile?.filename || templateConfig?.logos?.footerLogoFilename || 'Logo ESAP predeterminado'}
+                            {newFooterLogoFile && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Nuevo</span>}
+                            {!hasCustomFooterLogo && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Base</span>}
+                          </div>
+                          <div className="relative h-16 w-full max-w-[240px] overflow-hidden rounded-md border border-slate-100 bg-slate-50 p-2">
+                            <div className="relative h-full w-full overflow-hidden">
+                              <img
+                                src={footerLogoPreviewUrl}
+                                alt="Vista previa logo pie de página"
+                                style={createLogoPreviewImageStyle()}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                )}
+
+                {!isLoadingTemplateConfig && (
+                  <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="flex items-start gap-3 px-4 py-4">
+                      <div className="pt-0.5">
                         <Checkbox
                           id="template-electronic-signature"
                           checked={templateSignatureForm.enabled}
@@ -3189,151 +3498,176 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           }}
                           disabled={isSavingTemplateConfig}
                         />
-                        <div className="min-w-0 flex-1">
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <Label
+                          htmlFor="template-electronic-signature"
+                          className="text-sm font-bold text-slate-900"
+                        >
+                          Incluir firma institucional
+                        </Label>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          La firma visual del firmante autorizado se aplicará a los certificados generados después de guardar esta plantilla. Requiere nombre, imagen y cargo.
+                        </p>
+                      </div>
+                      <Badge
+                        className={
+                          templateSignatureForm.enabled
+                            ? 'border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700'
+                            : 'border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-600'
+                        }
+                      >
+                        {templateSignatureForm.enabled ? 'Activa' : 'Opcional'}
+                      </Badge>
+                    </div>
+
+                    {templateSignatureForm.enabled && (
+                      <div className="grid grid-cols-1 gap-4 border-t border-slate-200 bg-[#F6FAFF] p-4">
+                        <div className="space-y-2">
                           <Label
-                            htmlFor="template-electronic-signature"
-                            className="text-sm font-semibold text-gray-900"
+                            htmlFor="template-signer-name"
+                            className="text-[13px] font-semibold text-slate-800"
                           >
-                            Incluir firma electronica
+                            Nombre del firmante *
                           </Label>
-                          <p className="mt-1 text-xs text-gray-500">
-                            La firma se aplicara a los certificados generados despues de guardar esta plantilla. Requiere nombre, imagen y cargo.
-                          </p>
+                          <Input
+                            id="template-signer-name"
+                            value={templateSignatureForm.signerName}
+                            onChange={(event) =>
+                              setTemplateSignatureForm((prev) => ({
+                                ...prev,
+                                signerName: event.target.value,
+                              }))
+                            }
+                            placeholder="Nombre completo del firmante"
+                            disabled={isSavingTemplateConfig}
+                            className="border-slate-200 bg-white text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="template-signer-title"
+                            className="text-[13px] font-semibold text-slate-800"
+                          >
+                            Cargo o título del firmante *
+                          </Label>
+                          <Input
+                            id="template-signer-title"
+                            value={templateForm.signerTitle}
+                            onChange={(event) =>
+                              handleTemplateTextChange(
+                                'signerTitle',
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Ej: Administrador jefe Registro académico"
+                            maxLength={255}
+                            disabled={isSavingTemplateConfig}
+                            className="border-slate-200 bg-white text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-[13px] font-semibold text-slate-800">
+                            Imagen de la firma *
+                          </Label>
+                          <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#8BB8F6] bg-white px-4 py-5 text-center transition-colors hover:border-[#003DA5] hover:bg-[#FAFCFF]">
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg"
+                              className="hidden"
+                              onChange={handleSignatureFileChange}
+                              disabled={isSavingTemplateConfig}
+                            />
+                            <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#EEF5FF] text-[#003DA5]">
+                              <Upload className="h-5 w-5" />
+                            </span>
+                            <span className="text-sm font-bold text-slate-900">
+                              Subir firma PNG o JPEG
+                            </span>
+                            <span className="mt-1 text-xs text-slate-500">
+                              Máximo 2 MB. Se ajustará al espacio del certificado.
+                            </span>
+                          </label>
+
+                          {signaturePreviewUrl ? (
+                            <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <ImageIcon className="h-4 w-4 text-[#003DA5]" />
+                                {templateSignatureForm.signatureImageFilename ||
+                                  templateSignatureForm.signatureFilename ||
+                                  'Firma cargada'}
+                              </div>
+                              <img
+                                src={signaturePreviewUrl}
+                                alt="Vista previa de la firma"
+                                className="h-16 max-w-[260px] object-contain object-left"
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-
-                      {templateSignatureForm.enabled && (
-                        <div className="grid grid-cols-1 gap-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="template-signer-name">
-                              Nombre del firmante *
-                            </Label>
-                            <Input
-                              id="template-signer-name"
-                              value={templateSignatureForm.signerName}
-                              onChange={(event) =>
-                                setTemplateSignatureForm((prev) => ({
-                                  ...prev,
-                                  signerName: event.target.value,
-                                }))
-                              }
-                              placeholder="Nombre completo del firmante"
-                              disabled={isSavingTemplateConfig}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="template-signer-title">
-                              Cargo o titulo del firmante *
-                            </Label>
-                            <Input
-                              id="template-signer-title"
-                              value={templateForm.signerTitle}
-                              onChange={(event) =>
-                                handleTemplateTextChange(
-                                  'signerTitle',
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Ej: Administrador jefe Registro academico"
-                              maxLength={255}
-                              disabled={isSavingTemplateConfig}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label>Imagen de la firma *</Label>
-                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-5 text-center transition-colors hover:border-blue-400">
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg"
-                                className="hidden"
-                                onChange={handleSignatureFileChange}
-                                disabled={isSavingTemplateConfig}
-                              />
-                              <Upload className="mb-2 h-5 w-5 text-blue-600" />
-                              <span className="text-sm font-semibold text-gray-900">
-                                Subir firma PNG o JPEG
-                              </span>
-                              <span className="mt-1 text-xs text-gray-500">
-                                Maximo 2 MB. Se ajustara al espacio del certificado.
-                              </span>
-                            </label>
-
-                            {signaturePreviewUrl ? (
-                              <div className="rounded-lg border border-gray-200 bg-white p-3">
-                                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
-                                  <ImageIcon className="h-4 w-4 text-blue-600" />
-                                  {templateSignatureForm.signatureImageFilename ||
-                                    templateSignatureForm.signatureFilename ||
-                                    'Firma cargada'}
-                                </div>
-                                <img
-                                  src={signaturePreviewUrl}
-                                  alt="Vista previa de la firma"
-                                  className="h-16 max-w-[260px] object-contain object-left"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    )}
+                  </section>
                 )}
               </div>
 
-              <div className="min-w-0">
-                <div className="rounded-xl border border-[#DDE6F3] bg-[#F7FAFF] p-4">
-                  <div className="mb-3 flex items-center justify-between">
+              <div className="min-w-0 xl:sticky xl:top-5 xl:self-start">
+                <section className="overflow-hidden rounded-lg border border-[#DDE6F3] bg-white shadow-sm">
+                  <div className="flex items-center justify-between gap-3 border-b border-[#DDE6F3] bg-[#F7FAFF] px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">Vista previa</p>
-                      <p className="text-xs text-gray-500">
-                        Los valores del ejemplo representan campos dinamicos reales del certificado.
+                      <p className="text-sm font-bold text-slate-900">Vista previa</p>
+                      <p className="text-xs text-slate-500">
+                        Los valores del ejemplo representan campos dinámicos reales del certificado.
                       </p>
                     </div>
-                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                    <Badge className="border-[#BFD6FF] bg-[#EEF5FF] px-2.5 py-1 text-[#003DA5]">
+                      <QrCode className="h-3.5 w-3.5" />
                       QR protegido
                     </Badge>
                   </div>
 
-                  <div className="mx-auto max-w-[780px] rounded-[24px] border border-blue-200 bg-gradient-to-b from-slate-50 via-blue-50/70 to-slate-100 p-4 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.45)]">
-                    <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-dashed border-blue-300 bg-white/85 px-4 py-3 shadow-sm">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-700">
-                          Previsualizacion protegida
-                        </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Este recuadro es solo de referencia visual. Los textos se modifican desde el formulario.
-                        </p>
-                      </div>
-                      <Badge className="border-blue-200 bg-blue-100 text-blue-800 shadow-sm">
-                        Solo lectura
-                      </Badge>
-                    </div>
-
-                    <div className="relative overflow-hidden rounded-[20px] border border-slate-200 bg-white p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_30px_-20px_rgba(15,23,42,0.35)]">
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-100/90 to-transparent" />
-                      <div className="pointer-events-none absolute right-5 top-5 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 shadow-sm backdrop-blur-sm">
-                        Muestra no editable
-                      </div>
-
-                      <div className="relative">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex min-w-0 items-center gap-3 rounded-lg bg-gray-100 px-4 py-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C79A2B] text-xs font-black text-white">
-                              ES
-                            </div>
-                            <div className="text-base font-black tracking-wide text-[#444444]">
-                              FUNCION PUBLICA
-                            </div>
-                          </div>
-                          <div className="max-w-[220px] text-right text-[11px] font-semibold text-gray-700">
-                            Codigo para validaciones: {previewCertificate.validationCode}
-                          </div>
+                  <div className="bg-[#F7FAFF] p-4">
+                    <div className="mx-auto max-w-[780px] rounded-lg border border-[#BFD6FF] bg-white p-3 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.5)]">
+                      <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-dashed border-[#8BB8F6] bg-[#F7FAFF] px-4 py-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase text-[#003DA5]">
+                            Previsualización protegida
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            Este recuadro es solo de referencia visual. Los textos se modifican desde el formulario.
+                          </p>
                         </div>
+                        <Badge className="border-[#BFD6FF] bg-white px-2.5 py-1 text-[#003DA5] shadow-sm">
+                          Solo lectura
+                        </Badge>
+                      </div>
 
-                        <div className="mt-6 text-sm text-gray-900">
+                      <div className="relative overflow-hidden rounded-lg border border-slate-200 border-t-4 border-t-[#003DA5] bg-white p-5 shadow-sm sm:p-6">
+
+                        <div className="relative">
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,340px)_230px] sm:items-start sm:justify-between">
+                            <div className="relative h-[62px] min-w-0 w-full max-w-[340px] overflow-hidden bg-white sm:h-[66px]">
+                              {headerLogoDisplayUrl ? (
+                                <img
+                                  src={headerLogoDisplayUrl}
+                                  alt="Logo cabecera certificado"
+                                  style={createLogoPreviewImageStyle()}
+                                  onError={() => setHeaderLogoPreviewFailed(true)}
+                                />
+                              ) : (
+                                <div className="rounded bg-slate-100 px-4 py-3 text-base font-black text-[#444444]">
+                                  FUNCION PUBLICA
+                                </div>
+                              )}
+                            </div>
+                            <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-semibold leading-4 text-slate-700 sm:text-right">
+                              Código para validaciones: {previewCertificate.validationCode}
+                            </div>
+                          </div>
+
+                        <div className="mt-6 text-sm text-slate-900">
                           {templateForm.cityDatePrefix} {new Date().toLocaleDateString('es-CO', {
                             year: 'numeric',
                             month: 'long',
@@ -3342,22 +3676,22 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </div>
 
                         <div className="mt-10 text-center">
-                          <div className="text-[28px] font-black uppercase tracking-wide text-gray-900">
+                          <div className="text-[24px] font-black uppercase leading-tight text-slate-900 sm:text-[28px]">
                             {templateForm.institutionTitle}
                           </div>
-                          <div className="mt-3 text-[22px] font-bold text-gray-900">
+                          <div className="mt-3 text-[20px] font-bold text-slate-900 sm:text-[22px]">
                             {templateForm.certificateTitle}
                           </div>
-                          <div className="mt-6 text-[20px] font-bold text-gray-900">
+                          <div className="mt-6 text-[18px] font-bold text-slate-900 sm:text-[20px]">
                             {templateForm.addressee}
                           </div>
                         </div>
 
-                        <p className="mt-8 whitespace-pre-line text-justify text-[15px] leading-7 text-gray-900">
+                        <p className="mt-8 whitespace-pre-line text-justify text-[15px] leading-7 text-slate-900">
                           {templateForm.introParagraph}
                         </p>
 
-                        <div className="mt-8 overflow-hidden rounded-lg border border-gray-300">
+                        <div className="mt-8 overflow-hidden rounded-lg border border-slate-300">
                           {[
                             [templateForm.degreeLabel, previewCertificate.degreeTitle],
                             [templateForm.graduateNameLabel, previewCertificate.fullName],
@@ -3367,89 +3701,115 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           ].map(([label, value], index) => (
                             <div
                               key={`${label}-${index}`}
-                              className="grid grid-cols-[42%_58%] border-b border-gray-300 last:border-b-0"
+                              className="grid grid-cols-1 border-b border-slate-300 last:border-b-0 sm:grid-cols-[42%_58%]"
                             >
-                              <div className="bg-gray-50 px-3 py-3 text-sm font-semibold text-gray-900">
+                              <div className="bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900">
                                 {label}
                               </div>
-                              <div className="px-3 py-3 text-sm text-gray-900">{value}</div>
+                              <div className="px-3 py-3 text-sm text-slate-900">{value}</div>
                             </div>
                           ))}
                         </div>
 
-                        <div className="mt-10 flex items-end justify-between gap-6">
+                        <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
                           <div className="flex-1">
-                            <p className="whitespace-pre-line text-[15px] text-gray-900">
+                            <p className="whitespace-pre-line text-[15px] text-slate-900">
                               {templateForm.closingText}
                             </p>
                             {templateSignatureForm.enabled && signaturePreviewUrl ? (
                               <div className="mt-4">
                                 <img
                                   src={signaturePreviewUrl}
-                                  alt="Firma electronica"
+                                  alt="Firma institucional"
                                   className="h-14 max-w-[220px] object-contain object-left"
                                 />
-                                <p className="mt-2 text-[15px] font-semibold leading-5 text-gray-900">
+                                <p className="mt-2 text-[15px] font-semibold leading-5 text-slate-900">
                                   {templateSignatureForm.signerName || 'Nombre del firmante'}
                                 </p>
-                                <p className="text-[15px] font-semibold leading-5 text-gray-900">
-                                  {templateForm.signerTitle || 'Cargo o titulo del firmante'}
+                                <p className="text-[15px] font-semibold leading-5 text-slate-900">
+                                  {templateForm.signerTitle || 'Cargo o título del firmante'}
                                 </p>
                               </div>
                             ) : (
-                              <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-gray-900">
+                              <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-slate-900">
                                 {templateForm.signerTitle}
                               </p>
                             )}
                           </div>
 
-                          <div className="flex flex-col items-center rounded-lg border border-gray-200 bg-white p-2">
+                          <div className="flex w-fit flex-col items-center rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
                             <QRCodeSVG
                               value={previewCertificate.validationUrl}
                               size={92}
                               level="M"
                               includeMargin
                             />
-                            <p className="mt-1.5 max-w-[116px] text-center text-[10px] leading-3 text-gray-600">
+                            <p className="mt-1.5 max-w-[116px] text-center text-[10px] leading-3 text-slate-600">
                               Escanee y verifique el certificado
                             </p>
                           </div>
                         </div>
 
                         <div className="mt-8 text-center">
-                          <p className="text-sm font-semibold text-gray-900">
+                          <p className="text-sm font-semibold text-slate-900">
                             {templateForm.validationMessage}
                           </p>
-                          <p className="mt-2 break-all text-xs font-medium text-blue-700">
+                          <p className="mt-2 break-all text-xs font-medium text-[#003DA5]">
                             {previewCertificate.validationUrl}
                           </p>
+                        </div>
+
+                        <div className="mt-10 border-t border-slate-300 pt-3">
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_132px] sm:items-end">
+                            <p className="min-w-0 whitespace-pre-line font-sans text-[12px] leading-[1.25] text-slate-500 sm:max-w-[440px]">
+                              {templateForm.footerAddress}
+                            </p>
+                            {footerLogoPreviewUrl ? (
+                              <div className="relative h-[58px] w-[118px] justify-self-end overflow-hidden sm:h-[64px] sm:w-[132px]">
+                                <img
+                                  src={footerLogoPreviewUrl}
+                                  alt="Logo ESAP pie de pagina"
+                                  style={createLogoPreviewImageStyle('right bottom')}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-[11px] text-slate-600 shadow-sm">
+                    <div className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
                       <span>La vista previa no es un campo editable.</span>
                       <span className="font-semibold text-slate-700">
                         QR, enlaces y variables reales siguen protegidos.
                       </span>
                     </div>
+                    </div>
                   </div>
-                </div>
+                </section>
               </div>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-between border-t border-gray-200 px-5 py-4 sm:px-6 bg-white shrink-0">
-            <div className="text-xs text-gray-500">
-              {hasTemplateChanges
-                ? 'Hay cambios pendientes por guardar.'
-                : 'No hay cambios pendientes.'}
+          <DialogFooter className="shrink-0 gap-3 border-t border-slate-200 bg-white px-5 py-4 shadow-[0_-12px_30px_-28px_rgba(15,23,42,0.55)] sm:justify-between sm:px-6">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              <span
+                className={
+                  hasTemplateChanges
+                    ? 'h-2 w-2 rounded-full bg-amber-500'
+                    : 'h-2 w-2 rounded-full bg-emerald-500'
+                }
+              />
+              <span>
+                {hasTemplateChanges
+                  ? 'Hay cambios pendientes por guardar.'
+                  : 'No hay cambios pendientes.'}
+              </span>
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 onClick={() => void handleResetTemplateConfig()}
-                className="px-4 py-2 text-sm font-medium rounded-lg border-2 inline-flex items-center gap-2"
-                style={{ borderColor: '#D1D5DB', color: '#374151' }}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-[#003DA5] hover:text-[#003DA5] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSavingTemplateConfig || isLoadingTemplateConfig}
               >
                 <RotateCcw className="w-4 h-4" />
@@ -3457,15 +3817,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </button>
               <button
                 onClick={() => setIsTemplateEditorOpen(false)}
-                className="px-4 py-2 text-sm font-medium rounded-lg border-2"
-                style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSavingTemplateConfig}
               >
                 Cerrar
               </button>
               <button
                 onClick={() => void handleSaveTemplateConfig()}
-                className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
                 disabled={isSavingTemplateConfig || isLoadingTemplateConfig || !hasTemplateChanges}
               >
@@ -3487,10 +3846,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Exportar Verificaciones de Titulos
+              Exportar Verificaciones de Títulos
             </DialogTitle>
             <DialogDescription>
-              Filtra por fecha de generacion del certificado y descarga el CSV.
+              Filtra por fecha de generación del certificado y descarga el CSV.
             </DialogDescription>
           </DialogHeader>
 
@@ -3546,27 +3905,28 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 flex flex-col gap-0 p-0">
-          <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 sm:pb-4 border-b border-gray-200">
-            <DialogTitle className="flex items-center gap-2 pr-8 text-base leading-snug sm:text-lg">
-              <QrCode className="w-5 h-5 text-amber-600" />
+        <DialogContent className="!top-1/2 !-translate-y-1/2 w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-2rem)] sm:max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0 border-slate-200 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.45)]">
+          <DialogHeader className="flex-shrink-0 border-b border-slate-200 bg-white px-4 pb-3 pt-4 sm:px-6 sm:pb-4 sm:pt-5">
+            <DialogTitle className="flex items-start gap-3 pr-8 text-base leading-snug text-slate-900 sm:text-lg">
+              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-amber-200 bg-amber-50">
+                <QrCode className="h-5 w-5 text-amber-600" />
+              </span>
               Código QR Único - Validación Pública
             </DialogTitle>
-            <DialogDescription className="pr-8 text-xs leading-relaxed sm:text-sm">
+            <DialogDescription className="pr-8 pl-12 text-xs leading-relaxed text-slate-500 sm:text-sm">
               Este QR permite que cualquier persona valide la autenticidad del certificado. Cada escaneo queda registrado en el historial.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 sm:px-6 py-3 sm:py-5">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain bg-slate-50/70 px-4 py-4 sm:px-6 sm:py-5">
             {/* QR Placeholder + Estado */}
-            <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 sm:p-6`}>
+            <div className={`${qrPreviewCertificate?.status === 'active' ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-white'} rounded-2xl border p-4 shadow-sm sm:p-6`}>
               <div className="flex flex-col items-center text-center">
                 {/* QR real */}
                 <div className="mb-4 flex w-full justify-center">
                   <div
-                    className="flex flex-none items-center justify-center rounded-xl bg-white p-3 shadow-sm"
+                    className="flex flex-none items-center justify-center rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200"
                     style={{
-                      border: '2px solid #D1D5DB',
                       minHeight: `${qrCardMinHeight}px`,
                       minWidth: `${qrCardWidth}px`,
                       width: `${qrCardWidth}px`,
@@ -3594,7 +3954,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         className="mt-2 break-all text-[10px] font-mono font-semibold leading-tight sm:text-xs"
                         style={{ color: '#6B7280', maxWidth: `${qrDisplaySize}px` }}
                       >
-                        {qrPreviewCertificate?.qrCode || 'Sin codigo'}
+                        {qrPreviewCertificate?.qrCode || 'Sin código'}
                       </p>
                     </div>
                   </div>
@@ -3613,14 +3973,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
                 {/* Badge de Estado */}
                 {qrPreviewCertificate?.status === 'active' ? (
-                  <div className="flex max-w-full items-center justify-center gap-2 rounded-lg border-2 border-green-300 bg-green-100 px-3 py-2 sm:px-4">
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="text-center text-xs font-semibold text-green-800 sm:text-sm">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-full border border-emerald-300 bg-white px-3 py-2 shadow-sm sm:px-4">
+                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.16)] animate-pulse"></div>
+                    <span className="text-center text-xs font-semibold text-emerald-800 sm:text-sm">
                       ✅ QR ACTIVO PARA VALIDACIÓN
                     </span>
                   </div>
                 ) : (
-                  <div className="flex max-w-full items-center justify-center gap-2 rounded-lg border-2 border-red-300 bg-red-100 px-3 py-2 sm:px-4">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-full border border-red-300 bg-white px-3 py-2 shadow-sm sm:px-4">
                     <XCircle className="w-4 h-4 text-red-600" />
                     <span className="text-center text-xs font-semibold text-red-800 sm:text-sm">
                       ❌ QR INACTIVO
@@ -3631,23 +3991,25 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </div>
 
             {/* Info del Certificado Solicitado */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Award className="w-4 h-4 text-blue-600" />
+            <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
+              <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                  <Award className="h-4 w-4 text-blue-600" />
+                </span>
                 Datos del Certificado Solicitado
               </h4>
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="text-gray-600">Graduado:</span>
-                  <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.graduate.fullName}</span>
+              <div className="grid gap-2.5 text-sm [&>div]:grid [&>div]:gap-1 [&>div>span:first-child]:text-slate-500 [&>div>span+span]:ml-0 [&>div>span+span]:min-w-0 [&>div>span+span]:break-words [&>div>span+span]:font-semibold [&>div>span+span]:text-slate-900 sm:[&>div]:grid-cols-[160px_minmax(0,1fr)]">
+                <div className="grid gap-1 sm:grid-cols-[160px_minmax(0,1fr)]">
+                  <span className="text-slate-500">Graduado:</span>
+                  <span className="min-w-0 break-words font-semibold text-slate-900">{qrPreviewCertificate?.graduate.fullName}</span>
                 </div>
-                <div>
-                  <span className="text-gray-600">Documento:</span>
-                  <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.graduate.document}</span>
+                <div className="grid gap-1 sm:grid-cols-[160px_minmax(0,1fr)]">
+                  <span className="text-slate-500">Documento:</span>
+                  <span className="min-w-0 break-words font-semibold text-slate-900">{qrPreviewCertificate?.graduate.document}</span>
                 </div>
-                <div>
-                  <span className="text-gray-600">Programa:</span>
-                  <span className="ml-2 font-semibold text-gray-900">{qrPreviewCertificate?.graduate.program}</span>
+                <div className="grid gap-1 sm:grid-cols-[160px_minmax(0,1fr)]">
+                  <span className="text-slate-500">Programa:</span>
+                  <span className="min-w-0 break-words font-semibold text-slate-900">{qrPreviewCertificate?.graduate.program}</span>
                 </div>
                 <div>
                   <span className="text-gray-600">Fecha de graduación:</span>
@@ -3800,7 +4162,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             )}
           </div>
 
-          <DialogFooter className="flex-shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50">
+          <DialogFooter className="flex-shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
             <button
               onClick={() => setIsQrModalOpen(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"

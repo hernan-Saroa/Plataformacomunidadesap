@@ -19,7 +19,7 @@ import { auditoresApi } from './plan-anual/api';
 // ═══════════════════════════════════════════════════════════════════════════
 
 type EstadoAuditoria =
-  | 'Plan Anual'
+  | 'Programa Anual'
   | 'Planeación'
   | 'Ejecución'
   | 'Comunicación'
@@ -28,7 +28,7 @@ type EstadoAuditoria =
 
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
-type TipoAuditoria = 'regular' | 'territorial' | 'especial';
+type TipoAuditoria = string; // Ahora es dinámico y soporta cualquier string
 type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
 
 interface Persona {
@@ -122,31 +122,46 @@ export interface AuditorDisponible {
  * Mapea fase/estadoKanban del backend a estado del Kanban
  */
 function mapearFaseAEstado(estadoKanban?: string, fase?: string, progreso?: number): EstadoAuditoria {
-  // Priorizar estadoKanban si existe (viene del drag & drop)
   const estado = estadoKanban || fase;
   
   if (!estado) {
-    if (progreso && progreso >= 100) return 'Finalizada';
-    return 'Planeación';
+    if (progreso && progreso >= 100) return 'Finalizada' as EstadoAuditoria;
+    return 'Programa Anual' as EstadoAuditoria;
   }
   
-  const estadoNorm = estado.toLowerCase();
+  const estadoNorm = estado.toLowerCase().trim();
   
+  // Normalizar los nombres legacy y las inconsistencias de BD al nombre oficial actual
   if (
     estadoNorm === 'plan anual' ||
     estadoNorm === 'plan-anual' ||
+    estadoNorm === 'programa anual' ||
     estadoNorm === 'backlog' ||
     estadoNorm === 'pendiente' ||
     estadoNorm === 'programada' ||
     estadoNorm === 'programado'
-  ) return 'Plan Anual';
-  if (estadoNorm === 'planeación' || estadoNorm === 'planeacion' || estadoNorm === 'planificación') return 'Planeación';
-  if (estadoNorm === 'ejecución' || estadoNorm === 'ejecucion') return 'Ejecución';
-  if (estadoNorm === 'comunicación' || estadoNorm === 'comunicacion' || estadoNorm === 'informe') return 'Comunicación';
-  if (estadoNorm === 'seguimiento') return 'Seguimiento';
-  if (estadoNorm === 'finalizada' || estadoNorm === 'cierre' || estadoNorm === 'completada') return 'Finalizada';
+  ) {
+    return 'Programa Anual' as EstadoAuditoria;
+  }
   
-  return 'Planeación';
+  if (estadoNorm === 'planeación' || estadoNorm === 'planeacion' || estadoNorm === 'planificación') {
+    return 'Planeación' as EstadoAuditoria;
+  }
+  
+  if (estadoNorm === 'ejecución' || estadoNorm === 'ejecucion') {
+    return 'Ejecución' as EstadoAuditoria;
+  }
+  
+  if (estadoNorm === 'comunicación' || estadoNorm === 'comunicacion' || estadoNorm === 'informe') {
+    return 'Comunicación' as EstadoAuditoria;
+  }
+  
+  if (estadoNorm === 'finalizada' || estadoNorm === 'cierre' || estadoNorm === 'completada') {
+    return 'Finalizada' as EstadoAuditoria;
+  }
+  
+  // Si no coincide con ninguno de los alias conocidos, devolver el nombre dinámico tal cual
+  return estado as EstadoAuditoria;
 }
 
 /**
@@ -317,15 +332,11 @@ function formatearFecha(fecha: string): string {
 }
 
 /**
- * Mapea tipo del backend
+ * Mapea tipo del backend (respeta el tipo dinámico configurado)
  */
 function mapearTipo(tipo?: string): TipoAuditoria {
   if (!tipo) return 'regular';
-  
-  const tipoNorm = tipo.toLowerCase();
-  if (tipoNorm.includes('territorial')) return 'territorial';
-  if (tipoNorm.includes('especial')) return 'especial';
-  return 'regular';
+  return tipo.toLowerCase();
 }
 
 /**
@@ -471,7 +482,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     documentos: (auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0) + (auditoriaBackend.documentoCierre?.url ? 1 : 0),
     informes: auditoriaBackend.totalInformes || auditoriaBackend.informesCount || 0,
     tareas: auditoriaBackend.totalTareas || auditoriaBackend.tareasCount || 0,
-    tipo: (auditoriaBackend.tipoKanban as TipoAuditoria) || mapearTipo(auditoriaBackend.tipo),
+    tipo: mapearTipo(auditoriaBackend.tipo),
     prioridad: (auditoriaBackend.prioridadKanban as Prioridad) || mapearPrioridad(auditoriaBackend.prioridad, auditoriaBackend.nivelRiesgo),
     areaObjetivo: auditoriaBackend.areaObjetivo || auditoriaBackend.procesoAuditado || '',
     permiteCambiarObjetivos: auditoriaBackend.permiteCambiarObjetivos ?? true,
@@ -486,9 +497,43 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLiderId: auditoriaBackend.auditorLiderId,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
-    planAnualAño: auditoriaBackend.planAnualAño,
-    vigencia: auditoriaBackend.vigencia
+    planAnualAño:
+      auditoriaBackend.planAnualAño ??
+      auditoriaBackend.planAnualVigencia ??
+      auditoriaBackend.plan_anual_vigencia,
+    vigencia:
+      auditoriaBackend.vigencia ??
+      auditoriaBackend.planAnualVigencia ??
+      auditoriaBackend.plan_anual_vigencia,
+    planAnualVigencia:
+      auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
+    planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
   };
+}
+
+/** Filtro estricto por vigencia del plan anual (cliente) */
+export function auditoriaCoincideVigenciaPlan(
+  aud: {
+    planAnualAño?: number;
+    vigencia?: number;
+    planAnualVigencia?: number;
+    codigo?: string;
+    fechaInicio?: string;
+  },
+  vigencia: number,
+): boolean {
+  const v = aud.planAnualAño ?? aud.vigencia ?? aud.planAnualVigencia;
+  if (v != null && !Number.isNaN(Number(v))) {
+    return Number(v) === vigencia;
+  }
+  if (aud.fechaInicio) {
+    const y = new Date(aud.fechaInicio).getFullYear();
+    if (!Number.isNaN(y) && y === vigencia) return true;
+  }
+  if (aud.codigo) {
+    return aud.codigo.includes(`AUD-${vigencia}-`);
+  }
+  return false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -588,8 +633,7 @@ export function useAuditoriasKanban(planFilters?: {
 
       const vigencia = planFilters?.planAnualVigencia;
       const response = await controlInternoService.getAuditorias({
-        // planAnualVigencia: vigencia,
-        planAnualId: planFilters?.planAnualId,
+        planAnualVigencia: vigencia,
         year: vigencia,
         light: true,
         activasOnly: true,

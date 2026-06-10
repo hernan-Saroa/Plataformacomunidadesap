@@ -27,6 +27,7 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { toast } from 'sonner';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 import { Container4K } from '@esap-mfe/shared-ui/container-4k';
@@ -329,10 +330,18 @@ function SeccionTiposAuditoria({ tipos, onCrear, onActualizar, onEliminar }: Sec
 
         {/* Mensaje si no hay tipos */}
         {tipos.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>No hay tipos de auditoría configurados</p>
-            <p className="text-sm">Crea el primer tipo para empezar</p>
+          <div className="text-center py-10 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mt-4">
+            <Target className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+            <h4 className="text-lg font-bold text-gray-700 mb-2">No hay tipos de auditoría configurados</h4>
+            <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
+              Crea el primer tipo de auditoría manualmente para habilitar la creación y edición de auditorías en el sistema.
+            </p>
+            <div className="flex justify-center gap-4">
+              <Button onClick={handleNuevoTipo} style={{ background: '#003DA5' }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Crear Nuevo Tipo
+              </Button>
+            </div>
           </div>
         )}
       </Card>
@@ -340,6 +349,7 @@ function SeccionTiposAuditoria({ tipos, onCrear, onActualizar, onEliminar }: Sec
       <AnimatePresence>
         {modalAbierto && (
           <ModalTipoAuditoria
+            open={modalAbierto}
             tipo={tipoEditando}
             onGuardar={handleGuardarTipo}
             onCerrar={() => {
@@ -359,13 +369,14 @@ function SeccionTiposAuditoria({ tipos, onCrear, onActualizar, onEliminar }: Sec
 // ====================================
 
 interface ModalTipoAuditoriaProps {
+  open: boolean;
   tipo: TipoAuditoria | null;
   onGuardar: (tipo: TipoAuditoria) => void;
   onCerrar: () => void;
   guardando?: boolean;
 }
 
-function ModalTipoAuditoria({ tipo, onGuardar, onCerrar, guardando = false }: ModalTipoAuditoriaProps) {
+function ModalTipoAuditoria({open, tipo, onGuardar, onCerrar, guardando = false }: ModalTipoAuditoriaProps) {
   const [formData, setFormData] = useState<TipoAuditoria>(
     tipo || {
       id: '',
@@ -397,20 +408,8 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar, guardando = false }: Mo
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={onCerrar}
-    >
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open={open} onOpenChange={onCerrar}>
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
@@ -569,8 +568,8 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar, guardando = false }: Mo
             </Button>
           </div>
         </form>
-      </motion.div>
-    </motion.div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

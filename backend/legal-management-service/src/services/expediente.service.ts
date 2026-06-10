@@ -110,6 +110,10 @@ export class ExpedienteService {
                 const vencimiento = new Date(fechaNotif);
                 vencimiento.setDate(vencimiento.getDate() + Number(data.terminoProcesalDias));
                 data.fechaVencimientoTermino = vencimiento;
+            } else if (tipoConteo === 'HORAS') {
+                const vencimiento = new Date(fechaNotif);
+                vencimiento.setHours(vencimiento.getHours() + Number(data.terminoProcesalDias));
+                data.fechaVencimientoTermino = vencimiento;
             } else {
                 data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
             }
@@ -207,6 +211,8 @@ export class ExpedienteService {
 
             const nuevaFecha = exp.tipoConteoTermino === 'CALENDARIO'
                 ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setDate(d.getDate() + deltaDias); return d; })()
+                : exp.tipoConteoTermino === 'HORAS'
+                ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setHours(d.getHours() + deltaDias); return d; })()
                 : this.shiftBusinessDays(new Date(exp.fechaVencimientoTermino), deltaDias);
 
             await this.expedienteRepository.update(exp.id, {
@@ -376,6 +382,29 @@ export class ExpedienteService {
                 fechaActuacion: new Date(),
                 usuarioResponsable: 'Sistema' // O idealmente el usuario del request si se pasa
             });
+
+            // Auto-autorizar actuaciones pendientes
+            try {
+                const pendingActuaciones = await this.actuacionRepository.find({
+                    where: [
+                        { expedienteId: currentExpediente.id },
+                        { expedienteId: currentExpediente.radicado }
+                    ]
+                });
+                for (const act of pendingActuaciones) {
+                    if (act.metadata && act.metadata.estadoAutorizacion === 'PENDIENTE') {
+                        act.metadata.estadoAutorizacion = 'AUTORIZADO';
+                        act.metadata.estado = 'Completado';
+                        act.metadata.firmadoPor = 'Aprobación General';
+                        act.metadata.fechaFirma = new Date().toISOString();
+                        delete act.metadata.otp;
+                        delete act.metadata.otpExpiry;
+                        await this.actuacionRepository.save(act);
+                    }
+                }
+            } catch (err) {
+                Logger.error(`Error auto-autorizando actuaciones en cambio de etapa: ${err?.message || err}`);
+            }
         }
 
         if (data.estado && data.estado !== currentExpediente.estado) {

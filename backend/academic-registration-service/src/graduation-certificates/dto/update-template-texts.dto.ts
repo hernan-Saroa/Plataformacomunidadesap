@@ -7,4 +7,8 @@ export interface UpdateTemplateTextsDto
   signerName?: string;
   signatureImageDataUrl?: string;
   signatureFilename?: string;
+  headerLogoDataUrl?: string;
+  headerLogoFilename?: string;
+  footerLogoDataUrl?: string;
+  footerLogoFilename?: string;
 }

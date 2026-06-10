@@ -37,7 +37,7 @@ export enum PonderacionRiesgo {
 }
 
 @Entity('evaluacion_proceso', { schema: 'control_interno' })
-@Index(['procesoId', 'vigencia', 'fechaCorte'], { unique: true })
+@Index(['procesoId', 'vigencia', 'fechaCorte', 'dependenciaResponsable'], { unique: true })
 @Index(['vigencia'])
 @Index(['decisionFinal'])
 export class EvaluacionProceso {
@@ -184,6 +184,17 @@ export class EvaluacionProceso {
 
   @Column({ name: 'prioridad_regla', type: 'integer', nullable: true })
   prioridadRegla?: number; // 1-5, qué regla DAFP aplicó
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORIZACIÓN AUDITABLE (columna Aud. — calculado + override manual)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Column({ name: 'auditable_calculado', type: 'boolean', default: false })
+  auditableCalculado: boolean;
+
+  /** null = usar auditableCalculado; true/false = decisión manual en tabla */
+  @Column({ name: 'auditable_manual', type: 'boolean', nullable: true })
+  auditableManual?: boolean | null;
 
   // ═══════════════════════════════════════════════════════════════════════
   // METADATOS

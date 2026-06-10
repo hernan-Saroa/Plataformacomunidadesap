@@ -7,7 +7,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { authService } from '../../../../services/api/authService';
+import { rolesService } from '../../../../services/api/roles.service';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar Context API
@@ -54,6 +56,201 @@ import {
 // ✅ Importar componente de plantillas
 import { PlantillasDocumentos } from '../configuracion/PlantillasDocumentos';
 import { ConfiguracionTasasReferencia } from '../configuracion/ConfiguracionTasasReferencia';
+import { ConfiguracionCategoriasDocumentos } from '../configuracion/ConfiguracionCategoriasDocumentos';
+
+const CAMPOS_POR_PASO = [
+  {
+    paso: 1,
+    nombre: 'Paso 1: Datos del Proceso Judicial',
+    campos: [
+      { id: 'numeroRadicado', label: 'Número de Radicado', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'medioControl', label: 'Medio de Control', defaultObligatorio: true, defaultVisible: true },
+      { id: 'tipoProcesoJudicial', label: 'Tipo de Proceso', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'etapaProcesal', label: 'Etapa Procesal', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'cuantia', label: 'Cuantía (COP)', defaultObligatorio: false, defaultVisible: true },
+    ]
+  },
+  {
+    paso: 2,
+    nombre: 'Paso 2: Datos del/los Demandante(s)',
+    campos: [
+      { id: 'demandanteTipoPersona', label: 'Tipo de Persona', defaultObligatorio: true, defaultVisible: true },
+      { id: 'demandanteIdentificacion', label: 'Identificación (Cédula/NIT)', defaultObligatorio: true, defaultVisible: true },
+      { id: 'demandanteNombre', label: 'Nombre / Razón Social', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'demandanteTelefono', label: 'Teléfono', defaultObligatorio: false, defaultVisible: true },
+      { id: 'demandanteCorreo', label: 'Correo Electrónico', defaultObligatorio: true, defaultVisible: true },
+      { id: 'demandanteDireccion', label: 'Dirección', defaultObligatorio: false, defaultVisible: true },
+      { id: 'demandanteTieneApoderado', label: 'Tiene Apoderado', defaultObligatorio: false, defaultVisible: true },
+    ]
+  },
+  {
+    paso: 3,
+    nombre: 'Paso 3: Datos del/los Demandado(s)',
+    campos: [
+      { id: 'demandadoTipoPersona', label: 'Tipo de Persona', defaultObligatorio: true, defaultVisible: true },
+      { id: 'demandadoIdentificacion', label: 'Identificación (Cédula/NIT)', defaultObligatorio: true, defaultVisible: true },
+      { id: 'demandadoNombre', label: 'Nombre / Razón Social', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'demandadoCargo', label: 'Cargo / Función', defaultObligatorio: false, defaultVisible: true },
+      { id: 'demandadoTelefono', label: 'Teléfono', defaultObligatorio: false, defaultVisible: true },
+      { id: 'demandadoCorreo', label: 'Correo Electrónico', defaultObligatorio: true, defaultVisible: true },
+      { id: 'demandadoDireccion', label: 'Dirección', defaultObligatorio: false, defaultVisible: true },
+      { id: 'demandadoTieneApoderado', label: 'Tiene Apoderado', defaultObligatorio: false, defaultVisible: true },
+    ]
+  },
+  {
+    paso: 4,
+    nombre: 'Paso 4: Datos de Otros Actores',
+    campos: [
+      { id: 'otroActorTipoPersona', label: 'Tipo de Persona', defaultObligatorio: false, defaultVisible: true },
+      { id: 'otroActorIdentificacion', label: 'Identificación (Cédula/NIT)', defaultObligatorio: false, defaultVisible: true },
+      { id: 'otroActorNombre', label: 'Nombre / Razón Social', defaultObligatorio: true, defaultVisible: true },
+      { id: 'otroActorRol', label: 'Rol del Actor', defaultObligatorio: true, defaultVisible: true },
+      { id: 'otroActorTelefono', label: 'Teléfono', defaultObligatorio: false, defaultVisible: true },
+      { id: 'otroActorCorreo', label: 'Correo Electrónico', defaultObligatorio: false, defaultVisible: true },
+      { id: 'otroActorDireccion', label: 'Dirección', defaultObligatorio: false, defaultVisible: true },
+      { id: 'otroActorTieneApoderado', label: 'Tiene Apoderado', defaultObligatorio: false, defaultVisible: true },
+    ]
+  },
+  {
+    paso: 5,
+    nombre: 'Paso 5: Juzgado y Ubicación',
+    campos: [
+      { id: 'juzgadoTribunal', label: 'Juzgado / Tribunal', defaultObligatorio: true, defaultVisible: true },
+      { id: 'departamentoCiudad', label: 'Ubicación (Dep/Ciudad)', defaultObligatorio: true, defaultVisible: true },
+    ]
+  },
+  {
+    paso: 6,
+    nombre: 'Paso 6: Fechas y Asignación',
+    campos: [
+      { id: 'tipoPlazo', label: 'Tipo de Plazo', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'termino', label: 'Término (Días)', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'fechaNotificacion', label: 'Fecha de Notificación', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'fechaVencimiento', label: 'Fecha de Vencimiento', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'abogadoResponsable', label: 'Abogado Defensor', defaultObligatorio: false, defaultVisible: true },
+    ]
+  },
+  {
+    paso: 7,
+    nombre: 'Paso 7: Detalles del Proceso',
+    campos: [
+      { id: 'pretensiones', label: 'Pretensiones', defaultObligatorio: true, defaultVisible: true },
+      { id: 'hechos', label: 'Hechos', defaultObligatorio: false, defaultVisible: true },
+      { id: 'observaciones', label: 'Observaciones Adicionales', defaultObligatorio: false, defaultVisible: true },
+    ]
+  }
+];
+
+// ============ COMPONENTE AUXILIAR: SELECTOR DE USUARIO BUSCABLE ============
+
+interface SearchableUserSelectProps {
+  usuarios: any[];
+  selectedValue: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+export function SearchableUserSelect({
+  usuarios,
+  selectedValue,
+  onChange,
+  disabled
+}: SearchableUserSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Encontrar el usuario seleccionado
+  const usuarioSeleccionado = usuarios.find(u => String(u.id) === String(selectedValue));
+
+  // Filtrar usuarios por término de búsqueda (nombre, email)
+  const usuariosFiltrados = usuarios.filter(u => {
+    const term = searchTerm.toLowerCase();
+    const nombre = (u.nombreCompleto || u.nombre || '').toLowerCase();
+    const email = (u.email || '').toLowerCase();
+    return nombre.includes(term) || email.includes(term);
+  });
+
+  // Cerrar el dropdown al hacer click afuera
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.searchable-select-container')) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [isOpen]);
+
+  return (
+    <div className="relative searchable-select-container w-full">
+      {/* Botón selector principal */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-2.5 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed select-none text-left"
+        style={{ height: '32px' }}
+      >
+        <span className="truncate">
+          {usuarioSeleccionado 
+            ? `${usuarioSeleccionado.nombre} (${usuarioSeleccionado.email})` 
+            : 'Seleccione un Usuario...'}
+        </span>
+        <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0 ml-1" />
+      </button>
+
+      {/* Panel desplegable con buscador */}
+      {isOpen && (
+        <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] p-2 space-y-1.5 min-w-[200px]">
+          {/* Input de búsqueda */}
+          <div className="relative">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Buscar usuario..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ height: '28px' }}
+            />
+          </div>
+
+          {/* Listado de resultados */}
+          <div className="max-h-40 overflow-y-auto divide-y divide-gray-100">
+            {usuariosFiltrados.length === 0 ? (
+              <div className="py-2 px-2 text-center text-xs text-gray-400">
+                Sin resultados
+              </div>
+            ) : (
+              usuariosFiltrados.map((u) => {
+                const isSelected = String(u.id) === String(selectedValue);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(u.id);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-blue-50 transition-colors flex flex-col gap-0.5 ${
+                      isSelected ? 'bg-blue-50/70 font-semibold text-blue-700' : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="truncate">{u.nombre}</span>
+                    <span className="text-[10px] text-gray-400 font-normal truncate">{u.email}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ============ COMPONENTE PRINCIPAL ============
 
@@ -75,7 +272,8 @@ export function ConfiguracionesSIGL() {
     actualizarEntesControlPM,
     entesControlPM,
     guardarConfiguraciones,
-    restablecerDefecto
+    restablecerDefecto,
+    savingStatus
   } = useConfiguracionesSIGL();
 
   const [moduloActivo, setModuloActivo] = useState<string>('defensa-judicial');
@@ -93,6 +291,53 @@ export function ConfiguracionesSIGL() {
 
   // Estado para tabs de configuración
   const [tabActivo, setTabActivo] = useState<'estados' | 'procesos' | 'autos' | 'tiempos' | 'ejes'>('estados');
+
+  // Estado para expandir/colapsar secciones de configuración
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    procesos: true,
+    actuaciones: false,
+    kanban: false,
+    mediosControl: false,
+    autos: false,
+    actuacionesDisciplinarias: false,
+    excepcionesProcesales: false,
+    causalesEspecificas: false,
+  });
+
+  const toggleSection = (sectionKey: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
+
+  // Estado para expandir/colapsar configuraciones avanzadas de procesos
+  const [expandedAvanzados, setExpandedAvanzados] = useState<Record<string, boolean>>({});
+  const toggleAvanzado = (tipoId: string) => {
+    setExpandedAvanzados(prev => ({
+      ...prev,
+      [tipoId]: !prev[tipoId]
+    }));
+  };
+
+  // Estado para expandir/colapsar los pasos dentro de la configuración de campos de procesos
+  const [expandedPasos, setExpandedPasos] = useState<Record<string, boolean>>({});
+  const togglePaso = (tipoId: string, pasoNum: number) => {
+    const key = `${tipoId}-paso-${pasoNum}`;
+    setExpandedPasos(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  // Estado para expandir/colapsar el Kanban de cada proceso
+  const [expandedKanban, setExpandedKanban] = useState<Record<string, boolean>>({});
+  const toggleKanban = (tipoId: string) => {
+    setExpandedKanban(prev => ({
+      ...prev,
+      [tipoId]: !prev[tipoId]
+    }));
+  };
 
   // Estados para Ejes Estratégicos
   const [showModalAgregarEje, setShowModalAgregarEje] = useState(false);
@@ -129,8 +374,34 @@ export function ConfiguracionesSIGL() {
   const [showModalAgregarCausal, setShowModalAgregarCausal] = useState(false);
   const [showModalEliminarCausal, setShowModalEliminarCausal] = useState(false);
   const [causalAEliminar, setCausalAEliminar] = useState<CausalEspecifica | null>(null);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<any[]>([]);
 
-  const moduloActual = configuraciones.find(m => m.id === moduloActivo);
+  useEffect(() => {
+    const fetchRoles = async () => {
+      try {
+        const response = await rolesService.getRoles({ limit: 100 });
+        if (response && response.roles) {
+          setRoles(response.roles);
+        }
+      } catch (error) {
+        console.error('Error fetching roles in ConfiguracionesSIGL:', error);
+      }
+    };
+    fetchRoles();
+  }, []);
+
+  useEffect(() => {
+    const fetchUsuarios = async () => {
+      try {
+        const response = await authService.getTodosLosUsuariosActivos();
+        setUsuarios(response || []);
+      } catch (error) {
+        console.error('Error fetching active users in ConfiguracionesSIGL:', error);
+      }
+    };
+    fetchUsuarios();
+  }, []);  const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
   // ✅ Estado para conteo dinámico de expedientes por estado (reemplaza casosPorEstado mock)
   const [conteoDinamico, setConteoDinamico] = useState<Record<string, Record<string, number>>>({
@@ -760,9 +1031,51 @@ export function ConfiguracionesSIGL() {
                 <Settings size={20} className="sm:w-6 sm:h-6" style={{ color: '#003DA5' }} />
               </div>
               <div>
-                <h1 className="text-lg sm:text-2xl font-bold" style={{ color: '#003DA5' }}>
-                  Configuraciones SIGL
-                </h1>
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                  <h1 className="text-lg sm:text-2xl font-bold" style={{ color: '#003DA5' }}>
+                    Configuraciones SIGL
+                  </h1>
+                  
+                  {/* Indicador de Estado de Guardado con Framer Motion */}
+                  <AnimatePresence mode="wait">
+                    {savingStatus === 'saving' && (
+                      <motion.span
+                        key="saving"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-ping" />
+                        Guardando...
+                      </motion.span>
+                    )}
+                    {savingStatus === 'saved' && (
+                      <motion.span
+                        key="saved"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5" />
+                        Cambios guardados
+                      </motion.span>
+                    )}
+                    {savingStatus === 'error' && (
+                      <motion.span
+                        key="error"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" />
+                        Error al guardar
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </div>
                 <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
                   Gestiona estados, columnas y tiempos de todos los tableros Kanban
                 </p>
@@ -770,32 +1083,50 @@ export function ConfiguracionesSIGL() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            {cambiosPendientes && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
-                <AlertCircle className="w-3 h-3 mr-1" />
-                <span className="hidden sm:inline">Cambios sin guardar</span>
-                <span className="sm:hidden">Sin guardar</span>
-              </span>
-            )}
+            <span className="text-xs text-gray-400 hidden md:inline flex-shrink-0">
+              ⚡ Guardado automático activo
+            </span>
+            <button
+              onClick={() => {
+                guardarConfiguraciones()
+                  .catch(() => {});
+              }}
+              disabled={!cambiosPendientes && savingStatus !== 'saving'}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg font-bold text-xs sm:text-sm border transition-all flex-shrink-0 shadow-sm ${
+                savingStatus === 'saving'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait'
+                  : savingStatus === 'saved'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : savingStatus === 'error'
+                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                  : cambiosPendientes
+                  ? 'bg-blue-600 text-white border-transparent hover:bg-blue-700 hover:shadow'
+                  : 'bg-gray-100 text-gray-400 border-transparent cursor-not-allowed'
+              }`}
+            >
+              {savingStatus === 'saving' ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Guardando...</span>
+                </>
+              ) : savingStatus === 'saved' ? (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                  <span>Guardado</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Guardar Cambios</span>
+                </>
+              )}
+            </button>
             <button
               onClick={restablecerDefecto}
               className="flex items-center gap-1 sm:gap-2 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
             >
               <RotateCcw className="w-4 h-4" />
               <span className="hidden sm:inline">Restablecer</span>
-            </button>
-            <button
-              onClick={guardarConfiguraciones}
-              disabled={!cambiosPendientes}
-              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: cambiosPendientes ? 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' : '#9CA3AF',
-                boxShadow: cambiosPendientes ? '0 2px 4px rgba(41, 98, 255, 0.2)' : 'none'
-              }}
-            >
-              <Save className="w-4 h-4" />
-              <span className="hidden sm:inline">Guardar Cambios</span>
-              <span className="sm:hidden">Guardar</span>
             </button>
           </div>
         </div>
@@ -898,6 +1229,24 @@ export function ConfiguracionesSIGL() {
               </button>
 
               <button
+                onClick={() => setModuloActivo('categorias-documentos')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'categorias-documentos'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Categorías Documentos</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    Gestión de tipos de documentos
+                  </span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => setModuloActivo('plantillas-oficios')}
                 className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'plantillas-oficios'
                   ? 'bg-blue-50 text-blue-900 font-semibold'
@@ -944,9 +1293,14 @@ export function ConfiguracionesSIGL() {
             <ConfiguracionTasasReferencia />
           )}
 
+          {/* 🆕 Panel de Categorías de Documentos */}
+          {moduloActivo === 'categorias-documentos' && (
+            <ConfiguracionCategoriasDocumentos />
+          )}
+
           {/* 🆕 Panel de Plan de Acción - Ejes Estratégicos */}
           {moduloActivo === 'plan-accion' && (
-            <div className="max-w-6xl mx-auto space-y-6">
+            <div className="w-full space-y-6">
               {/* Configuración de Ejes Estratégicos */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-3 sm:p-4 lg:p-6">
@@ -1246,7 +1600,7 @@ export function ConfiguracionesSIGL() {
 
           {/* 🆕 Panel de Órganos de Control - Tipos de Requerimientos */}
           {moduloActivo === 'organos-control' && (
-            <div className="max-w-6xl mx-auto space-y-8">
+            <div className="w-full space-y-8">
 
               {/* SECCIÓN 1: ORGANISMOS DE CONTROL */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1592,7 +1946,7 @@ export function ConfiguracionesSIGL() {
 
           {/* 🆕 Panel de Plantillas de Oficios */}
           {moduloActivo === 'planes-mejoramiento-config' && (
-            <div className="max-w-6xl mx-auto space-y-8">
+            <div className="w-full space-y-8">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-3 sm:p-4 lg:p-6">
                   <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
@@ -1770,69 +2124,17 @@ export function ConfiguracionesSIGL() {
 
           {/* Panel de módulos Kanban (YA EXISTE) */}
           {moduloActual && (
-            <div className="max-w-6xl mx-auto space-y-6">
-              {/* Configuración de Estados/Columnas Kanban */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div className="p-3 sm:p-4 lg:p-6">
-                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                    <div>
-                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                        <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                        {moduloActivo === 'asesoria-juridica' ? 'Etapas del Proceso' : 'Estados / Columnas Kanban'}
-                      </h2>
-                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        {moduloActivo === 'asesoria-juridica'
-                          ? `Define las etapas del proceso de ${moduloActual.nombre}`
-                          : `Define las columnas que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
-                        }
-                      </p>
-                    </div>
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
-                      <button
-                        onClick={agregarEstado}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={moduloActual.estados.map(e => e.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-3">
-                        {moduloActual.estados.map((estado, index) => (
-                          <EstadoSortable
-                            key={estado.id}
-                            estado={estado}
-                            index={index}
-                            onUpdate={actualizarEstado}
-                            onDelete={solicitarEliminarEstado}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              </div>
+            <div className="w-full space-y-6">
 
               {/* Configuración de Tipos de Procesos Judiciales - SOLO PARA DEFENSA JUDICIAL */}
               {moduloActual.tiposProcesos && moduloActual.tiposProcesos.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                      <div>
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('procesos')}
+                    >
+                      <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                           Tipos de Procesos Judiciales
@@ -1841,22 +2143,38 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de procesos que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
-                      {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
-                        <button
-                          onClick={agregarTipoProceso}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                          style={{
-                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                          }}
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Agregar Tipo</span>
+                      <div className="flex items-center gap-3">
+                        {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              agregarTipoProceso();
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                            style={{
+                              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                            }}
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Agregar Tipo</span>
+                          </button>
+                        )}
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.procesos ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                         </button>
-                      )}
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.procesos && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposProcesos.map((tipo) => (
                         <div
                           key={tipo.id}
@@ -1909,7 +2227,31 @@ export function ConfiguracionesSIGL() {
                                 className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 min="1"
                               />
-                              <span className="text-xs sm:text-sm text-gray-600">días</span>
+                              <span className="text-xs sm:text-sm text-gray-600">
+                                {tipo.unidadTermino === 'horas' || tipo.unidadTermino === 'Horas' ? 'horas' : 
+                                 tipo.unidadTermino === 'Ambos' ? 'días/hrs' : 'días'}
+                              </span>
+                            </div>
+
+                            {/* Unidad de Medida */}
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                Medir en:
+                              </label>
+                              <select
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                value={tipo.unidadTermino || 'dias'}
+                                onChange={(e) => actualizarTipoProceso(tipo.id, { unidadTermino: e.target.value as any })}
+                                className="px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
+                                style={{ height: '38px' }}
+                              >
+                                <option value="Dias Habiles">Días Hábiles</option>
+                                <option value="Dias Calendario">Días Calendario</option>
+                                <option value="Horas">Horas</option>
+                                <option value="Ambos">Ambos (Días y Horas)</option>
+                                <option value="dias" className="hidden">Días</option>
+                                <option value="horas" className="hidden">Horas</option>
+                              </select>
                             </div>
 
                             {/* Alerta */}
@@ -1925,8 +2267,49 @@ export function ConfiguracionesSIGL() {
                                 className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 min="1"
                               />
-                              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">días antes</span>
-                              <span className="text-xs text-gray-600 sm:hidden">d.a.</span>
+                              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">
+                                {tipo.unidadTermino === 'horas' || tipo.unidadTermino === 'Horas' ? 'horas antes' : 
+                                 tipo.unidadTermino === 'Ambos' ? 'días/hrs antes' : 'días antes'}
+                              </span>
+                              <span className="text-xs text-gray-600 sm:hidden">
+                                {tipo.unidadTermino === 'horas' || tipo.unidadTermino === 'Horas' ? 'h.a.' : 'd.a.'}
+                              </span>
+                            </div>
+
+                            {/* Rol Autorizado */}
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                Rol Autorizado:
+                              </label>
+                              <select
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                value={tipo.rolAsociado || ''}
+                                onChange={(e) => actualizarTipoProceso(tipo.id, { rolAsociado: e.target.value || undefined })}
+                                className="px-2 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                              >
+                                <option value="">Todos los roles</option>
+                                {roles.map((r: any) => (
+                                  <option key={r.id} value={r.code || r.name}>
+                                    {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Estado del Kanban */}
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <span className="text-xs text-gray-700 font-medium whitespace-nowrap">Kanban:</span>
+                              {tipo.estados && tipo.estados.length > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
+                                  <LayoutGrid className="w-3 h-3 text-green-600" />
+                                  Personalizado ({tipo.estados.length} col.)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                                  <LayoutGrid className="w-3 h-3 text-gray-400" />
+                                  Hereda General
+                                </span>
+                              )}
                             </div>
 
                             {/* Toggle Activo */}
@@ -1943,19 +2326,940 @@ export function ConfiguracionesSIGL() {
                               </span>
                             </label>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+
+                          {/* Seccion Kanban del Proceso */}
+                          <div className="mt-4 pt-4 border-t border-gray-200/80 space-y-3">
+                            <div
+                              onClick={() => {
+                                if (tipo.estados && tipo.estados.length > 0) {
+                                  toggleKanban(tipo.id);
+                                }
+                              }}
+                              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200 ${
+                                tipo.estados && tipo.estados.length > 0
+                                  ? 'cursor-pointer hover:bg-gray-100/70 transition-colors select-none'
+                                  : ''
+                              }`}
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800 uppercase tracking-wider">
+                                  <LayoutGrid className="w-4 h-4 text-blue-600" />
+                                  <span>Tablero Kanban del Proceso</span>
+                                  {tipo.estados && tipo.estados.length > 0 && (
+                                    expandedKanban[tipo.id] ? (
+                                      <ChevronUp className="w-3.5 h-3.5 text-gray-500 ml-1" />
+                                    ) : (
+                                      <ChevronDown className="w-3.5 h-3.5 text-gray-500 ml-1" />
+                                    )
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-gray-500">
+                                  {tipo.estados && tipo.estados.length > 0
+                                    ? `Este proceso utiliza un flujo personalizado de ${tipo.estados.length} columnas. ${expandedKanban[tipo.id] ? '(Haga clic para colapsar)' : '(Haga clic para expandir y configurar)'}`
+                                    : 'Este proceso hereda el flujo de columnas por defecto del Kanban General.'}
+                                </p>
+                              </div>
+                              
+                              {tipo.estados && tipo.estados.length > 0 ? (
+                                <button
+                                  type="button"
+                                  disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    actualizarTipoProceso(tipo.id, { estados: undefined });
+                                    toast.info('Se ha restablecido el Kanban al general heredado');
+                                  }}
+                                  className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 font-semibold flex items-center gap-1.5 transition-colors self-start sm:self-center cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Revertir a Kanban General
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const defaultEstados = moduloActual.estados.map((est) => ({
+                                      ...est,
+                                      aprobacionTipo: 'ninguno' as const
+                                    }));
+                                    actualizarTipoProceso(tipo.id, { estados: defaultEstados });
+                                    setExpandedKanban(prev => ({ ...prev, [tipo.id]: true }));
+                                    toast.success('Tablero personalizado creado con las columnas por defecto.');
+                                  }}
+                                  className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors self-start sm:self-center cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5" /> Configurar Kanban Personalizado
+                                </button>
+                              )}
+                            </div>
+
+                            {tipo.estados && tipo.estados.length > 0 && expandedKanban[tipo.id] && (
+                              <div className="space-y-3 bg-gray-50/50 p-4 rounded-xl border border-gray-200 mt-2">
+                                <div className="space-y-2">
+                                  {tipo.estados.map((est, colIdx) => (
+                                    <div
+                                      key={est.id}
+                                      className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all p-3 flex flex-col gap-3"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-3">
+                                        {/* Reorder Buttons */}
+                                        <div className="flex flex-col gap-0.5">
+                                          <button
+                                            disabled={colIdx === 0 || !authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                            type="button"
+                                            onClick={() => {
+                                              const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                              if (colIdx > 0) {
+                                                const temp = currentEstados[colIdx];
+                                                currentEstados[colIdx] = currentEstados[colIdx - 1];
+                                                currentEstados[colIdx - 1] = temp;
+                                                const updated = currentEstados.map((item, idx) => ({ ...item, orden: idx + 1 }));
+                                                actualizarTipoProceso(tipo.id, { estados: updated });
+                                              }
+                                            }}
+                                            className="p-1 hover:bg-gray-100 rounded text-gray-500 disabled:opacity-30 transition-colors"
+                                          >
+                                            <ChevronUp className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            disabled={colIdx === (tipo.estados?.length || 0) - 1 || !authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                            type="button"
+                                            onClick={() => {
+                                              const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                              if (colIdx < currentEstados.length - 1) {
+                                                const temp = currentEstados[colIdx];
+                                                currentEstados[colIdx] = currentEstados[colIdx + 1];
+                                                currentEstados[colIdx + 1] = temp;
+                                                const updated = currentEstados.map((item, idx) => ({ ...item, orden: idx + 1 }));
+                                                actualizarTipoProceso(tipo.id, { estados: updated });
+                                              }
+                                            }}
+                                            className="p-1 hover:bg-gray-100 rounded text-gray-500 disabled:opacity-30 transition-colors"
+                                          >
+                                            <ChevronDown className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+
+                                        {/* Color Picker */}
+                                        <div className="flex flex-col gap-1">
+                                          <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Color</label>
+                                          <div className="flex items-center gap-1.5">
+                                            <input
+                                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                              type="color"
+                                              value={est.color}
+                                              onChange={(e) => {
+                                                const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                                const updated = currentEstados.map(item => item.id === est.id ? { ...item, color: e.target.value } : item);
+                                                actualizarTipoProceso(tipo.id, { estados: updated });
+                                              }}
+                                              className="w-7 h-7 rounded border border-gray-300 cursor-pointer"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        {/* Name input */}
+                                        <div className="flex-1 min-w-[150px] flex flex-col gap-1">
+                                          <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Nombre de Columna</label>
+                                          <input
+                                            disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                            type="text"
+                                            value={est.nombre}
+                                            onChange={(e) => {
+                                              const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                              const updated = currentEstados.map(item => item.id === est.id ? { ...item, nombre: e.target.value } : item);
+                                              actualizarTipoProceso(tipo.id, { estados: updated });
+                                            }}
+                                            className="w-full px-2.5 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-800"
+                                            style={{ height: '32px' }}
+                                          />
+                                        </div>
+
+                                        {/* Transition Approval Type Selector */}
+                                        <div className="flex flex-col gap-1" style={{ flex: '1.2 1 140px', minWidth: '130px' }}>
+                                          <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Aprobación para Entrar</label>
+                                          <select
+                                            disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                            value={est.aprobacionTipo || 'ninguno'}
+                                            onChange={(e) => {
+                                              const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                              const val = e.target.value as any;
+                                              const updated = currentEstados.map(item => {
+                                                if (item.id === est.id) {
+                                                  return {
+                                                    ...item,
+                                                    aprobacionTipo: val,
+                                                    aprobacionRol: val === 'rol' ? (roles[0]?.code || roles[0]?.name || '') : undefined,
+                                                    aprobacionUsuario: val === 'usuario' ? (usuarios[0]?.id || '') : undefined
+                                                  };
+                                                }
+                                                return item;
+                                              });
+                                              actualizarTipoProceso(tipo.id, { estados: updated });
+                                            }}
+                                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
+                                            style={{ height: '32px' }}
+                                          >
+                                            <option value="ninguno">Ninguno</option>
+                                            <option value="rol">Por Rol</option>
+                                            <option value="usuario">Por Usuario</option>
+                                          </select>
+                                        </div>
+
+                                        {/* Role / User Sub-selector depending on selection */}
+                                        {est.aprobacionTipo === 'rol' && (
+                                          <div className="flex flex-col gap-1" style={{ flex: '1.5 1 180px', minWidth: '150px' }}>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Rol Requerido</label>
+                                            <select
+                                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                              value={est.aprobacionRol || ''}
+                                              onChange={(e) => {
+                                                const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                                const updated = currentEstados.map(item => item.id === est.id ? { ...item, aprobacionRol: e.target.value } : item);
+                                                actualizarTipoProceso(tipo.id, { estados: updated });
+                                              }}
+                                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-gray-700"
+                                              style={{ height: '32px' }}
+                                            >
+                                              <option value="">Seleccione un Rol...</option>
+                                              {roles.map((r: any) => (
+                                                <option key={r.id} value={r.code || r.name}>
+                                                  {r.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        )}
+
+                                        {est.aprobacionTipo === 'usuario' && (
+                                          <div className="flex flex-col gap-1" style={{ flex: '1.5 1 180px', minWidth: '150px' }}>
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Usuario Requerido</label>
+                                            <SearchableUserSelect
+                                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                              selectedValue={est.aprobacionUsuario || ''}
+                                              onChange={(val) => {
+                                                const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                                const updated = currentEstados.map(item => item.id === est.id ? { ...item, aprobacionUsuario: val } : item);
+                                                actualizarTipoProceso(tipo.id, { estados: updated });
+                                              }}
+                                              usuarios={usuarios}
+                                            />
+                                          </div>
+                                        )}
+
+                                        {/* Delete Button */}
+                                        {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                              const updated = currentEstados.filter(item => item.id !== est.id).map((item, idx) => ({ ...item, orden: idx + 1 }));
+                                              actualizarTipoProceso(tipo.id, { estados: updated });
+                                            }}
+                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 self-end mb-0.5"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const currentEstados = tipo.estados ? [...tipo.estados] : [];
+                                      const nuevoEstado: EstadoKanban = {
+                                        id: `est-custom-${Date.now()}`,
+                                        nombre: 'Nueva Columna',
+                                        color: '#3B82F6',
+                                        orden: currentEstados.length + 1,
+                                        activo: true,
+                                        aprobacionTipo: 'ninguno'
+                                      };
+                                      actualizarTipoProceso(tipo.id, { estados: [...currentEstados, nuevoEstado] });
+                                    }}
+                                    className="text-xs bg-white text-blue-700 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 hover:border-blue-300 font-semibold flex items-center gap-1.5 transition-all shadow-sm w-full justify-center"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Agregar Columna
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Botón de Despliegue de Configuración Avanzada */}
+                          <button
+                            type="button"
+                            onClick={() => toggleAvanzado(tipo.id)}
+                            className="w-full mt-3 flex items-center justify-between p-3 bg-gray-50/50 hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-all shadow-sm"
+                          >
+                            <span className="flex items-center gap-2">
+                              <Settings className="w-4 h-4 text-gray-500" />
+                              Configuración Avanzada de Campos y Validaciones del Formulario
+                            </span>
+                            {expandedAvanzados[tipo.id] ? (
+                              <ChevronUp className="w-4 h-4 text-gray-500" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-500" />
+                            )}
+                          </button>
+
+                          {/* Nuevos campos de configuración para Validaciones y Campos Dinámicos */}
+                          {expandedAvanzados[tipo.id] && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 space-y-6">
+                            {/* Bloque 1: Hora Especial de Vencimiento */}
+                            {tipo.unidadTermino === 'horas' ? (
+                               <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 flex items-start gap-3">
+                                 <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                                 <div>
+                                   <label className="text-xs font-bold text-blue-900 block mb-0.5">
+                                     Medición en Horas Activa
+                                   </label>
+                                   <p className="text-[11px] text-blue-800 leading-relaxed">
+                                     Este proceso se calcula en horas. La fecha de vencimiento se calculará sumando exactamente las horas del plazo a partir de la fecha y hora de notificación. No se requiere configurar una hora de vencimiento fija.
+                                   </p>
+                                 </div>
+                               </div>
+                             ) : (
+                               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                 <div className="space-y-1">
+                                   <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                     <Clock className="w-4 h-4 text-blue-600" />
+                                     Hora Especial de Vencimiento (HH:mm):
+                                   </label>
+                                   <p className="text-[11px] text-gray-500">
+                                     Hora en la que expiran los plazos en días hábiles. Por defecto es a las 17:00 (05:00 p.m.).
+                                   </p>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                   <input
+                                     disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                     type="time"
+                                     value={tipo.horaEspecial || ''}
+                                     onChange={(e) => actualizarTipoProceso(tipo.id, { horaEspecial: e.target.value || undefined })}
+                                     className="w-32 px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                   />
+                                   <span className="text-xs text-gray-500 font-medium">Por defecto: 17:00</span>
+                                 </div>
+                               </div>
+                             )}
+
+                            {/* Bloque 2: Configuración de Campos por Paso */}
+                            <div className="space-y-2">
+                              <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
+                                Configuración de Campos por Paso (Visibilidad y Obligatoriedad):
+                              </label>
+                              <p className="text-[11px] text-gray-500 mb-2">
+                                Decide qué campos se muestran u ocultan en cada paso del formulario y cuáles son obligatorios para guardar.
+                              </p>
+                              <div className="space-y-2.5 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                                {CAMPOS_POR_PASO.map((p) => {
+                                  const isPasoExpanded = !!expandedPasos[`${tipo.id}-paso-${p.paso}`];
+                                  return (
+                                    <div key={p.paso} className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm transition-all duration-200">
+                                      <div 
+                                        onClick={() => togglePaso(tipo.id, p.paso)}
+                                        className="bg-gray-100 px-3.5 py-2.5 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-200/80 transition-colors select-none"
+                                      >
+                                        <span className="font-bold text-xs text-blue-900">{p.nombre}</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] font-semibold text-gray-400">Paso {p.paso} de 7</span>
+                                          {isPasoExpanded ? (
+                                            <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+                                          ) : (
+                                            <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      {isPasoExpanded && (
+                                        <div className="p-2.5 space-y-1 bg-white">
+                                          {p.campos.map((f) => {
+                                            const defaultVis = f.defaultVisible !== false;
+                                            const defaultObl = f.defaultObligatorio === true;
+
+                                            const isVis = f.fixed 
+                                              ? defaultVis 
+                                              : (tipo.camposVisibles ? (tipo.camposVisibles[f.id] !== undefined ? tipo.camposVisibles[f.id] : defaultVis) : defaultVis);
+
+                                            const isObl = f.fixed 
+                                              ? defaultObl 
+                                              : (tipo.camposObligatorios ? (tipo.camposObligatorios[f.id] !== undefined ? tipo.camposObligatorios[f.id] : defaultObl) : defaultObl);
+
+                                            return (
+                                              <div key={f.id} className="flex items-center justify-between text-xs p-2 hover:bg-gray-50 rounded-md transition-colors gap-4 border-b border-gray-100 last:border-0">
+                                                <span className="font-medium text-gray-700 flex items-center gap-2 flex-wrap">
+                                                  {f.label}
+                                                  {f.fixed && (
+                                                    <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                                                      Sistema
+                                                    </span>
+                                                  )}
+                                                </span>
+                                                <div className="flex items-center gap-4">
+                                                  {/* Checkbox Visible */}
+                                                  <label className="flex items-center gap-1.5 cursor-pointer">
+                                                    <input
+                                                      disabled={f.fixed || !authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                                      type="checkbox"
+                                                      checked={isVis}
+                                                      onChange={(e) => {
+                                                        const visConfig = tipo.camposVisibles || {};
+                                                        const oblConfig = tipo.camposObligatorios || {};
+                                                        const newVis = e.target.checked;
+                                                        const newObl = newVis ? isObl : false;
+
+                                                        actualizarTipoProceso(tipo.id, {
+                                                          camposVisibles: {
+                                                            ...visConfig,
+                                                            [f.id]: newVis
+                                                          },
+                                                          camposObligatorios: {
+                                                            ...oblConfig,
+                                                            [f.id]: newObl
+                                                          }
+                                                        });
+                                                      }}
+                                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-xs text-gray-600">Visible</span>
+                                                  </label>
+
+                                                  {/* Checkbox Obligatorio */}
+                                                  <label className={`flex items-center gap-1.5 cursor-pointer ${(!isVis || f.fixed) ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                    <input
+                                                      disabled={f.fixed || !isVis || !authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                                      type="checkbox"
+                                                      checked={isObl}
+                                                      onChange={(e) => {
+                                                        const config = tipo.camposObligatorios || {};
+                                                        actualizarTipoProceso(tipo.id, {
+                                                          camposObligatorios: {
+                                                            ...config,
+                                                            [f.id]: e.target.checked
+                                                          }
+                                                        });
+                                                      }}
+                                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-xs text-gray-600">Obligatorio</span>
+                                                  </label>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Bloque 3: Campos Adicionales */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                <div>
+                                  <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
+                                    Campos Adicionales Dinámicos:
+                                  </label>
+                                  <p className="text-[11px] text-gray-500">
+                                    Agrega campos personalizados para este tipo de proceso judicial en pasos específicos del formulario.
+                                  </p>
+                                </div>
+                                {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const config = tipo.camposAdicionalesConfig || [];
+                                      const nuevoCampo = {
+                                        id: `f-${Date.now()}`,
+                                        nombre: '',
+                                        tipo: 'texto' as const,
+                                        obligatorio: false,
+                                        paso: 1
+                                      };
+                                      actualizarTipoProceso(tipo.id, {
+                                        camposAdicionalesConfig: [...config, nuevoCampo]
+                                      });
+                                    }}
+                                    className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-semibold flex items-center gap-1.5 transition-colors"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Agregar Campo
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 max-h-[400px] overflow-y-auto">
+                                {(!tipo.camposAdicionalesConfig || tipo.camposAdicionalesConfig.length === 0) ? (
+                                  <div className="text-center py-8 bg-white rounded-lg border border-dashed border-gray-300 p-6">
+                                    <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-xs text-gray-400 font-medium">No hay campos adicionales configurados para este tipo de proceso.</p>
+                                    <p className="text-[10px] text-gray-400 mt-1">Haz clic en "Agregar Campo" para crear uno nuevo.</p>
+                                  </div>
+                                ) : (
+                                  tipo.camposAdicionalesConfig.map((c, idx) => (
+                                    <div 
+                                      key={c.id} 
+                                      className="flex flex-row flex-wrap gap-2 p-3 bg-white rounded-xl border-l-4 border-l-blue-500 border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 items-end"
+                                      style={{ width: '100%' }}
+                                    >
+                                      {/* Nombre del campo */}
+                                      <div className="flex flex-col gap-1" style={{ flex: '2 1 140px', minWidth: '120px' }}>
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</label>
+                                        <input
+                                          disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                          type="text"
+                                          value={c.nombre}
+                                          onChange={(e) => {
+                                            const config = [...(tipo.camposAdicionalesConfig || [])];
+                                            config[idx] = { ...c, nombre: e.target.value };
+                                            actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                          }}
+                                          className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white font-medium text-gray-800"
+                                          style={{ height: '38px' }}
+                                          placeholder="Ej: Entidad, Radicado..."
+                                        />
+                                      </div>
+                                      
+                                      {/* Tipo de dato */}
+                                      <div className="flex flex-col gap-1" style={{ flex: '1 1 100px', minWidth: '95px' }}>
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tipo</label>
+                                        <select
+                                          disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                          value={c.tipo}
+                                          onChange={(e) => {
+                                            const config = [...(tipo.camposAdicionalesConfig || [])];
+                                            const val = e.target.value as any;
+                                            const updated: any = { ...c, tipo: val };
+                                            if (val === 'documento' && (!c.tiposDocumento || c.tiposDocumento.length === 0)) {
+                                              updated.tiposDocumento = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+                                            }
+                                            if ((val === 'opciones-multiple' || val === 'lista') && (!c.opciones || c.opciones.length === 0)) {
+                                              updated.opciones = [];
+                                            }
+                                            config[idx] = updated;
+                                            actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                          }}
+                                          className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-medium text-gray-700"
+                                          style={{ height: '38px' }}
+                                        >
+                                          <option value="texto">Texto</option>
+                                          <option value="alfanumerico">Alfanumérico</option>
+                                          <option value="numero">Número</option>
+                                          <option value="fecha">Fecha</option>
+                                          <option value="booleano">Sí/No</option>
+                                          <option value="unico">Único</option>
+                                          <option value="documento">Documento</option>
+                                          <option value="opciones-multiple">Opción Múltiple</option>
+                                          <option value="lista">Lista</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Paso del Formulario */}
+                                      <div className="flex flex-col gap-1" style={{ flex: '1.2 1 120px', minWidth: '115px' }}>
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Paso</label>
+                                        <select
+                                          disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                          value={c.paso || 1}
+                                          onChange={(e) => {
+                                            const config = [...(tipo.camposAdicionalesConfig || [])];
+                                            config[idx] = { ...c, paso: parseInt(e.target.value, 10) };
+                                            actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                          }}
+                                          className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-medium text-gray-700"
+                                          style={{ height: '38px' }}
+                                        >
+                                          <option value={1}>Paso 1: Datos</option>
+                                          <option value={2}>Paso 2: Demandantes</option>
+                                          <option value={3}>Paso 3: Demandados</option>
+                                          <option value={4}>Paso 4: Otros</option>
+                                          <option value={5}>Paso 5: Juzgado</option>
+                                          <option value={6}>Paso 6: Fechas</option>
+                                          <option value={7}>Paso 7: Detalles</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Obligatorio */}
+                                      <div className="flex flex-col items-center gap-1.5" style={{ flex: '0 0 50px', minWidth: '50px' }}>
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center">Oblig.</label>
+                                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <input
+                                            disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                            type="checkbox"
+                                            checked={c.obligatorio}
+                                            onChange={(e) => {
+                                              const config = [...(tipo.camposAdicionalesConfig || [])];
+                                              config[idx] = { ...c, obligatorio: e.target.checked };
+                                              actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                            }}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Botón Eliminar */}
+                                      <div className="flex flex-col items-center gap-1" style={{ flex: '0 0 50px', minWidth: '50px' }}>
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center">Eliminar</label>
+                                        <div style={{ height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <button
+                                            disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                            type="button"
+                                            onClick={() => {
+                                              const config = (tipo.camposAdicionalesConfig || []).filter(item => item.id !== c.id);
+                                              actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                            }}
+                                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100 flex items-center justify-center"
+                                            style={{ height: '32px', width: '32px' }}
+                                            title="Eliminar campo"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Sub-fila de opciones para tipo 'opciones-multiple' o 'lista' */}
+                                      {(c.tipo === 'opciones-multiple' || c.tipo === 'lista') && (
+                                        <div className="w-full mt-2 pt-2 border-t border-dashed border-gray-200 flex flex-col gap-2 items-start">
+                                          <div className="flex items-center justify-between w-full">
+                                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                              {c.tipo === 'opciones-multiple' ? 'Opciones (checkboxes)' : 'Opciones del listado'}
+                                            </label>
+                                            {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                  const nextOpts = [...(c.opciones || []), ''];
+                                                  config[idx] = { ...c, opciones: nextOpts };
+                                                  actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                }}
+                                                className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded hover:bg-blue-100 font-semibold flex items-center gap-1 transition-colors"
+                                              >
+                                                <Plus className="w-3 h-3" /> Agregar opción
+                                              </button>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-col gap-1.5 w-full">
+                                            {(c.opciones || []).length === 0 && (
+                                              <p className="text-[10px] text-gray-400 italic">Sin opciones. Haz clic en "Agregar opción".</p>
+                                            )}
+                                            {(c.opciones || []).map((opt, optIdx) => (
+                                              <div key={optIdx} className="flex items-center gap-2 w-full">
+                                                <input
+                                                  disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                                  type="text"
+                                                  value={opt}
+                                                  onChange={(e) => {
+                                                    const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                    const nextOpts = [...(c.opciones || [])];
+                                                    nextOpts[optIdx] = e.target.value;
+                                                    config[idx] = { ...c, opciones: nextOpts };
+                                                    actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                  }}
+                                                  placeholder={`Opción ${optIdx + 1}...`}
+                                                  className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white text-gray-800"
+                                                />
+                                                {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                      const nextOpts = (c.opciones || []).filter((_, i) => i !== optIdx);
+                                                      config[idx] = { ...c, opciones: nextOpts };
+                                                      actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                    }}
+                                                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                    title="Eliminar opción"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Sub-fila de discriminación de tipos de documento para tipo 'documento' */}
+                                      {c.tipo === 'documento' && (
+                                        <div className="w-full mt-2 pt-2 border-t border-dashed border-gray-200 flex flex-col gap-1.5 items-start">
+                                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                            Tipos de Documento Permitidos
+                                          </label>
+                                          <div className="flex flex-wrap gap-4 mt-1">
+                                            {[
+                                              { label: 'PDF (.pdf)', exts: ['.pdf'] },
+                                              { label: 'Word (.doc, .docx)', exts: ['.doc', '.docx'] },
+                                              { label: 'Excel (.xls, .xlsx)', exts: ['.xls', '.xlsx'] },
+                                              { label: 'Imágenes (.png, .jpg, .jpeg)', exts: ['.png', '.jpg', '.jpeg'] }
+                                            ].map((opt) => {
+                                              const currentExts = c.tiposDocumento || [];
+                                              const isChecked = opt.exts.every(ext => currentExts.includes(ext));
+                                              return (
+                                                <label key={opt.label} className="flex items-center gap-1.5 text-xs text-gray-600 font-semibold cursor-pointer select-none">
+                                                  <input
+                                                    disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => {
+                                                      const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                      let nextExts = [...currentExts];
+                                                      if (e.target.checked) {
+                                                        opt.exts.forEach(ext => {
+                                                          if (!nextExts.includes(ext)) nextExts.push(ext);
+                                                        });
+                                                      } else {
+                                                        nextExts = nextExts.filter(ext => !opt.exts.includes(ext));
+                                                      }
+                                                      config[idx] = { ...c, tiposDocumento: nextExts };
+                                                      actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                    }}
+                                                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                  />
+                                                  {opt.label}
+                                                </label>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Bloque 4: Vacío - Kanban se movió al primer nivel de la tarjeta */}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
                   </div>
                 </div>
               )}
+
+              {/* Configuración de Tipos de Actuaciones Procesales */}
+              {moduloActual.tiposActuaciones && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('actuaciones')}
+                    >
+                      <div className="flex-1">
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Activity className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Tipos de Actuaciones Procesales
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los tipos de actuaciones procesales disponibles al registrar una actuación en un expediente.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              agregarTipoActuacion();
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                            style={{
+                              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                            }}
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Agregar Tipo</span>
+                          </button>
+                        )}
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.actuaciones ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {expandedSections.actuaciones && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
+                      {moduloActual.tiposActuaciones.sort((a,b) => (a.orden || 0) - (b.orden || 0)).map((tipo) => (
+                        <div
+                          key={tipo.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                        >
+                          {/* Fila 1: Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                              type="text"
+                              value={tipo.nombre}
+                              onChange={(e) => actualizarTipoActuacion(tipo.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Nombre de la actuación"
+                            />
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
+                              <button
+                                onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
+                                className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                              value={tipo.descripcion || ''}
+                              onChange={(e) => actualizarTipoActuacion(tipo.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              placeholder="Descripción de la actuación..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Orden + Activo */}
+                          <div className="flex items-center justify-between flex-wrap gap-4">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium">Orden:</label>
+                              <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                type="number"
+                                value={tipo.orden || 0}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { orden: parseInt(e.target.value) || 0 })}
+                                className="w-16 px-2 py-1.5 text-sm text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Estados/Columnas Kanban */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div 
+                    className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                    onClick={() => toggleSection('kanban')}
+                  >
+                    <div className="flex-1">
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <Columns className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                        {moduloActivo === 'asesoria-juridica' 
+                          ? 'Etapas del Proceso' 
+                          : 'Etapas Procesales / Columnas Kanban'
+                        }
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        {moduloActivo === 'asesoria-juridica'
+                          ? `Define las etapas del proceso de ${moduloActual.nombre}`
+                          : moduloActual.tiposProcesos && moduloActual.tiposProcesos.length > 0
+                            ? `Define las etapas procesales que aparecerán en el formulario y como columnas por defecto en el tablero de ${moduloActual.nombre}.`
+                            : `Define las etapas procesales que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
+                        }
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarEstado();
+                          }}
+                          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar</span>
+                        </button>
+                      )}
+                      <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                        {expandedSections.kanban ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {expandedSections.kanban && (
+                    <AnimatePresence>
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={moduloActual.estados.map(e => e.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-3">
+                        {moduloActual.estados.map((estado, index) => (
+                          <EstadoSortable
+                            key={estado.id}
+                            estado={estado}
+                            index={index}
+                            onUpdate={actualizarEstado}
+                            onDelete={solicitarEliminarEstado}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
+                </div>
+              </div>
 
               {/* Configuración de Medios de Control - SOLO PARA DEFENSA JUDICIAL */}
               {moduloActual.mediosControl && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                      <div>
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('mediosControl')}
+                    >
+                      <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                           Medios de Control
@@ -1964,20 +3268,36 @@ export function ConfiguracionesSIGL() {
                           Define los medios de control que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
-                      <button
-                        onClick={agregarMedioControl}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Medio</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarMedioControl();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Medio</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.mediosControl ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.mediosControl && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.mediosControl.map((medio) => (
                         <div
                           key={medio.id}
@@ -2027,7 +3347,10 @@ export function ConfiguracionesSIGL() {
                           </div>
                         </div>
                       ))}
-                    </div>
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
                   </div>
                 </div>
               )}
@@ -2036,8 +3359,11 @@ export function ConfiguracionesSIGL() {
               {moduloActual.tiposAutos && moduloActual.tiposAutos.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                      <div>
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('autos')}
+                    >
+                      <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
                           Tipos de Autos Procesales
@@ -2046,20 +3372,36 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de autos que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
-                      <button
-                        onClick={agregarTipoAuto}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarTipoAuto();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.autos ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.autos && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposAutos.map((tipo) => (
                         <div
                           key={tipo.id}
@@ -2110,7 +3452,10 @@ export function ConfiguracionesSIGL() {
                           </div>
                         </div>
                       ))}
-                    </div>
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
                   </div>
                 </div>
               )}
@@ -2119,7 +3464,10 @@ export function ConfiguracionesSIGL() {
               {moduloActual.tiposActuaciones && moduloActual.tiposActuaciones.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('actuacionesDisciplinarias')}
+                    >
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Gavel className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
@@ -2129,20 +3477,36 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de actuaciones que estarán disponibles en el formulario de Agregar Actuación
                         </p>
                       </div>
-                      <button
-                        onClick={agregarTipoActuacion}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarTipoActuacion();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.actuacionesDisciplinarias ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.actuacionesDisciplinarias && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposActuaciones
                         .sort((a, b) => a.orden - b.orden)
                         .map((tipo) => (
@@ -2207,16 +3571,22 @@ export function ConfiguracionesSIGL() {
                             </div>
                           </div>
                         ))}
-                    </div>
-                  </div>
-                </div>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+              </div>
+            </div>
               )}
 
               {/* Configuración de Tipos de Excepciones Procesales - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
               {moduloActual.tiposExcepcionesProcesal && moduloActual.tiposExcepcionesProcesal.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('excepcionesProcesales')}
+                    >
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
@@ -2226,20 +3596,36 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de excepciones procesales disponibles en el formulario de Nueva Excepción
                         </p>
                       </div>
-                      <button
-                        onClick={agregarTipoExcepcion}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
-                          boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarTipoExcepcion();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                            boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.excepcionesProcesales ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.excepcionesProcesales && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.tiposExcepcionesProcesal
                         .sort((a, b) => a.orden - b.orden)
                         .map((tipo) => (
@@ -2312,15 +3698,21 @@ export function ConfiguracionesSIGL() {
                           </div>
                         ))}
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          </div>
               )}
 
               {/* Configuración de Causales Específicas - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
               {moduloActual.causalesEspecificas && moduloActual.causalesEspecificas.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
-                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div 
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('causalesEspecificas')}
+                    >
                       <div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Target className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
@@ -2330,20 +3722,36 @@ export function ConfiguracionesSIGL() {
                           Define las causales específicas disponibles en el formulario de Nueva Excepción
                         </p>
                       </div>
-                      <button
-                        onClick={agregarCausalEspecifica}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
-                          boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Causal</span>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarCausalEspecifica();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                            boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Causal</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.causalesEspecificas ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {expandedSections.causalesEspecificas && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
                       {moduloActual.causalesEspecificas
                         .sort((a, b) => a.orden - b.orden)
                         .map((causal) => (
@@ -2416,8 +3824,11 @@ export function ConfiguracionesSIGL() {
                           </div>
                         ))}
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          </div>
               )}
 
               {/* Configuración de Prescripción Disciplinaria - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}

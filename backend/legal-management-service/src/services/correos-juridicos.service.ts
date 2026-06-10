@@ -202,6 +202,60 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Detecta si un email es un Delivery Status Notification (DSN), acuse de entrega/lectura,
+     * o bounce automático del MTA. Estos correos los genera el servidor (no un humano) y no
+     * deben aparecer como comunicaciones reales en la bandeja.
+     */
+    private esDeliveryReceiptOrDSN(email: any): boolean {
+        const subject = (email.subject || '').toLowerCase().trim();
+        const fromAddress = (email.from?.emailAddress?.address || '').toLowerCase();
+        const fromName = (email.from?.emailAddress?.name || '').toLowerCase();
+
+        // Prefijos típicos de asunto en español e inglés
+        const subjectPrefixes = [
+            'retransmitido:',
+            'relayed:',
+            'delivery status notification',
+            'undelivered mail',
+            'undeliverable',
+            'mail delivery failed',
+            'failure notice',
+            'returned mail',
+            'mail delivery subsystem',
+            'leído:',
+            'read:',
+            'no leído:',
+            'not read:',
+            'acuse de recibo',
+            'delivery receipt',
+            'read receipt',
+            'recibo de entrega',
+            'recibo de lectura',
+            'sin entregar:',
+            'no entregado:',
+        ];
+        if (subjectPrefixes.some(p => subject.startsWith(p))) {
+            return true;
+        }
+
+        // Remitentes típicos del MTA
+        const senderHints = [
+            'mailer-daemon',
+            'postmaster@',
+            'microsoftexchange',
+            'noreply@',
+            'no-reply@',
+            'donotreply@',
+            'do-not-reply@',
+        ];
+        if (senderHints.some(s => fromAddress.includes(s) || fromName.includes(s))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Sync one page of emails from Microsoft Graph
      * Returns nextLink for pagination
      */
@@ -221,6 +275,13 @@ export class CorreosJuridicosService {
 
             for (const email of emails) {
                 try {
+                    // Filtrar Delivery Status Notifications (DSN), acuses de lectura/entrega y bounces.
+                    // Estos correos los genera automáticamente el MTA y no son comunicaciones reales.
+                    if (this.esDeliveryReceiptOrDSN(email)) {
+                        this.logger.log(`  ⏭️  DSN/Auto-reply omitido: "${email.subject?.substring(0, 60)}"`);
+                        continue;
+                    }
+
                     // Check if already exists
                     const existing = await this.correoRepo.findOne({
                         where: { graphMessageId: email.id },
@@ -311,6 +372,15 @@ export class CorreosJuridicosService {
                         const entities = this.smartService.extractEntities(email.subject || '', email.bodyPreview || '');
 
                         // Create new record
+                        // Extraer body completo (HTML + texto). Si el sync no trae body (queries viejas),
+                        // se queda en NULL y se hidrata lazy desde getById() cuando el usuario abra el correo.
+                        const bodyHtmlFromGraph = (email as any).body?.content || '';
+                        const bodyContentType = (email as any).body?.contentType?.toLowerCase() || '';
+                        const cuerpoHtmlValue = bodyContentType === 'html' ? bodyHtmlFromGraph : '';
+                        const cuerpoTextoValue = bodyContentType === 'text'
+                            ? bodyHtmlFromGraph
+                            : (email.bodyPreview || '');
+
                         const newCorreo = this.correoRepo.create({
                             graphMessageId: email.id,
                             asunto: email.subject || '(Sin asunto)',
@@ -318,7 +388,8 @@ export class CorreosJuridicosService {
                             remitenteNombre: email.from?.emailAddress?.name || '',
                             destinatarios: JSON.stringify(email.toRecipients || []),
                             fechaRecepcion: new Date(email.receivedDateTime),
-                            cuerpoTexto: email.bodyPreview || '',
+                            cuerpoHtml: cuerpoHtmlValue || undefined,
+                            cuerpoTexto: cuerpoTextoValue,
                             tieneAdjuntos: email.hasAttachments || false,
                             leido: email.isRead || false,
                             archivado: false,
@@ -344,11 +415,37 @@ export class CorreosJuridicosService {
                         synced++;
                         this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
 
-                        // Sync attachments if email has any
+                        // Sync attachments if email has any — descargar y persistir a disco
+                        // para que el usuario pueda visualizarlos sin extra calls a Graph.
                         if (email.hasAttachments) {
                             try {
+                                const fs = require('fs');
+                                const path = require('path');
+                                const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+                                if (!fs.existsSync(uploadsDir)) {
+                                    fs.mkdirSync(uploadsDir, { recursive: true });
+                                }
+
                                 const attachments = await this.graphService.getAttachments(email.id);
                                 for (const att of attachments) {
+                                    let archivoLocalUrl: string | undefined;
+                                    let descargado = false;
+
+                                    // Guardar contentBytes a disco si Graph lo devolvió
+                                    if (att.contentBytes) {
+                                        try {
+                                            const buffer = Buffer.from(att.contentBytes, 'base64');
+                                            const safeName = (att.name || 'adjunto').replace(/[^a-zA-Z0-9.-]/g, '_');
+                                            const uniqueFilename = `recv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+                                            const filepath = path.join(uploadsDir, uniqueFilename);
+                                            fs.writeFileSync(filepath, buffer);
+                                            archivoLocalUrl = filepath;
+                                            descargado = true;
+                                        } catch (writeErr: any) {
+                                            this.logger.warn(`No se pudo persistir adjunto ${att.name} a disco: ${writeErr?.message}`);
+                                        }
+                                    }
+
                                     const adjunto = this.adjuntoRepo.create({
                                         correoId: savedCorreo.id,
                                         graphMessageId: email.id,
@@ -356,11 +453,12 @@ export class CorreosJuridicosService {
                                         nombre: att.name,
                                         contentType: att.contentType,
                                         tamanio: att.size,
-                                        descargado: false,
+                                        descargado,
+                                        archivoLocalUrl,
                                     });
                                     await this.adjuntoRepo.save(adjunto);
                                 }
-                                this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
+                                this.logger.log(`  -> Synced ${attachments.length} attachment(s) (descargados localmente)`);
                             } catch (attError) {
                                 this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
                             }

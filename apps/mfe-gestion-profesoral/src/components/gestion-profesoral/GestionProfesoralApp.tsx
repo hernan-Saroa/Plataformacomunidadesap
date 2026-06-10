@@ -276,7 +276,7 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
   // Dashboard de aprobadores
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <PTAProvider>
       <DashboardAprobadorIntegrado
         onVerDetalle={handleVerDetallePTA}

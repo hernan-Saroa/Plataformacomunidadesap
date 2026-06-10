@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 
 // Servicio API
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 import { getServiceUrl, API_MODE } from '../../../config/environment';
 import { notificationsService } from '../../../services/api/notificationsService';
 
@@ -185,7 +186,7 @@ function mapEstadoAuditoria(fase: string, estadoKanban?: string): 'ABIERTO' | 'E
   if (estadoKanban === 'Finalizada' || fase === 'CIERRE' || fase === 'cierre') {
     return 'CERRADO';
   }
-  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Plan Anual' || estadoKanban === 'Planeación') {
+  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Programa Anual' || estadoKanban === 'Planeación') {
     return 'ABIERTO';
   }
   return 'EN_PROCESO';
@@ -197,7 +198,7 @@ function mapEtapaToFase(etapa: string): FaseAuditoria {
     'planificacion': 'PLANIFICACION',
     'PLANIFICACION': 'PLANIFICACION',
     'Planeación': 'PLANIFICACION',
-    'Plan Anual': 'PLANIFICACION',
+    'Programa Anual': 'PLANIFICACION',
     'ejecucion': 'EJECUCION',
     'EJECUCION': 'EJECUCION',
     'Ejecución': 'EJECUCION',
@@ -235,6 +236,26 @@ function mapDocumentoBackend(doc: any): Documento {
   };
 }
 
+/** Evidencias de hallazgos (evidencia_documento) */
+function mapEvidenciaBackend(ev: any): Documento {
+  const baseUrl = getFilesBaseUrl();
+  const tamanioBytes = Number(ev.tamanioBytes) || 0;
+  return {
+    id: ev.id,
+    nombre: ev.nombre || ev.nombreArchivoOriginal || 'Evidencia',
+    nombreArchivo: ev.nombreArchivoOriginal || ev.nombre || 'evidencia',
+    tipo: 'evidencia_hallazgo',
+    tipoMime: ev.tipoMime || 'application/octet-stream',
+    tamanio: formatFileSize(tamanioBytes),
+    tamanioBytes,
+    fechaCreacion: (ev.fechaSubida || ev.createdAt || '').split('T')[0],
+    autor: ev.subidoPor || 'Sistema',
+    fase: 'HALLAZGOS',
+    rutaArchivo: `${baseUrl}/evidencias/${ev.id}/download`,
+    descripcion: ev.descripcion || '📎 Evidencia de hallazgo',
+  };
+}
+
 // Convierte datos del backend de auditoría a la interfaz Expediente
 function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expediente {
   return {
@@ -256,11 +277,14 @@ function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expe
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModulePremium() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <ModuleHeaderBar
         title="Expedientes"
-        subtitle="Archivo digital organizado por fases de auditoría"
+        subtitle={`Archivo digital organizado por fases de auditoría${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''}`}
         icon={<FolderOpen className="w-5 h-5 text-white" />}
         color="#0891B2"
       />
@@ -293,19 +317,35 @@ function VistaExpedientes() {
     setError(null);
     
     try {
-      // 1. Obtener auditorías de la vigencia seleccionada en la cabecera
-      const auditorias = await controlInternoService.getAuditorias({
-        year: vigencia,
-      });
-      
+      // 1. Auditorías de la vigencia del plan anual (mismo criterio que Kanban OCI / Planes)
+      const filtrosVigencia =
+        vigencia != null
+          ? { planAnualVigencia: vigencia, year: vigencia }
+          : undefined;
+      const auditoriasResp = await controlInternoService.getAuditorias(filtrosVigencia);
+      let auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      if (vigencia != null) {
+        auditorias = auditorias.filter((a: any) =>
+          auditoriaCoincideVigenciaPlan(a, vigencia),
+        );
+      }
+
       // 2. Para cada auditoría, cargar sus documentos
       const expedientesConDocs = await Promise.all(
         auditorias.map(async (auditoria: any) => {
           const documentos: Documento[] = [];
 
           try {
-            const docsBackend = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
-            documentos.push(...docsBackend.map(mapDocumentoBackend));
+            const [docsBackend, evidenciasBackend] = await Promise.all([
+              controlInternoService.getDocumentosByAuditoria(auditoria.id).catch(() => []),
+              controlInternoService.getEvidenciasByAuditoria(auditoria.id).catch(() => []),
+            ]);
+            const docs = (Array.isArray(docsBackend) ? docsBackend : []).map(mapDocumentoBackend);
+            const ids = new Set(docs.map((d) => d.id));
+            const evids = (Array.isArray(evidenciasBackend) ? evidenciasBackend : [])
+              .map(mapEvidenciaBackend)
+              .filter((e) => !ids.has(e.id));
+            documentos.push(...docs, ...evids);
           } catch {
             // Si falla el endpoint de docs, continuar sin ellos
           }

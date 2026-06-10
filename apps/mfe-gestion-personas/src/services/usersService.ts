@@ -73,6 +73,7 @@ export interface CreateUserData {
   roleIds?: string[];
   idSeccional?: number;
   idSede?: number;
+  [key: string]: any; // Allow advanced fields (birth_date, address, etc.)
 }
 
 export interface UpdateUserData extends Partial<CreateUserData> {

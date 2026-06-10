@@ -182,26 +182,7 @@ export const TIPOS_DOCUMENTO = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK (REDUCIDOS PARA OPTIMIZACIÓN)
-// ════════════════════════════════════════════════════════════════════════════
 
-const EXPEDIENTES_MOCK: Expediente[] = [
-  // Ejemplo mínimo de expediente para referencia
-  {
-    id: 'exp-dj-001',
-    radicado: 'PJ-2025-001',
-    nombreProceso: 'Proceso de Ejemplo',
-    tipoProceso: 'DEFENSA_JUDICIAL',
-    fechaInicio: '2024-10-15',
-    fechaActualizacion: '2025-01-12',
-    estado: 'EN_PROCESO',
-    responsable: 'Abogado Responsable',
-    totalDocumentos: 3,
-    documentos: [
-      { id: 'd1', nombre: 'Documento 1.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-10-15', autor: 'Usuario' },
-    ]
-  },
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -1364,7 +1345,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
               */}
               <button
                 onClick={onToggleExpand}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-[#003DA5] hover:bg-[#002e7d] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"
               >
                 {expandido ? (
                   <>
@@ -1706,7 +1687,7 @@ function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso
           </button>
           <button
             onClick={handleCargar}
-            className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
+            className="px-4 py-2 bg-[#003DA5] hover:bg-[#002e7d] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
             disabled={cargando || !file}
           >
             {cargando ? 'Cargando...' : 'Cargar Documento'}

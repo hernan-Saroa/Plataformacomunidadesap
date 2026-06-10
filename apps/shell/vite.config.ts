@@ -10,6 +10,17 @@ const devExternalRedirects: Record<string, string> = {
   '/externos/arca': 'https://arca.esap.edu.co',
 };
 
+const buildDateSource = process.env.ESAP_BUILD_DATE
+  ? new Date(process.env.ESAP_BUILD_DATE)
+  : new Date();
+const buildDateValue = Number.isNaN(buildDateSource.getTime()) ? new Date() : buildDateSource;
+const buildDate = new Intl.DateTimeFormat('es-CO', {
+  timeZone: 'America/Bogota',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+}).format(buildDateValue);
+
 const externalRedirectPlugin = () => ({
   name: 'esap-dev-external-redirects',
   configureServer(server: { middlewares: { use: (handler: (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => void) => void } }) {
@@ -31,6 +42,9 @@ const externalRedirectPlugin = () => ({
 
 export default defineConfig(({ command }) => ({
   root: __dirname,
+  define: {
+    __ESAP_BUILD_DATE__: JSON.stringify(buildDate),
+  },
   plugins: [
     react(),
     cspNonceBootstrap(shellApp.appDir),
@@ -81,7 +95,6 @@ export default defineConfig(({ command }) => ({
       '@radix-ui/react-aspect-ratio@1.1.2': '@radix-ui/react-aspect-ratio',
       '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
       '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
-      '@jsr/supabase__supabase-js@2.49.8': '@jsr/supabase__supabase-js',
       '@esap-mfe/shared-hooks': path.resolve(__dirname, '../../packages/shared-hooks/src'),
       '@esap-mfe/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
       '@esap-mfe/shared-types': path.resolve(__dirname, '../../packages/shared-types/src'),

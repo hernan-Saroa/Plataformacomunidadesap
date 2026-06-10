@@ -13,6 +13,7 @@ import { ValidarCertificadoQR } from '../certificados-laborales/ValidarCertifica
 import { ValidarCertificadoGrado } from '../esap/registro-academico/ValidarCertificadoGrado';
 import { Card } from '../ui/card';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 
 interface ValidadorCertificadosPublicoProps {
   onBack: () => void;
@@ -23,6 +24,7 @@ type TipoCertificado = 'selector' | 'laboral' | 'grado';
 export function ValidadorCertificadosPublico({
   onBack,
 }: ValidadorCertificadosPublicoProps) {
+  const isMobile = useIsMobile();
   const [tipoSeleccionado, setTipoSeleccionado] =
     useState<TipoCertificado>('selector');
 
@@ -57,15 +59,29 @@ export function ValidadorCertificadosPublico({
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <ESAPLogo variant="white" className="h-8 w-auto sm:h-10" />
-              <div className="hidden sm:block">
-                <p className="text-xs font-semibold text-white">
-                  Validador de Certificados
-                </p>
-                <p className="text-[9px] font-medium text-white/70 -mt-0.5">
-                  Sistema oficial ESAP
-                </p>
-              </div>
+              {isMobile ? (
+                <ESAPLogo 
+                  variant="icon" 
+                  className="shrink-0" 
+                  style={{ width: '38px', height: '44px' }} 
+                />
+              ) : (
+                <>
+                  <ESAPLogo 
+                    variant="white" 
+                    className="shrink-0" 
+                    style={{ width: '189px', height: '56px' }} 
+                  />
+                  <div>
+                    <p className="text-xs font-semibold text-white">
+                      Validador de Certificados
+                    </p>
+                    <p className="text-[9px] font-medium text-white/70 -mt-0.5">
+                      Sistema oficial ESAP
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             <button
@@ -119,7 +135,7 @@ export function ValidadorCertificadosPublico({
               }}
             >
               Verifica la autenticidad de certificados emitidos por la Escuela
-              Superior de Administracion Publica
+              Superior de Administración Pública
             </p>
           </motion.div>
 
@@ -167,22 +183,22 @@ export function ValidadorCertificadosPublico({
                       color: '#6B7280',
                     }}
                   >
-                    Valida certificados laborales emitidos por el area de Talento
+                    Valida certificados laborales emitidos por el área de Talento
                     Humano de la ESAP
                   </p>
 
                   <ul className="mb-6 space-y-2">
                     <li className="flex items-start gap-2 text-sm text-gray-600">
                       <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>Verificacion de vinculo laboral</span>
+                      <span>Verificación de vínculo laboral</span>
                     </li>
                     <li className="flex items-start gap-2 text-sm text-gray-600">
                       <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>Validacion con codigo QR</span>
+                      <span>Validación con código QR</span>
                     </li>
                     <li className="flex items-start gap-2 text-sm text-gray-600">
                       <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>Informacion de cargo y dependencia</span>
+                      <span>Información de cargo y dependencia</span>
                     </li>
                   </ul>
 
@@ -246,22 +262,22 @@ export function ValidadorCertificadosPublico({
                       color: '#6B7280',
                     }}
                   >
-                    Valida certificados academicos y titulos emitidos por la
-                    Direccion de Registro Academico
+                    Valida certificados académicos y títulos emitidos por la
+                    Dirección de Registro Académico
                   </p>
 
                   <ul className="mb-6 space-y-2">
                     <li className="flex items-start gap-2 text-sm text-gray-600">
                       <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>Verificacion de titulo academico</span>
+                      <span>Verificación de título académico</span>
                     </li>
                     <li className="flex items-start gap-2 text-sm text-gray-600">
                       <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>Validacion con codigo QR</span>
+                      <span>Validación con código QR</span>
                     </li>
                     <li className="flex items-start gap-2 text-sm text-gray-600">
                       <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>Informacion de programa y acta</span>
+                      <span>Información de programa y acta</span>
                     </li>
                   </ul>
 
@@ -282,7 +298,7 @@ export function ValidadorCertificadosPublico({
                     background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
                   }}
                 >
-                  Academico
+                  Académico
                 </div>
               </Card>
             </motion.div>
@@ -304,7 +320,7 @@ export function ValidadorCertificadosPublico({
                       color: '#1F2937',
                     }}
                   >
-                    Sistema de Verificacion Seguro
+                    Sistema de Verificación Seguro
                   </h4>
                   <p
                     className="font-normal"
@@ -314,10 +330,10 @@ export function ValidadorCertificadosPublico({
                       color: '#6B7280',
                     }}
                   >
-                    Todos los certificados emitidos por la ESAP incluyen un codigo
-                    QR unico que permite verificar su autenticidad en tiempo real.
+                    Todos los certificados emitidos por la ESAP incluyen un código
+                    QR único que permite verificar su autenticidad en tiempo real.
                     Este sistema garantiza la integridad y validez de cada
-                    documento mediante tecnologia de encriptacion y trazabilidad
+                    documento mediante tecnología de encriptación y trazabilidad
                     completa.
                   </p>
                 </div>
@@ -340,8 +356,8 @@ export function ValidadorCertificadosPublico({
                   color: '#1F2937',
                 }}
               >
-                Sistema oficial de validacion - Escuela Superior de Administracion
-                Publica
+                Sistema oficial de validación - Escuela Superior de Administración
+                Pública
               </span>
             </Card>
           </motion.div>
@@ -349,9 +365,9 @@ export function ValidadorCertificadosPublico({
 
         <footer className="mt-16 bg-gray-900 py-12 text-white">
           <div className="container mx-auto px-4 text-center">
-            <ESAPLogo variant="white" className="mx-auto mb-4 h-12 w-auto" />
+            <ESAPLogo variant="white" className="mx-auto mb-4 shrink-0" style={{ width: '162px', height: '48px' }} />
             <p className="text-sm text-gray-400">
-              © 2026 ESAP - Escuela Superior de Administracion Publica
+              © 2026 ESAP - Escuela Superior de Administración Pública
             </p>
           </div>
         </footer>

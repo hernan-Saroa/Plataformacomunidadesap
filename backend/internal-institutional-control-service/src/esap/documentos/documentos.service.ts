@@ -76,6 +76,9 @@ export class DocumentosService {
     tipoDocumento?: string;
     etapa?: string;
     search?: string;
+    planAnualVigencia?: number;
+    planAnualId?: string;
+    bibliotecaOnly?: boolean;
   }): Promise<Documento[]> {
     const query = this.documentoRepository.createQueryBuilder('documento')
       .leftJoinAndSelect('documento.auditoria', 'auditoria')
@@ -112,7 +115,47 @@ export class DocumentosService {
       );
     }
 
+    if (filters?.bibliotecaOnly) {
+      query.andWhere('documento.auditoriaId IS NULL');
+    }
+
+    if (filters?.planAnualId) {
+      query.andWhere('documento.planAnualId = :planAnualId', {
+        planAnualId: filters.planAnualId,
+      });
+    } else if (filters?.planAnualVigencia != null) {
+      query.andWhere('documento.planAnualVigencia IS NOT NULL');
+      query.andWhere('documento.planAnualVigencia = :planAnualVigencia', {
+        planAnualVigencia: filters.planAnualVigencia,
+      });
+    }
+
     return query.getMany();
+  }
+
+  /** Resuelve vigencia/plan desde auditoría si no vienen en el DTO */
+  private async resolverPlanAnualDesdeAuditoria(
+    auditoriaId: string | undefined,
+    planAnualVigencia?: number,
+    planAnualId?: string,
+  ): Promise<{ planAnualVigencia?: number; planAnualId?: string }> {
+    if (planAnualVigencia != null && planAnualId) {
+      return { planAnualVigencia, planAnualId };
+    }
+    if (!auditoriaId) {
+      return { planAnualVigencia, planAnualId };
+    }
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'planAnualVigencia', 'planAnualId'],
+    });
+    if (!aud) {
+      return { planAnualVigencia, planAnualId };
+    }
+    return {
+      planAnualVigencia: planAnualVigencia ?? aud.planAnualVigencia ?? undefined,
+      planAnualId: planAnualId ?? aud.planAnualId ?? undefined,
+    };
   }
 
   /**
@@ -191,6 +234,17 @@ export class DocumentosService {
    * Crea un nuevo documento (después de subir el archivo)
    */
   async create(createDto: CreateDocumentoDto, filePath: string): Promise<Documento> {
+    const planResuelto = await this.resolverPlanAnualDesdeAuditoria(
+      createDto.auditoriaId,
+      createDto.planAnualVigencia,
+      createDto.planAnualId,
+    );
+    const dtoConPlan = {
+      ...createDto,
+      planAnualVigencia: planResuelto.planAnualVigencia,
+      planAnualId: planResuelto.planAnualId,
+    };
+
     // Calcular hash del archivo
     const hashArchivo = await this.calcularHashArchivo(filePath);
 
@@ -204,7 +258,7 @@ export class DocumentosService {
     if (existente) {
       // Si existe, crear nueva versión
       const nuevaVersion = this.documentoRepository.create({
-        ...createDto,
+        ...dtoConPlan,
         rutaArchivo: filePath,
         hashArchivo,
         version: existente.version + 1,
@@ -217,7 +271,7 @@ export class DocumentosService {
     } else {
       // Crear nuevo documento
       const documento = this.documentoRepository.create({
-        ...createDto,
+        ...dtoConPlan,
         rutaArchivo: filePath,
         hashArchivo,
         version: 1,

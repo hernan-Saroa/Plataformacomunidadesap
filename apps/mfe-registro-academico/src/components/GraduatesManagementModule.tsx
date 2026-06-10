@@ -62,7 +62,11 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import React from 'react';
-import graduadosService, { GraduadoArchivo, GraduadoData } from '../../services/api/graduados.service';
+import graduadosService, {
+  CertificadoGraduado,
+  GraduadoArchivo,
+  GraduadoData,
+} from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
@@ -240,9 +244,9 @@ export function GraduatesManagementModule() {
     if (value.length > PERSON_NAME_MAX_LENGTH) {
       return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
     }
-    if (/\d/.test(value)) return `${label} no puede contener numeros`;
+    if (/\d/.test(value)) return `${label} no puede contener números`;
     if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
-      return `${label} solo puede contener letras, espacios, apostrofes, puntos o guiones`;
+      return `${label} solo puede contener letras, espacios, apóstrofes, puntos o guiones`;
     }
     return '';
   };
@@ -374,6 +378,48 @@ export function GraduatesManagementModule() {
   };
 
   const normalizeKey = (value?: string) => (value || '').trim().toLowerCase();
+  const normalizeDocumentKey = (value?: string) => {
+    const digits = (value || '').replace(/\D+/g, '');
+    return digits || normalizeKey(value);
+  };
+  const buildCertificateCountIndexes = (certificates: CertificadoGraduado[]) => {
+    const countsByGraduateId = new Map<string, number>();
+    const fallbackCountsByDocument = new Map<string, number>();
+    const seenCertificates = new Set<string>();
+
+    certificates.forEach((certificate) => {
+      const uniqueKey =
+        certificate.id ||
+        certificate.certificateNumber ||
+        certificate.verificationCode ||
+        `${certificate.graduateId || ''}:${certificate.idNumber || ''}:${certificate.issueDate || ''}`;
+      if (uniqueKey && seenCertificates.has(uniqueKey)) {
+        return;
+      }
+      if (uniqueKey) {
+        seenCertificates.add(uniqueKey);
+      }
+
+      const graduateId = (certificate.graduateId || '').trim();
+      if (graduateId) {
+        countsByGraduateId.set(
+          graduateId,
+          (countsByGraduateId.get(graduateId) || 0) + 1,
+        );
+        return;
+      }
+
+      const documentKey = normalizeDocumentKey(certificate.idNumber);
+      if (documentKey) {
+        fallbackCountsByDocument.set(
+          documentKey,
+          (fallbackCountsByDocument.get(documentKey) || 0) + 1,
+        );
+      }
+    });
+
+    return { countsByGraduateId, fallbackCountsByDocument };
+  };
   const normalizeDisplayName = (value?: string) => {
     const trimmed = (value || '').trim();
     if (!trimmed) return trimmed;
@@ -654,7 +700,7 @@ export function GraduatesManagementModule() {
         saveBlobAsFile(blob, file.originalName || 'archivo');
         return;
       } catch (error) {
-        console.warn('Fallo la descarga por endpoint dedicado, se intentara ruta publica', error);
+      console.warn('Falló la descarga por endpoint dedicado, se intentará ruta pública', error);
       }
     }
 
@@ -750,7 +796,7 @@ export function GraduatesManagementModule() {
             createdBy: createdBy?.trim() || undefined,
             asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
             // Valor inicial para render rápido; luego se actualiza en segundo plano.
-            certificatesCount: graduate.graduationDate ? 1 : 0,
+            certificatesCount: 0,
             numRegistro: graduate.numRegistro,
             numFolio: graduate.numFolio,
             numLibro: graduate.numLibro,
@@ -789,33 +835,22 @@ export function GraduatesManagementModule() {
           .then((certificatesResponse) => {
             if (!isMounted) return;
 
-            const certificatePrograms = new Map<string, Set<string>>();
-            (certificatesResponse || []).forEach((certificate) => {
-              if (!certificate.idNumber) return;
-              const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
-              if (!certificatePrograms.has(certificate.idNumber)) {
-                certificatePrograms.set(certificate.idNumber, new Set());
-              }
-              if (programKey) {
-                certificatePrograms.get(certificate.idNumber)!.add(programKey);
-              } else {
-                certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
-              }
-            });
-
-            const certificateCounts = new Map<string, number>();
-            certificatePrograms.forEach((programs, idNumber) => {
-              certificateCounts.set(idNumber, programs.size);
-            });
-
-            if (!certificateCounts.size) return;
+            const { countsByGraduateId, fallbackCountsByDocument } =
+              buildCertificateCountIndexes(certificatesResponse || []);
 
             setGraduates((prev) =>
-              prev.map((graduate) => ({
-                ...graduate,
-                certificatesCount:
-                  certificateCounts.get(graduate.document) ?? graduate.certificatesCount,
-              })),
+              prev.map((graduate) => {
+                const documentKey = normalizeDocumentKey(graduate.document);
+                return {
+                  ...graduate,
+                  certificatesCount:
+                    countsByGraduateId.get(graduate.id) ??
+                    (documentKey
+                      ? fallbackCountsByDocument.get(documentKey)
+                      : undefined) ??
+                    0,
+                };
+              }),
             );
           })
           .catch((error) => {
@@ -824,7 +859,7 @@ export function GraduatesManagementModule() {
       } catch (error) {
         console.error('Error cargando graduados:', error);
         toast.error('No se pudieron cargar los graduados', {
-          description: 'Intenta recargar la pagina o verifica tu conexion.',
+          description: 'Intenta recargar la página o verifica tu conexión.',
         });
         if (isMounted) {
           setGraduates([]);
@@ -1108,7 +1143,7 @@ export function GraduatesManagementModule() {
   const handleVerifyTitle = (user?: GraduateRow) => {
     if (!canVerifyGraduateCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Verificar Certificado para abrir esta validacion.',
+        description: 'Necesitas el permiso Verificar Certificado para abrir esta validación.',
       });
       return;
     }
@@ -1174,31 +1209,31 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!/^\d+$/.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener numeros');
+      toast.error('El documento solo puede contener números');
       return;
     }
     if (
       trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
       trimmedDocument.length > DOCUMENT_MAX_LENGTH
     ) {
-      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} digitos`);
+      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
       return;
     }
     if (!trimmedEmail) {
-      toast.error('El correo electronico es obligatorio');
+      toast.error('El correo electrónico es obligatorio');
       return;
     }
     if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
-      toast.error(`El correo electronico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
+      toast.error(`El correo electrónico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      toast.error('El correo electronico no tiene un formato valido');
+      toast.error('El correo electrónico no tiene un formato válido');
       return;
     }
     if (!trimmedProgram) {
-      toast.error('El programa academico es obligatorio');
+      toast.error('El programa académico es obligatorio');
       return;
     }
     if (!trimmedLocation) {
@@ -1312,7 +1347,7 @@ export function GraduatesManagementModule() {
   const handleOpenExportModal = () => {
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1324,8 +1359,8 @@ export function GraduatesManagementModule() {
 
     toast.info('No hay graduados para exportar', {
       description: hasActiveFilters
-        ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-        : 'Aun no existen graduados registrados para exportacion.',
+        ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+        : 'Aún no existen graduados registrados para exportación.',
     });
   };
 
@@ -1333,7 +1368,7 @@ export function GraduatesManagementModule() {
     if (isExporting) return;
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1342,7 +1377,7 @@ export function GraduatesManagementModule() {
     const endDate = parseDateOnly(exportEndDate);
 
     if (startDate && endDate && startDate > endDate) {
-      toast.error('Rango de fechas invalido', {
+      toast.error('Rango de fechas inválido', {
         description: 'La fecha inicial no puede ser mayor que la fecha final.',
       });
       return;
@@ -1353,8 +1388,8 @@ export function GraduatesManagementModule() {
     if (filteredUsers.length === 0) {
       toast.info('No hay graduados para exportar', {
         description: hasActiveFilters
-          ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-          : 'Aun no existen graduados registrados para exportacion.',
+          ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+          : 'Aún no existen graduados registrados para exportación.',
       });
       setIsExporting(false);
       return;
@@ -1425,7 +1460,7 @@ export function GraduatesManagementModule() {
     link.click();
     URL.revokeObjectURL(url);
 
-    toast.success('Exportacion completada', {
+    toast.success('Exportación completada', {
       description: `Se exportaron ${rows.length} graduados.`,
     });
     setIsExportModalOpen(false);
@@ -1447,7 +1482,7 @@ export function GraduatesManagementModule() {
 
   return (
     <>
-      <Toaster position="top-right" richColors />
+      <Toaster position="bottom-right" richColors />
       <Container4K className="space-y-6">
       {/* ✅ Modal de Validador de Certificados */}
       <ValidarCertificadoGrado 
@@ -1675,7 +1710,7 @@ export function GraduatesManagementModule() {
               Cargando graduados...
             </h3>
             <p className="text-sm text-[#6B7280]">
-              Estamos consultando la base de datos academica.
+              Estamos consultando la base de datos académica.
             </p>
           </div>
         ) : paginatedUsers.length === 0 ? (
@@ -1723,10 +1758,31 @@ export function GraduatesManagementModule() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-r border-b border-l-4 border-r-[#E5E7EB] border-b-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedUserId === user.id
+                    ? 'relative z-[1] border-l-[#003DA5] bg-[#F8FBFF]'
+                    : 'border-l-transparent hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal con Columnas */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedUserId === user.id}
+                  aria-label={`Ver detalles de ${user.firstName} ${user.lastName}`}
+                  onClick={() => handleViewDetails(user)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(user);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedUserId === user.id
+                      ? 'bg-gradient-to-r from-[#EFF6FF] via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado (Avatar + Nombre + Contacto) */}
                     <div className="col-span-3">
@@ -1811,9 +1867,16 @@ export function GraduatesManagementModule() {
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(user)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(user);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedUserId === user.id ? '#F0F6FF' : '#F9FAFB',
@@ -1833,6 +1896,7 @@ export function GraduatesManagementModule() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
@@ -1876,10 +1940,10 @@ export function GraduatesManagementModule() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-slate-200 [&>div]:bg-white [&>div]:p-3 [&>div]:shadow-sm">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documento
@@ -2194,7 +2258,7 @@ export function GraduatesManagementModule() {
                   <div className="min-w-0">
                     <DialogTitle className="flex items-center gap-2">
                       <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
-                      Archivos del titulo
+                      Archivos del título
                     </DialogTitle>
                     <DialogDescription>
                       {filesModalUser
@@ -2231,7 +2295,7 @@ export function GraduatesManagementModule() {
                       {MAX_FILES_PER_GRADUATE}
                     </p>
                     <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
-                      Limite
+                      Límite
                     </p>
                   </div>
                 </div>
@@ -2254,14 +2318,14 @@ export function GraduatesManagementModule() {
                         {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE} espacios usados
                       </p>
                       <p className="mt-0.5 text-xs" style={{ color: '#92400E' }}>
-                        Peso maximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
+                        Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
                       </p>
                     </div>
                     <span
                       className="rounded-full px-3 py-1 text-xs font-semibold"
                       style={{ background: '#FEF3C7', color: '#92400E' }}
                     >
-                      Limite {MAX_FILES_PER_GRADUATE}
+                      Límite {MAX_FILES_PER_GRADUATE}
                     </span>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: '#FEF3C7' }}>
@@ -2286,7 +2350,7 @@ export function GraduatesManagementModule() {
                     Documentos del graduado
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {['PDF', 'Word', 'Excel', 'Imagenes'].map((type) => (
+                    {['PDF', 'Word', 'Excel', 'Imágenes'].map((type) => (
                       <span
                         key={type}
                         className="rounded-full border bg-white px-3 py-1 text-xs font-semibold"
@@ -2462,7 +2526,7 @@ export function GraduatesManagementModule() {
                     No hay archivos cargados
                   </p>
                   <p className="mt-1 text-xs" style={{ color: '#64748B' }}>
-                    Aqui se mostraran los documentos asociados al graduado.
+                    Aquí se mostrarán los documentos asociados al graduado.
                   </p>
                 </div>
               ) : (
@@ -3157,10 +3221,10 @@ export function GraduatesManagementModule() {
                 <label htmlFor="includeSignature" className="flex-1 text-sm cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-gray-600" />
-                    <span className="font-medium text-gray-900">Incluir Firma Digital</span>
+                    <span className="font-medium text-gray-900">Incluir firma institucional</span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Agrega firma digital oficial de ESAP para mayor seguridad
+                    Agrega la firma visual del firmante autorizado de ESAP al certificado
                   </p>
                 </label>
               </div>

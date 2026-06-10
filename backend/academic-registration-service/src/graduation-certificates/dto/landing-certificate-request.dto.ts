@@ -25,6 +25,12 @@ export class LandingCertificateRequestDto {
   requesterEmail: string;
 
   /**
+   * Correo del graduado cuando el solicitante es el propio graduado.
+   * No debe copiarse desde solicitudes de empresa.
+   */
+  graduateEmail?: string;
+
+  /**
    * Teléfono del solicitante
    */
   requesterPhone?: string;
@@ -53,6 +59,12 @@ export class LandingCertificateRequestDto {
    * Graduado seleccionado por el usuario en la lista de coincidencias
    */
   selectedGraduateId?: string;
+
+  /**
+   * Crear solicitud de revision manual aunque exista una coincidencia activa.
+   * Se usa cuando el solicitante tiene otro titulo que no aparece digitalizado.
+   */
+  forceManualReview?: boolean;
 
   /**
    * Fecha de graduación en caso de que el solicitante la conozca

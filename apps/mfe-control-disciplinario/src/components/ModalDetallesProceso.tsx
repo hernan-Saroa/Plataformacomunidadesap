@@ -283,7 +283,7 @@ interface CargaActiva {
 }
 
 function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return '';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -1438,12 +1438,12 @@ function ModalNuevaActuacion({
         exit={{ opacity: 0, scale: 0.98, y: 12 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ maxWidth: 900, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        style={{ maxWidth: 900, maxHeight: '92vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '20px' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
-          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+          style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -1785,12 +1785,12 @@ function ModalNuevaTarea({
         exit={{ opacity: 0, scale: 0.98, y: 12 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ maxWidth: 920, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        style={{ maxWidth: 920, maxHeight: '92vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '20px' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
-          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+          style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -2242,7 +2242,7 @@ export function ModalDetallesProceso({
         };
       });
 
-      // ═══ Incluir archivos adjuntos de la noticia ═══
+      // ═══ Incluir archivos adjuntos de la noticia ═══ no se lo trporque duplica la evidencia
       console.log('[ModalDetallesProceso] archivosAdjuntos recibidos:', proceso.archivosAdjuntos);
       const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
         const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
@@ -2267,7 +2267,7 @@ export function ModalDetallesProceso({
       });
 
       console.log('[ModalDetallesProceso] total archivos:', mapped.length, ' + noticia:', archivosNoticia.length);
-      setArchivosBackend(mapped.concat(archivosNoticia));
+      setArchivosBackend(mapped);
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
       setArchivosBackend([]);
@@ -3028,10 +3028,13 @@ export function ModalDetallesProceso({
   }, [handleFilesSelected]);
 
   const pct             = Math.min(proceso.porcentajeTiempo, 100);
-  const diasTranscurridos = Math.max(0, 90 - proceso.diasRestantes);
+  const diasTranscurridos = pct < 100
+    ? Math.max(0, Math.round(proceso.diasRestantes * pct / (100 - pct)))
+    : Math.max(0, -proceso.diasRestantes);
   const sc              = SEMAFORO[proceso.semaforo] ?? SEMAFORO.rojo;
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
+  const isArchivado     = proceso.estadoActual === 'ARCHIVADO' || proceso.estadoActual === 'CERRADO' || proceso.etapaActual === 'Archivo';
 
   const TODOS_ARCHIVOS = archivosBackend;
   const ultimaActuacionActual = actuaciones[0]?.descripcion || proceso.ultimaActuacion;
@@ -3734,7 +3737,7 @@ export function ModalDetallesProceso({
             )}
             <div className="flex items-center gap-1 mt-0.5">
               <p className="text-[10px] text-gray-500">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
-              {archivo.firmante === 'Archivo de la noticia' && (
+              {archivo.firmante === 'Radicador' && (
                 <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-300">
                   De la noticia
                 </span>
@@ -3768,7 +3771,7 @@ export function ModalDetallesProceso({
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
             )} */}
-            {puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
+            {!isArchivado && puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -3778,7 +3781,7 @@ export function ModalDetallesProceso({
                 <Send className="w-3 h-3" /><span className="hidden sm:inline">Enviar a Revisión</span>
               </button>
             )}
-            {puedeRecargar && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
+            {!isArchivado && puedeRecargar && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleRecargarArchivo(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
@@ -4351,7 +4354,7 @@ export function ModalDetallesProceso({
                             <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
                             <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
                           </div>
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN) && (
+                          {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN) && (
                             <button
                               onClick={() => setMostrarModalReasignar(true)}
                               className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
@@ -4966,9 +4969,9 @@ export function ModalDetallesProceso({
                 {/* ── ARCHIVOS ── */}
                 {tabActiva === 'archivos' && (
                   <div className="space-y-3">
-                    {/* Acceso rápido — chips inline */}
+                    {/* Acceso rápido — chips inline (solo si no está archivado) */}
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {TIPO_ARCHIVO.map(({ tipo, label, icon: Icon, color, bg, border, onClick }) => {
+                      {!isArchivado && TIPO_ARCHIVO.map(({ tipo, label, icon: Icon, color, bg, border, onClick }) => {
                         const count = TODOS_ARCHIVOS.filter(a => a.tipo === tipo).length;
                         return (
                           <button key={tipo} onClick={onClick}
@@ -5459,7 +5462,7 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Historial
                       </span>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE) && (
+                      {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaActuacion(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
@@ -5719,7 +5722,7 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Tareas
                       </span>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TAREAS_CREATE) && (
+                      {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TAREAS_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaTarea(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
@@ -5865,7 +5868,7 @@ export function ModalDetallesProceso({
                           <div className="flex-1 min-w-0 pt-0.5">
                             <p className="text-[12px] font-semibold text-slate-800 leading-6 break-words">{nota.texto}</p>
                           </div>
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
+                          {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
                             <button
                               type="button"
                               onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
@@ -5958,8 +5961,8 @@ export function ModalDetallesProceso({
                       )}
                     </div>
 
-                    {/* Composición de nota */}
-                    <motion.div
+                    {/* Composición de nota (solo si no está archivado) */}
+                    {!isArchivado && <motion.div
                       layout
                       className="rounded-[28px] border border-blue-100 bg-[linear-gradient(180deg,rgba(248,250,255,0.98),rgba(255,255,255,0.98))] p-4 md:p-5 shadow-[0_18px_40px_rgba(0,61,165,0.07)]"
                     >
@@ -5993,7 +5996,7 @@ export function ModalDetallesProceso({
                         </button>
                         )}
                       </div>
-                    </motion.div>
+                    </motion.div>}
 
                     {/* Filtro por etapa (solo si hay notas) */}
                     {notas.length > 0 && notasTienenVariasEtapas && (
@@ -6288,7 +6291,7 @@ export function ModalDetallesProceso({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300]"
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100000]"
               onClick={(e) => e.target === e.currentTarget && setMostrarModalEnvioJuridica(false)}
             >
               <motion.div

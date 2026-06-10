@@ -191,11 +191,11 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
   const validarFormulario = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // RN-001: Radicado 23 dígitos
+    // RN-001: Radicado entre 11 y 23 dígitos
     if (!formData.radicado) {
       newErrors.radicado = 'El código de radicación es obligatorio';
-    } else if (!/^\d{23}$/.test(formData.radicado)) {
-      newErrors.radicado = 'Debe tener exactamente 23 dígitos numéricos';
+    } else if (!/^\d{11,23}$/.test(formData.radicado)) {
+      newErrors.radicado = 'Debe tener entre 11 y 23 dígitos numéricos';
     }
 
     // RN-001: Jurisdicción requerida
@@ -408,7 +408,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
 
             <div className="mb-4">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Código Único de Radicación (23 dígitos) <span className="text-red-600">*</span>
+                Código Único de Radicación (11-23 dígitos) <span className="text-red-600">*</span>
               </label>
               <input
                 type="text"

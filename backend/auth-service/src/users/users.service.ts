@@ -164,63 +164,67 @@ export class UsersService {
 
     const cargo = this.resolveDisciplinaryCargo(qualifyingRoles);
 
-    if (previousEmail && previousEmail !== currentEmail) {
-      await manager.query(
-        `
-          UPDATE ${this.disciplinaryProfessionalTableRef}
-          SET
-            email = $1,
-            nombre_completo = $2,
-            telefono = $3,
-            cargo = $4,
-            especialidad = NULL,
-            tipo_contrato = NULL,
-            territorial = NULL,
-            capacidad_maxima = 10,
-            estado = 'ACTIVO',
-            updated_at = NOW()
-          WHERE email = $5
-        `,
-        [
-          currentEmail,
-          user.person.full_name,
-          user.person.phone || null,
-          cargo,
-          previousEmail,
-        ],
-      );
-    }
+     if (previousEmail && previousEmail !== currentEmail) {
+       await manager.query(
+         `
+           UPDATE ${this.disciplinaryProfessionalTableRef}
+           SET
+             email = $1,
+             nombre_completo = $2,
+             telefono = $3,
+             cargo = $4,
+             especialidad = NULL,
+             tipo_contrato = NULL,
+             territorial = NULL,
+             capacidad_maxima = 10,
+             estado = 'ACTIVO',
+             updated_at = NOW(),
+             id_user = $5
+           WHERE email = $6
+         `,
+         [
+           currentEmail,
+           user.person.full_name,
+           user.person.phone || null,
+           cargo,
+           user.id_user,
+           previousEmail,
+         ],
+       );
+     }
 
-    await manager.query(
-      `
-        INSERT INTO ${this.disciplinaryProfessionalTableRef} (
-          nombre_completo,
-          email,
-          telefono,
-          cargo,
-          especialidad,
-          tipo_contrato,
-          territorial,
-          capacidad_maxima,
-          estado,
-          created_at,
-          updated_at
-        )
-        VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 10, 'ACTIVO', NOW(), NOW())
-        ON CONFLICT (email) DO UPDATE
-        SET
-          nombre_completo = EXCLUDED.nombre_completo,
-          telefono = EXCLUDED.telefono,
-          cargo = EXCLUDED.cargo,
-          especialidad = NULL,
-          tipo_contrato = NULL,
-          territorial = NULL,
-          capacidad_maxima = 10,
-          estado = 'ACTIVO',
-          updated_at = NOW()
-      `,
-      [user.person.full_name, currentEmail, user.person.phone || null, cargo],
-    );
+     await manager.query(
+       `
+         INSERT INTO ${this.disciplinaryProfessionalTableRef} (
+           nombre_completo,
+           email,
+           telefono,
+           cargo,
+           especialidad,
+           tipo_contrato,
+           territorial,
+           capacidad_maxima,
+           estado,
+           created_at,
+           updated_at,
+           id_user
+         )
+         VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 10, 'ACTIVO', NOW(), NOW(), $5)
+         ON CONFLICT (email) DO UPDATE
+         SET
+           nombre_completo = EXCLUDED.nombre_completo,
+           telefono = EXCLUDED.telefono,
+           cargo = EXCLUDED.cargo,
+           especialidad = NULL,
+           tipo_contrato = NULL,
+           territorial = NULL,
+           capacidad_maxima = 10,
+           estado = 'ACTIVO',
+           updated_at = NOW(),
+           id_user = EXCLUDED.id_user
+       `,
+       [user.person.full_name, currentEmail, user.person.phone || null, cargo, user.id_user],
+     );
   }
 
   private normalizeEmail(value: unknown): string {

@@ -24,159 +24,7 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
-// DATOS MOCK INLINE (temporales para demo)
-const notificacionesMock: any[] = [
-  {
-    id: 'NOT-2025-001',
-    etapa: 'PENDIENTE_VERIFICACIÓN',
-    tipo: 'NUEVA_DEMANDA',
-    tipoProceso: 'Acción Popular',
-    asunto: 'Nueva demanda radicada - Acción Popular',
-    descripcion: 'Se ha radicado nueva demanda por acción popular contra ESAP',
-    fechaRadicacion: new Date('2024-12-24'),
-    remitente: 'Juzgado 10 Administrativo Bogotá',
-    despachoOrigen: 'Juzgado 10 Admin. Bogotá',
-    radicadoExterno: '25000-33-10-001-2024-00234-00',
-    urgente: true,
-    leida: false,
-    documentosAdjuntos: ['demanda.pdf', 'anexos.pdf']
-  },
-  {
-    id: 'NOT-2025-002',
-    etapa: 'PENDIENTE_VERIFICACIÓN',
-    tipo: 'TERMINO_CERCANO',
-    tipoProceso: 'Laboral',
-    asunto: 'Término cercano - Contestación demanda DJ-2024-089',
-    descripcion: 'Quedan 3 días para contestar demanda DJ-2024-089',
-    fechaRadicacion: new Date('2024-12-24'),
-    remitente: 'Juzgado 3 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 3 Laboral Bogotá',
-    radicadoExterno: '11001-31-03-002-2024-00567-00',
-    urgente: true,
-    leida: false,
-    documentosAdjuntos: ['notificacion.pdf']
-  },
-  {
-    id: 'NOT-2025-003',
-    etapa: 'CLASIFICADA',
-    tipo: 'AUDIENCIA',
-    tipoProceso: 'NRD',
-    asunto: 'Audiencia programada - Proceso DJ-2024-045',
-    descripcion: 'Audiencia de conciliación el 15 de enero de 2025',
-    fechaRadicacion: new Date('2024-12-23'),
-    remitente: 'Tribunal Administrativo de Cundinamarca',
-    despachoOrigen: 'Tribunal Admin. Cundinamarca',
-    radicadoExterno: '25000-23-42-000-2024-01234-01',
-    urgente: false,
-    leida: false,
-    documentosAdjuntos: ['citacion_audiencia.pdf']
-  },
-  {
-    id: 'NOT-2024-156',
-    etapa: 'CLASIFICADA',
-    tipo: 'AUTO_ADMISORIO',
-    tipoProceso: 'Laboral',
-    asunto: 'Auto admisorio notificado - DJ-2024-102',
-    descripcion: 'Se notificó auto admisorio de demanda laboral',
-    fechaRadicacion: new Date('2024-12-22'),
-    remitente: 'Juzgado 5 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 5 Laboral Bogotá',
-    radicadoExterno: '11001-31-05-001-2024-00789-00',
-    urgente: false,
-    leida: false,
-    documentosAdjuntos: ['auto_admisorio.pdf']
-  },
-  {
-    id: 'NOT-2024-155',
-    etapa: 'CLASIFICADA',
-    tipo: 'DOCUMENTO_RECIBIDO',
-    tipoProceso: 'Consulta Jurídica',
-    asunto: 'Documento recibido - Oficina Jurídica',
-    descripcion: 'Concepto jurídico sobre contratación directa',
-    fechaRadicacion: new Date('2024-12-21'),
-    remitente: 'Contraloría General de la República',
-    despachoOrigen: 'Contraloría General',
-    radicadoExterno: 'CGR-DOC-2024-1567',
-    urgente: false,
-    leida: false,
-    documentosAdjuntos: ['concepto_contratacion.pdf']
-  },
-  {
-    id: 'NOT-2024-154',
-    etapa: 'DISTRIBUIDA',
-    tipo: 'NUEVA_DEMANDA',
-    tipoProceso: 'Reparación Directa',
-    asunto: 'Demanda distribuida a abogado externo',
-    descripcion: 'DJ-2024-098 asignada a Dr. Carlos Mendoza',
-    fechaRadicacion: new Date('2024-12-20'),
-    remitente: 'Juzgado 15 Administrativo Bogotá',
-    despachoOrigen: 'Juzgado 15 Admin. Bogotá',
-    radicadoExterno: '25000-33-15-001-2024-00456-00',
-    urgente: false,
-    leida: true,
-    documentosAdjuntos: ['demanda.pdf']
-  },
-  {
-    id: 'NOT-2024-153',
-    etapa: 'DISTRIBUIDA',
-    tipo: 'AUDIENCIA',
-    tipoProceso: 'NRD',
-    asunto: 'Audiencia finalizada - DJ-2024-045',
-    descripcion: 'Audiencia de conciliación sin acuerdo',
-    fechaRadicacion: new Date('2024-12-19'),
-    remitente: 'Tribunal Administrativo de Cundinamarca',
-    despachoOrigen: 'Tribunal Admin. Cundinamarca',
-    radicadoExterno: '25000-23-42-000-2024-01234-01',
-    urgente: false,
-    leida: true,
-    documentosAdjuntos: ['acta_audiencia.pdf']
-  },
-  {
-    id: 'NOT-2024-152',
-    etapa: 'DISTRIBUIDA',
-    tipo: 'FALLO',
-    tipoProceso: 'Laboral',
-    asunto: 'Sentencia notificada - DJ-2023-078',
-    descripcion: 'Sentencia desfavorable en primera instancia',
-    fechaRadicacion: new Date('2024-12-18'),
-    remitente: 'Juzgado 7 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 7 Laboral Bogotá',
-    radicadoExterno: '11001-31-07-001-2023-00987-00',
-    urgente: false,
-    leida: true,
-    documentosAdjuntos: ['sentencia.pdf', 'argumentos.pdf']
-  },
-  {
-    id: 'NOT-2024-151',
-    etapa: 'ARCHIVADA',
-    tipo: 'TERMINO_VENCIDO',
-    tipoProceso: 'NRD',
-    asunto: 'Término vencido - Desistimiento aceptado',
-    descripcion: 'Proceso DJ-2024-012 terminado por desistimiento',
-    fechaRadicacion: new Date('2024-12-15'),
-    remitente: 'Juzgado 8 Administrativo Bogotá',
-    despachoOrigen: 'Juzgado 8 Admin. Bogotá',
-    radicadoExterno: '25000-33-08-001-2024-00123-00',
-    urgente: false,
-    leida: true,
-    documentosAdjuntos: ['desistimiento.pdf']
-  },
-  {
-    id: 'NOT-2024-150',
-    etapa: 'ARCHIVADA',
-    tipo: 'ARCHIVO',
-    tipoProceso: 'Acción de Tutela',
-    asunto: 'Proceso archivado - DJ-2024-003',
-    descripcion: 'Proceso archivado por falta de competencia',
-    fechaRadicacion: new Date('2024-12-10'),
-    remitente: 'Juzgado 12 Penal Municipal Bogotá',
-    despachoOrigen: 'Juzgado 12 Penal Bogotá',
-    radicadoExterno: '11001-60-00-2024-00789-00',
-    urgente: false,
-    leida: true,
-    documentosAdjuntos: ['auto_archivo.pdf']
-  }
-];
+import { correosJuridicosService } from '../../../../services/api/legal.service';
 
 type TabBandejaType = 'pendientes' | 'leidas' | 'archivadas' | 'urgentes';
 
@@ -193,6 +41,39 @@ export function ModuloBuzonNotificacionesV3() {
   const [filtroUrgencia, setFiltroUrgencia] = useState<string>('TODOS');
   const [notificacionSeleccionada, setNotificacionSeleccionada] = useState<Notificacion | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+    const [notificacionesData, setNotificacionesData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchNotificaciones = async () => {
+      setIsLoading(true);
+      try {
+        const correos = await correosJuridicosService.getCorreos();
+        const mapped = correos.map(c => ({
+          id: c.id,
+          etapa: c.archivado ? 'ARCHIVADA' : c.leido ? 'DISTRIBUIDA' : 'PENDIENTE_VERIFICACIÓN',
+          tipo: c.categoria || c.tipo || 'NUEVA_DEMANDA',
+          tipoProceso: c.categoria || 'General',
+          asunto: c.asunto,
+          descripcion: c.cuerpoTexto || 'Sin descripción',
+          fechaRadicacion: new Date(c.fechaRecepcion || Date.now()),
+          remitente: c.remitenteNombre || c.remitenteEmail,
+          despachoOrigen: 'Despacho',
+          radicadoExterno: c.graphMessageId,
+          urgente: c.urgente,
+          leida: c.leido,
+          documentosAdjuntos: c.tieneAdjuntos ? ['Adjunto'] : []
+        }));
+        setNotificacionesData(mapped);
+      } catch (error) {
+        console.error('Error fetching correos:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchNotificaciones();
+  }, []);
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // ✨ Estados para paginación
@@ -236,7 +117,7 @@ export function ModuloBuzonNotificacionesV3() {
   };
 
   const notificacionesFiltradas = useMemo(() => {
-    let resultado = [...notificacionesMock];
+    let resultado = [...notificacionesData];
 
     // Filtrar por tab
     switch (tabActiva) {
@@ -273,7 +154,7 @@ export function ModuloBuzonNotificacionesV3() {
     }
 
     return resultado;
-  }, [tabActiva, busqueda, filtroEstado, filtroUrgencia]);
+  }, [notificacionesData, tabActiva, busqueda, filtroEstado, filtroUrgencia]);
 
   // ✨ Aplicar paginación
   const totalPaginas = Math.ceil(notificacionesFiltradas.length / ITEMS_POR_PAGINA);
@@ -317,9 +198,9 @@ export function ModuloBuzonNotificacionesV3() {
   };
 
   // Métricas
-  const totalPendientes = notificacionesMock.filter(n => n.etapa === 'PENDIENTE_VERIFICACIÓN' || n.etapa === 'CLASIFICADA').length;
-  const totalUrgentes = notificacionesMock.filter(n => n.urgente === true).length;
-  const totalArchivadas = notificacionesMock.filter(n => n.etapa === 'ARCHIVADA').length;
+  const totalPendientes = notificacionesData.filter(n => n.etapa === 'PENDIENTE_VERIFICACIÓN' || n.etapa === 'CLASIFICADA').length;
+  const totalUrgentes = notificacionesData.filter(n => n.urgente === true).length;
+  const totalArchivadas = notificacionesData.filter(n => n.etapa === 'ARCHIVADA').length;
 
   return (
     <div className="space-y-4">

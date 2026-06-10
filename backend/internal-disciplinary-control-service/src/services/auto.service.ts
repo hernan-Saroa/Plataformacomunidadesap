@@ -240,6 +240,15 @@ export class AutoService {
       auto.numero = await this.sequenceService.generateAutoConsecutivo();
       await this.prepareApprovedDocument(auto);
 
+      // Embeber firma del jefe si está configurada
+      if (auto.documentUrl && this.isPdfDocument(auto)) {
+        try {
+          await this.pdfModifierService.addSignature(auto.documentUrl, 'Jefe Control Disciplinario', 'Jefe Oficina');
+        } catch (e) {
+          console.warn('Firma del jefe no disponible, se omite del PDF:', e.message);
+        }
+      }
+
       // Nota: Para auto pliego de cargos, se aprueba pero no se cierra el proceso inmediatamente.
       // El envío a jurídica se hace posteriormente mediante el botón "Envío a jurídica".
 
@@ -253,6 +262,7 @@ export class AutoService {
           auto.processId,
           auto.etapaDestino as ProcessStage,
           new Date(),
+          aprobadoPorId,
         );
       }
 

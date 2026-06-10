@@ -21,7 +21,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 17 Febrero 2026
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, FileText, Calendar, Users, Target, Clock, CheckCircle,
@@ -59,9 +59,10 @@ import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
+import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
 
 // Servicio API
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
 import { configuracionesProfesionalesOCIApi } from './services/api';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { exportarPDFInformeEjecutivo } from './services/exportarPDFInformeCierreEjecutivo';
@@ -281,6 +282,93 @@ const PESTANAS_BASE: { id: TabActiva; label: string; icon: typeof Info }[] = [
   { id: 'historial', label: 'Historial', icon: History },
 ];
 
+/** Orden de avance en el Kanban OCI */
+const ORDEN_FASES_EXPEDIENTE: EstadoAuditoria[] = [
+  'planeacion',
+  'ejecucion',
+  'comunicacion',
+  'seguimiento',
+  'finalizada',
+];
+
+const TAB_REQUIERE_FASE: Partial<Record<TabActiva, EstadoAuditoria>> = {
+  planeacion: 'planeacion',
+  ejecucion: 'ejecucion',
+  comunicacion: 'comunicacion',
+  seguimiento: 'seguimiento',
+  finalizada: 'finalizada',
+};
+
+function indiceFaseExpediente(estado: EstadoAuditoria): number {
+  const i = ORDEN_FASES_EXPEDIENTE.indexOf(estado);
+  return i >= 0 ? i : 0;
+}
+
+/** General, Documentación e Historial siempre; fases futuras ocultas */
+function pestanaVisibleParaFase(tabId: TabActiva, estadoActual: EstadoAuditoria): boolean {
+  if (tabId === 'general' || tabId === 'documentacion' || tabId === 'historial') {
+    return true;
+  }
+  const faseTab = TAB_REQUIERE_FASE[tabId];
+  if (!faseTab) return true;
+  if (tabId === 'finalizada') return estadoActual === 'finalizada';
+  return indiceFaseExpediente(estadoActual) >= indiceFaseExpediente(faseTab);
+}
+
+function filtrarPestanasPorEstado(
+  estadoActual: EstadoAuditoria | undefined,
+): typeof PESTANAS_BASE {
+  if (!estadoActual) {
+    return PESTANAS_BASE.filter((p) =>
+      ['general', 'documentacion', 'historial'].includes(p.id),
+    );
+  }
+  // Auditoría cerrada: todas las pestañas (consulta histórica por fase)
+  if (estadoActual === 'finalizada') {
+    return [...PESTANAS_BASE];
+  }
+  return PESTANAS_BASE.filter((p) => pestanaVisibleParaFase(p.id, estadoActual));
+}
+
+/**
+ * Modal expediente: sin animación fade-in (evita quedar en opacity 0) y centrado real.
+ */
+/** Tamaño fijo en escritorio: ~860×920 (más alto que ancho) */
+const ESTILO_MODAL_EXPEDIENTE: CSSProperties = {
+  width: 'min(94vw, 940px)',
+  maxWidth: 940,
+  height: 'min(90dvh, 920px)',
+  maxHeight: '90vh',
+  minHeight: 480,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+};
+
+/** Complementa size="expediente" del Dialog */
+const CLASE_MODAL_EXPEDIENTE = [
+  'gap-0 p-0 flex flex-col h-full min-h-0 overflow-hidden',
+  'bg-white text-gray-900 opacity-100',
+  'animate-none data-[state=open]:animate-none data-[state=closed]:animate-none',
+  'data-[state=open]:opacity-100 data-[state=open]:zoom-in-100',
+].join(' ');
+
+// Cache en memoria para profesionales OCI (evita GET en cada apertura de expediente)
+let cacheProfesionalesOCI: { data: any[]; ts: number } | null = null;
+const CACHE_PROFESIONALES_MS = 5 * 60 * 1000;
+
+function agruparEvidenciasPorHallazgo(evidencias: any[]): Record<string, any[]> {
+  const map: Record<string, any[]> = {};
+  for (const ev of evidencias || []) {
+    const hid = ev.hallazgoId || ev.hallazgo_id || ev.hallazgo?.id;
+    if (!hid) continue;
+    const key = String(hid);
+    if (!map[key]) map[key] = [];
+    map[key].push(ev);
+  }
+  return map;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
@@ -352,23 +440,147 @@ export function ExpedienteAuditoriaCompleto({
   const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
   // Ref para guardar el doc de cierre y re-inyectarlo en cada recarga
   const documentoCierreRef = useRef<DocumentoExpediente | null>(null);
+  const auditoriaDataInicialRef = useRef<any>(null);
+  const cargaEnCursoRef = useRef<string | null>(null);
+  const [hallazgosExpediente, setHallazgosExpediente] = useState<Hallazgo[]>([]);
+  const [evidenciasPorHallazgoExpediente, setEvidenciasPorHallazgoExpediente] = useState<
+    Record<string, any[]>
+  >({});
+  const [documentosBackendRaw, setDocumentosBackendRaw] = useState<any[]>([]);
   const [loadingDocumentos, setLoadingDocumentos] = useState(false);
   const [historial, setHistorial] = useState<EventoHistorial[]>([]);
-  // ✅ Iniciar en loading=true si hay auditoriaId
-  const [loading, setLoading] = useState(!!auditoriaId);
+  /** Bloqueo total solo si aún no hay datos para mostrar */
+  const [loading, setLoading] = useState(false);
+  /** Sincronización en segundo plano (con vista previa del Kanban visible) */
+  const [refreshing, setRefreshing] = useState(false);
+  /** true cuando terminó la carga inicial/recarga (evita pasar precarga vacía a hijos) */
+  const [expedienteListo, setExpedienteListo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recargarTrigger, setRecargarTrigger] = useState(0);
 
-  // ✅ Cargar datos del backend cuando se abre el modal
-  useEffect(() => {
-    const cargarAuditoria = async () => {
-      if (!isOpen || !auditoriaId) return;
+  /** Vista previa instantánea con datos que ya trae la tarjeta del Kanban */
+  const construirAuditoriaDesdeKanban = (card: any): Auditoria => {
+    const progresoFases = calcularProgresoPorFases(card.fase, card.progreso);
+    const estadoKanban = card.estadoKanban || card.estado || card.fase || '';
+    const e = String(estadoKanban).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let estado: EstadoAuditoria = 'planeacion';
+    if (e.includes('ejecucion') || e.includes('en curso')) estado = 'ejecucion';
+    else if (e.includes('comunicacion') || e.includes('revision')) estado = 'comunicacion';
+    else if (e.includes('seguimiento')) estado = 'seguimiento';
+    else if (e.includes('finalizada') || e.includes('completada')) estado = 'finalizada';
 
-      setLoading(true);
+    return {
+      id: card.id,
+      codigo: card.codigo || `AUD-${String(card.id || '').slice(0, 8)}`,
+      nombre: card.titulo || card.nombre || card.descripcion || 'Auditoría',
+      territorial: card.territorial,
+      tipo: 'Sede',
+      estado,
+      areaAuditable: card.areaObjetivo || card.territorial || 'Sin área definida',
+      procesoNombre: card.areaObjetivo || card.titulo || '',
+      nivelRiesgo: (card.riesgo || card.riesgoKanban || 'Medio') as NivelRiesgo,
+      responsableArea: {
+        id: '1',
+        nombre: card.auditorLider?.nombre || card.auditorLider || 'Sin responsable',
+        cargo: 'Responsable',
+        email: '',
+      },
+      auditorLider: {
+        id: '1',
+        nombre: typeof card.auditorLider === 'string' ? card.auditorLider : card.auditorLider?.nombre || 'Sin auditor líder',
+        email: '',
+      },
+      equipoAuditores: [],
+      cronograma: {
+        fechaCreacion: new Date(card.fechaInicio || Date.now()),
+        fechaInicio: new Date(card.fechaInicio || Date.now()),
+        fechaFin: new Date(card.fechaFin || Date.now()),
+        duracionDias: 0,
+        diasTranscurridos: 0,
+      },
+      progreso: progresoFases,
+      estadisticas: {
+        totalHallazgos: Number(card.hallazgos) || 0,
+        hallazgosCriticos: 0,
+        hallazgosMayores: 0,
+        hallazgosMenores: Number(card.hallazgos) || 0,
+        documentosCargados: Number(card.documentos) || 0,
+        notificacionesEnviadas: 0,
+      },
+      fechasClave: {
+        planeacionInicio: card.fechaInicio ? new Date(card.fechaInicio) : undefined,
+      },
+      metadata: {
+        creadoPor: 'Sistema',
+        fechaCreacion: new Date(),
+        ultimaModificacion: new Date(),
+        modificadoPor: 'Sistema',
+        version: 1,
+      },
+      checklistCompletados: card.checklistCompletados || {},
+    };
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (auditoriaDataInicial) {
+      auditoriaDataInicialRef.current = auditoriaDataInicial;
+      setAuditoria(construirAuditoriaDesdeKanban(auditoriaDataInicial));
+    }
+  }, [isOpen, auditoriaId, auditoriaDataInicial]);
+
+  // ✅ Cargar datos del backend cuando se abre el modal (paralelo + sin bloquear por profesionales)
+  useEffect(() => {
+    if (!isOpen) {
+      setAuditoria(null);
+      setDocumentos([]);
+      setHistorial([]);
+      setHallazgosExpediente([]);
+      setEvidenciasPorHallazgoExpediente({});
+      setDocumentosBackendRaw([]);
+      documentoCierreRef.current = null;
+      auditoriaDataInicialRef.current = null;
+      cargaEnCursoRef.current = null;
+      setLoading(false);
+      setRefreshing(false);
+      setExpedienteListo(false);
+      setError(null);
+      return;
+    }
+    if (!auditoriaId) return;
+
+    setExpedienteListo(false);
+
+    const claveCarga = `${auditoriaId}:${recargarTrigger}`;
+    if (cargaEnCursoRef.current === claveCarga) return;
+    cargaEnCursoRef.current = claveCarga;
+
+    let cancelled = false;
+
+    const cargarAuditoria = async () => {
+      const snapshotInicial = auditoriaDataInicialRef.current;
+      const snapshotKanban = snapshotInicial
+        ? construirAuditoriaDesdeKanban(snapshotInicial)
+        : null;
+      if (snapshotKanban && !cancelled) {
+        setAuditoria(snapshotKanban);
+      }
+      if (snapshotKanban) {
+        setRefreshing(true);
+        setLoading(false);
+      } else {
+        setLoading(true);
+        setRefreshing(false);
+      }
       setError(null);
 
       try {
-        const data = await controlInternoService.getAuditoriaById(auditoriaId);
+        const [data, hallazgosData, historialData] = await Promise.all([
+          controlInternoService.getAuditoriaById(auditoriaId),
+          controlInternoService.getHallazgosByAuditoria(auditoriaId).catch(() => []),
+          controlInternoService.getHistorialAuditoria(auditoriaId).catch(() => []),
+        ]);
+        if (cancelled) return;
 
         // Mapear datos del backend a la estructura del frontend
         const progresoFases = calcularProgresoPorFases(data.fase, data.progreso);
@@ -454,23 +666,31 @@ export function ExpedienteAuditoriaCompleto({
           checklistCompletados: data.checklistCompletados || {},
         };
 
+        if (cancelled) return;
         setAuditoria(auditoriaBackend);
 
-        // ✅ Cargar documentos de la auditoría desde el backend
-        const documentosFinales: DocumentoExpediente[] = [];
+        if (Array.isArray(hallazgosData)) {
+          setHallazgosExpediente(hallazgosData as Hallazgo[]);
+        }
 
+        const documentosFinales: DocumentoExpediente[] = [];
         try {
-          const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
-          const documentosMapeados = mapearDocumentosBackend(documentosData);
-          documentosFinales.push(...documentosMapeados);
+          const { documentos: docsYevidencias, evidenciasRaw, documentosBackendRaw: docsRaw } =
+            await cargarDocumentosYevidencias(auditoriaId);
+          if (!cancelled) {
+            documentosFinales.push(...docsYevidencias);
+            setDocumentosBackendRaw(Array.isArray(docsRaw) ? docsRaw : []);
+            setEvidenciasPorHallazgoExpediente(agruparEvidenciasPorHallazgo(evidenciasRaw));
+          }
         } catch (docErr) {
           console.error('Error cargando documentos:', docErr);
         }
+        if (cancelled) return;
 
         // ✅ Si existe documento de cierre, agregarlo SIEMPRE al inicio
-        // PRIORIDAD: auditoriaDataInicial (del Kanban, siempre actualizado) > data (de getAuditoriaById)
+        // PRIORIDAD: snapshot Kanban > data (de getAuditoriaById)
         const documentoCierre =
-          auditoriaDataInicial?.documentoCierre ||
+          snapshotInicial?.documentoCierre ||
           data.documentoCierre ||
           data.documento_cierre;
         if (documentoCierre && documentoCierre.url) {
@@ -502,98 +722,117 @@ export function ExpedienteAuditoriaCompleto({
         }
 
         setDocumentos(documentosFinales);
-        console.log(`[Expediente] ✅ Cargados ${documentosFinales.length} documentos (cierre: ${!!documentoCierre})`);
 
-        // ✅ Cargar hallazgos para estadísticas reales
-        try {
-          const hallazgosData = await controlInternoService.getHallazgosByAuditoria(auditoriaId);
-          if (Array.isArray(hallazgosData)) {
-            const criticos = hallazgosData.filter(h => 
-              (h as any).gravedad?.toLowerCase() === 'crítico' || 
+        if (Array.isArray(hallazgosData)) {
+          const criticos = hallazgosData.filter(
+            (h) =>
+              (h as any).gravedad?.toLowerCase() === 'crítico' ||
               (h as any).gravedad?.toLowerCase() === 'critico' ||
-              h.categoria === 'critico'
-            ).length;
-            const mayores = hallazgosData.filter(h => (h as any).gravedad?.toLowerCase() === 'mayor').length;
-            const menores = hallazgosData.filter(h => (h as any).gravedad?.toLowerCase() === 'menor' || !((h as any).gravedad)).length;
-            
-            setAuditoria(prev => prev ? ({
-              ...prev,
-              estadisticas: {
-                ...prev.estadisticas,
-                totalHallazgos: hallazgosData.length,
-                hallazgosCriticos: criticos,
-                hallazgosMayores: mayores,
-                hallazgosMenores: menores
-              }
-            }) : null);
-          }
-        } catch (hErr) {
-          console.error('Error cargando hallazgos para estadísticas:', hErr);
+              h.categoria === 'critico',
+          ).length;
+          const mayores = hallazgosData.filter(
+            (h) => (h as any).gravedad?.toLowerCase() === 'mayor',
+          ).length;
+          const menores = hallazgosData.filter(
+            (h) => (h as any).gravedad?.toLowerCase() === 'menor' || !(h as any).gravedad,
+          ).length;
+
+          setAuditoria((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  estadisticas: {
+                    ...prev.estadisticas,
+                    totalHallazgos: hallazgosData.length,
+                    hallazgosCriticos: criticos,
+                    hallazgosMayores: mayores,
+                    hallazgosMenores: menores,
+                  },
+                }
+              : null,
+          );
         }
 
-        // ✅ ENRIQUECIMIENTO DE EMAILS (Búsqueda en configuración de profesionales)
-        try {
-          const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
-          const profs = Array.isArray(profsRes.data) ? profsRes.data : (Array.isArray(profsRes) ? profsRes : []);
-          
-          if (profs.length > 0) {
-            setAuditoria(prev => {
+        setHistorial(
+          Array.isArray(historialData) ? mapearHistorialBackend(historialData) : [],
+        );
+
+        // Emails de profesionales: en segundo plano (cache 5 min, no bloquea la UI)
+        void (async () => {
+          try {
+            let profs: any[] = [];
+            const ahora = Date.now();
+            if (
+              cacheProfesionalesOCI &&
+              ahora - cacheProfesionalesOCI.ts < CACHE_PROFESIONALES_MS
+            ) {
+              profs = cacheProfesionalesOCI.data;
+            } else {
+              const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
+              profs = Array.isArray(profsRes.data)
+                ? profsRes.data
+                : Array.isArray(profsRes)
+                  ? profsRes
+                  : [];
+              if (profs.length > 0) {
+                cacheProfesionalesOCI = { data: profs, ts: ahora };
+              }
+            }
+            if (profs.length === 0) return;
+
+            setAuditoria((prev) => {
               if (!prev) return null;
-              
               const matchProf = (pId: string, pNombre: string) => {
                 const n = (pNombre || '').toLowerCase().trim();
-                return profs.find(p => {
-                  if (pId && pId !== '1' && (p.idTercero == pId || p.id == pId || p.identificacion == pId)) return true;
-                  const pName = (p.nombre || p.persona?.nombre || p.nom_largo || p.nombreCompleto || '').toLowerCase().trim();
+                return profs.find((p: any) => {
+                  if (pId && pId !== '1' && (p.idTercero == pId || p.id == pId || p.identificacion == pId))
+                    return true;
+                  const pName = (p.nombre || p.persona?.nombre || p.nom_largo || p.nombreCompleto || '')
+                    .toLowerCase()
+                    .trim();
                   if (!pName || !n) return false;
                   if (pName === n || pName.includes(n) || n.includes(pName)) return true;
-                  const tP = pName.split(/\s+/).filter(t => t.length > 2);
-                  const tN = n.split(/\s+/).filter(t => t.length > 2);
-                  return tP.filter(t => tN.includes(t)).length >= 2;
+                  const tP = pName.split(/\s+/).filter((t: string) => t.length > 2);
+                  const tN = n.split(/\s+/).filter((t: string) => t.length > 2);
+                  return tP.filter((t: string) => tN.includes(t)).length >= 2;
                 });
               };
-
-              // Enriquecer Líder
               const foundLider = matchProf(prev.auditorLider.id, prev.auditorLider.nombre);
-              const emailLider = foundLider?.email || foundLider?.persona?.email || prev.auditorLider.email;
-
-              // Enriquecer Equipo
-              const equipoEnriquecido = prev.equipoAuditores.map(aud => {
+              const emailLider =
+                foundLider?.email || foundLider?.persona?.email || prev.auditorLider.email;
+              const equipoEnriquecido = prev.equipoAuditores.map((aud) => {
                 const found = matchProf(aud.id, aud.nombre);
                 return { ...aud, email: found?.email || found?.persona?.email || aud.email };
               });
-
               return {
                 ...prev,
                 auditorLider: { ...prev.auditorLider, email: emailLider },
-                equipoAuditores: equipoEnriquecido
+                equipoAuditores: equipoEnriquecido,
               };
             });
+          } catch (err) {
+            console.error('Error enriqueciendo correos de profesionales:', err);
           }
-        } catch (err) {
-          console.error('Error enriqueciendo correos de profesionales:', err);
-        }
-
-        // ✅ Cargar historial de la auditoría desde el backend
-        try {
-          const historialData = await controlInternoService.getHistorialAuditoria(auditoriaId);
-          const historialMapeado = mapearHistorialBackend(historialData);
-          setHistorial(historialMapeado);
-        } catch (histErr) {
-          console.error('Error cargando historial:', histErr);
-          // Si falla el historial, no bloquear - simplemente mostrar vacío
-          setHistorial([]);
-        }
+        })();
       } catch (err: any) {
         console.error('Error cargando auditoría:', err);
-        setError(err.message || 'Error desconocido');
-        // Mantener los datos de ejemplo en caso de error
+        if (!cancelled) setError(err?.message || 'Error desconocido');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+          setExpedienteListo(true);
+          if (cargaEnCursoRef.current === claveCarga) {
+            cargaEnCursoRef.current = null;
+          }
+        }
       }
     };
 
-    cargarAuditoria();
+    void cargarAuditoria();
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, auditoriaId, recargarTrigger]);
 
   // ✅ Función para mapear historial del backend al formato del frontend
@@ -679,6 +918,49 @@ export function ExpedienteAuditoriaCompleto({
     }));
   }
 
+  /** Evidencias de hallazgos/acciones (tabla evidencia_documento, no documentos) */
+  function mapearEvidenciasBackend(data: any[]): DocumentoExpediente[] {
+    const baseUrl = getDocumentosBaseUrl();
+    return (data || []).map((ev: any) => ({
+      id: ev.id,
+      nombre: ev.nombre || ev.nombreArchivoOriginal || 'Evidencia',
+      tipo: 'Evidencia' as DocumentoExpediente['tipo'],
+      fase: 'ejecucion' as DocumentoExpediente['fase'],
+      fechaCarga: new Date(ev.fechaSubida || ev.createdAt || Date.now()),
+      cargadoPor: ev.subidoPor || 'Sistema',
+      size: formatFileSize(Number(ev.tamanioBytes) || 0),
+      tipoMime: ev.tipoMime || 'application/octet-stream',
+      urlPreview: `${baseUrl}/evidencias/${ev.id}/preview`,
+      urlDownload: `${baseUrl}/evidencias/${ev.id}/download`,
+      version: 1,
+      descripcion:
+        ev.descripcion ||
+        (ev.hallazgoId ? '📎 Evidencia de hallazgo' : '📎 Evidencia adjunta'),
+    }));
+  }
+
+  async function cargarDocumentosYevidencias(auditoriaIdParam: string): Promise<{
+    documentos: DocumentoExpediente[];
+    evidenciasRaw: any[];
+    documentosBackendRaw: any[];
+  }> {
+    const [documentosData, evidenciasData] = await Promise.all([
+      controlInternoService.getDocumentosByAuditoria(auditoriaIdParam).catch(() => []),
+      controlInternoService.getEvidenciasByAuditoria(auditoriaIdParam).catch(() => []),
+    ]);
+    const docsRaw = Array.isArray(documentosData) ? documentosData : [];
+    const evidenciasRaw = Array.isArray(evidenciasData) ? evidenciasData : [];
+    const documentosMapeados = mapearDocumentosBackend(docsRaw);
+    const evidenciasMapeadas = mapearEvidenciasBackend(evidenciasRaw);
+    const ids = new Set(documentosMapeados.map((d) => d.id));
+    const evidenciasSinDuplicar = evidenciasMapeadas.filter((e) => !ids.has(e.id));
+    return {
+      documentos: [...documentosMapeados, ...evidenciasSinDuplicar],
+      evidenciasRaw,
+      documentosBackendRaw: docsRaw,
+    };
+  }
+
   // ✅ Obtener URL base del servicio de documentos
   function getDocumentosBaseUrl(): string {
     const serviceUrl = getServiceUrl('control-institucional');
@@ -738,8 +1020,10 @@ export function ExpedienteAuditoriaCompleto({
 
     setLoadingDocumentos(true);
     try {
-      const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
-      const documentosMapeados = mapearDocumentosBackend(documentosData);
+      const { documentos: documentosMapeados, evidenciasRaw, documentosBackendRaw: docsRaw } =
+        await cargarDocumentosYevidencias(auditoriaId);
+      setDocumentosBackendRaw(docsRaw);
+      setEvidenciasPorHallazgoExpediente(agruparEvidenciasPorHallazgo(evidenciasRaw));
       // ✅ Re-inyectar el documento de cierre al inicio si existe
       if (documentoCierreRef.current) {
         documentosMapeados.unshift(documentoCierreRef.current);
@@ -820,19 +1104,17 @@ export function ExpedienteAuditoriaCompleto({
 
   // Funciones auxiliares para mapeo
   function mapearEstado(fase: string): EstadoAuditoria {
-    const mapeo: Record<string, EstadoAuditoria> = {
-      'planeacion': 'planeacion',
-      'Planeación': 'planeacion',
-      'en-curso': 'ejecucion',
-      'Ejecución': 'ejecucion',
-      'revision': 'comunicacion',
-      'Comunicación': 'comunicacion',
-      'completada': 'finalizada',
-      'Seguimiento': 'seguimiento',
-      'seguimiento': 'seguimiento',
-      'Finalizada': 'finalizada',
-    };
-    return mapeo[fase] || 'planeacion';
+    const e = String(fase || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    if (e.includes('plan anual') || e.includes('planeacion')) return 'planeacion';
+    if (e.includes('ejecucion') || e.includes('en curso') || e === 'en-curso') return 'ejecucion';
+    if (e.includes('comunicacion') || e.includes('revision')) return 'comunicacion';
+    if (e.includes('seguimiento')) return 'seguimiento';
+    if (e.includes('finalizada') || e.includes('completada')) return 'finalizada';
+    return 'planeacion';
   }
 
   function calcularDiasDuracion(fechaInicio: string, fechaFin: string): number {
@@ -874,6 +1156,25 @@ export function ExpedienteAuditoriaCompleto({
       setActiveTab(tab);
     }
   }, [isOpen, tabInicial, auditoria?.estado]);
+
+  const pestanasVisibles = useMemo(
+    () => filtrarPestanasPorEstado(auditoria?.estado),
+    [auditoria?.estado],
+  );
+
+  // Si la pestaña activa quedó oculta (ej. Comunicación estando en Planeación), volver a una válida
+  useEffect(() => {
+    if (!auditoria?.estado || pestanasVisibles.length === 0) return;
+    const ids = new Set(pestanasVisibles.map((p) => p.id));
+    if (!ids.has(activeTab)) {
+      const preferida =
+        pestanasVisibles.find((p) => p.id === getTabAutomatico())?.id ??
+        pestanasVisibles.find((p) => p.id === 'planeacion')?.id ??
+        pestanasVisibles[0]?.id ??
+        'general';
+      setActiveTab(preferida);
+    }
+  }, [auditoria?.estado, pestanasVisibles, activeTab]);
 
   // Cuando la auditoría pasa a Finalizada (ej. tras aprobar informe cierre), ir al tab Finalizada
   useEffect(() => {
@@ -1207,43 +1508,46 @@ export function ExpedienteAuditoriaCompleto({
     }
   };
 
-  // ✅ Si está cargando o no hay auditoria, mostrar loading
-  if (loading || !auditoria) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent
-          hideCloseButton
-          className="w-[92vw] max-w-[1073px] lg:max-w-6xl h-[95vh] flex flex-col p-0 items-center justify-center"
-        >
-          <DialogTitle className="sr-only">Cargando expediente</DialogTitle>
-          <DialogDescription className="sr-only">Cargando datos de la auditoría</DialogDescription>
-          <div className="flex flex-col items-center gap-4 p-8">
-            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-gray-600">Cargando expediente de auditoría...</p>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
+        size="expediente"
         hideCloseButton
-        className="w-[92vw] max-w-[1073px] lg:max-w-6xl h-[95vh] flex flex-col p-0"
+        className={CLASE_MODAL_EXPEDIENTE}
+        style={ESTILO_MODAL_EXPEDIENTE}
       >
         <DialogTitle className="sr-only">
-          Expediente de Auditoría {auditoria.codigo}
+          Expediente de Auditoría {auditoria?.codigo || auditoriaId || ''}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Visualización completa del expediente con 6 tabs: General, Planeación, Ejecución, Comunicación, Documentación e Historial
+          Visualización completa del expediente con pestañas por fase
         </DialogDescription>
 
+        <div className="flex flex-col flex-1 min-h-0 h-full w-full relative overflow-hidden">
+        {loading && !auditoria && (
+          <div
+            className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-white rounded-xl"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="w-11 h-11 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700">Cargando expediente…</p>
+            {error && <p className="text-red-600 text-sm px-6 text-center">{error}</p>}
+          </div>
+        )}
+
+        {!auditoria && !loading && error && (
+          <div className="flex flex-1 min-h-[280px] items-center justify-center p-8 text-center text-red-600">
+            {error}
+          </div>
+        )}
+
+        {auditoria && (
+          <>
         {/* ═════════════════════════════════════════════════════════════════
             HEADER GRADIENTE - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
+        <div className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
@@ -1259,6 +1563,12 @@ export function ExpedienteAuditoriaCompleto({
                   {/* Subtítulo - SEGÚN ESTÁNDAR: text-sm text-blue-100 */}
                   <p className="text-sm text-blue-100">
                     {auditoria.codigo} · {auditoria.nombre}
+                    {refreshing && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-blue-200">
+                        <Activity className="w-3 h-3 animate-spin" />
+                        sincronizando…
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1301,20 +1611,21 @@ export function ExpedienteAuditoriaCompleto({
             TABS PERSONALIZADOS (No está en estándar, pero se mantiene)
             ═════════════════════════════════════════════════════════════════ */}
         <div className="shrink-0 border-b bg-gray-50">
-          <div className="flex overflow-x-auto px-6 scrollbar-hide">
-            {(PESTANAS_BASE.filter((p) => p.id !== 'finalizada' || auditoria?.estado === 'finalizada')).map((pestana) => {
+          <div className="flex flex-wrap sm:flex-nowrap justify-start items-end gap-x-1 gap-y-0 overflow-x-auto px-4 sm:px-6 scrollbar-hide">
+            {pestanasVisibles.map((pestana) => {
               const Icon = pestana.icon;
               const isActive = activeTab === pestana.id;
 
               return (
                 <button
                   key={pestana.id}
+                  type="button"
                   onClick={() => setActiveTab(pestana.id)}
                   className={`
-                    flex items-center gap-2 px-4 py-3 border-b-2 transition-all whitespace-nowrap
+                    shrink-0 flex items-center gap-2 px-3 sm:px-4 py-3 border-b-2 transition-all whitespace-nowrap text-sm
                     ${isActive
-                      ? 'border-blue-600 text-blue-700 font-bold'
-                      : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'
+                      ? 'border-blue-600 text-blue-700 font-bold bg-white'
+                      : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900 hover:bg-white/60'
                     }
                   `}
                 >
@@ -1334,10 +1645,11 @@ export function ExpedienteAuditoriaCompleto({
         {/* ═════════════════════════════════════════════════════════════════
             CONTENIDO PRINCIPAL - SEGÚN ESTÁNDAR: flex-1 overflow-y-auto
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 sm:px-6 py-3 sm:py-4">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
+              className="min-h-0"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
@@ -1347,30 +1659,38 @@ export function ExpedienteAuditoriaCompleto({
               {activeTab === 'planeacion' && (
                 <TabPlaneacion
                   auditoria={auditoria}
-                  checklistCompletados={auditoria.checklistCompletados}
-                  onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
                   readOnly={auditoria.estado === 'finalizada'}
+                  documentosAuditoriaBackend={
+                    expedienteListo ? documentosBackendRaw : undefined
+                  }
                 />
               )}
               {activeTab === 'ejecucion' && (
                 <TabEjecucion
                   auditoria={auditoria}
-                  checklistCompletados={auditoria.checklistCompletados}
-                  onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
+                  onRecargarDocumentos={recargarDocumentos}
                   readOnly={auditoria.estado === 'finalizada'}
+                  hallazgosPrecargados={expedienteListo ? hallazgosExpediente : undefined}
+                  evidenciasPorHallazgoPrecargadas={
+                    expedienteListo ? evidenciasPorHallazgoExpediente : undefined
+                  }
+                  documentosAuditoriaBackend={
+                    expedienteListo ? documentosBackendRaw : undefined
+                  }
                 />
               )}
               {activeTab === 'comunicacion' && (
                 <TabComunicacion
                   auditoria={auditoria}
-                  checklistCompletados={auditoria.checklistCompletados}
-                  onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
                   onComunicacionCompletada={() => {
                     setRecargarTrigger(t => t + 1);
                     setActiveTab('seguimiento');
                     onComunicacionCompletadaProp?.();
                   }}
                   readOnly={auditoria.estado === 'finalizada'}
+                  documentosAuditoriaBackend={
+                    expedienteListo ? documentosBackendRaw : undefined
+                  }
                 />
               )}
               {activeTab === 'seguimiento' && (
@@ -1404,6 +1724,7 @@ export function ExpedienteAuditoriaCompleto({
                   auditoriaId={auditoria.id}
                   auditoria={auditoria}
                   documentos={documentos}
+                  hallazgosPrecargados={expedienteListo ? hallazgosExpediente : undefined}
                 />
               )}
             </motion.div>
@@ -1413,13 +1734,13 @@ export function ExpedienteAuditoriaCompleto({
         {/* ═════════════════════════════════════════════════════════════════
             FOOTER - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="shrink-0 bg-linear-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
+        <div className="shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             {/* IZQUIERDA: MÉTRICAS */}
-            <div className="flex items-center gap-3">
-              <div className="text-xs text-gray-600">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="text-[11px] sm:text-xs text-gray-600 leading-snug">
                 <strong className="font-black" style={{ color: '#003DA5' }}>
-                  {(PESTANAS_BASE.find(p => p.id === activeTab) || PESTANAS_BASE[0])?.label}
+                  {(pestanasVisibles.find((p) => p.id === activeTab) || pestanasVisibles[0])?.label}
                 </strong> ·
                 <strong className="text-green-600"> {auditoria.progreso.general}% completado</strong> ·
                 <strong className="text-orange-600"> {diasRestantes} días restantes</strong>
@@ -1434,12 +1755,15 @@ export function ExpedienteAuditoriaCompleto({
               variant="outline"
               size="sm"
               onClick={generarInformePDF}
-              className="font-bold border-blue-600 text-blue-700 hover:bg-blue-50"
+              className="font-bold border-blue-600 text-blue-700 hover:bg-blue-50 shrink-0 self-start sm:self-center"
             >
               <FileText className="w-4 h-4 mr-2" />
               Generar Informe
             </Button>
           </div>
+        </div>
+          </>
+        )}
         </div>
       </DialogContent>
     </Dialog>
@@ -1680,15 +2004,26 @@ function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: 
 }
 
 // TAB 2: PLANEACIÓN
-interface TabFaseProps {
+interface DatosCompartidosExpediente {
+  hallazgosPrecargados?: Hallazgo[];
+  evidenciasPorHallazgoPrecargadas?: Record<string, any[]>;
+  documentosAuditoriaBackend?: any[];
+}
+
+interface TabFaseProps extends DatosCompartidosExpediente {
   auditoria: Auditoria;
   checklistCompletados?: Record<string, boolean>;
   onToggleChecklist?: (id: string, completado: boolean) => void;
   onComunicacionCompletada?: () => void;
+  onRecargarDocumentos?: () => Promise<void> | void;
   readOnly?: boolean;
 }
 
-function TabPlaneacion({ auditoria, readOnly }: TabFaseProps) {
+function TabPlaneacion({
+  auditoria,
+  readOnly,
+  documentosAuditoriaBackend,
+}: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-blue-600 bg-blue-50">
@@ -1700,17 +2035,29 @@ function TabPlaneacion({ auditoria, readOnly }: TabFaseProps) {
           </div>
         </div>
       </Card>
+      <SeccionDocumentosPorEtapa
+        auditoriaId={auditoria.id}
+        etapa="planeacion"
+      />
       <SeccionListasChequeoExpediente
         auditoriaId={auditoria.id}
         etapaActual="Planeación"
         readOnly={readOnly}
+        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
       />
     </div>
   );
 }
 
 // TAB 3: EJECUCIÓN
-function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, readOnly }: TabFaseProps) {
+function TabEjecucion({
+  auditoria,
+  onRecargarDocumentos,
+  readOnly,
+  hallazgosPrecargados,
+  evidenciasPorHallazgoPrecargadas,
+  documentosAuditoriaBackend,
+}: TabFaseProps) {
   const [modalAperturaOpen, setModalAperturaOpen] = useState(false);
   const [modalCierreOpen, setModalCierreOpen] = useState(false);
   const [reunionApertura, setReunionApertura] = useState<any | null>(null);
@@ -1784,14 +2131,7 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
         </div>
       </div>
 
-      {/* 2. LISTAS DE CHEQUEO DE EJECUCIÓN */}
-      <SeccionListasChequeoExpediente
-        auditoriaId={auditoria.id}
-        etapaActual="Ejecución"
-        readOnly={readOnly}
-      />
-
-      {/* 3. REUNIÓN DE CIERRE */}
+      {/* 2. REUNIÓN DE CIERRE */}
       <div className="bg-white border-2 border-emerald-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -1822,20 +2162,36 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
         </div>
       </div>
 
-      {/* 4. HALLAZGOS (Preliminar e Identificados) */}
+      {/* 3. HALLAZGOS (Preliminar e Identificados) */}
       <div className="bg-white border-2 border-red-200 rounded-lg p-5">
         <SeccionHallazgosExpediente
           auditoriaId={auditoria.id}
           auditoriaNombre={auditoria.nombre || auditoria.codigo}
           permitirTipoPreliminar
+          onEvidenciasActualizadas={onRecargarDocumentos}
+          hallazgosPrecargados={hallazgosPrecargados}
+          evidenciasPorHallazgoPrecargadas={evidenciasPorHallazgoPrecargadas}
         />
       </div>
 
+      {/* 4. TAREAS Y ACTIVIDADES */}
       <div className="bg-white border-2 border-blue-200 rounded-lg p-4">
         <SeccionTareasExpediente auditoriaId={auditoria.id} />
       </div>
 
-      {/* DOCUMENTOS DE EJECUCIÓN (al final) */}
+      {/* 5. DOCUMENTOS DE EJECUCIÓN */}
+      <SeccionDocumentosPorEtapa
+        auditoriaId={auditoria.id}
+        etapa="ejecucion"
+      />
+
+      {/* 6. LISTAS DE CHEQUEO DE EJECUCIÓN (al final) */}
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Ejecución"
+        readOnly={readOnly}
+        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
+      />
 
       <ModalReunionApertura
         isOpen={modalAperturaOpen}
@@ -1858,7 +2214,12 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
 }
 
 // TAB 4: COMUNICACIÓN — Mismo patrón que Planeación/Ejecución: Card + contenido. Flujo: Informe Preliminar, Gestión Hallazgos, Decisión, Plan Mejoramiento
-function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabFaseProps) {
+function TabComunicacion({
+  auditoria,
+  onComunicacionCompletada,
+  readOnly,
+  documentosAuditoriaBackend,
+}: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-green-600 bg-green-50">
@@ -1871,13 +2232,6 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
         </div>
       </Card>
 
-      {/* LISTAS DE CHEQUEO DE COMUNICACIÓN */}
-      <SeccionListasChequeoExpediente
-        auditoriaId={auditoria.id}
-        etapaActual="Comunicación"
-        readOnly={readOnly}
-      />
-
       {/* MÓDULO DE COMUNICACIÓN */}
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
         <ComunicacionAuditoriaModule
@@ -1889,7 +2243,18 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
           readOnly={readOnly}
         />
       </div>
-      {/* DOCUMENTOS DE COMUNICACIÓN (al final) */}
+      {/* DOCUMENTOS DE COMUNICACIÓN */}
+      <SeccionDocumentosPorEtapa
+        auditoriaId={auditoria.id}
+        etapa="comunicacion"
+      />
+      {/* LISTAS DE CHEQUEO DE COMUNICACIÓN (al final) */}
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Comunicación"
+        readOnly={readOnly}
+        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
+      />
     </div>
   );
 }
@@ -2214,10 +2579,11 @@ interface TabFinalizadaProps {
   auditoriaId: string;
   auditoria: Auditoria;
   documentos: DocumentoExpediente[];
+  hallazgosPrecargados?: Hallazgo[];
 }
 
 /** Tab Finalizada: Preliminar, Final y Ejecutivo se generan por la plataforma. Documento de Cierre se sube en Seguimiento. */
-function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProps) {
+function TabFinalizada({ auditoriaId, auditoria, documentos, hallazgosPrecargados }: TabFinalizadaProps) {
   const [resumen, setResumen] = useState<any>(null);
   const [planes, setPlanes] = useState<any[]>([]);
   const [hallazgos, setHallazgos] = useState<any[]>([]);
@@ -2228,10 +2594,15 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
     const cargar = async () => {
       setLoading(true);
       try {
+        const hallazgosPromise =
+          hallazgosPrecargados !== undefined
+            ? Promise.resolve(hallazgosPrecargados)
+            : controlInternoService.getHallazgosByAuditoria(auditoriaId).catch(() => []);
+
         const [resCierre, planesData, hallazgosData, planIndData] = await Promise.all([
           controlInternoService.getResumenEjecutivoCierre(auditoriaId).catch(() => null),
           controlInternoService.getPlanesMejoramientoByAuditoria(auditoriaId).catch(() => []),
-          controlInternoService.getHallazgosByAuditoria(auditoriaId).catch(() => []),
+          hallazgosPromise,
           controlInternoService.getPlanIndividualByAuditoria(auditoriaId).catch(() => null),
         ]);
         if (!cancelled) {
@@ -2246,7 +2617,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
     };
     cargar();
     return () => { cancelled = true; };
-  }, [auditoriaId]);
+  }, [auditoriaId, hallazgosPrecargados]);
 
   const todasLasAcciones = useMemo(() => {
     const out: { planCodigo: string; accion: any }[] = [];

@@ -614,12 +614,26 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
     }
 
-    /**
-     * Obtiene las noticias asociadas a los procesos de un profesional específico
-     */
-    async getMisNoticias(profesionalId: string): Promise<DisciplinaryNews[]> {
-        return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
-    }
+/**
+      * Obtiene las noticias asociadas a los procesos de un profesional específico
+      */
+     async getMisNoticias(profesionalId: string): Promise<DisciplinaryNews[]> {
+         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
+     }
+
+     /**
+      * Obtiene los documentos/adjuntos de una noticia
+      * Permite acceder a los archivos adjuntos de la noticia original sin necesidad de proceso asociado
+      */
+     async getDocumentosNoticia(noticiaId: string): Promise<{
+         noticia: { id: string; radicado: string };
+         documentos: any[];
+     }> {
+         return apiClient.get<{
+             noticia: { id: string; radicado: string };
+             documentos: any[];
+         }>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/documents`);
+     }
 
     async returnNews(id: string, observaciones: string, radicadorId?: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones, radicadorId });
@@ -662,11 +676,19 @@ class DisciplinaryService {
 
 
 
-    // --- PROCESOS ---
+// --- PROCESOS ---
 
-    async getAllProcesos(): Promise<DisciplinaryProcess[]> {
-        return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes`);
-    }
+     async getAllProcesos(): Promise<DisciplinaryProcess[]> {
+         return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes`);
+     }
+
+     /**
+      * Obtiene todas las noticias RADICADA con documentos adjuntos
+      * Estas noticias no tienen proceso asociado aún
+      */
+     async getNoticiasRadicadasConDocumentos(): Promise<any[]> {
+         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-processes/radicated-news`);
+     }
 
     async getAutosByProceso(processId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);

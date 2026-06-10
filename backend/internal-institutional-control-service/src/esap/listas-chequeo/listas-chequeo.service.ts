@@ -55,7 +55,7 @@ export class ListasChequeoService {
   }
 
   /**
-   * Garantiza que la lista se cree/actualice solo en la misma etapa Kanban en que está la auditoría.
+   * Valida auditoría y etapa Kanban indicada (sin exigir que coincida con la fase actual del tablero).
    */
   private async validarVinculacionAuditoriaEtapa(
     auditoriaId: string | undefined,
@@ -93,21 +93,42 @@ export class ListasChequeoService {
 
     if (!nombreEtapaLista) {
       throw new BadRequestException(
-        'Debe indicar la etapa Kanban (etapaKanbanId / etapaNombreKanban) acorde a la auditoría.',
+        'Debe indicar la etapa Kanban (etapaKanbanId / etapaNombreKanban).',
       );
     }
+  }
 
-    if (!this.nombresEtapaEquivalentes(nombreEtapaLista, String(estadoActual))) {
-      throw new BadRequestException(
-        `La etapa de la lista debe coincidir con la etapa actual de la auditoría en el Kanban (${estadoActual}). No puede crearse para etapas anteriores o posteriores.`,
-      );
+  private async resolverPlanAnualLista(
+    auditoriaId: string | undefined,
+    planAnualVigencia?: number,
+    planAnualId?: string,
+  ): Promise<{ planAnualVigencia?: number; planAnualId?: string }> {
+    if (planAnualVigencia != null && planAnualId) {
+      return { planAnualVigencia, planAnualId };
     }
+    if (!auditoriaId) {
+      return { planAnualVigencia, planAnualId };
+    }
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'planAnualVigencia', 'planAnualId'],
+    });
+    if (!aud) {
+      return { planAnualVigencia, planAnualId };
+    }
+    return {
+      planAnualVigencia: planAnualVigencia ?? aud.planAnualVigencia ?? undefined,
+      planAnualId: planAnualId ?? aud.planAnualId ?? undefined,
+    };
   }
 
   /**
    * Obtener todas las listas de chequeo (excluyendo eliminadas)
    */
-  async findAll(includeInactive: boolean = false): Promise<ListaChequeo[]> {
+  async findAll(
+    includeInactive: boolean = false,
+    filters?: { planAnualVigencia?: number; planAnualId?: string },
+  ): Promise<ListaChequeo[]> {
     try {
       const queryBuilder = this.listaChequeoRepository
         .createQueryBuilder('lista')
@@ -118,6 +139,18 @@ export class ListasChequeoService {
         queryBuilder.andWhere('lista.activa = :activa', { activa: true });
       }
 
+      if (filters?.planAnualId) {
+        queryBuilder.andWhere('lista.planAnualId = :planAnualId', {
+          planAnualId: filters.planAnualId,
+        });
+      } else if (filters?.planAnualVigencia != null) {
+        queryBuilder
+          .andWhere('lista.planAnualVigencia IS NOT NULL')
+          .andWhere('lista.planAnualVigencia = :planAnualVigencia', {
+            planAnualVigencia: filters.planAnualVigencia,
+          });
+      }
+
       queryBuilder
         .orderBy('lista.created_at', 'DESC')
         .addOrderBy('items.orden', 'ASC');
@@ -125,15 +158,23 @@ export class ListasChequeoService {
       return await queryBuilder.getMany();
     } catch (error) {
       console.error('Error en findAll listas-chequeo:', error);
-      // Intento fallback sin relaciones
-      const where: any = {};
+      const qb = this.listaChequeoRepository
+        .createQueryBuilder('lista')
+        .where('lista.deleted_at IS NULL');
       if (!includeInactive) {
-        where.activa = true;
+        qb.andWhere('lista.activa = :activa', { activa: true });
       }
-      return this.listaChequeoRepository.find({
-        where,
-        order: { createdAt: 'DESC' },
-      });
+      if (filters?.planAnualId) {
+        qb.andWhere('lista.planAnualId = :planAnualId', {
+          planAnualId: filters.planAnualId,
+        });
+      } else if (filters?.planAnualVigencia != null) {
+        qb.andWhere('lista.planAnualVigencia IS NOT NULL').andWhere(
+          'lista.planAnualVigencia = :planAnualVigencia',
+          { planAnualVigencia: filters.planAnualVigencia },
+        );
+      }
+      return qb.orderBy('lista.created_at', 'DESC').getMany();
     }
   }
 
@@ -208,6 +249,12 @@ export class ListasChequeoService {
       createDto.etapaNombreKanban,
     );
 
+    const planResuelto = await this.resolverPlanAnualLista(
+      createDto.auditoriaId,
+      createDto.planAnualVigencia,
+      createDto.planAnualId,
+    );
+
     // Crear la lista con valores por defecto para campos requeridos
     const lista = this.listaChequeoRepository.create({
       codigo: createDto.codigo.toUpperCase(),
@@ -241,6 +288,8 @@ export class ListasChequeoService {
       // ✅ VINCULACIÓN CON ETAPA KANBAN DINÁMICA
       etapaKanbanId: createDto.etapaKanbanId,
       etapaNombreKanban: createDto.etapaNombreKanban,
+      planAnualVigencia: planResuelto.planAnualVigencia,
+      planAnualId: planResuelto.planAnualId,
     });
 
     const listaGuardada = await this.listaChequeoRepository.save(lista);

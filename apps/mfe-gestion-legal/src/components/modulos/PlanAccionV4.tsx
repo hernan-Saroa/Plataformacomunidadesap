@@ -88,49 +88,7 @@ const mapEjeFromBackend = (eje: string) => {
     default: return 'GESTION_INSTITUCIONAL';
   }
 };
-// ==================== DATOS MOCK ====================
-const indicadoresMock: Indicador[] = [
-  // Ejemplo 1 - GESTIÓN INSTITUCIONAL
-  {
-    id: 'IND-2025-001',
-    codigo: 'GI-001',
-    nombre: 'Reducción de términos vencidos en procesos judiciales',
-    descripcion: 'Reducir en 20% los términos vencidos en defensa judicial',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dr. Carlos Mendoza Torres',
-    meta: 80,
-    valorActual: 75,
-    avance: 94,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'EFICIENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-28')
-  },
-  // Ejemplo 2 - TRANSPARENCIA
-  {
-    id: 'IND-2025-005',
-    codigo: 'TR-001',
-    nombre: 'Publicación de decisiones judiciales relevantes',
-    descripcion: 'Publicar el 100% de decisiones en plataforma institucional',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dra. Laura Martínez',
-    meta: 100,
-    valorActual: 92,
-    avance: 92,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'TRANSPARENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-27')
-  }
-];
+
 
 const mapEjeToBackend = (eje: string) => {
   switch (eje) {

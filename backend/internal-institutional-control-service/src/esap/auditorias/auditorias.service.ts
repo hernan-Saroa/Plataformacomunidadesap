@@ -409,9 +409,15 @@ export class AuditoriasService {
     }
 
     if (filters?.planAnualVigencia != null && !Number.isNaN(Number(filters.planAnualVigencia))) {
-      query.andWhere('auditoria.planAnualVigencia = :planAnualVigencia', {
-        planAnualVigencia: Number(filters.planAnualVigencia),
-      });
+      const vigencia = Number(filters.planAnualVigencia);
+      query.andWhere(
+        `(auditoria.planAnualVigencia = :planAnualVigencia OR (
+          auditoria.planAnualVigencia IS NULL
+          AND auditoria.fechaInicio IS NOT NULL
+          AND EXTRACT(YEAR FROM auditoria.fechaInicio) = :planAnualVigencia
+        ))`,
+        { planAnualVigencia: vigencia },
+      );
     } else if (filters?.year != null && Number.isFinite(filters.year)) {
       query.andWhere('EXTRACT(YEAR FROM auditoria.fechaInicio) = :year', {
         year: filters.year,
@@ -3599,7 +3605,7 @@ export class AuditoriasService {
     
     // 1. Notificar al equipo OCI (Jefe, Líder, Supervisor, Admins)
     try {
-      await this.notificacionesService.dispararEvento('EVT-AUD-CREATED', {
+      await this.notificacionesService.dispararEvento('EVT-AUD-001', {
         auditoriaId: auditoria.id,
         auditoriaCodigo: auditoria.codigo,
         tituloCustom: `Nueva Auditoría Creada: ${auditoria.codigo}`,
@@ -3631,7 +3637,7 @@ export class AuditoriasService {
           auditoriaId: auditoria.id,
           auditoriaCodigo: auditoria.codigo,
           auditoriaNombre: auditoria.nombre,
-          tipoNotificacion: 'EVT-AUD-CREATED',
+          tipoNotificacion: 'EVT-AUD-001',
           titulo: `Su área ha sido seleccionada para auditoría: ${auditoria.codigo}`,
           mensaje:
             `Estimado/a ${auditoria.responsableAreaNombre || 'Responsable'}, ` +
@@ -3670,7 +3676,7 @@ export class AuditoriasService {
     console.log(`[AuditoriasService.crearNotificacionesCambioEstado] 🚀 Disparando evento de cambio de estado para ${auditoria.codigo}`);
     
     try {
-      await this.notificacionesService.dispararEvento('EVT-KANBAN-MOV', {
+      await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: auditoria.id,
         auditoriaCodigo: auditoria.codigo,
         tituloCustom: `Cambio de Estado - Auditoría ${auditoria.codigo}`,

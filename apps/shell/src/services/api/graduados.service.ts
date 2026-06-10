@@ -120,6 +120,7 @@ export interface SolicitudCertificadoGraduado {
     createdAt: string;
   }>;
   reviewFiles?: GraduationReviewFile[];
+  requesterSupportFile?: GraduationRequesterSupportFile | null;
   requestDate: string;
   updatedAt?: string;
   validationDate?: string;
@@ -153,8 +154,6 @@ export interface CertificadoGraduado {
   status: "VALID" | "REVOKED" | "EXPIRED";
   issueDate: string;
   expiryDate?: string;
-  revocationDate?: string;
-  revocationReason?: string;
 }
 
 export interface UpdateCertificadoPayload extends Partial<CertificadoGraduado> {
@@ -210,6 +209,15 @@ export interface GraduationReviewFile {
   mimeType: string;
   sizeBytes: number;
   uploadedBy?: string;
+  uploadedAt: string;
+  url?: string;
+}
+
+export interface GraduationRequesterSupportFile {
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
   uploadedAt: string;
   url?: string;
 }
@@ -278,7 +286,10 @@ export interface BuscarCoincidenciasGraduadoResponse {
 export interface SolicitarCertificadoLandingResponse {
   existe: boolean;
   mensaje: string;
+  solicitudId?: string;
+  requestId?: string;
   certificado?: CertificadoGraduado;
+  requesterSupportFile?: GraduationRequesterSupportFile | null;
 }
 
 /**
@@ -304,14 +315,6 @@ export interface ValidacionCertificado {
   result: string;
 }
 
-export interface DescargaCertificado {
-  id: string;
-  certificateId: string;
-  downloadDate: string;
-  ipAddress?: string;
-  userAgent?: string;
-}
-
 export interface GraduationCertificateTemplateTexts {
   cityDatePrefix: string;
   institutionTitle: string;
@@ -326,6 +329,7 @@ export interface GraduationCertificateTemplateTexts {
   closingText: string;
   signerTitle: string;
   validationMessage: string;
+  footerAddress: string;
 }
 
 export interface GraduationCertificateTemplateConfig {
@@ -339,6 +343,14 @@ export interface GraduationCertificateTemplateConfig {
     signerName: string;
     signatureUrl: string;
     signatureFilename: string;
+  };
+  logos?: {
+    headerLogoDataUrl: string | null;
+    headerLogoFilename: string | null;
+    footerLogoDataUrl: string | null;
+    footerLogoFilename: string | null;
+    defaultHeaderLogoDataUrl?: string | null;
+    defaultFooterLogoDataUrl?: string | null;
   };
   texts: GraduationCertificateTemplateTexts;
 }
@@ -469,15 +481,58 @@ const graduadosService = {
       graduateEmail?: string;
       requesterPhone?: string;
       companyName?: string;
+      companyNit?: string;
+      contactPerson?: string;
       programName?: string;
       graduationDate?: string;
       lastName?: string;
       selectedGraduateId?: string;
+      forceManualReview?: boolean;
     }): Promise<SolicitarCertificadoLandingResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
         payload,
         { skipAuth: true },
+      );
+      return response;
+    },
+
+    solicitarRevisionConSoporte: async (
+      payload: {
+        idNumber: string;
+        idIssueDate?: string;
+        requesterType: "GRADUATE" | "COMPANY";
+        requesterName: string;
+        requesterEmail: string;
+        graduateEmail?: string;
+        requesterPhone?: string;
+        companyName?: string;
+        companyNit?: string;
+        contactPerson?: string;
+        programName?: string;
+        graduationDate?: string;
+        lastName?: string;
+        selectedGraduateId?: string;
+        forceManualReview?: boolean;
+      },
+      supportFile: File,
+      onProgress?: (progress: number) => void,
+    ): Promise<SolicitarCertificadoLandingResponse> => {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          formData.append(key, String(value));
+        }
+      });
+      formData.append("supportFile", supportFile);
+
+      const response = await apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-revision-con-soporte`,
+        formData,
+        {
+          onProgress,
+          skipAuthRefresh: true,
+        },
       );
       return response;
     },
@@ -556,27 +611,6 @@ const graduadosService = {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/certificates/validaciones`,
         certificateId ? { certificateId } : undefined,
-      );
-      return response;
-    },
-  },
-
-  descargas: {
-    listar: async (certificateId?: string): Promise<DescargaCertificado[]> => {
-      const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/descargas`,
-        certificateId ? { certificateId } : undefined,
-      );
-      return response;
-    },
-    registrar: async (
-      certificateId: string,
-      options?: ApiRequestOptions,
-    ): Promise<{ mensaje: string }> => {
-      const response = await apiClient.post(
-        `${SERVICE_PREFIX}/certificates/descargas`,
-        { certificateId },
-        { ...options, skipAuth: options?.skipAuth ?? true },
       );
       return response;
     },
@@ -698,6 +732,12 @@ const graduadosService = {
     ): Promise<Blob> => {
       return apiClient.getBlob(
         `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/revision-files/${fileId}/download`,
+      );
+    },
+
+    descargarSoporteSolicitante: async (requestId: string): Promise<Blob> => {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/requester-support/download`,
       );
     },
 
@@ -875,6 +915,10 @@ const graduadosService = {
         signerName?: string;
         signatureImageDataUrl?: string;
         signatureFilename?: string;
+        headerLogoDataUrl?: string;
+        headerLogoFilename?: string;
+        footerLogoDataUrl?: string;
+        footerLogoFilename?: string;
       },
     ): Promise<GraduationCertificateTemplateConfig> => {
       const response = await apiClient.post(
@@ -953,6 +997,28 @@ const graduadosService = {
     buscarPorCedula: async (idNumber: string): Promise<GraduadoData> => {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/graduates/cedula/${idNumber}`,
+      );
+      return response;
+    },
+
+    listarTitulosPorCedula: async (
+      idNumber: string,
+    ): Promise<
+      Array<
+        Pick<
+          GraduadoData,
+          | "id"
+          | "idNumber"
+          | "fullName"
+          | "programName"
+          | "degreeTitle"
+          | "graduationDate"
+          | "status"
+        >
+      >
+    > => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/graduates/cedula/${idNumber}/titulos`,
       );
       return response;
     },

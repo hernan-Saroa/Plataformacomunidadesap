@@ -233,11 +233,18 @@ export class CompartirExpedienteController {
       throw new ForbiddenException('Este enlace ha expirado');
     }
 
+    // Obtener el proceso con sus autos
+    const proceso = await this.processService.findById(compartido.procesoId, true);
+
+    // Obtener evidencias del proceso
+      const evidencias = await this.processService.getEvidenceByProcessId(compartido.procesoId);
+
+      
+
     // Obtener documentos del proceso
     const documentos = await this.processService.getEvidenceByProcessId(compartido.procesoId);
     
-    // Obtener el proceso con sus autos
-    const proceso = await this.processService.findById(compartido.procesoId, true);
+    
 
     // Filtrar autos procesales aprobados/firmados/notificados
     const autosAprobados = (proceso.autos || []).filter((auto: any) =>
@@ -245,9 +252,10 @@ export class CompartirExpedienteController {
     );
 
     // Mapear evidencias al formato esperado por el frontend
-    const documentosMapeados = documentos.map(doc => ({
+    const documentosMapeados = evidencias.map(doc => ({
       id: doc.id,
-      nombre: doc.documentName || doc.filename || 'Documento sin nombre',
+      nombre: doc.documentName || doc.nombreDocumento || doc.filename || 'Documento sin nombre',
+      archivoNombre: doc.documentName || doc.nombreDocumento || doc.filename || 'Documento sin nombre',
       tipo: doc.documentType || 'Documento',
       etapa: doc.etapa || 'Sin etapa',
       version: doc.version || 1,
@@ -258,6 +266,8 @@ export class CompartirExpedienteController {
       url: doc.url,
       urlExterna: doc.urlExterna,
       downloadUrl: `/compartir-expediente/documento/${token}/${doc.id}/download`,
+      fileType: doc.fileType || 'application/octet-stream',
+      fileSize: doc.fileSize || 0,
       metadatos: {
         firmado: doc.metadatos?.firmado || false,
         notificado: doc.metadatos?.notificado || false,
@@ -327,8 +337,65 @@ export class CompartirExpedienteController {
       };
     });
 
+    // Incluir archivos adjuntos originales de la noticia (para que aparezcan en el expediente electrónico)
+      const documentosAdjuntosNoticia: any[] = [];
+      if (proceso.news && Array.isArray((proceso.news as any).adjuntos) && (proceso.news as any).adjuntos.length > 0) {
+        (proceso.news as any).adjuntos.forEach((adjPath: string, index: number) => {
+          const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+          const extension = filename.split('.').pop()?.toLowerCase() || '';
+          const mimeTypes: { [key: string]: string } = {
+            pdf: 'application/pdf',
+            doc: 'application/msword',
+            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            xls: 'application/vnd.ms-excel',
+            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            gif: 'image/gif',
+            bmp: 'image/bmp',
+            txt: 'text/plain',
+            rtf: 'application/rtf',
+          };
+          const fileType = mimeTypes[extension] || 'application/octet-stream';
+          const tamaño = 'N/A';
+          const fecha = (proceso.news as any).createdAt?.toISOString() || new Date().toISOString();
+          documentosAdjuntosNoticia.push({
+            id: `adj-noticia-${(proceso.news as any).id || compartido.procesoId}-${index}`,
+            nombre: filename,
+            archivoNombre: filename,
+            tipo: 'otro',
+            etapa: 'Recepción (Noticia Inicial)',
+            version: 1,
+            tamaño,
+            fechaCarga: fecha,
+            usuarioCarga: 'Radicador',
+            descripcion: 'Archivo adjunto a la noticia disciplinaria original',
+            url: null,
+            urlExterna: null,
+            downloadUrl: `/files/${filename}`,
+            processId: compartido.procesoId,
+            fileType,
+            fileSize: 0,
+            versiones: [{
+              numero: 1,
+              fecha,
+              usuario: 'Radicador',
+              cambios: 'Adjunto de noticia inicial',
+              tamaño,
+              downloadUrl: `/files/${filename}`,
+            }],
+            metadatos: {
+              firmado: false,
+              notificado: false,
+              esAutoDigital: false,
+            },
+          });
+        });
+      }
+
     // Combinar y ordenar por fecha
-    const todosDocumentos = [...documentosMapeados, ...documentosAutos].sort((a, b) => {
+    const todosDocumentos = [...documentosMapeados, ...documentosAutos, ...documentosAdjuntosNoticia].sort((a, b) => {
       return new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime();
     });
 
@@ -429,11 +496,35 @@ export class CompartirExpedienteController {
       // Configurar headers según si es vista o descarga
       if (view === 'true') {
         // Vista inline
-        const mimeType = documento.fileType || 'application/octet-stream';
+        const extension = (documento.nombreDocumento || documento.filename || '').split('.').pop()?.toLowerCase() || '';
+        const mimeTypes: { [key: string]: string } = {
+          pdf: 'application/pdf',
+          doc: 'application/msword',
+          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          xls: 'application/vnd.ms-excel',
+          xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          html: 'text/html',
+          htm: 'text/html',
+          txt: 'text/plain',
+          png: 'image/png',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          gif: 'image/gif',
+          webp: 'image/webp',
+          bmp: 'image/bmp',
+          heic: 'image/heic',
+          mp4: 'video/mp4',
+          webm: 'video/webm',
+          mov: 'video/quicktime',
+          avi: 'video/x-msvideo',
+          mp3: 'audio/mpeg',
+          wav: 'audio/wav',
+        };
+        const mimeType = documento.fileType || mimeTypes[extension] || 'application/octet-stream';
         const encodedFilename = encodeURIComponent(nombreArchivo);
         const filenameStar = `filename*=UTF-8''${encodedFilename}`;
 
-        res.setHeader('Content-Type', `${mimeType}; charset=utf-8`);
+        res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Disposition', `inline; filename="${nombreArchivo}"; ${filenameStar}`);
       } else {
         // Descarga

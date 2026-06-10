@@ -44,6 +44,7 @@ import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/ap
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -100,7 +101,7 @@ export interface ResponsableArea {
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
-  tipoAuditoria: 'regular' | 'territorial' | 'especial' | 'seguimiento';
+  tipoAuditoria: string; // Ahora es completamente dinámico
   titulo: string;
   descripcion: string;
   
@@ -162,7 +163,7 @@ export interface AuditoriaUnificadaFormData {
   rolDecretoAsociado?: string;
   
   // 10. ESTADO KANBAN (para crear auditoria en columna correcta)
-  estadoKanban?: 'Plan Anual' | 'Planeación' | 'Trabajo de Campo' | 'Elaboración Informe' | 'Informe Final' | 'Seguimiento' | 'Cerrada';
+  estadoKanban?: 'Programa Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Finalizada';
 }
 
 interface FormularioAuditoriaUnificadoProps {
@@ -301,7 +302,7 @@ export function FormularioAuditoriaUnificado({
   const [pasoActual, setPasoActual] = useState(1);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipoAuditoria: initialData?.tipoAuditoria || '',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -341,7 +342,7 @@ export function FormularioAuditoriaUnificado({
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
     rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
-    estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
+    estadoKanban: initialData?.estadoKanban || 'Programa Anual' // Por defecto crear en Plan Anual
   });
 
   useEffect(() => {
@@ -484,8 +485,8 @@ export function FormularioAuditoriaUnificado({
       
       setCargandoProcesos(true);
       try {
-        // Obtener evaluaciones del universo de auditorías
-        const evaluaciones = await controlInternoService.getEvaluaciones();
+        // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
+        const evaluaciones = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
         
         if (evaluaciones && evaluaciones.length > 0) {
           // Guardar evaluaciones completas para acceder a datos de riesgo
@@ -769,6 +770,13 @@ export function FormularioAuditoriaUnificado({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validar tipo de auditoría
+    if (!formData.tipoAuditoria) {
+      toast.error('Debe seleccionar un tipo de auditoría');
+      setPasoActual(1);
+      return;
+    }
 
     // Validaciones básicas - titulo contiene el proceso seleccionado
     if (!formData.titulo || formData.titulo.length < 5) {
@@ -1042,30 +1050,8 @@ export function FormularioAuditoriaUnificado({
   ];
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* OVERLAY */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999]"
-            onClick={onClose}
-          />
-
-          {/* MODAL CONTENT */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-          >
-            <div
-              className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col max-w-5xl"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <Dialog open={open} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
               {/* HEADER */}
               <div className="flex items-start justify-between p-6 border-b border-gray-200">
                 <div className="flex-1">
@@ -1079,15 +1065,6 @@ export function FormularioAuditoriaUnificado({
                     Formulario Unificado de Control Interno de Gestión - ESAP
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="ml-4"
-                  aria-label="Cerrar modal"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
               </div>
 
               {/* INDICADOR DE PROGRESO */}
@@ -1220,11 +1197,8 @@ export function FormularioAuditoriaUnificado({
                   )}
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+            </DialogContent>
+          </Dialog>
   );
 }
 
@@ -1267,24 +1241,52 @@ function Paso1InformacionBasica({
     proceso.toLowerCase().includes(busquedaProceso.toLowerCase())
   );
 
-  const handleSeleccionarProceso = (proceso: string) => {
+  const handleSeleccionarProceso = (procesoOEvaluacion: string | EvaluacionProceso) => {
+    let tituloStr = '';
+    let procesoNombreStr = '';
+    let evaluacionProceso: EvaluacionProceso | undefined;
+
+    if (typeof procesoOEvaluacion === 'string') {
+      tituloStr = procesoOEvaluacion;
+      procesoNombreStr = procesoOEvaluacion;
+      // Buscar la primera evaluación que coincida con el nombre (fallback)
+      evaluacionProceso = evaluaciones.find(
+        (ev: EvaluacionProceso) => ev.proceso?.nombre === procesoOEvaluacion
+      );
+    } else {
+      // Es una EvaluacionProceso seleccionada específicamente
+      evaluacionProceso = procesoOEvaluacion;
+      procesoNombreStr = evaluacionProceso.proceso?.nombre || '';
+      
+      let dep = evaluacionProceso.proceso?.dependencia || evaluacionProceso.dependenciaResponsable || '';
+      let mac = evaluacionProceso.proceso?.macroproceso || '';
+      if (evaluacionProceso.dependenciaResponsable && evaluacionProceso.dependenciaResponsable.includes('||')) {
+        const parts = evaluacionProceso.dependenciaResponsable.split('||');
+        dep = parts[0].trim();
+        mac = parts[1].trim();
+      }
+      const unidad = mac || dep;
+      tituloStr = unidad ? `${procesoNombreStr} (${unidad})` : procesoNombreStr;
+    }
+
     // Guardar en ambos campos: titulo (para BD) y procesoAuditado
-    onChange('titulo', proceso);
-    onChange('procesoAuditado', proceso);
-    setBusquedaProceso(proceso);
+    onChange('titulo', tituloStr);
+    onChange('procesoAuditado', procesoNombreStr);
+    setBusquedaProceso(tituloStr);
     setMostrarSugerenciasProcesos(false);
     
-    // 🔍 Buscar la evaluación asociada al proceso seleccionado
-    const evaluacionProceso = evaluaciones.find(
-      (ev: EvaluacionProceso) => ev.proceso?.nombre === proceso
-    );
-    
-    if (evaluacionProceso && evaluacionProceso.proceso?.evaluacionRiesgo) {
-      const riesgo = evaluacionProceso.proceso.evaluacionRiesgo;
+    if (evaluacionProceso) {
+      const riesgo = evaluacionProceso.proceso?.evaluacionRiesgo || { totalRiesgos: 0, riesgoInherente: 0, riesgoResidual: 0, nivelControl: 0, probabilidad: 0, impacto: 0 };
       
-      // Mapear nivelRiesgo del backend al formato del formulario
+      // Mapear nivelRiesgo del backend al formato del formulario, dando prioridad a Criticidad DAFP
       let nivelRiesgoForm: 'Bajo' | 'Medio' | 'Alto' | 'Crítico' = 'Medio';
-      if (riesgo.nivelRiesgo) {
+      if (evaluacionProceso.nivelCriticidadDafp) {
+        const nivel = evaluacionProceso.nivelCriticidadDafp.toLowerCase();
+        if (nivel.includes('bajo')) nivelRiesgoForm = 'Bajo';
+        else if (nivel.includes('medio') || nivel.includes('moderado')) nivelRiesgoForm = 'Medio';
+        else if (nivel.includes('alto')) nivelRiesgoForm = 'Alto';
+        else if (nivel.includes('critico') || nivel.includes('crítico') || nivel.includes('extremo')) nivelRiesgoForm = 'Crítico';
+      } else if (riesgo.nivelRiesgo) {
         const nivel = riesgo.nivelRiesgo.toLowerCase();
         if (nivel === 'bajo') nivelRiesgoForm = 'Bajo';
         else if (nivel === 'medio') nivelRiesgoForm = 'Medio';
@@ -1298,61 +1300,60 @@ function Paso1InformacionBasica({
       // Construir lista de riesgos identificados basados en la evaluación
       const riesgosIdentificadosArr: string[] = [];
       
-      if (riesgo.totalRiesgos > 0) {
-        riesgosIdentificadosArr.push(`Evaluación DAFP: ${riesgo.totalRiesgos} riesgos totales (${riesgo.riesgosExtremos || 0} Extremos, ${riesgo.riesgosAltos || 0} Altos, ${riesgo.riesgosModerados || 0} Moderados, ${riesgo.riesgosBajos || 0} Bajos)`);
+      const ext = evaluacionProceso.riesgosExtremos || riesgo.riesgosExtremos || 0;
+      const alt = evaluacionProceso.riesgosAltos || riesgo.riesgosAltos || 0;
+      const mod = evaluacionProceso.riesgosModerados || riesgo.riesgosModerados || 0;
+      const baj = evaluacionProceso.riesgosBajos || riesgo.riesgosBajos || 0;
+      
+      const sumaRiesgos = ext + alt + mod + baj;
+      if (sumaRiesgos > 0) {
+        riesgosIdentificadosArr.push(`Evaluación DAFP: ${sumaRiesgos} riesgos totales (${ext} Extremos, ${alt} Altos, ${mod} Moderados, ${baj} Bajos)`);
       }
 
-      if (riesgo.riesgoInherente > 6) {
-        riesgosIdentificadosArr.push(`Riesgo inherente ALTO (${riesgo.riesgoInherente}/9) - Requiere controles reforzados`);
+      if (evaluacionProceso.ponderacionFinalDafp && evaluacionProceso.ponderacionFinalDafp >= 4) {
+        riesgosIdentificadosArr.push(`Ponderación DAFP CRÍTICA (${evaluacionProceso.ponderacionFinalDafp}/5) - El proceso requiere priorización en el Plan Anual`);
+      } else if (evaluacionProceso.ponderacionFinalDafp && evaluacionProceso.ponderacionFinalDafp >= 3) {
+        riesgosIdentificadosArr.push(`Ponderación DAFP ALTA (${evaluacionProceso.ponderacionFinalDafp}/5) - Nivel de riesgo significativo`);
       }
       
-      if (riesgo.riesgoResidual > 4) {
-        riesgosIdentificadosArr.push(`Riesgo residual ELEVADO (${riesgo.riesgoResidual}/9) - Los controles actuales son insuficientes`);
+      if (ext > 0) {
+        riesgosIdentificadosArr.push(`Se identificaron ${ext} riesgos EXTREMOS que requieren monitoreo inmediato`);
       }
-      
-      if (riesgo.nivelControl < 2) {
-        riesgosIdentificadosArr.push(`Controles actuales DÉBILES (nivel ${riesgo.nivelControl}/3) - Se requiere fortalecer el ambiente de control`);
-      }
-      
-      if (riesgo.probabilidad >= 3) {
-        riesgosIdentificadosArr.push(`Probabilidad de materialización ALTA (${riesgo.probabilidad}/3) - Se requiere monitoreo continuo`);
-      }
-      
-      if (riesgo.impacto >= 3) {
-        riesgosIdentificadosArr.push(`Impacto potencial ALTO (${riesgo.impacto}/3) - Puede afectar significativamente los objetivos institucionales`);
+      if (alt > 0) {
+        riesgosIdentificadosArr.push(`Se identificaron ${alt} riesgos ALTOS que requieren fortalecimiento de controles`);
       }
       
       // Agregar información de decisión si existe
-      if (riesgo.decisionFinal && riesgo.motivoDecision) {
-        riesgosIdentificadosArr.push(`Decisión DAFP: ${riesgo.decisionFinal} - ${riesgo.motivoDecision}`);
+      const decisionFinal = evaluacionProceso.decisionFinal || riesgo.decisionFinal;
+      const motivoDecision = evaluacionProceso.motivoDecision || riesgo.motivoDecision;
+      if (decisionFinal && motivoDecision) {
+        riesgosIdentificadosArr.push(`Decisión DAFP: ${decisionFinal} - ${motivoDecision}`);
       }
       
       // Actualizar riesgos identificados
       if (riesgosIdentificadosArr.length > 0) {
         onChange('riesgosIdentificados', riesgosIdentificadosArr);
+      } else {
+        // Fallback si no hay riesgos registrados
+        onChange('riesgosIdentificados', ['El proceso seleccionado no cuenta con riesgos tipificados en la última evaluación']);
       }
       
       // Construir controles a aplicar basados en la evaluación
       const controles: string[] = [];
       
-      if (riesgo.nivelControl < 2) {
-        controles.push('Implementar mapa de riesgos actualizado del proceso');
-        controles.push('Documentar y formalizar controles existentes');
+      if (ext > 0 || alt > 0) {
+        controles.push('Revisar y probar controles mitigantes para riesgos Extremos/Altos');
+        controles.push('Verificar diseño de planes de contingencia');
       }
       
-      if (riesgo.probabilidad >= 2) {
-        controles.push('Establecer indicadores de alerta temprana');
-        controles.push('Realizar pruebas de eficacia de controles preventivos');
-      }
-      
-      if (riesgo.impacto >= 3) {
-        controles.push('Verificar existencia de planes de contingencia');
+      if (evaluacionProceso.ponderacionFinalDafp && evaluacionProceso.ponderacionFinalDafp >= 3) {
         controles.push('Evaluar segregación de funciones y responsabilidades');
+        controles.push('Implementar pruebas de eficacia de controles clave');
       }
       
-      controles.push('Revisión documental de políticas y procedimientos');
-      controles.push('Entrevistas con responsables del proceso');
-      controles.push('Muestreo estadístico de transacciones');
+      controles.push('Revisión documental de políticas y procedimientos del proceso');
+      controles.push('Entrevistas con el responsable del área y ejecutores');
+      controles.push('Muestreo estadístico de transacciones operativas');
       
       // Actualizar controles a aplicar
       if (controles.length > 0) {
@@ -1366,7 +1367,7 @@ function Paso1InformacionBasica({
       
       // Notificar al usuario
       toast.success('Riesgos y controles cargados automáticamente', {
-        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificadosArr.length} riesgos | ${controles.length} controles`
+        description: `Nivel: ${nivelRiesgoForm} | ${sumaRiesgos} riesgos | ${controles.length} controles`
       });
     }
   };
@@ -1403,32 +1404,33 @@ function Paso1InformacionBasica({
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {(tiposAuditoria.length > 0 ? tiposAuditoria : [
-                  { id: 'regular', codigo: 'regular', nombre: 'Regular', color: undefined },
-                  { id: 'territorial', codigo: 'territorial', nombre: 'Territorial', color: undefined },
-                  { id: 'especial', codigo: 'especial', nombre: 'Especial', color: undefined },
-                  { id: 'seguimiento', codigo: 'seguimiento', nombre: 'Seguimiento', color: undefined }
-                ]).map(tipo => (
-                  <button
-                    key={tipo.id}
-                    type="button"
-                    onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
-                    className={`
-                      px-4 py-3 rounded-lg border-2 transition-all duration-200
-                      flex flex-col items-center justify-center gap-2 font-medium
-                      ${
-                        formData.tipoAuditoria === tipo.codigo.toLowerCase()
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                      }
-                    `}
-                  >
-                    {tipo.color && (
-                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
-                    )}
-                    <span className="text-sm">{tipo.nombre}</span>
-                  </button>
-                ))}
+                {tiposAuditoria.length > 0 ? (
+                  tiposAuditoria.map(tipo => (
+                    <button
+                      key={tipo.id}
+                      type="button"
+                      onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
+                      className={`
+                        px-4 py-3 rounded-lg border-2 transition-all duration-200
+                        flex flex-col items-center justify-center gap-2 font-medium
+                        ${
+                          formData.tipoAuditoria === tipo.codigo.toLowerCase()
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                        }
+                      `}
+                    >
+                      {tipo.color && (
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
+                      )}
+                      <span className="text-sm">{tipo.nombre}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="col-span-full py-4 text-center text-sm text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
+                    No hay tipos de auditoría configurados. Por favor, créelos en la sección de Configuraciones.
+                  </div>
+                )}
               </div>
             )}
           </FieldWrapper>
@@ -1480,61 +1482,102 @@ function Paso1InformacionBasica({
               )}
 
               {/* Lista de sugerencias con información de riesgo */}
-              {mostrarSugerenciasProcesos && busquedaProceso && procesosFiltrados.length > 0 && (
+              {mostrarSugerenciasProcesos && busquedaProceso && (evaluaciones.length > 0 || procesosFiltrados.length > 0) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   className="absolute z-50 w-full mt-1 bg-white border-2 border-blue-300 rounded-lg shadow-xl max-h-80 overflow-y-auto"
                 >
-                  {procesosFiltrados.map((proceso, index) => {
-                    // Buscar evaluación para mostrar nivel de riesgo
-                    const evaluacion = evaluaciones.find(
-                      (ev: EvaluacionProceso) => ev.proceso?.nombre === proceso
-                    );
-                    const nivelRiesgo = evaluacion?.proceso?.evaluacionRiesgo?.nivelRiesgo || 'medio';
-                    const riesgoInherente = evaluacion?.proceso?.evaluacionRiesgo?.riesgoInherente || 0;
-                    
-                    // Colores según nivel de riesgo
-                    const colorRiesgo = 
-                      nivelRiesgo === 'bajo' ? 'bg-green-100 text-green-700 border-green-300' :
-                      nivelRiesgo === 'medio' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                      nivelRiesgo === 'alto' ? 'bg-orange-100 text-orange-700 border-orange-300' :
-                      'bg-red-100 text-red-700 border-red-300';
-                    
-                    return (
+                  {evaluaciones.length > 0 ? (
+                    // Mostrar desde evaluaciones (Universo Auditable real)
+                    evaluaciones
+                      .filter(ev => {
+                        const searchStr = `${ev.proceso?.nombre || ''} ${ev.dependenciaResponsable || ''}`;
+                        return searchStr.toLowerCase().includes(busquedaProceso.toLowerCase());
+                      })
+                      .map((evaluacion, index) => {
+                        // Usar nivelCriticidadDafp (de la evaluación) igual que en la tabla Universo Auditable
+                        const nivelRiesgoStr = evaluacion.nivelCriticidadDafp || evaluacion.proceso?.evaluacionRiesgo?.nivelRiesgo || 'Medio';
+                        const nivelRiesgo = nivelRiesgoStr.toLowerCase();
+                        
+                        // En Universo Auditable se usan los ponderados DAFP, si no existen se hace fallback a riesgo inherente
+                        const ponderacionDafp = evaluacion.ponderacionFinalDafp || 0;
+                        const riesgoInherente = evaluacion.proceso?.evaluacionRiesgo?.riesgoInherente || 0;
+                        const nombreProceso = evaluacion.proceso?.nombre || 'Proceso sin nombre';
+                        
+                        let dep = evaluacion.proceso?.dependencia || evaluacion.dependenciaResponsable || '';
+                        let mac = evaluacion.proceso?.macroproceso || '';
+                        if (evaluacion.dependenciaResponsable && evaluacion.dependenciaResponsable.includes('||')) {
+                          const parts = evaluacion.dependenciaResponsable.split('||');
+                          dep = parts[0].trim();
+                          mac = parts[1].trim();
+                        }
+                        const unidad = mac || dep;
+                        
+                        // Colores según nivel de riesgo (igual que en UniversoAuditableUnificado)
+                        const colorRiesgo = 
+                          nivelRiesgo.includes('bajo') ? 'bg-green-100 text-green-700 border-green-300' :
+                          nivelRiesgo.includes('medio') || nivelRiesgo.includes('moderado') ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                          nivelRiesgo.includes('alto') ? 'bg-orange-100 text-orange-700 border-orange-300' :
+                          'bg-red-100 text-red-700 border-red-300';
+                        
+                        return (
+                          <button
+                            key={`ev-${evaluacion.id || index}`}
+                            type="button"
+                            onClick={() => handleSeleccionarProceso(evaluacion)}
+                            className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex flex-col gap-1 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                                  <span className="text-sm font-medium text-gray-900">{nombreProceso}</span>
+                                </div>
+                                {unidad && (
+                                  <span className="text-xs text-gray-500 ml-6">{unidad}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-2 py-1 rounded-full border font-bold ${colorRiesgo}`}>
+                                  {nivelRiesgoStr.toUpperCase()}
+                                </span>
+                                {ponderacionDafp > 0 ? (
+                                  <span className="text-xs text-gray-500 font-medium" title="Ponderación DAFP">
+                                    {ponderacionDafp}/5
+                                  </span>
+                                ) : riesgoInherente > 0 ? (
+                                  <span className="text-xs text-gray-500 font-medium" title="Riesgo Inherente">
+                                    {riesgoInherente}/9
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                  ) : (
+                    // Fallback a procesos institucionales estáticos
+                    procesosFiltrados.map((proceso, index) => (
                       <button
-                        key={index}
+                        key={`proc-${index}`}
                         type="button"
                         onClick={() => handleSeleccionarProceso(proceso)}
                         className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 flex-1">
-                            <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
-                            <span className="text-sm font-medium text-gray-900">{proceso}</span>
-                          </div>
-                          {evaluacion && (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-1 rounded-full border font-bold ${colorRiesgo}`}>
-                                {nivelRiesgo.toUpperCase()}
-                              </span>
-                              {riesgoInherente > 0 && (
-                                <span className="text-xs text-gray-500 font-medium">
-                                  {riesgoInherente}/9
-                                </span>
-                              )}
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span className="text-sm font-medium text-gray-900">{proceso}</span>
                         </div>
                       </button>
-                    );
-                  })}
+                    ))
+                  )}
                 </motion.div>
               )}
 
               {/* Mensaje si no hay resultados */}
-              {mostrarSugerenciasProcesos && busquedaProceso && procesosFiltrados.length === 0 && (
+              {mostrarSugerenciasProcesos && busquedaProceso && evaluaciones.length === 0 && procesosFiltrados.length === 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -2007,24 +2050,6 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
             </select>
           </FieldWrapper>
 
-          {/* Auditor Asignado - NUEVO */}
-          <FieldWrapper label="Auditor Asignado" required helpText="Persona encargada de la ejecución técnica de la auditoría">
-            <select
-              value={formData.auditorAsignado}
-              onChange={(e) => onChange('auditorAsignado', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione el auditor asignado...</option>
-              {auditores
-                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo))
-                .map(auditor => (
-                <option key={auditor.id} value={auditor.id}>
-                  {auditor.nombre}
-                </option>
-              ))}
-            </select>
-          </FieldWrapper>
-
           {/* Equipo Adicional - TERCERO */}
           <FieldWrapper
             label="Equipo Auditor Adicional (Opcional)"
@@ -2034,7 +2059,6 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
               {auditores.filter(a =>
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
-                a.id !== formData.auditorAsignado &&
                 REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo)
               ).map(auditor => (
                 <button

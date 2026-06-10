@@ -9,13 +9,14 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Plus, Edit2, Trash2, Download, X, FileText, AlertCircle, 
-  Info, HelpCircle, CheckCircle, Send, Mail, FileCheck, 
+import {
+  Plus, Edit2, Trash2, Download, X, FileText, AlertCircle,
+  Info, HelpCircle, CheckCircle, Send, Mail, FileCheck,
   File, Folder, Eye, Files, Clock, ChevronDown, ChevronRight,
   Bell, ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
+import disciplinaryService from '../../../../services/api/disciplinary.service';
 
 // ============ CATEGORÍAS DE OFICIOS ============
 
@@ -140,12 +141,12 @@ export function SeccionPlantillasOficiosUnificada({
 
   const handleDescargarPlantilla = (plantilla: PlantillaArchivo | null) => {
     if (!plantilla) return;
-    
+
     const link = document.createElement('a');
-    link.href = plantilla.url;
+    link.href = disciplinaryService.getAbsoluteFileUrl(plantilla.url);
     link.download = plantilla.nombreArchivo;
     link.click();
-    
+
     toast.success('Plantilla descargada', {
       description: plantilla.nombreArchivo
     });
@@ -490,7 +491,7 @@ export function SeccionPlantillasOficiosUnificada({
 
       {/* Modal Vista Detalles - Implementación similar a Autos */}
       {vistaDetalles && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 1000 }}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}

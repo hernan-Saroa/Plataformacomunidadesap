@@ -235,8 +235,8 @@ describe('ExpedienteService', () => {
         it('debe registrar actuación CAMBIO_ETAPA cuando etapaProcesal cambia', async () => {
             const agregarSpy = jest.spyOn(service, 'agregarActuacion').mockResolvedValue({} as Actuacion);
             jest.spyOn(service, 'findOne')
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-011', etapaProcesal: 'RADICACION', estado: 'ACTIVO' } as Expediente)
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-011', etapaProcesal: 'PRUEBAS', estado: 'ACTIVO' } as Expediente);
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-011', etapaProcesal: 'RADICACION', estado: 'ACTIVO' } as unknown as Expediente)
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-011', etapaProcesal: 'PRUEBAS', estado: 'ACTIVO' } as unknown as Expediente);
 
             await service.updateExpediente(expedienteId, { etapaProcesal: 'PRUEBAS' });
 
@@ -249,8 +249,8 @@ describe('ExpedienteService', () => {
         it('debe registrar actuación CAMBIO_ESTADO cuando estado cambia', async () => {
             const agregarSpy = jest.spyOn(service, 'agregarActuacion').mockResolvedValue({} as Actuacion);
             jest.spyOn(service, 'findOne')
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-012', etapaProcesal: 'RADICACION', estado: 'ACTIVO' } as Expediente)
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-012', etapaProcesal: 'RADICACION', estado: 'SUSPENDIDO' } as Expediente);
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-012', etapaProcesal: 'RADICACION', estado: 'ACTIVO' } as unknown as Expediente)
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-012', etapaProcesal: 'RADICACION', estado: 'SUSPENDIDO' } as unknown as Expediente);
 
             await service.updateExpediente(expedienteId, { estado: 'SUSPENDIDO' });
 
@@ -262,8 +262,8 @@ describe('ExpedienteService', () => {
 
         it('debe agregar abogado anterior a abogadosAnteriores al reasignar', async () => {
             jest.spyOn(service, 'findOne')
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-013', abogadoSustanciador: 'abogado-previo', abogadosAnteriores: [] } as Expediente)
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-013', abogadoSustanciador: 'abogado-nuevo', abogadosAnteriores: ['abogado-previo'] } as Expediente);
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-013', abogadoSustanciador: 'abogado-previo', abogadosAnteriores: [] } as unknown as Expediente)
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-013', abogadoSustanciador: 'abogado-nuevo', abogadosAnteriores: ['abogado-previo'] } as unknown as Expediente);
 
             await service.updateExpediente(expedienteId, { abogadoSustanciador: 'abogado-nuevo' });
 
@@ -275,8 +275,8 @@ describe('ExpedienteService', () => {
 
         it('debe llamar notifyProfesionalAsignado con esReasignacion: true al reasignar abogado', async () => {
             jest.spyOn(service, 'findOne')
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-014', tipoProceso: 'Disciplinario', abogadoSustanciador: 'abogado-previo' } as Expediente)
-                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-014', tipoProceso: 'Disciplinario', abogadoSustanciador: 'abogado-nuevo' } as Expediente);
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-014', tipoProceso: 'Disciplinario', abogadoSustanciador: 'abogado-previo' } as unknown as Expediente)
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-014', tipoProceso: 'Disciplinario', abogadoSustanciador: 'abogado-nuevo' } as unknown as Expediente);
 
             await service.updateExpediente(expedienteId, { abogadoSustanciador: 'abogado-nuevo' });
 

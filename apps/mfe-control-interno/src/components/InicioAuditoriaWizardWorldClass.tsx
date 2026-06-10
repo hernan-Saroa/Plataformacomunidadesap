@@ -154,9 +154,9 @@ export function InicioAuditoriaWizardWorldClass({
       size="xl"
       closeOnOverlay={false}
       footer={
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
           {/* Indicador de pasos */}
-          <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
             {[0, 1, 2, 3, 4].map((num) => (
               <div
                 key={num}
@@ -172,14 +172,22 @@ export function InicioAuditoriaWizardWorldClass({
               </div>
             ))}
           </div>
+          <div className="flex md:hidden flex-col items-center sm:items-start text-center sm:text-left">
+            <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+              Progreso
+            </span>
+            <span className="text-sm font-bold text-blue-600">
+              Paso {paso + 1} de 5
+            </span>
+          </div>
 
           {/* Botones de navegación */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-end">
             {paso > 0 && (
               <button
                 onClick={handleAnterior}
                 disabled={loading}
-                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm sm:text-base flex-1 sm:flex-initial justify-center"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Anterior
@@ -189,7 +197,7 @@ export function InicioAuditoriaWizardWorldClass({
             {paso < 4 ? (
               <button
                 onClick={handleSiguiente}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all flex items-center gap-2"
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all flex items-center gap-2 text-sm sm:text-base flex-1 sm:flex-initial justify-center"
               >
                 Siguiente
                 <ChevronRight className="w-4 h-4" />
@@ -198,7 +206,7 @@ export function InicioAuditoriaWizardWorldClass({
               <button
                 onClick={handleIniciar}
                 disabled={loading}
-                className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm sm:text-base flex-1 sm:flex-initial justify-center"
               >
                 <CheckCircle className="w-4 h-4" />
                 {loading ? 'Iniciando...' : 'Iniciar Auditoría'}
@@ -208,8 +216,8 @@ export function InicioAuditoriaWizardWorldClass({
         </div>
       }
     >
-      {/* Contenido según paso — altura FIJA para que el modal sea idéntico en todos los pasos */}
-      <div style={{ height: '420px', overflowY: 'auto' }}>
+      {/* Contenido según paso — altura flexible para móviles y fija en escritorios */}
+      <div className="h-auto max-h-[50vh] md:h-[420px] overflow-y-auto pr-1">
         <AnimatePresence mode="wait">
           {paso === 0 && <Paso0ListasChequeo key="paso0" auditoria={auditoria} />}
           {paso === 1 && <Paso1AuditoriaSeleccionada key="paso1" auditoria={auditoria} />}

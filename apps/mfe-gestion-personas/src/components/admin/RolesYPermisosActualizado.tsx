@@ -141,7 +141,7 @@ const MODULOS_SISTEMA = [
 
 // ============ DATOS - ROLES DEL SISTEMA ============
 
-const ROLES_SISTEMA: Rol[] = [
+export const ROLES_SISTEMA: Rol[] = [
   // 1. SUPER ADMINISTRADOR
   {
     id: 'rol-super-admin',
@@ -497,6 +497,24 @@ const ROLES_SISTEMA: Rol[] = [
       { id: 'perm-bolsa-grad', modulo: 'Bolsa de Empleo', acciones: ['leer'], descripcion: 'Consulta de ofertas' },
       { id: 'perm-event-grad', modulo: 'Comunidad - Eventos', acciones: ['leer'], descripcion: 'Visualización de eventos' },
       { id: 'perm-pub-grad', modulo: 'Comunidad - Publicaciones', acciones: ['leer'], descripcion: 'Visualización de publicaciones' }
+    ],
+    creadoPor: 'Sistema',
+    fechaCreacion: '2025-01-01'
+  },
+
+  // 15.5 ESTUDIANTE
+  {
+    id: 'rol-estudiante',
+    nombre: 'Estudiante',
+    descripcion: 'Acceso al portal de estudiante y comunidad',
+    tipo: 'Sistema',
+    estado: 'Activo',
+    usuariosAsignados: 12500,
+    color: '#34D399',
+    icono: '🎒',
+    permisos: [
+      { id: 'perm-prog-est', modulo: 'Programas Académicos', acciones: ['leer'], descripcion: 'Consulta de programas' },
+      { id: 'perm-event-est', modulo: 'Comunidad - Eventos', acciones: ['leer'], descripcion: 'Visualización de eventos' }
     ],
     creadoPor: 'Sistema',
     fechaCreacion: '2025-01-01'

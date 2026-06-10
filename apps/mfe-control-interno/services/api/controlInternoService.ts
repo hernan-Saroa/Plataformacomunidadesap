@@ -131,6 +131,10 @@ export interface EvaluacionProceso {
   decisionFinal?: string;
   motivoDecision?: string;
   prioridadRegla?: number;
+  /** Calculado al guardar DAFP desde ciclo de rotación */
+  auditableCalculado?: boolean;
+  /** null = usar calculado; true/false = override desde tabla */
+  auditableManual?: boolean | null;
   // Metadatos
   creadoPor?: string;
   activo: boolean;
@@ -165,6 +169,8 @@ export interface CreateEvaluacionProcesoDTO {
   decisionFinal?: string;
   motivoDecision?: string;
   prioridadRegla?: number;
+  auditableCalculado?: boolean;
+  auditableManual?: boolean | null;
 }
 
 export interface AuditoriaProgramada {
@@ -633,6 +639,16 @@ class ControlInternoService {
     return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
 
+  /**
+   * Override manual de priorización auditable (columna Aud.)
+   * auditableManual = null restaura el valor calculado por DAFP
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    return client.patch<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}/auditable`, {
+      auditableManual,
+    });
+  }
+
   // ==========================================================================
   // PROGRAMA ANUAL
   // ==========================================================================
@@ -930,10 +946,19 @@ class ControlInternoService {
   /**
    * Obtiene todas las listas de chequeo
    */
-  async getListasChequeo(params?: { tipo?: string; categoria?: string }): Promise<ListaChequeo[]> {
+  async getListasChequeo(params?: {
+    tipo?: string;
+    categoria?: string;
+    planAnualVigencia?: number;
+    planAnualId?: string;
+  }): Promise<ListaChequeo[]> {
     const queryParams = new URLSearchParams();
     if (params?.tipo) queryParams.append('tipo', params.tipo);
     if (params?.categoria) queryParams.append('categoria', params.categoria);
+    if (params?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(params.planAnualVigencia));
+    }
+    if (params?.planAnualId) queryParams.append('planAnualId', params.planAnualId);
     
     const query = queryParams.toString();
     return client.get<ListaChequeo[]>(`/listas-chequeo${query ? `?${query}` : ''}`);
@@ -1273,10 +1298,17 @@ class ControlInternoService {
   /**
    * Obtiene todos los planes de mejoramiento
    */
-  async getPlanesMejoramiento(params?: { estado?: string; area?: string }): Promise<any[]> {
+  async getPlanesMejoramiento(params?: {
+    estado?: string;
+    area?: string;
+    planAnualVigencia?: number;
+  }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.estado) queryParams.append('estado', params.estado);
     if (params?.area) queryParams.append('area', params.area);
+    if (params?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(params.planAnualVigencia));
+    }
     const query = queryParams.toString();
     return client.get<any[]>(`/planes-mejoramiento${query ? `?${query}` : ''}`);
   }
@@ -1636,12 +1668,25 @@ class ControlInternoService {
   /**
    * Obtiene todos los documentos
    */
-  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string; tipoDocumento?: string }): Promise<any[]> {
+  async getDocumentos(params?: {
+    auditoriaId?: string;
+    etapa?: string;
+    tipo?: string;
+    tipoDocumento?: string;
+    planAnualVigencia?: number;
+    planAnualId?: string;
+    bibliotecaOnly?: boolean;
+  }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
     if (params?.etapa) queryParams.append('etapa', params.etapa);
     const tipo = params?.tipoDocumento || params?.tipo;
     if (tipo) queryParams.append('tipoDocumento', tipo);
+    if (params?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(params.planAnualVigencia));
+    }
+    if (params?.planAnualId) queryParams.append('planAnualId', params.planAnualId);
+    if (params?.bibliotecaOnly) queryParams.append('bibliotecaOnly', 'true');
     const query = queryParams.toString();
     return client.get<any[]>(`/documentos${query ? `?${query}` : ''}`);
   }
@@ -1695,6 +1740,8 @@ class ControlInternoService {
       documentoBibliotecaId?: string;
       visibleAuditoriaId?: string;
       subidoPor?: string;
+      planAnualVigencia?: number;
+      planAnualId?: string;
     },
     onProgress?: (progress: number) => void
   ): Promise<any> {
@@ -1712,6 +1759,10 @@ class ControlInternoService {
     if (metadata.documentoBibliotecaId) formData.append('documentoBibliotecaId', metadata.documentoBibliotecaId);
     if (metadata.visibleAuditoriaId) formData.append('visibleAuditoriaId', metadata.visibleAuditoriaId);
     if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+    if (metadata.planAnualVigencia != null) {
+      formData.append('planAnualVigencia', String(metadata.planAnualVigencia));
+    }
+    if (metadata.planAnualId) formData.append('planAnualId', metadata.planAnualId);
 
     return client.upload<any>('/documentos', formData, onProgress);
   }
@@ -1958,11 +2009,13 @@ class ControlInternoService {
     if (filters?.search) queryParams.append('search', filters.search);
     if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
     if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
-    if (filters?.planAnualId) queryParams.append('planAnualId', filters.planAnualId);
-    // if (filters?.planAnualVigencia != null) {
-    //   queryParams.append('planAnualVigencia', String(filters.planAnualVigencia));
-    // }
-    if (filters?.year != null) queryParams.append('year', String(filters.year));
+    if (filters?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(filters.planAnualVigencia));
+    } else if (filters?.planAnualId) {
+      queryParams.append('planAnualId', filters.planAnualId);
+    } else if (filters?.year != null) {
+      queryParams.append('year', String(filters.year));
+    }
     if (filters?.light !== false) queryParams.append('light', 'true');
     if (filters?.activasOnly !== false) queryParams.append('activasOnly', 'true');
     if (filters?.vinculadaPlanAnual) queryParams.append('vinculadaPlanAnual', 'true');

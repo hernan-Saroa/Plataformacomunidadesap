@@ -11,7 +11,6 @@ import {
 import { Graduate } from './graduate.entity';
 import { GraduationCertificateRequest } from './graduation-certificate-request.entity';
 import { CertificateValidation } from './certificate-validation.entity';
-import { CertificateDownload } from './certificate-download.entity';
 import type { GraduationCertificateTemplateSnapshot } from './certificate-template-texts';
 
 @Entity({ schema: 'academic_registration', name: 'graduation_certificates' })
@@ -98,12 +97,6 @@ export class GraduationCertificate {
   @Column({ name: 'expiry_date', type: 'date', nullable: true })
   expiryDate: Date;
 
-  @Column({ name: 'revocation_date', type: 'timestamp', nullable: true })
-  revocationDate: Date;
-
-  @Column({ name: 'revocation_reason', type: 'text', nullable: true })
-  revocationReason: string;
-
   // Auditoría
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -131,7 +124,4 @@ export class GraduationCertificate {
     (validation) => validation.certificate,
   )
   validations: CertificateValidation[];
-
-  @OneToMany(() => CertificateDownload, (download) => download.certificate)
-  downloads: CertificateDownload[];
 }

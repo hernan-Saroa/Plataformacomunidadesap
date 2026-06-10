@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Building2, Plus, Search, Download, Upload, MapPin,
   ChevronRight, GitBranch, Network, Users, Loader2, ChevronDown, Pencil, Trash2,
@@ -27,7 +28,7 @@ export function EstructuraOrganizacionalModule() {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [loading, setLoading] = useState(true);
   const [estadisticas, setEstadisticas] = useState<EstadisticasEstructuraOrganizacional | null>(null);
-  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('arbol');
+  const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('lista');
 
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -61,16 +62,8 @@ export function EstructuraOrganizacionalModule() {
     } finally {
       setLoading(false);
     }
-
-    try {
-      const resp = await estructuraService.getUsuariosSinAsignar();
-      if (resp.success && resp.data) {
-        setSinTerritorial(resp.data.filter((u: any) => u.sinTerritorial).length);
-        setSinCetap(resp.data.filter((u: any) => !u.cetapId).length);
-      }
-    } catch {
-      // endpoint no disponible aún, no mostrar alerta
-    }
+    // El conteo de usuarios sin asignar requiere un endpoint que aún no existe en el backend.
+    // Se omite para no generar un 404 en consola; la alerta de "sin asignar" queda desactivada.
   };
 
   const handleCrear = (tipo: TipoCreacion) => {
@@ -496,8 +489,16 @@ function VistaArbolSeccionalesSedes({
                 </div>
               </div>
             )}
+            <AnimatePresence>
             {expandidosSedeCentral && (
-              <div key="territoriales-sede-central" className="ml-6 space-y-2">
+              <motion.div
+                key="territoriales-sede-central"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="ml-6 space-y-2 overflow-hidden"
+              >
                 {territorialesFiltradas.map((item, index) => {
                   if (!item) return null;
                   const { seccional, sedes: sedesSeccional } = item;
@@ -569,8 +570,15 @@ function VistaArbolSeccionalesSedes({
                   </div>
 
                       {/* Sedes de esta seccional */}
+                      <AnimatePresence>
                       {isExpandida && sedesSeccional.length > 0 && (
-                        <div className="mt-2 ml-6 space-y-1">
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="mt-2 ml-6 space-y-1 overflow-hidden"
+                        >
                           {sedesSeccional.map((sede, sedeIndex) => (
                             <div
                               key={sede.idSede ?? `sede-${sedeIndex}`}
@@ -633,13 +641,15 @@ function VistaArbolSeccionalesSedes({
                           </div>
                             </div>
                           ))}
-                        </div>
+                        </motion.div>
                       )}
+                      </AnimatePresence>
                     </div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -706,7 +716,7 @@ function VistaListaTerritorialesCetap({
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <div className="space-y-6">
       {/* Dashboard de Métricas - Diseño Mejorado */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1043,8 +1053,15 @@ function VistaListaTerritorialesCetap({
                       </div>
 
                       {/* NIVEL 3: CETAP (expandible) - Diseño Mejorado */}
+                      <AnimatePresence>
                       {isExpanded && sedesTerritorial.length > 0 && (
-                        <div className="border-t-2 border-white/30 bg-gradient-to-b from-white/15 to-white/5 backdrop-blur-xl p-4">
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="border-t-2 border-white/30 bg-gradient-to-b from-white/15 to-white/5 backdrop-blur-xl p-4 overflow-hidden"
+                        >
                             <div className="flex items-center gap-2 mb-3 pb-3 border-b border-white/20">
                               <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                                 <Network className="w-4 h-4 text-white" />
@@ -1087,8 +1104,9 @@ function VistaListaTerritorialesCetap({
                                 </div>
                               ))}
                             </div>
-                        </div>
+                        </motion.div>
                       )}
+                      </AnimatePresence>
                     </div>
                   </div>
                 );
