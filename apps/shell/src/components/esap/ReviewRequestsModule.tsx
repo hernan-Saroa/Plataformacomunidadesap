@@ -32,7 +32,8 @@ import {
   Paperclip,
   Trash2,
   FileCheck2,
-  Download
+  Download,
+  BarChart3
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -2014,36 +2015,54 @@ export function ReviewRequestsModule({
 
   return (
     <div className="space-y-6">
-      {/* Banner informativo de solicitudes */}
+      {/* Indicadores de solicitudes */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3"
+        className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4"
       >
-        {requestMetricCards.map((metric) => (
-          <Card
-            key={metric.id}
-            aria-label={`${metric.label}: ${metric.value} ${metric.subtitle}`}
-            className="gap-0 rounded-lg border border-l-4 border-slate-200 bg-white shadow-none cursor-default select-none"
-            style={{ borderLeftColor: metric.color }}
-          >
-            <div className="flex min-h-[92px] items-center justify-between gap-4 px-5 py-4">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-600">
-                  {metric.label}
-                </p>
-                <p className="mt-2 truncate text-xs text-slate-500">
-                  {metric.subtitle}
-                </p>
-              </div>
-              <p className="shrink-0 text-3xl font-semibold leading-none text-slate-900 tabular-nums">
-                {metric.value}
+        <div className="mb-3 flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <BarChart3 className="mt-0.5 h-4 w-4 text-[#003DA5]" />
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide text-slate-900">
+                Indicadores:
+              </p>
+              <p className="text-xs font-medium text-slate-500">
+                Vista rápida del estado de las solicitudes
               </p>
             </div>
-          </Card>
-        ))}
+          </div>
+          <span className="text-xs font-semibold text-slate-500">
+            Resumen actual
+          </span>
+        </div>
 
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {requestMetricCards.map((metric) => (
+            <Card
+              key={metric.id}
+              aria-label={`${metric.label}: ${metric.value} ${metric.subtitle}`}
+              className="gap-0 rounded-lg border border-l-4 border-slate-200 bg-white shadow-none cursor-default select-none"
+              style={{ borderLeftColor: metric.color }}
+            >
+              <div className="flex min-h-[92px] items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-600">
+                    {metric.label}
+                  </p>
+                  <p className="mt-2 truncate text-xs text-slate-500">
+                    {metric.subtitle}
+                  </p>
+                </div>
+                <p className="shrink-0 text-3xl font-semibold leading-none text-slate-900 tabular-nums">
+                  {metric.value}
+                </p>
+              </div>
+            </Card>
+          ))}
+        </div>
       </motion.div>
 
       {isMyReviewsScope && (
