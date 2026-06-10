@@ -987,7 +987,7 @@ export function ApprovalRequestsModule({
                                 ['Email', payload.email || request.graduateEmail],
                                 ['Programa', payload.programName || request.programName],
                                 ['Fecha grado', payload.graduationDate || request.graduationDate],
-                                ['Sede', payload.campus],
+                                ['Sede (CETAP)', payload.campus],
                                 ['Territorial', payload.seccionalName],
                                 ['Registro', payload.numRegistro],
                                 ['Folio', payload.numFolio],

@@ -279,7 +279,7 @@ export default function ValidarCertificadoGraduado({
 
                 {certificado.campus && (
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
-                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Sede:</span>
+                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Sede (CETAP):</span>
                     <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.campus}</span>
                   </div>
                 )}

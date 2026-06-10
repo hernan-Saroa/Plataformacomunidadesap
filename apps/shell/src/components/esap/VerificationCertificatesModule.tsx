@@ -2537,7 +2537,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Sede</p>
+                                  <p className="text-xs text-gray-600">Sede (CETAP)</p>
                                   <p className="font-semibold text-gray-900">
                                     {cert.graduate.campus || 'Sin asignar'}
                                   </p>
@@ -3108,7 +3108,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-campus">Sede</Label>
+                <Label htmlFor="edit-campus">Sede (CETAP)</Label>
                 <select
                   id="edit-campus"
                   value={editCertificateForm.campus}

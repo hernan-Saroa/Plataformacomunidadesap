@@ -123,6 +123,7 @@ export function ReviewRequestsModule({
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
+  const [sedesBySeccional, setSedesBySeccional] = useState<Record<string, string[]>>({});
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -237,6 +238,9 @@ export function ReviewRequestsModule({
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+
+  const hasCatalogKey = <T,>(catalog: Record<string, T>, key: string) =>
+    Object.prototype.hasOwnProperty.call(catalog, key);
 
   const normalizeComparableProgram = (value?: string | null) =>
     (value || '')
@@ -1040,6 +1044,14 @@ export function ReviewRequestsModule({
         });
 
         const territorialMap: Record<string, string> = {};
+        const sedesBySeccionalMap: Record<string, Set<string>> = {};
+        seccionales.forEach((seccional) => {
+          const seccionalName = normalizeName(seccional?.nomSeccional);
+          if (seccionalName) {
+            sedesBySeccionalMap[normalizeKey(seccionalName)] = new Set<string>();
+          }
+        });
+
         sedes.forEach((sede) => {
           const sedeName = normalizeName(sede?.nomSede);
           if (!sedeName) return;
@@ -1048,12 +1060,25 @@ export function ReviewRequestsModule({
             (sede?.idSeccional ? seccionalNameById.get(sede.idSeccional) || '' : '');
           if (seccionalName) {
             territorialMap[normalizeKey(sedeName)] = seccionalName;
+            const seccionalKey = normalizeKey(seccionalName);
+            if (!sedesBySeccionalMap[seccionalKey]) {
+              sedesBySeccionalMap[seccionalKey] = new Set<string>();
+            }
+            sedesBySeccionalMap[seccionalKey].add(sedeName);
           }
+        });
+
+        const sedesBySeccionalCatalog: Record<string, string[]> = {};
+        Object.entries(sedesBySeccionalMap).forEach(([seccionalKey, sedesSet]) => {
+          sedesBySeccionalCatalog[seccionalKey] = Array.from(sedesSet).sort((a, b) =>
+            a.localeCompare(b, 'es'),
+          );
         });
 
         setSedesOptions(Array.from(new Set(sedesList)).sort((a, b) => a.localeCompare(b, 'es')));
         setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
         setSeccionalBySede(territorialMap);
+        setSedesBySeccional(sedesBySeccionalCatalog);
 
       } catch (error) {
         console.error('Error cargando catálogos de aprobación:', error);
@@ -1076,12 +1101,32 @@ export function ReviewRequestsModule({
     'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.';
 
   const campusOptions = useMemo(() => {
-    const options = new Set<string>(sedesOptions);
+    const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+    const hasSelectedSeccionalCatalog =
+      !!selectedSeccionalKey && hasCatalogKey(sedesBySeccional, selectedSeccionalKey);
+    const baseOptions = hasSelectedSeccionalCatalog
+      ? sedesBySeccional[selectedSeccionalKey]
+      : sedesOptions;
+    const options = new Set<string>(baseOptions);
+
     if (approvalForm.campus) {
-      options.add(approvalForm.campus);
+      const mappedSeccional = seccionalBySede[normalizeKey(approvalForm.campus)];
+      if (
+        !selectedSeccionalKey ||
+        !mappedSeccional ||
+        normalizeKey(mappedSeccional) === selectedSeccionalKey
+      ) {
+        options.add(approvalForm.campus);
+      }
     }
     return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [approvalForm.campus, sedesOptions]);
+  }, [
+    approvalForm.campus,
+    approvalForm.seccionalName,
+    seccionalBySede,
+    sedesBySeccional,
+    sedesOptions,
+  ]);
 
   const seccionalSelectOptions = useMemo(() => {
     const options = new Set<string>(seccionalesOptions);
@@ -1128,6 +1173,38 @@ export function ReviewRequestsModule({
       };
     });
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede]);
+
+  useEffect(() => {
+    if (!approvalForm.campus || !approvalForm.seccionalName) {
+      return;
+    }
+
+    const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+    if (!hasCatalogKey(sedesBySeccional, selectedSeccionalKey)) {
+      return;
+    }
+
+    const campusMatchesSeccional = sedesBySeccional[selectedSeccionalKey].some(
+      (sede) => normalizeKey(sede) === normalizeKey(approvalForm.campus),
+    );
+    if (campusMatchesSeccional) {
+      return;
+    }
+
+    setApprovalForm((prev) => {
+      if (
+        prev.campus !== approvalForm.campus ||
+        prev.seccionalName !== approvalForm.seccionalName
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        campus: '',
+      };
+    });
+  }, [approvalForm.campus, approvalForm.seccionalName, sedesBySeccional]);
 
   const getRequestSortTime = (request: ReviewRequest) => {
     const createdAt = parseDateSafe(request.createdAt)?.getTime() ?? 0;
@@ -3193,7 +3270,48 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Sede<span className="text-red-500"> *</span>
+                      Territorial<span className="text-red-500"> *</span>
+                    </label>
+                    <select
+                      value={approvalForm.seccionalName}
+                      onChange={(e) => {
+                        const nextSeccional = e.target.value;
+                        const nextSeccionalKey = normalizeKey(nextSeccional);
+                        const sedesForSeccional =
+                          nextSeccionalKey && hasCatalogKey(sedesBySeccional, nextSeccionalKey)
+                            ? sedesBySeccional[nextSeccionalKey]
+                            : null;
+
+                        setApprovalForm((prev) => {
+                          const keepCampus =
+                            !nextSeccional ||
+                            !prev.campus ||
+                            !sedesForSeccional ||
+                            sedesForSeccional.some(
+                              (sede) => normalizeKey(sede) === normalizeKey(prev.campus),
+                            );
+
+                          return {
+                            ...prev,
+                            seccionalName: nextSeccional,
+                            campus: keepCampus ? prev.campus : '',
+                          };
+                        });
+                      }}
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar seccional</option>
+                      {seccionalSelectOptions.map((seccional) => (
+                        <option key={seccional} value={seccional}>
+                          {seccional}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Sede (CETAP)<span className="text-red-500"> *</span>
                     </label>
                     <select
                       value={approvalForm.campus}
@@ -3207,8 +3325,8 @@ export function ReviewRequestsModule({
                           ...prev,
                           campus: nextCampus,
                           seccionalName: nextCampus
-                            ? mappedSeccional || ''
-                            : '',
+                            ? mappedSeccional || prev.seccionalName
+                            : prev.seccionalName,
                         }));
                       }}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3218,26 +3336,6 @@ export function ReviewRequestsModule({
                       {campusOptions.map((sede) => (
                         <option key={sede} value={sede}>
                           {sede}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
-                      Territorial<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.seccionalName}
-                      onChange={(e) =>
-                        setApprovalForm({ ...approvalForm, seccionalName: e.target.value })
-                      }
-                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar seccional</option>
-                      {seccionalSelectOptions.map((seccional) => (
-                        <option key={seccional} value={seccional}>
-                          {seccional}
                         </option>
                       ))}
                     </select>
