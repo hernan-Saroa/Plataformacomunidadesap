@@ -1702,7 +1702,7 @@ export function ReviewRequestsModule({
         return;
       }
       if (!approvalForm.seccionalName) {
-        toast.error('Selecciona la seccional');
+        toast.error('Selecciona la territorial');
         return;
       }
       if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
@@ -3301,7 +3301,7 @@ export function ReviewRequestsModule({
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
-                      <option value="">Seleccionar seccional</option>
+                      <option value="">Seleccionar territorial</option>
                       {seccionalSelectOptions.map((seccional) => (
                         <option key={seccional} value={seccional}>
                           {seccional}
