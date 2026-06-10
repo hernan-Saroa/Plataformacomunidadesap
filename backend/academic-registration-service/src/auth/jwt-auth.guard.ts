@@ -12,7 +12,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/health/i,
     /^\/docs/i,
     /^\/swagger/i,
-    /(?:^|\/)(?:api\/v\d+\/)?certificates\/autoservicio\/(?:verificar-graduado|buscar-coincidencias|solicitar-certificado|solicitar-revision-con-soporte|generar-codigo|validar-codigo|empresa)(?:\?.*)?$/i,
     /^\/(?:api\/v\d+\/)?certificates\/[^/]+\/pdf(?:\?.*)?$/i,
   ];
 
