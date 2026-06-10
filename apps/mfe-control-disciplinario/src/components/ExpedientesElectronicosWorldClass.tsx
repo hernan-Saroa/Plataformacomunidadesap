@@ -762,11 +762,25 @@ export function ExpedientesElectronicosWorldClass() {
       return ordenCronologico === 'desc' ? fechaB - fechaA : fechaA - fechaB;
     });
 
-    return expedientesOrdenados.map(expId => ({
+    const resultado = expedientesOrdenados.map(expId => ({
       expedienteId: expId,
       expediente: expedientes.find(e => e.id === expId)!,
       documentos: grupos[expId]
     }));
+
+    // Incluir expedientes sin documentos que pasen el filtro de estado y búsqueda
+    expedientes.forEach(exp => {
+      if (grupos[exp.id]) return; // ya está incluido
+      const cumpleFiltro = filtroEstado === 'todos' || exp.estado === filtroEstado;
+      const cumpleBusqueda = busqueda === '' ||
+        exp.radicado?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        exp.nombreDisciplinado?.toLowerCase().includes(busqueda.toLowerCase());
+      if (cumpleFiltro && cumpleBusqueda) {
+        resultado.push({ expedienteId: exp.id, expediente: exp, documentos: [] });
+      }
+    });
+
+    return resultado;
   }, [documentos, busqueda, filtroTipoDoc, filtroEstado, ordenCronologico, expedientes]);
 
   const getEstadoConfig = (estado: string) => {
@@ -1632,6 +1646,7 @@ export function ExpedientesElectronicosWorldClass() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {grupo.expediente.estado !== 'radicada' && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1644,6 +1659,7 @@ export function ExpedientesElectronicosWorldClass() {
                                 <Share2 className="w-3.5 h-3.5" />
                                 Compartir
                               </button>
+                              )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1801,6 +1817,7 @@ export function ExpedientesElectronicosWorldClass() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {expediente.estado !== 'radicada' && (
                               <button
                                 onClick={() => {
                                   setExpedienteParaCompartir(expediente);
@@ -1812,6 +1829,7 @@ export function ExpedientesElectronicosWorldClass() {
                                 <Share2 className="w-3.5 h-3.5" />
                                 Compartir
                               </button>
+                              )}
                               <button
                                 onClick={() => exportarIndiceExpedienteExcel(expediente.id)}
                                 className="px-2.5 py-1.5 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition text-xs font-bold flex items-center gap-1.5"

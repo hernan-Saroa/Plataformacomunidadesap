@@ -7,12 +7,20 @@ export function ConfiguracionFirmaJefe() {
   const [firmaExiste, setFirmaExiste] = useState(false);
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [firmaActual, setFirmaActual] = useState<string | null>(null);
+  const [previewNueva, setPreviewNueva] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     disciplinaryService.firmaJefeExiste()
-      .then(({ existe }) => setFirmaExiste(existe))
+      .then(({ existe }) => {
+        setFirmaExiste(existe);
+        if (existe) {
+          disciplinaryService.getFirmaJefe()
+            .then(url => setFirmaActual(url))
+            .catch(() => {});
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -28,8 +36,7 @@ export function ConfiguracionFirmaJefe() {
       toast.error('La imagen no debe superar 2MB');
       return;
     }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
+    setPreviewNueva(URL.createObjectURL(file));
   };
 
   const handleGuardar = async () => {
@@ -39,12 +46,20 @@ export function ConfiguracionFirmaJefe() {
     try {
       await disciplinaryService.uploadFirmaJefe(file);
       setFirmaExiste(true);
+      setFirmaActual(previewNueva);
+      setPreviewNueva(null);
+      if (inputRef.current) inputRef.current.value = '';
       toast.success('Firma guardada correctamente');
     } catch {
       toast.error('No se pudo guardar la firma');
     } finally {
       setGuardando(false);
     }
+  };
+
+  const handleCancelarNueva = () => {
+    setPreviewNueva(null);
+    if (inputRef.current) inputRef.current.value = '';
   };
 
   if (loading) {
@@ -54,6 +69,8 @@ export function ConfiguracionFirmaJefe() {
       </div>
     );
   }
+
+  const imagenVisible = previewNueva ?? firmaActual;
 
   return (
     <div className="px-8 py-6 max-w-xl">
@@ -75,14 +92,19 @@ export function ConfiguracionFirmaJefe() {
         }
       </div>
 
-      {/* Upload */}
+      {/* Cuadro de firma */}
       <div
-        className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:border-blue-400 transition-colors mb-4"
-        style={{ borderColor: preview ? '#1e5da8' : '#D1D5DB' }}
+        className="border-2 border-dashed rounded-xl p-3 text-center cursor-pointer hover:border-blue-400 transition-colors mb-4"
+        style={{ borderColor: imagenVisible ? '#1e5da8' : '#D1D5DB' }}
         onClick={() => inputRef.current?.click()}
       >
-        {preview ? (
-          <img src={preview} alt="Preview firma" className="max-h-24 mx-auto object-contain" />
+        {imagenVisible ? (
+          <div>
+            <img src={imagenVisible} alt="Firma" className="max-h-16 mx-auto object-contain" />
+            {!previewNueva && (
+              <p className="text-xs text-gray-400 mt-2">Haga clic para cambiar la firma</p>
+            )}
+          </div>
         ) : (
           <>
             <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -100,7 +122,7 @@ export function ConfiguracionFirmaJefe() {
         onChange={handleFileChange}
       />
 
-      {preview && (
+      {previewNueva && (
         <div className="flex gap-3">
           <button
             onClick={handleGuardar}
@@ -111,7 +133,7 @@ export function ConfiguracionFirmaJefe() {
             {guardando ? 'Guardando...' : 'Guardar firma'}
           </button>
           <button
-            onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
+            onClick={handleCancelarNueva}
             className="py-2 px-3 rounded-lg border text-gray-600 hover:bg-gray-50"
           >
             <Trash2 className="w-4 h-4" />
