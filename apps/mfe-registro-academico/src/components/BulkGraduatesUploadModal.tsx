@@ -41,14 +41,12 @@ type BulkGraduatesUploadModalProps = {
 };
 
 type FieldKey =
-  | 'tipoIdentificacion'
   | 'identificacion'
   | 'estudiante'
   | 'titulo'
   | 'registro'
   | 'acta'
   | 'libro'
-  | 'diploma'
   | 'fechaRegistro'
   | 'anioGrado'
   | 'correo'
@@ -60,14 +58,12 @@ type FieldErrors = Partial<Record<FieldKey, string[]>>;
 
 type ParsedGraduateRow = {
   rowNumber: number;
-  tipoIdentificacion: string;
   identificacion: string;
   estudiante: string;
   titulo: string;
   registro: string;
   acta: string;
   libro: string;
-  diploma: string;
   fechaRegistro: string;
   anioGrado: string;
   correo: string;
@@ -87,23 +83,13 @@ type Catalogs = {
   territorialBySedeKey: Map<string, string>;
 };
 
-type DocumentTypeOption = {
-  code: string;
-  name: string;
-  validation: string;
-  storedInGraduates: 'NO';
-  note: string;
-};
-
 const TEMPLATE_HEADERS = [
-  'TIPOIDENTIFICACION',
   'IDENTIFICACION',
   'ESTUDIANTE',
   'TITULO',
   'REGISTRO',
   'ACTA',
   'LIBRO',
-  'DIPLOMA',
   'FECHAREGISTRO',
   'AñoGrado',
   'CORREO',
@@ -113,14 +99,12 @@ const TEMPLATE_HEADERS = [
 ] as const;
 
 const FIELD_LABELS: Record<FieldKey, string> = {
-  tipoIdentificacion: 'TIPOIDENTIFICACION',
   identificacion: 'IDENTIFICACION',
   estudiante: 'ESTUDIANTE',
   titulo: 'TITULO',
   registro: 'REGISTRO',
   acta: 'ACTA',
   libro: 'LIBRO',
-  diploma: 'DIPLOMA',
   fechaRegistro: 'FECHAREGISTRO',
   anioGrado: 'AñoGrado',
   correo: 'CORREO',
@@ -129,64 +113,24 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   sede: 'SEDE',
 };
 
-const DOCUMENT_TYPE_OPTIONS: DocumentTypeOption[] = [
-  {
-    code: 'CC',
-    name: 'Cédula de ciudadanía',
-    validation: '6 a 10 dígitos numéricos',
-    storedInGraduates: 'NO',
-    note: 'El servicio de usuarios/personas valida este formato; graduados solo guarda IDENTIFICACION.',
-  },
-  {
-    code: 'CE',
-    name: 'Cédula de extranjería',
-    validation: '6 a 10 dígitos numéricos',
-    storedInGraduates: 'NO',
-    note: 'El servicio de usuarios/personas valida este formato; graduados solo guarda IDENTIFICACION.',
-  },
-  {
-    code: 'TI',
-    name: 'Tarjeta de identidad',
-    validation: '10 u 11 dígitos numéricos',
-    storedInGraduates: 'NO',
-    note: 'El servicio de usuarios/personas valida este formato; graduados solo guarda IDENTIFICACION.',
-  },
-  {
-    code: 'PEP',
-    name: 'Permiso Especial de Permanencia',
-    validation: '5 a 20 dígitos numéricos en esta plantilla',
-    storedInGraduates: 'NO',
-    note: 'No tiene validación específica en graduados; se controla para evitar datos inconsistentes.',
-  },
-  {
-    code: 'PPT',
-    name: 'Permiso por Protección Temporal',
-    validation: '5 a 20 dígitos numéricos en esta plantilla',
-    storedInGraduates: 'NO',
-    note: 'No tiene validación específica en graduados; se controla para evitar datos inconsistentes.',
-  },
-  {
-    code: 'PASAPORTE',
-    name: 'Pasaporte',
-    validation: '5 a 20 dígitos numéricos en esta plantilla',
-    storedInGraduates: 'NO',
-    note: 'No tiene validación específica en graduados; se controla para evitar datos inconsistentes.',
-  },
-];
-
-const DOCUMENT_TYPE_CODES = DOCUMENT_TYPE_OPTIONS.map((option) => option.code);
 const MAX_ROWS = 1000;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 const NUMERIC_FIELD_RULES: Record<
-  'registro' | 'acta' | 'libro' | 'diploma',
+  'registro' | 'acta' | 'libro',
   { maxLength: number; label: string }
 > = {
   registro: { maxLength: 3, label: 'REGISTRO' },
   acta: { maxLength: 2, label: 'ACTA' },
   libro: { maxLength: 2, label: 'LIBRO' },
-  diploma: { maxLength: 6, label: 'DIPLOMA' },
 };
+
+const PHONE_MIN_LENGTH = 7;
+const PHONE_MAX_LENGTH = 10;
+const STUDENT_NAME_MAX_LENGTH = 255;
+const TITLE_MAX_LENGTH = 255;
+const TERRITORIAL_MAX_LENGTH = 255;
+const SEDE_MAX_LENGTH = 100;
 
 const PREVIEW_COLUMNS: Array<{
   key: FieldKey;
@@ -195,100 +139,86 @@ const PREVIEW_COLUMNS: Array<{
   getValue: (row: ParsedGraduateRow) => string;
 }> = [
   {
-    key: 'tipoIdentificacion',
-    label: 'Tipo ID',
-    className: 'min-w-[7rem]',
-    getValue: (row) => row.tipoIdentificacion,
-  },
-  {
     key: 'identificacion',
     label: 'Identificación',
-    className: 'min-w-[9rem]',
+    className: 'min-w-[8.25rem]',
     getValue: (row) => row.identificacion,
   },
   {
     key: 'estudiante',
     label: 'Estudiante',
-    className: 'min-w-[17rem]',
+    className: 'min-w-[13rem]',
     getValue: (row) => row.estudiante,
   },
   {
     key: 'titulo',
     label: 'Título',
-    className: 'min-w-[22rem]',
+    className: 'min-w-[16rem]',
     getValue: (row) => row.titulo,
   },
   {
     key: 'registro',
     label: 'Registro',
-    className: 'min-w-[7rem]',
+    className: 'min-w-[5.75rem]',
     getValue: (row) => row.registro,
   },
   {
     key: 'acta',
     label: 'Acta',
-    className: 'min-w-[6rem]',
+    className: 'min-w-[5rem]',
     getValue: (row) => row.acta,
   },
   {
     key: 'libro',
     label: 'Libro',
-    className: 'min-w-[6rem]',
+    className: 'min-w-[5rem]',
     getValue: (row) => row.libro,
-  },
-  {
-    key: 'diploma',
-    label: 'Diploma',
-    className: 'min-w-[7rem]',
-    getValue: (row) => row.diploma,
   },
   {
     key: 'fechaRegistro',
     label: 'Fecha registro',
-    className: 'min-w-[10rem]',
+    className: 'min-w-[8.5rem]',
     getValue: (row) => row.fechaRegistro,
   },
   {
     key: 'anioGrado',
     label: 'Año grado',
-    className: 'min-w-[8rem]',
+    className: 'min-w-[6.75rem]',
     getValue: (row) => row.anioGrado,
   },
   {
     key: 'correo',
     label: 'Correo',
-    className: 'min-w-[17rem]',
+    className: 'min-w-[14rem]',
     getValue: (row) => row.correo,
   },
   {
     key: 'telefono',
     label: 'Teléfono',
-    className: 'min-w-[9rem]',
+    className: 'min-w-[8rem]',
     getValue: (row) => row.telefono,
   },
   {
     key: 'territorial',
     label: 'Territorial',
-    className: 'min-w-[14rem]',
+    className: 'min-w-[11rem]',
     getValue: (row) => row.territorial,
   },
   {
     key: 'sede',
     label: 'Sede',
-    className: 'min-w-[16rem]',
+    className: 'min-w-[12rem]',
     getValue: (row) => row.sede,
   },
 ];
 
 const FIELD_ALIASES: Record<FieldKey, string[]> = {
-  tipoIdentificacion: ['TIPOIDENTIFICACION', 'TIPO_IDENTIFICACION', 'TIPO DOCUMENTO'],
   identificacion: ['IDENTIFICACION', 'DOCUMENTO', 'CEDULA', 'NUMERO_DOCUMENTO'],
   estudiante: ['ESTUDIANTE', 'NOMBRE', 'NOMBRE_COMPLETO', 'GRADUADO'],
   titulo: ['TITULO', 'PROGRAMA', 'PROGRAMA_ACADEMICO', 'TITULO_OBTENIDO'],
   registro: ['REGISTRO', 'NUM_REGISTRO', 'NUMERO_REGISTRO'],
   acta: ['ACTA', 'NUM_ACTA', 'NUMERO_ACTA', 'FOLIO', 'NUM_FOLIO', 'NUMERO_FOLIO'],
   libro: ['LIBRO', 'NUM_LIBRO', 'NUMERO_LIBRO'],
-  diploma: ['DIPLOMA', 'NUM_DIPLOMA', 'DIPLOMA_NUMBER'],
   fechaRegistro: ['FECHAREGISTRO', 'FECHA_REGISTRO', 'FECHA DE REGISTRO', 'FECHA_GRADO'],
   anioGrado: ['AñoGrado', 'ANIOGRADO', 'ANO_GRADO', 'AÑO_GRADO', 'YEAR_GRADO'],
   correo: ['CORREO', 'EMAIL', 'CORREO_ELECTRONICO'],
@@ -303,11 +233,12 @@ const TEMPLATE_RULES = [
   'No se permite repetir la combinación IDENTIFICACION + TITULO en el archivo ni en la base de datos.',
   'FECHAREGISTRO no puede ser posterior a la fecha actual.',
   'TITULO, TERRITORIAL y SEDE deben copiarse exactamente desde los bloques de PARAMETROS.',
-  'La SEDE debe pertenecer a la TERRITORIAL indicada en el bloque TERRITORIALES_Y_SEDES.',
-  'TIPOIDENTIFICACION se valida en la plantilla, pero el módulo de graduados no lo almacena como campo propio.',
-  'REGISTRO, ACTA, LIBRO y DIPLOMA deben ser numéricos. REGISTRO máximo 3 dígitos; ACTA y LIBRO máximo 2; DIPLOMA máximo 6.',
+  'La SEDE debe pertenecer a la TERRITORIAL indicada en el bloque TERRITORIALES_Y_SEDES_DETALLE.',
+  'IDENTIFICACION solo debe contener números; graduados no almacena tipo de documento.',
+  'REGISTRO, ACTA y LIBRO deben ser numéricos. REGISTRO máximo 3 dígitos; ACTA y LIBRO máximo 2.',
+  'DIPLOMA no se diligencia en la plantilla; el sistema lo asigna automáticamente al crear el graduado.',
   'CORREO es opcional, pero si se diligencia debe tener @ y un punto después del @.',
-  'TELEFONO es opcional, pero si se diligencia solo debe contener números y separadores básicos.',
+  'TELEFONO es opcional, pero si se diligencia solo debe contener números, mínimo 7 y máximo 10 dígitos.',
   'El archivo debe ser .xlsx, con máximo 1000 filas y 10 MB.',
 ];
 
@@ -413,6 +344,8 @@ const parseDateToIso = (value: string, fallbackYear?: string) => {
         return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       }
     }
+
+    return '';
   }
 
   const year = Number((fallbackYear || '').replace(/\D/g, ''));
@@ -423,16 +356,44 @@ const parseDateToIso = (value: string, fallbackYear?: string) => {
 };
 
 const validateEmail = (value: string) => {
-  if (!value) return true;
-  const atIndex = value.indexOf('@');
-  const dotAfterAt = atIndex >= 0 ? value.indexOf('.', atIndex + 2) : -1;
-  return atIndex > 0 && dotAfterAt > atIndex + 1 && dotAfterAt < value.length - 1;
-};
+  const email = value.trim().toLowerCase();
+  if (!email) return true;
+  if (email.length > 254 || /\s/.test(email)) return false;
 
-const normalizePhone = (value: string) => value.replace(/\D+/g, '');
+  const parts = email.split('@');
+  if (parts.length !== 2) return false;
+
+  const [localPart, domain] = parts;
+  if (!localPart || !domain || localPart.length > 64) return false;
+  if (localPart.startsWith('.') || localPart.endsWith('.') || localPart.includes('..')) {
+    return false;
+  }
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(localPart)) {
+    return false;
+  }
+
+  if (domain.startsWith('.') || domain.endsWith('.') || domain.includes('..')) {
+    return false;
+  }
+  if (!/^[a-z0-9.-]+$/i.test(domain)) return false;
+
+  const domainLabels = domain.split('.');
+  if (domainLabels.length < 2) return false;
+
+  const validDomainLabels = domainLabels.every((label) => {
+    if (!label || label.length > 63) return false;
+    return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label);
+  });
+  if (!validDomainLabels) return false;
+
+  const tld = domainLabels[domainLabels.length - 1];
+  return /^[a-z]{2,24}$/i.test(tld);
+};
 
 const validateName = (value: string) =>
   /^[\p{L}\s.'-]+$/u.test(value) && /\p{L}/u.test(value) && !/\d/.test(value);
+
+const hasControlCharacters = (value: string) => /[\u0000-\u001F\u007F]/.test(value);
 
 const buildCatalogs = (
   programOptions: string[],
@@ -493,14 +454,12 @@ const createExampleRows = (
 
   return [
     [
-      'CC',
       '900100001',
       'LAURA CAMILA ANDRADE RIVERA',
       firstProgram,
       '123',
       '28',
       '3',
-      '28',
       '15-07-2022',
       '2022',
       'laura.andrade@example.com',
@@ -509,14 +468,12 @@ const createExampleRows = (
       firstLocation.sede,
     ],
     [
-      'CC',
       '900100002',
       'MATEO ALEJANDRO PARRA LÓPEZ',
       secondProgram,
       '124',
       '55',
       '11',
-      '55',
       '22-10-2021',
       '2021',
       'mateo.parra@example.com',
@@ -527,7 +484,7 @@ const createExampleRows = (
   ];
 };
 
-const buildLocationRows = (
+const buildLocationGroups = (
   territorialOptions: string[],
   sedeTerritorialOptions: SedeTerritorialOption[],
 ) => {
@@ -542,17 +499,27 @@ const buildLocationRows = (
       `${a.territorial} ${a.sede}`.localeCompare(`${b.territorial} ${b.sede}`, 'es'),
     );
 
-  const countsByTerritorial = new Map<string, number>();
+  const groupsByTerritorial = new Map<string, { territorial: string; sedes: string[] }>();
+
   rows.forEach((row) => {
     const key = normalizeKey(row.territorial);
-    countsByTerritorial.set(key, (countsByTerritorial.get(key) || 0) + 1);
+    if (!key) return;
+    const current = groupsByTerritorial.get(key) || {
+      territorial: row.territorial,
+      sedes: [],
+    };
+    if (row.sede && !current.sedes.some((sede) => normalizeKey(sede) === normalizeKey(row.sede))) {
+      current.sedes.push(row.sede);
+    }
+    groupsByTerritorial.set(key, current);
   });
 
-  return rows.map((row, index) => ({
-    ...row,
-    order: index + 1,
-    sedeCount: countsByTerritorial.get(normalizeKey(row.territorial)) || 0,
-  }));
+  return Array.from(groupsByTerritorial.values())
+    .map((group) => ({
+      ...group,
+      sedes: uniqueSorted(group.sedes),
+    }))
+    .sort((a, b) => a.territorial.localeCompare(b.territorial, 'es'));
 };
 
 const buildParametersRows = (
@@ -561,58 +528,103 @@ const buildParametersRows = (
   sedeTerritorialOptions: SedeTerritorialOption[],
 ) => {
   const programs = uniqueSorted(programOptions);
-  const locationRows = buildLocationRows(territorialOptions, sedeTerritorialOptions);
+  const locationGroups = buildLocationGroups(territorialOptions, sedeTerritorialOptions);
+  const locationDetailRows = locationGroups.flatMap((group, groupIndex) => {
+    const sedes = group.sedes.length ? group.sedes : [''];
+    return sedes.map((sede, sedeIndex) => ({
+      order: groupIndex + 1,
+      territorial: group.territorial,
+      sede,
+      sedePosition: group.sedes.length ? `${sedeIndex + 1} de ${group.sedes.length}` : 'Sin sede asociada',
+      sedeCount: group.sedes.length,
+    }));
+  });
   const rows: Array<Array<string | number>> = [
     ['PARAMETROS DE CARGA MASIVA DE GRADUADOS'],
     [
-      'Use esta hoja como catálogo oficial. Copie y pegue los valores exactamente como aparecen para evitar errores de ortografía en GRADUADOS.',
+      'Use esta hoja como catálogo oficial. Copie y pegue los valores exactamente como aparecen para evitar errores en GRADUADOS.',
+    ],
+    [
+      'Para sedes, copie siempre TERRITORIAL y SEDE desde la misma fila del bloque TERRITORIALES_Y_SEDES_DETALLE.',
     ],
     [''],
-    ['BLOQUE 1', 'TITULOS_VALIDOS'],
-    ['#', 'TITULO'],
+    ['RESUMEN DE CATALOGOS'],
+    ['CATALOGO', 'CANTIDAD', 'COLUMNA EN GRADUADOS', 'COMO USARLO', 'OBSERVACION'],
+    [
+      'Títulos válidos',
+      programs.length,
+      'TITULO',
+      'Copiar un valor del bloque TITULOS_VALIDOS.',
+      'Debe coincidir exactamente con un programa disponible en la plataforma.',
+    ],
+    [
+      'Territoriales',
+      locationGroups.length,
+      'TERRITORIAL',
+      'Copiar junto con la SEDE de la misma fila del detalle.',
+      'La territorial proviene de Estructura Organizacional.',
+    ],
+    [
+      'Relaciones territorial-sede',
+      locationDetailRows.length,
+      'TERRITORIAL + SEDE',
+      'Usar el bloque de detalle para evitar cruces incorrectos.',
+      'Una sede solo es válida dentro de su territorial asociada.',
+    ],
+    [''],
+    ['BLOQUE 1 - TITULOS_VALIDOS'],
+    ['#', 'TITULO_VALIDO', 'COPIAR_EN_COLUMNA', 'OBSERVACION'],
   ];
 
-  programs.forEach((program, index) => rows.push([index + 1, program]));
+  programs.forEach((program, index) => {
+    rows.push([index + 1, program, 'TITULO', 'Copie exactamente este texto.']);
+  });
 
   rows.push(
     [''],
-    ['BLOQUE 2', 'TERRITORIALES_Y_SEDES'],
+    ['BLOQUE 2 - RESUMEN_SEDES_POR_TERRITORIAL'],
     [
+      '#',
       'TERRITORIAL',
-      'SEDE',
-      'SEDES_EN_TERRITORIAL',
-      'ORDEN',
-      'OBSERVACION',
+      'TOTAL_SEDES',
+      'SEDES_DE_ESTA_TERRITORIAL',
+      'USO',
     ],
   );
 
-  locationRows.forEach((location) => {
+  locationGroups.forEach((group, index) => {
     rows.push([
-      location.territorial,
-      location.sede,
-      location.sedeCount,
-      location.order,
-      'Copie ambos valores en la misma fila del graduado. La sede pertenece a esta territorial.',
+      index + 1,
+      group.territorial,
+      group.sedes.length,
+      group.sedes.join(' | ') || 'Sin sedes asociadas',
+      'Resumen de consulta. Para copiar datos use el bloque 3.',
     ]);
   });
 
   rows.push(
     [''],
-    ['BLOQUE 3', 'TIPOS_IDENTIFICACION'],
-    ['CODIGO', 'NOMBRE', 'VALIDACION_IDENTIFICACION', 'SE_GUARDA_EN_GRADUADOS', 'OBSERVACION'],
+    ['BLOQUE 3 - TERRITORIALES_Y_SEDES_DETALLE'],
+    [
+      '#',
+      'TERRITORIAL',
+      'SEDE',
+      'SEDE_EN_TERRITORIAL',
+      'COPIAR_EN_GRADUADOS',
+    ],
   );
 
-  DOCUMENT_TYPE_OPTIONS.forEach((option) => {
+  locationDetailRows.forEach((location, index) => {
     rows.push([
-      option.code,
-      option.name,
-      option.validation,
-      option.storedInGraduates,
-      option.note,
+      index + 1,
+      location.territorial,
+      location.sede || 'Sin sede asociada',
+      location.sedePosition,
+      'Copie TERRITORIAL y SEDE de esta misma fila.',
     ]);
   });
 
-  rows.push([''], ['BLOQUE 4', 'REGLAS_DE_CARGA'], ['#', 'REGLA']);
+  rows.push([''], ['BLOQUE 4 - REGLAS_DE_CARGA'], ['#', 'REGLA']);
   TEMPLATE_RULES.forEach((rule, index) => rows.push([index + 1, rule]));
 
   return rows;
@@ -630,7 +642,6 @@ const addFieldError = (
 };
 
 const validateIdentificationNumber = (
-  tipoIdentificacion: string,
   identificacion: string,
   addError: (field: FieldKey, message: string) => void,
 ) => {
@@ -639,27 +650,13 @@ const validateIdentificationNumber = (
     return;
   }
 
-  if (tipoIdentificacion === 'CC' || tipoIdentificacion === 'CE') {
-    if (!/^\d{6,10}$/.test(identificacion)) {
-      addError('identificacion', `${tipoIdentificacion} debe tener entre 6 y 10 dígitos.`);
-    }
-    return;
-  }
-
-  if (tipoIdentificacion === 'TI') {
-    if (!/^\d{10,11}$/.test(identificacion)) {
-      addError('identificacion', 'TI debe tener 10 u 11 dígitos.');
-    }
-    return;
-  }
-
-  if (identificacion.length < 5 || identificacion.length > 20) {
+  if (!/^\d{5,20}$/.test(identificacion)) {
     addError('identificacion', 'debe tener entre 5 y 20 dígitos.');
   }
 };
 
 const validateNumericControlField = (
-  field: 'registro' | 'acta' | 'libro' | 'diploma',
+  field: 'registro' | 'acta' | 'libro',
   value: string,
   addError: (field: FieldKey, message: string) => void,
 ) => {
@@ -670,6 +667,10 @@ const validateNumericControlField = (
   }
   if (!/^\d+$/.test(value)) {
     addError(field, 'debe ser numérico, sin letras, guiones ni prefijos.');
+    return;
+  }
+  if (/^0+$/.test(value)) {
+    addError(field, 'no puede ser cero.');
     return;
   }
   if (value.length > rule.maxLength) {
@@ -683,20 +684,18 @@ const buildParsedRow = (
   duplicateKeys: Set<string>,
   catalogs: Catalogs,
 ): ParsedGraduateRow => {
-  const tipoIdentificacion = getCellValue(row, 'tipoIdentificacion').toUpperCase();
   const identificacionRaw = getCellValue(row, 'identificacion');
-  const identificacion = identificacionRaw.replace(/\D+/g, '');
+  const identificacion = identificacionRaw.trim();
   const estudiante = getCellValue(row, 'estudiante').replace(/\s+/g, ' ').trim();
   const titulo = getCellValue(row, 'titulo').replace(/\s+/g, ' ').trim();
   const registro = getCellValue(row, 'registro').trim();
   const acta = getCellValue(row, 'acta').trim();
   const libro = getCellValue(row, 'libro').trim();
-  const diploma = getCellValue(row, 'diploma').trim();
   const fechaRegistro = getCellValue(row, 'fechaRegistro').trim();
-  const anioGrado = getCellValue(row, 'anioGrado').replace(/\D+/g, '');
+  const anioGrado = getCellValue(row, 'anioGrado').trim();
   const correo = getCellValue(row, 'correo').trim().toLowerCase();
   const telefono = getCellValue(row, 'telefono').trim();
-  const telefonoNormalizado = normalizePhone(telefono);
+  const telefonoNormalizado = telefono;
   const territorial = getCellValue(row, 'territorial').replace(/\s+/g, ' ').trim();
   const sede = getCellValue(row, 'sede').replace(/\s+/g, ' ').trim();
   const errors: string[] = [];
@@ -704,23 +703,21 @@ const buildParsedRow = (
   const addError = (field: FieldKey, message: string) =>
     addFieldError(errors, fieldErrors, field, message);
 
-  if (!tipoIdentificacion) {
-    addError('tipoIdentificacion', 'es obligatorio.');
-  } else if (!DOCUMENT_TYPE_CODES.includes(tipoIdentificacion)) {
-    addError('tipoIdentificacion', `debe ser uno de: ${DOCUMENT_TYPE_CODES.join(', ')}.`);
+  if (identificacionRaw && !/^\d+$/.test(identificacionRaw)) {
+    addError('identificacion', 'solo debe contener números, sin puntos, guiones, espacios ni letras.');
+  } else if (/^0+$/.test(identificacion)) {
+    addError('identificacion', 'no puede estar compuesta solo por ceros.');
   }
-
-  if (identificacionRaw && /[A-Za-z]/.test(identificacionRaw)) {
-    addError('identificacion', 'solo debe contener números.');
-  } else if (identificacionRaw && /[^\d\s.-]/.test(identificacionRaw)) {
-    addError('identificacion', 'solo debe contener números y separadores básicos.');
-  }
-  validateIdentificationNumber(tipoIdentificacion, identificacion, addError);
+  validateIdentificationNumber(identificacion, addError);
 
   if (!estudiante) {
     addError('estudiante', 'es obligatorio.');
   } else if (!validateName(estudiante)) {
     addError('estudiante', 'solo debe contener letras, espacios, puntos, guiones o apóstrofes.');
+  } else if (estudiante.length > STUDENT_NAME_MAX_LENGTH) {
+    addError('estudiante', `no puede superar ${STUDENT_NAME_MAX_LENGTH} caracteres.`);
+  } else if (hasControlCharacters(estudiante)) {
+    addError('estudiante', 'contiene caracteres no permitidos.');
   }
 
   const resolvedTitle = titulo ? resolveCatalogValue(titulo, catalogs.programsByKey) : '';
@@ -728,12 +725,15 @@ const buildParsedRow = (
     addError('titulo', 'es obligatorio.');
   } else if (catalogs.programsByKey.size > 0 && !resolvedTitle) {
     addError('titulo', 'no coincide con los títulos válidos de la hoja PARAMETROS.');
+  } else if (titulo.length > TITLE_MAX_LENGTH) {
+    addError('titulo', `no puede superar ${TITLE_MAX_LENGTH} caracteres.`);
+  } else if (hasControlCharacters(titulo)) {
+    addError('titulo', 'contiene caracteres no permitidos.');
   }
 
   validateNumericControlField('registro', registro, addError);
   validateNumericControlField('acta', acta, addError);
   validateNumericControlField('libro', libro, addError);
-  validateNumericControlField('diploma', diploma, addError);
 
   const graduationDate = parseDateToIso(fechaRegistro, anioGrado);
   if (!fechaRegistro) {
@@ -746,21 +746,23 @@ const buildParsedRow = (
 
   if (!anioGrado) {
     addError('anioGrado', 'es obligatorio.');
-  } else if (anioGrado.length !== 4 || Number(anioGrado) < 1900 || Number(anioGrado) > 2100) {
-    addError('anioGrado', 'debe ser un año válido de cuatro dígitos.');
+  } else if (!/^\d{4}$/.test(anioGrado)) {
+    addError('anioGrado', 'debe contener exactamente cuatro dígitos, sin letras ni símbolos.');
+  } else if (Number(anioGrado) < 1900 || Number(anioGrado) > Number(getTodayIso().slice(0, 4))) {
+    addError('anioGrado', 'debe ser un año válido y no puede ser futuro.');
   } else if (graduationDate && graduationDate.slice(0, 4) !== anioGrado) {
     addError('anioGrado', 'debe coincidir con el año de FECHAREGISTRO.');
   }
 
   if (!validateEmail(correo)) {
-    addError('correo', 'no tiene un formato válido.');
+    addError('correo', 'debe tener usuario y dominio válidos; no puede terminar en punto.');
   }
 
   if (telefono) {
-    if (!/^[0-9+\-\s()]+$/.test(telefono)) {
-      addError('telefono', 'solo debe contener números y separadores básicos.');
-    } else if (telefonoNormalizado.length < 7 || telefonoNormalizado.length > 15) {
-      addError('telefono', 'debe tener entre 7 y 15 dígitos.');
+    if (!/^\d+$/.test(telefono)) {
+      addError('telefono', 'solo debe contener números, sin espacios, letras, guiones ni paréntesis.');
+    } else if (telefono.length < PHONE_MIN_LENGTH || telefono.length > PHONE_MAX_LENGTH) {
+      addError('telefono', `debe tener entre ${PHONE_MIN_LENGTH} y ${PHONE_MAX_LENGTH} dígitos.`);
     }
   }
 
@@ -769,6 +771,10 @@ const buildParsedRow = (
     addError('territorial', 'es obligatoria.');
   } else if (catalogs.territorialByKey.size > 0 && !resolvedTerritorial) {
     addError('territorial', 'no coincide con las territoriales válidas de la hoja PARAMETROS.');
+  } else if (territorial.length > TERRITORIAL_MAX_LENGTH) {
+    addError('territorial', `no puede superar ${TERRITORIAL_MAX_LENGTH} caracteres.`);
+  } else if (hasControlCharacters(territorial)) {
+    addError('territorial', 'contiene caracteres no permitidos.');
   }
 
   const resolvedSede = sede ? resolveCatalogValue(sede, catalogs.sedeByKey) : '';
@@ -776,6 +782,10 @@ const buildParsedRow = (
     addError('sede', 'es obligatoria.');
   } else if (catalogs.sedeByKey.size > 0 && !resolvedSede) {
     addError('sede', 'no coincide con las sedes válidas de la hoja PARAMETROS.');
+  } else if (sede.length > SEDE_MAX_LENGTH) {
+    addError('sede', `no puede superar ${SEDE_MAX_LENGTH} caracteres.`);
+  } else if (hasControlCharacters(sede)) {
+    addError('sede', 'contiene caracteres no permitidos.');
   }
 
   const sedeTerritorialKey = sede ? catalogs.territorialBySedeKey.get(normalizeKey(sede)) : '';
@@ -788,7 +798,7 @@ const buildParsedRow = (
     addError('sede', 'no pertenece a la TERRITORIAL indicada.');
   }
 
-  const duplicateKey = `${identificacion}::${normalizeKey(titulo)}`;
+  const duplicateKey = `${identificacion}::${normalizeKey(resolvedTitle || titulo)}`;
   if (identificacion && titulo && duplicateKeys.has(duplicateKey)) {
     addError('titulo', 'está repetido para la misma IDENTIFICACION dentro del archivo.');
   }
@@ -815,7 +825,6 @@ const buildParsedRow = (
         enrollmentDate: graduationDate,
         graduationDate,
         ceremonyDate: graduationDate,
-        diplomaNumber: diploma,
         actaNumber: acta,
         numActa: acta,
         numRegistro: registro,
@@ -830,14 +839,12 @@ const buildParsedRow = (
 
   return {
     rowNumber,
-    tipoIdentificacion,
     identificacion,
     estudiante,
     titulo,
     registro,
     acta,
     libro,
-    diploma,
     fechaRegistro,
     anioGrado,
     correo,
@@ -903,43 +910,100 @@ export function BulkGraduatesUploadModal({
     const fileBaseName = 'Plantilla_Carga_Masiva_Graduados_ESAP';
     const exampleRows = createExampleRows(programOptions, territorialOptions, sedeTerritorialOptions);
     const parameterRows = buildParametersRows(programOptions, territorialOptions, sedeTerritorialOptions);
-    const XLSX = await import('xlsx');
-    const workbook = XLSX.utils.book_new();
-    const graduatesSheet = XLSX.utils.aoa_to_sheet([
-      TEMPLATE_HEADERS,
-      ...exampleRows,
-    ]);
-    graduatesSheet['!cols'] = [
-      { wch: 20 },
-      { wch: 18 },
-      { wch: 34 },
-      { wch: 64 },
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 28 },
-      { wch: 14 },
-      { wch: 30 },
-      { wch: 36 },
-    ];
-    graduatesSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ESAP';
+    workbook.created = new Date();
 
-    const parametersSheet = XLSX.utils.aoa_to_sheet(parameterRows);
-    parametersSheet['!cols'] = [
-      { wch: 24 },
-      { wch: 64 },
-      { wch: 24 },
-      { wch: 24 },
-      { wch: 96 },
-    ];
-    parametersSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+    const thinBorder = {
+      top: { style: 'thin', color: { argb: 'FFD9E2F3' } },
+      left: { style: 'thin', color: { argb: 'FFD9E2F3' } },
+      bottom: { style: 'thin', color: { argb: 'FFD9E2F3' } },
+      right: { style: 'thin', color: { argb: 'FFD9E2F3' } },
+    };
+    const applyRowFill = (row: any, color: string, fontColor = 'FFFFFFFF') => {
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+        cell.font = { bold: true, color: { argb: fontColor } };
+        cell.alignment = { vertical: 'middle', wrapText: true };
+        cell.border = thinBorder;
+      });
+    };
+    const applyTableHeader = (row: any) => {
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9EAD3' } };
+        cell.font = { bold: true, color: { argb: 'FF14532D' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border = thinBorder;
+      });
+    };
 
-    XLSX.utils.book_append_sheet(workbook, graduatesSheet, 'GRADUADOS');
-    XLSX.utils.book_append_sheet(workbook, parametersSheet, 'PARAMETROS');
-    const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const graduatesSheet = workbook.addWorksheet('GRADUADOS', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+    graduatesSheet.addRows([Array.from(TEMPLATE_HEADERS), ...exampleRows]);
+    graduatesSheet.columns = [
+      { width: 18 },
+      { width: 34 },
+      { width: 64 },
+      { width: 12 },
+      { width: 10 },
+      { width: 10 },
+      { width: 16 },
+      { width: 12 },
+      { width: 28 },
+      { width: 14 },
+      { width: 30 },
+      { width: 36 },
+    ];
+    graduatesSheet.autoFilter = {
+      from: 'A1',
+      to: `L${exampleRows.length + 1}`,
+    };
+    applyRowFill(graduatesSheet.getRow(1), 'FF003DA5');
+    graduatesSheet.eachRow((row: any) => {
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.alignment = { vertical: 'middle', wrapText: true };
+        cell.border = thinBorder;
+      });
+    });
+
+    const parametersSheet = workbook.addWorksheet('PARAMETROS', {
+      views: [{ state: 'frozen', ySplit: 3 }],
+    });
+    parametersSheet.addRows(parameterRows);
+    parametersSheet.columns = [
+      { width: 24 },
+      { width: 64 },
+      { width: 24 },
+      { width: 30 },
+      { width: 96 },
+    ];
+    parameterRows.forEach((sourceRow, index) => {
+      const rowNumber = index + 1;
+      const row = parametersSheet.getRow(rowNumber);
+      const firstCell = String(sourceRow[0] || '');
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.alignment = { vertical: 'middle', wrapText: true };
+        cell.border = thinBorder;
+      });
+
+      if (sourceRow.length === 1 && firstCell) {
+        parametersSheet.mergeCells(rowNumber, 1, rowNumber, 5);
+        row.height = firstCell.startsWith('BLOQUE') ? 23 : 24;
+        const fillColor = firstCell.startsWith('BLOQUE')
+          ? 'FF059669'
+          : firstCell === 'RESUMEN DE CATALOGOS'
+            ? 'FFFBBF24'
+            : 'FF003DA5';
+        const fontColor = fillColor === 'FFFBBF24' ? 'FF78350F' : 'FFFFFFFF';
+        applyRowFill(row, fillColor, fontColor);
+      } else if (firstCell === '#' || firstCell === 'CATALOGO') {
+        applyTableHeader(row);
+      }
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
     downloadBlob(
       new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -960,6 +1024,18 @@ export function BulkGraduatesUploadModal({
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
       toast.error('Formato no permitido', {
         description: 'La carga masiva solo acepta archivos .xlsx.',
+      });
+      return;
+    }
+
+    if (
+      catalogs.programsByKey.size === 0 ||
+      catalogs.territorialByKey.size === 0 ||
+      catalogs.sedeByKey.size === 0
+    ) {
+      toast.error('No se puede validar la plantilla', {
+        description:
+          'No se cargaron títulos, territoriales o sedes desde la plataforma. Intenta abrir nuevamente el módulo antes de importar.',
       });
       return;
     }
@@ -1057,7 +1133,7 @@ export function BulkGraduatesUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[92vh] w-[96vw] max-w-[92rem] overflow-y-auto">
+      <DialogContent className="flex max-h-[92vh] w-[94vw] max-w-[76rem] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" style={{ color: '#003DA5' }} />
@@ -1069,20 +1145,28 @@ export function BulkGraduatesUploadModal({
         </DialogHeader>
 
         <motion.div
+          layout
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, ease: 'easeOut' }}
-          className="space-y-5"
+          transition={{
+            opacity: { duration: 0.22, ease: 'easeOut' },
+            y: { duration: 0.22, ease: 'easeOut' },
+            layout: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+          }}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"
         >
-          <div className="grid gap-3 lg:grid-cols-[1.08fr_0.92fr]">
-            <div className="rounded-xl border p-4" style={{ borderColor: '#DBEAFE', background: '#F8FAFF' }}>
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 28rem), 1fr))' }}
+          >
+            <div className="rounded-lg border p-4" style={{ borderColor: '#DBEAFE', background: '#F8FAFF' }}>
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold" style={{ color: '#111827' }}>
                     Plantilla oficial
                   </p>
                   <p className="mt-1 text-xs leading-5" style={{ color: '#64748B' }}>
-                    El Excel trae dos hojas: <strong>GRADUADOS</strong> para diligenciar personas y <strong>PARAMETROS</strong> para copiar títulos, territoriales, sedes y tipos de identificación válidos.
+                    El Excel trae dos hojas: <strong>GRADUADOS</strong> para diligenciar personas y <strong>PARAMETROS</strong> para copiar títulos, territoriales y sedes válidas.
                   </p>
                 </div>
                 <FileSpreadsheet className="h-8 w-8 flex-shrink-0" style={{ color: '#047857' }} />
@@ -1103,9 +1187,9 @@ export function BulkGraduatesUploadModal({
               </div>
             </div>
 
-            <div className="rounded-xl border p-4" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+            <div className="rounded-lg border p-4" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold" style={{ color: '#111827' }}>
                     Archivo a importar
                   </p>
@@ -1132,11 +1216,11 @@ export function BulkGraduatesUploadModal({
                 type="button"
                 onClick={() => inputRef.current?.click()}
                 disabled={isParsing || isImporting}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ borderColor: '#CBD5E1', color: '#1F2937', background: '#F8FAFC' }}
               >
-                <Upload className="h-4 w-4" />
-                {selectedFileName || 'Seleccionar archivo XLSX'}
+                <Upload className="h-4 w-4 flex-shrink-0" />
+                <span className="max-w-full truncate">{selectedFileName || 'Seleccionar archivo XLSX'}</span>
               </button>
               <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-600">
                 <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
@@ -1145,7 +1229,10 @@ export function BulkGraduatesUploadModal({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr))' }}
+          >
             {[
               { label: 'Filas leídas', value: rows.length, border: '#DBEAFE', bg: '#EFF6FF', color: '#1D4ED8' },
               { label: 'Listas para crear', value: validRows.length, border: '#BBF7D0', bg: '#F0FDF4', color: '#047857' },
@@ -1170,11 +1257,18 @@ export function BulkGraduatesUploadModal({
           <AnimatePresence>
             {rows.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden rounded-xl border"
+                layout
+                initial={{ opacity: 0, y: 10, height: 0, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, height: 'auto', scale: 1 }}
+                exit={{ opacity: 0, y: 8, height: 0, scale: 0.985 }}
+                transition={{
+                  opacity: { duration: 0.18, ease: 'easeOut' },
+                  y: { duration: 0.24, ease: 'easeOut' },
+                  scale: { duration: 0.24, ease: 'easeOut' },
+                  height: { duration: 0.34, ease: [0.22, 1, 0.36, 1] },
+                  layout: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+                }}
+                className="overflow-hidden rounded-lg border"
                 style={{ borderColor: '#E5E7EB' }}
               >
                 <div className="border-b bg-slate-50 px-4 py-3">
@@ -1183,21 +1277,21 @@ export function BulkGraduatesUploadModal({
                     Revisa cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
                   </p>
                 </div>
-                <div className="max-h-[26rem] overflow-auto">
-                  <table className="min-w-[118rem] divide-y divide-gray-200 text-sm">
+                <div className="max-h-[22rem] overflow-auto">
+                  <table className="min-w-[92rem] divide-y divide-gray-200 text-xs">
                     <thead className="sticky top-0 z-10 bg-gray-50">
                       <tr>
-                        <th className="min-w-[4.5rem] px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Fila</th>
-                        <th className="min-w-[8rem] px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Estado</th>
+                        <th className="min-w-[4rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Fila</th>
+                        <th className="min-w-[7.5rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Estado</th>
                         {PREVIEW_COLUMNS.map((column) => (
                           <th
                             key={column.key}
-                            className={`${column.className} px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600`}
+                            className={`${column.className} px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600`}
                           >
                             {column.label}
                           </th>
                         ))}
-                        <th className="min-w-[26rem] px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Observaciones</th>
+                        <th className="min-w-[18rem] px-2 py-2 text-left text-[11px] font-semibold uppercase text-gray-600">Observaciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
@@ -1205,8 +1299,8 @@ export function BulkGraduatesUploadModal({
                         const rowFieldErrors = getRowFieldErrors(row);
                         return (
                           <tr key={row.rowNumber} className={row.errors.length ? 'bg-red-50/40' : ''}>
-                            <td className="whitespace-nowrap px-3 py-2 text-gray-700">{row.rowNumber}</td>
-                            <td className="whitespace-nowrap px-3 py-2">
+                            <td className="whitespace-nowrap px-2 py-2 text-gray-700">{row.rowNumber}</td>
+                            <td className="whitespace-nowrap px-2 py-2">
                               {row.errors.length === 0 ? (
                                 <Badge className="border border-green-200 bg-green-50 text-green-700">
                                   <CheckCircle2 className="mr-1 h-3 w-3" />
@@ -1225,7 +1319,7 @@ export function BulkGraduatesUploadModal({
                               return (
                                 <td
                                   key={column.key}
-                                  className={`${column.className} px-3 py-2 align-top ${
+                                  className={`${column.className} px-2 py-2 align-top ${
                                     hasError ? 'bg-red-50 text-red-800' : 'text-gray-700'
                                   }`}
                                   title={fieldError || undefined}
@@ -1241,7 +1335,7 @@ export function BulkGraduatesUploadModal({
                                 </td>
                               );
                             })}
-                            <td className="min-w-[26rem] px-3 py-2 align-top">
+                            <td className="min-w-[18rem] px-2 py-2 align-top">
                               {row.errors.length === 0 ? (
                                 <span className="text-xs font-medium text-green-700">Fila válida para importación.</span>
                               ) : (
@@ -1275,9 +1369,16 @@ export function BulkGraduatesUploadModal({
           <AnimatePresence>
             {importResult && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
+                layout
+                initial={{ opacity: 0, y: 8, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: 8, height: 0 }}
+                transition={{
+                  opacity: { duration: 0.18, ease: 'easeOut' },
+                  y: { duration: 0.22, ease: 'easeOut' },
+                  height: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+                  layout: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+                }}
                 className="rounded-xl border p-4"
                 style={{
                   borderColor: importResult.failedCount ? '#FDE68A' : '#BBF7D0',
