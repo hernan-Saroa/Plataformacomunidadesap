@@ -17,15 +17,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type MouseEvent } from 'react';
 import { motion } from 'motion/react';
 import {
   Layers, Search, AlertTriangle, CheckCircle2, AlertCircle, Clock,
-  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw, Download, FileSpreadsheet
+  Plus, Edit2, Trash2, X, ChevronDown, ChevronUp, FileText, Eye, Target, Info, RefreshCw, Download, FileSpreadsheet, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { useResponsive } from '@/hooks/useResponsive';
+import { ModalBaseWorldClass } from './ModalBaseWorldClass';
 import { FormularioEvaluacionDafpCompleta } from './FormularioEvaluacionDafpCompleta';
 import { VisualizadorResultadosDafp } from './VisualizadorResultadosDafp';
 import type { ProcesoAuditable as ProcesoAuditableType, EvaluacionDafpCompleta } from '@/types/control-interno';
@@ -52,6 +53,9 @@ interface ProcesoAuditable {
   frecuenciaSugerida: string;
   horasEstimadas: number;
   auditable: boolean;
+  auditableCalculado?: boolean;
+  auditableManual?: boolean | null;
+  idEvaluacion?: string;
   _evaluacionRiesgo?: {
     riesgosExtremos?: number;
     riesgosAltos?: number;
@@ -76,6 +80,8 @@ interface ProcesoAuditable {
     cicloRotacionDafp?: string;
     vigencia?: number;
     fechaCorte?: string;
+    auditableCalculado?: boolean;
+    auditableManual?: boolean | null;
   };
   ultimaAuditoria?: string;
   resultadoUltimaAuditoria?: string;
@@ -107,6 +113,8 @@ interface TabUniversoAuditableResponsiveProps {
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
   // ✅ Nueva prop para recargar datos
   onRefresh?: () => void;
+  /** Override manual de priorización (columna Aud.) */
+  onCambiarAuditable?: (evaluacionId: string, auditableManual: boolean | null) => Promise<boolean>;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeCrear?: boolean;
   puedeEditar?: boolean;
@@ -146,6 +154,7 @@ export function TabUniversoAuditableResponsive({
   onEliminarProceso,
   onGuardarEvaluacion,
   onRefresh,
+  onCambiarAuditable,
   puedeCrear = true,
   puedeEditar = true,
   puedeEliminar = true
@@ -155,6 +164,8 @@ export function TabUniversoAuditableResponsive({
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(!isMobile);
   const [refreshing, setRefreshing] = useState(false);
   const [mostrarMenuExportar, setMostrarMenuExportar] = useState(false);
+  const [patchingAuditableId, setPatchingAuditableId] = useState<string | null>(null);
+  const [evaluacionParaDesmarcar, setEvaluacionParaDesmarcar] = useState<{ id: string; actualValue: boolean } | null>(null);
 
   const estadisticasParaExportar = useMemo(() => {
     const total = procesos.length;
@@ -510,13 +521,86 @@ export function TabUniversoAuditableResponsive({
       key: 'auditable',
       label: 'Aud.',
       align: 'center',
-      width: '45px',
+      width: '52px',
       render: (value, p) => {
-        if (!p._evaluacionRiesgo?.ponderacionFinalDafp) return <Clock className="w-4 h-4 text-gray-400 mx-auto" title="Pendiente" />;
-        return value ? (
-          <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" />
-        ) : (
-          <X className="w-4 h-4 text-red-500 mx-auto" />
+        if (!p._evaluacionRiesgo?.ponderacionFinalDafp) {
+          return <Clock className="w-4 h-4 text-gray-400 mx-auto" title="Pendiente de evaluación DAFP" />;
+        }
+        const evalId = p.idEvaluacion || p.id;
+        const esManual = p.auditableManual === true || p.auditableManual === false;
+        const puedeCambiar = puedeEditar && !!onCambiarAuditable;
+        const guardando = patchingAuditableId === evalId;
+
+        const toggle = async (e: MouseEvent) => {
+          e.stopPropagation();
+          if (!puedeCambiar || guardando) return;
+          
+          if (value) {
+            setEvaluacionParaDesmarcar({ id: evalId, actualValue: value });
+            return;
+          }
+          
+          setPatchingAuditableId(evalId);
+          try {
+            await onCambiarAuditable!(evalId, !value);
+          } finally {
+            setPatchingAuditableId(null);
+          }
+        };
+
+        const restaurar = async (e: MouseEvent) => {
+          e.stopPropagation();
+          if (!puedeCambiar || guardando) return;
+          setPatchingAuditableId(evalId);
+          try {
+            await onCambiarAuditable!(evalId, null);
+          } finally {
+            setPatchingAuditableId(null);
+          }
+        };
+
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            {puedeCambiar ? (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={value}
+                onClick={toggle}
+                disabled={guardando}
+                className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${value ? 'bg-green-600' : 'bg-gray-300'} ${guardando ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-green-400'}`}
+                title={
+                  value
+                    ? 'Priorizado (rotación/universo). Clic para excluir.'
+                    : 'No priorizado. Clic para incluir en universo priorizado.'
+                }
+              >
+                <span 
+                  className="inline-block h-3 w-3 rounded-full bg-white transition-transform duration-200 ease-in-out" 
+                  style={{ transform: `translateX(${value ? '16px' : '2px'})` }}
+                />
+              </button>
+            ) : value ? (
+              <div className="relative inline-flex h-4 w-8 items-center rounded-full bg-green-600 opacity-70" title="Priorizado">
+                <span className="inline-block h-3 w-3 rounded-full bg-white" style={{ transform: 'translateX(16px)' }} />
+              </div>
+            ) : (
+              <div className="relative inline-flex h-4 w-8 items-center rounded-full bg-gray-300 opacity-70" title="No priorizado">
+                <span className="inline-block h-3 w-3 rounded-full bg-white" style={{ transform: 'translateX(2px)' }} />
+              </div>
+            )}
+            {esManual && puedeCambiar && (
+              <button
+                type="button"
+                onClick={restaurar}
+                disabled={guardando}
+                className="text-[9px] text-blue-600 hover:underline flex items-center gap-0.5"
+                title="Restaurar valor calculado por DAFP"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
         );
       }
     },
@@ -621,14 +705,35 @@ export function TabUniversoAuditableResponsive({
           <MobileCardRow label="Frecuencia" value={proceso.frecuenciaSugerida || 'Anual'} />
           <MobileCardRow label="Horas Est." value={proceso.horasEstimadas > 0 ? `${proceso.horasEstimadas}h` : '-'} valueClassName="font-bold" />
           <MobileCardRow
-            label="Auditable"
+            label="Priorizado"
             value={
               !proceso._evaluacionRiesgo?.ponderacionFinalDafp ? (
                 <Clock className="w-4 h-4 text-gray-400" title="Pendiente de evaluación" />
-              ) : proceso.auditable ? (
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
               ) : (
-                <X className="w-5 h-5 text-red-500" />
+                <div className="flex items-center gap-2">
+                  {proceso.auditable ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <X className="w-5 h-5 text-red-500" />
+                  )}
+                  {puedeEditar && onCambiarAuditable && (
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 font-medium"
+                      onClick={async () => {
+                        const evalId = proceso.idEvaluacion || proceso.id;
+                        setPatchingAuditableId(evalId);
+                        try {
+                          await onCambiarAuditable(evalId, !proceso.auditable);
+                        } finally {
+                          setPatchingAuditableId(null);
+                        }
+                      }}
+                    >
+                      Cambiar
+                    </button>
+                  )}
+                </div>
               )
             }
           />
@@ -949,6 +1054,58 @@ export function TabUniversoAuditableResponsive({
           </motion.div>
         </div>
       )}
+
+      {/* ═══════════════ MODAL: CONFIRMACIÓN DESMARCAR ═══════════════ */}
+      <ModalBaseWorldClass
+        isOpen={!!evaluacionParaDesmarcar}
+        onClose={() => setEvaluacionParaDesmarcar(null)}
+        title="Confirmar Exclusión del Universo Auditable"
+        size="md"
+        headerIcon={<AlertTriangle className="w-6 h-6 text-amber-500" />}
+      >
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-900 mb-1">
+                  <strong>¿Está seguro que desea excluir este proceso?</strong>
+                </p>
+                <p className="text-sm text-gray-600">
+                  Al desmarcar este proceso, dejará de formar parte del Universo Auditable.
+                  Además, si ya existe una tarea asociada a este proceso en el <strong>Plan Anual (Rol 4)</strong>, esta será <strong>eliminada automáticamente</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={() => setEvaluacionParaDesmarcar(null)}
+              className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={async () => {
+                if (evaluacionParaDesmarcar) {
+                  const { id, actualValue } = evaluacionParaDesmarcar;
+                  setEvaluacionParaDesmarcar(null);
+                  setPatchingAuditableId(id);
+                  try {
+                    await onCambiarAuditable!(id, !actualValue);
+                  } finally {
+                    setPatchingAuditableId(null);
+                  }
+                }
+              }}
+              className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center justify-center gap-2"
+            >
+              Confirmar Exclusión
+            </button>
+          </div>
+        </div>
+      </ModalBaseWorldClass>
     </motion.div>
   );
 }

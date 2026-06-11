@@ -12,7 +12,11 @@ import {
   Res,
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
-import type { UpdateGraduateDto } from './dto/update-graduate.dto';
+import type {
+  BulkCreateGraduatesDto,
+  CreateGraduateDto,
+  UpdateGraduateDto,
+} from './dto/update-graduate.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -28,6 +32,11 @@ export class GraduatesController {
     return await this.service.listarGraduados();
   }
 
+  @Get('cedula/:idNumber/titulos')
+  async listarTitulosPorCedula(@Param('idNumber') idNumber: string) {
+    return await this.service.listarTitulosGraduadoPorCedula(idNumber);
+  }
+
   @Get('cedula/:idNumber')
   async obtenerPorCedula(@Param('idNumber') idNumber: string) {
     return await this.service.buscarGraduadoPorCedula(idNumber);
@@ -36,6 +45,16 @@ export class GraduatesController {
   @Get(':id')
   async obtenerPorId(@Param('id') id: string) {
     return await this.service.obtenerGraduado(id);
+  }
+
+  @Post()
+  async crearGraduado(@Body() payload: CreateGraduateDto) {
+    return await this.service.crearGraduado(payload);
+  }
+
+  @Post('bulk')
+  async crearGraduadosMasivamente(@Body() payload: BulkCreateGraduatesDto) {
+    return await this.service.crearGraduadosMasivamente(payload);
   }
 
   @Put(':id')

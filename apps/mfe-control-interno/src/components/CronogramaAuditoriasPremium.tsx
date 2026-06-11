@@ -73,7 +73,7 @@ const COLORES_POR_COLUMNA_KANBAN: Record<
 };
 
 const ETIQUETA_COLUMNA_KANBAN: Record<ColumnaKanban, string> = {
-  plan_anual: 'Plan Anual',
+  plan_anual: 'Programa Anual',
   planeacion: 'Planeación',
   ejecucion: 'Ejecución',
   comunicacion: 'Comunicación',

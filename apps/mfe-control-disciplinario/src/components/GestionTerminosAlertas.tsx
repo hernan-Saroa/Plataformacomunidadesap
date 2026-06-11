@@ -1242,6 +1242,7 @@ export function GestionTerminosAlertas() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            style={{ zIndex: 1000 }}
             className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowModalNuevoTermino(false);

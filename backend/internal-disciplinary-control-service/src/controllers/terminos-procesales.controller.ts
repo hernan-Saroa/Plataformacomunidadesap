@@ -12,6 +12,7 @@ import {
   HttpStatus,
   UseGuards,
   Request,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -56,7 +57,15 @@ export class TerminosProcesalesController {
     status: 200,
     description: 'Lista de términos procesales',
   })
-  async listar(@Query() query: ListarTerminosDto) {
+  async listar(@Query() query: ListarTerminosDto, @Request() req: any) {
+    const userRoles: any[] = req.user?.roles ?? [];
+    const esProfesional = userRoles.some((r: any) => {
+      const code = (typeof r === 'string' ? r : (r?.code ?? '')).toUpperCase();
+      return code === 'PROFESIONAL' || code === 'PROFESIONAL_SUSTANCIADOR' || code === 'PROFESIONAL_ASIGNADO';
+    });
+    if (esProfesional && req.user?.userId) {
+      query.responsableId = req.user.userId;
+    }
     return await this.terminosService.listar(query);
   }
 
@@ -147,7 +156,12 @@ export class TerminosProcesalesController {
   async marcarCumplido(
     @Param('id') id: string,
     @Body() dto: MarcarCumplidoDto,
+    @Request() req: any,
   ): Promise<TerminoProcesal> {
+    const termino = await this.terminosService.obtenerPorId(id);
+    if (termino.responsableId !== req.user?.userId) {
+      throw new ForbiddenException('Solo el responsable asignado puede marcar este término como cumplido');
+    }
     return await this.terminosService.marcarCumplido(id, dto);
   }
 

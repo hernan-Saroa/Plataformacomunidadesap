@@ -1,4 +1,5 @@
-import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile, HttpException, HttpStatus, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -299,5 +300,21 @@ export class ConfigurationController {
         const pngPath = this.storageService.getFullPath('firma_jefe.png');
         const jpgPath = this.storageService.getFullPath('firma_jefe.jpg');
         return { existe: existsSync(pngPath) || existsSync(jpgPath) };
+    }
+
+    @Get('firma-jefe')
+    @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID')
+    getFirmaJefe(@Res() res: Response) {
+        const pngPath = this.storageService.getFullPath('firma_jefe.png');
+        const jpgPath = this.storageService.getFullPath('firma_jefe.jpg');
+        if (existsSync(pngPath)) {
+            res.setHeader('Content-Type', 'image/png');
+            res.sendFile(pngPath);
+        } else if (existsSync(jpgPath)) {
+            res.setHeader('Content-Type', 'image/jpeg');
+            res.sendFile(jpgPath);
+        } else {
+            res.status(404).json({ message: 'No hay firma configurada' });
+        }
     }
 }

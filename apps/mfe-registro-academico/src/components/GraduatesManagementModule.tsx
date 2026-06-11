@@ -62,10 +62,15 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import React from 'react';
-import graduadosService, { GraduadoArchivo, GraduadoData } from '../../services/api/graduados.service';
+import graduadosService, {
+  CertificadoGraduado,
+  GraduadoArchivo,
+  GraduadoData,
+} from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
+import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
@@ -143,12 +148,15 @@ export function GraduatesManagementModule() {
   });
   const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
   const canEditGraduates = authService.hasPermission(Permissions.GRADUATES_EDIT);
+  const canCreateGraduates =
+    authService.hasPermission(Permissions.GRADUATES_CREATE) || canEditGraduates;
   const canExportGraduates = authService.hasPermission(Permissions.GRADUATES_EXPORT);
   const canVerifyGraduateCertificates = authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE);
   const canShowGraduateRowActions = canEditGraduates || canVerifyGraduateCertificates;
@@ -240,9 +248,9 @@ export function GraduatesManagementModule() {
     if (value.length > PERSON_NAME_MAX_LENGTH) {
       return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
     }
-    if (/\d/.test(value)) return `${label} no puede contener numeros`;
+    if (/\d/.test(value)) return `${label} no puede contener números`;
     if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
-      return `${label} solo puede contener letras, espacios, apostrofes, puntos o guiones`;
+      return `${label} solo puede contener letras, espacios, apóstrofes, puntos o guiones`;
     }
     return '';
   };
@@ -374,6 +382,48 @@ export function GraduatesManagementModule() {
   };
 
   const normalizeKey = (value?: string) => (value || '').trim().toLowerCase();
+  const normalizeDocumentKey = (value?: string) => {
+    const digits = (value || '').replace(/\D+/g, '');
+    return digits || normalizeKey(value);
+  };
+  const buildCertificateCountIndexes = (certificates: CertificadoGraduado[]) => {
+    const countsByGraduateId = new Map<string, number>();
+    const fallbackCountsByDocument = new Map<string, number>();
+    const seenCertificates = new Set<string>();
+
+    certificates.forEach((certificate) => {
+      const uniqueKey =
+        certificate.id ||
+        certificate.certificateNumber ||
+        certificate.verificationCode ||
+        `${certificate.graduateId || ''}:${certificate.idNumber || ''}:${certificate.issueDate || ''}`;
+      if (uniqueKey && seenCertificates.has(uniqueKey)) {
+        return;
+      }
+      if (uniqueKey) {
+        seenCertificates.add(uniqueKey);
+      }
+
+      const graduateId = (certificate.graduateId || '').trim();
+      if (graduateId) {
+        countsByGraduateId.set(
+          graduateId,
+          (countsByGraduateId.get(graduateId) || 0) + 1,
+        );
+        return;
+      }
+
+      const documentKey = normalizeDocumentKey(certificate.idNumber);
+      if (documentKey) {
+        fallbackCountsByDocument.set(
+          documentKey,
+          (fallbackCountsByDocument.get(documentKey) || 0) + 1,
+        );
+      }
+    });
+
+    return { countsByGraduateId, fallbackCountsByDocument };
+  };
   const normalizeDisplayName = (value?: string) => {
     const trimmed = (value || '').trim();
     if (!trimmed) return trimmed;
@@ -654,7 +704,7 @@ export function GraduatesManagementModule() {
         saveBlobAsFile(blob, file.originalName || 'archivo');
         return;
       } catch (error) {
-        console.warn('Fallo la descarga por endpoint dedicado, se intentara ruta publica', error);
+      console.warn('Falló la descarga por endpoint dedicado, se intentará ruta pública', error);
       }
     }
 
@@ -750,7 +800,7 @@ export function GraduatesManagementModule() {
             createdBy: createdBy?.trim() || undefined,
             asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
             // Valor inicial para render rápido; luego se actualiza en segundo plano.
-            certificatesCount: graduate.graduationDate ? 1 : 0,
+            certificatesCount: 0,
             numRegistro: graduate.numRegistro,
             numFolio: graduate.numFolio,
             numLibro: graduate.numLibro,
@@ -789,33 +839,22 @@ export function GraduatesManagementModule() {
           .then((certificatesResponse) => {
             if (!isMounted) return;
 
-            const certificatePrograms = new Map<string, Set<string>>();
-            (certificatesResponse || []).forEach((certificate) => {
-              if (!certificate.idNumber) return;
-              const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
-              if (!certificatePrograms.has(certificate.idNumber)) {
-                certificatePrograms.set(certificate.idNumber, new Set());
-              }
-              if (programKey) {
-                certificatePrograms.get(certificate.idNumber)!.add(programKey);
-              } else {
-                certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
-              }
-            });
-
-            const certificateCounts = new Map<string, number>();
-            certificatePrograms.forEach((programs, idNumber) => {
-              certificateCounts.set(idNumber, programs.size);
-            });
-
-            if (!certificateCounts.size) return;
+            const { countsByGraduateId, fallbackCountsByDocument } =
+              buildCertificateCountIndexes(certificatesResponse || []);
 
             setGraduates((prev) =>
-              prev.map((graduate) => ({
-                ...graduate,
-                certificatesCount:
-                  certificateCounts.get(graduate.document) ?? graduate.certificatesCount,
-              })),
+              prev.map((graduate) => {
+                const documentKey = normalizeDocumentKey(graduate.document);
+                return {
+                  ...graduate,
+                  certificatesCount:
+                    countsByGraduateId.get(graduate.id) ??
+                    (documentKey
+                      ? fallbackCountsByDocument.get(documentKey)
+                      : undefined) ??
+                    0,
+                };
+              }),
             );
           })
           .catch((error) => {
@@ -824,7 +863,7 @@ export function GraduatesManagementModule() {
       } catch (error) {
         console.error('Error cargando graduados:', error);
         toast.error('No se pudieron cargar los graduados', {
-          description: 'Intenta recargar la pagina o verifica tu conexion.',
+          description: 'Intenta recargar la página o verifica tu conexión.',
         });
         if (isMounted) {
           setGraduates([]);
@@ -930,6 +969,145 @@ export function GraduatesManagementModule() {
     });
     return map;
   }, [sedesCatalog, seccionalById, normalizeKey]);
+
+  const sedesByTerritorial = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+
+    seccionalesCatalog.forEach((seccional) => {
+      const seccionalName = seccional?.nomSeccional?.trim();
+      if (seccionalName) {
+        map.set(normalizeKey(seccionalName), new Set<string>());
+      }
+    });
+
+    sedesCatalog.forEach((sede) => {
+      const sedeName = sede?.nomSede?.trim();
+      if (!sedeName) return;
+
+      const seccionalName =
+        sede.seccional?.nomSeccional ||
+        (sede.idSeccional ? seccionalById.get(sede.idSeccional)?.nomSeccional : undefined);
+      if (!seccionalName) return;
+
+      const seccionalKey = normalizeKey(seccionalName);
+      if (!map.has(seccionalKey)) {
+        map.set(seccionalKey, new Set<string>());
+      }
+      map.get(seccionalKey)?.add(sedeName);
+    });
+
+    return new Map<string, string[]>(
+      Array.from(map.entries()).map(([seccionalKey, sedesSet]): [string, string[]] => [
+        seccionalKey,
+        Array.from(sedesSet).sort((a, b) => a.localeCompare(b, 'es')),
+      ]),
+    );
+  }, [seccionalesCatalog, sedesCatalog, seccionalById, normalizeKey]);
+
+  const bulkSedeTerritorialOptions = useMemo(() => {
+    const options: Array<{ territorial: string; sede: string }> = [];
+
+    territorialOptions.forEach((territorial) => {
+      const sedes = sedesByTerritorial.get(normalizeKey(territorial)) || [];
+      sedes.forEach((sede) => {
+        options.push({ territorial, sede });
+      });
+    });
+
+    if (options.length === 0) {
+      sedesOptions.forEach((sede) => {
+        const territorial = territorialBySede.get(normalizeKey(sede)) || '';
+        options.push({ territorial, sede });
+      });
+    }
+
+    return options.sort((a, b) =>
+      `${a.territorial} ${a.sede}`.localeCompare(`${b.territorial} ${b.sede}`, 'es'),
+    );
+  }, [
+    territorialOptions,
+    sedesByTerritorial,
+    sedesOptions,
+    territorialBySede,
+    normalizeKey,
+  ]);
+
+  const editTerritorialOptions = useMemo(() => {
+    const options = new Set<string>(territorialOptions);
+    const mappedTerritorial = editForm.location
+      ? territorialBySede.get(normalizeKey(editForm.location))
+      : '';
+
+    if (editForm.territorial) {
+      options.add(editForm.territorial);
+    }
+    if (mappedTerritorial) {
+      options.add(mappedTerritorial);
+    }
+
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [editForm.location, editForm.territorial, territorialBySede, territorialOptions, normalizeKey]);
+
+  const editSedesOptions = useMemo(() => {
+    const selectedTerritorialKey = normalizeKey(editForm.territorial);
+    const hasSelectedTerritorialCatalog =
+      !!selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey);
+    const baseOptions = hasSelectedTerritorialCatalog
+      ? sedesByTerritorial.get(selectedTerritorialKey) || []
+      : sedesOptions;
+    const options = new Set<string>(baseOptions);
+
+    if (editForm.location) {
+      const mappedTerritorial = territorialBySede.get(normalizeKey(editForm.location));
+      if (
+        !selectedTerritorialKey ||
+        !mappedTerritorial ||
+        normalizeKey(mappedTerritorial) === selectedTerritorialKey
+      ) {
+        options.add(editForm.location);
+      }
+    }
+
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [
+    editForm.location,
+    editForm.territorial,
+    sedesByTerritorial,
+    sedesOptions,
+    territorialBySede,
+    normalizeKey,
+  ]);
+
+  useEffect(() => {
+    if (!editForm.location || !editForm.territorial) {
+      return;
+    }
+
+    const selectedTerritorialKey = normalizeKey(editForm.territorial);
+    if (!sedesByTerritorial.has(selectedTerritorialKey)) {
+      return;
+    }
+
+    const locationMatchesTerritorial =
+      sedesByTerritorial
+        .get(selectedTerritorialKey)
+        ?.some((sede) => normalizeKey(sede) === normalizeKey(editForm.location)) ?? false;
+
+    if (locationMatchesTerritorial) {
+      return;
+    }
+
+    setEditForm((prev) => {
+      if (prev.location !== editForm.location || prev.territorial !== editForm.territorial) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        location: '',
+      };
+    });
+  }, [editForm.location, editForm.territorial, sedesByTerritorial, normalizeKey]);
 
   const filteredUsers = useMemo(() => {
     return graduatesOnly.filter(user => {
@@ -1085,6 +1263,30 @@ export function GraduatesManagementModule() {
     }));
   };
 
+  const handleTerritorialChange = (value: string) => {
+    const selectedTerritorialKey = normalizeKey(value);
+    const sedesForTerritorial =
+      selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey)
+        ? sedesByTerritorial.get(selectedTerritorialKey) || []
+        : null;
+
+    setEditForm((prev) => {
+      const keepLocation =
+        !value ||
+        !prev.location ||
+        !sedesForTerritorial ||
+        sedesForTerritorial.some(
+          (sede) => normalizeKey(sede) === normalizeKey(prev.location),
+        );
+
+      return {
+        ...prev,
+        territorial: value,
+        location: keepLocation ? prev.location : '',
+      };
+    });
+  };
+
   const handleDelete = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
@@ -1108,7 +1310,7 @@ export function GraduatesManagementModule() {
   const handleVerifyTitle = (user?: GraduateRow) => {
     if (!canVerifyGraduateCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Verificar Certificado para abrir esta validacion.',
+        description: 'Necesitas el permiso Verificar Certificado para abrir esta validación.',
       });
       return;
     }
@@ -1131,6 +1333,70 @@ export function GraduatesManagementModule() {
       message: ''
     });
     setIsEmailModalOpen(true);
+  };
+
+  const handleOpenBulkUploadModal = () => {
+    if (!canCreateGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas permiso para registrar o editar graduados.',
+      });
+      return;
+    }
+    setIsBulkUploadModalOpen(true);
+  };
+
+  const handleBulkGraduatesImported = (createdGraduates: GraduadoData[]) => {
+    if (!createdGraduates.length) return;
+
+    const importedRows = createdGraduates.map((graduate) => {
+      const derivedName = splitFullName(graduate.fullName);
+      const firstName = (graduate.firstName || '').trim() || derivedName.firstName;
+      const lastName = (graduate.lastName || '').trim() || derivedName.lastName;
+      const campus = graduate.campus || 'Sin sede';
+      const territorial =
+        graduate.seccionalName ||
+        (campus ? territorialBySede.get(normalizeKey(campus)) : undefined);
+
+      return {
+        id: graduate.id,
+        personId: graduate.personId,
+        firstName,
+        lastName,
+        email: graduate.email || '',
+        phone: graduate.phone || 'N/A',
+        status: mapGraduateStatus(graduate.status),
+        roles: [
+          {
+            name: 'Graduado',
+            color: 'green',
+            since: graduate.graduationDate,
+          },
+        ],
+        location: campus,
+        territorial,
+        program: graduate.programName || graduate.degreeTitle || 'No especificado',
+        document: graduate.idNumber,
+        enrollmentMethod: 'massive',
+        enrollmentDate: graduate.enrollmentDate || graduate.createdAt || '',
+        graduationDate: graduate.graduationDate,
+        documentsCount: graduate.filesCount ?? 0,
+        createdBy: graduate.createdBy || 'bulk_upload',
+        asignacionesSedes: campus ? [{ nombreSede: campus }] : undefined,
+        certificatesCount: 0,
+        numRegistro: graduate.numRegistro,
+        numFolio: graduate.numFolio,
+        numLibro: graduate.numLibro,
+        createdAt: graduate.createdAt,
+        updatedAt: graduate.updatedAt,
+      } as GraduateRow;
+    });
+
+    setGraduates((prev) => {
+      const existingIds = new Set(prev.map((graduate) => graduate.id));
+      const newRows = importedRows.filter((graduate) => !existingIds.has(graduate.id));
+      return [...newRows, ...prev];
+    });
+    setCurrentPage(1);
   };
 
   // Handlers para confirmar acciones en modales
@@ -1174,31 +1440,31 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!/^\d+$/.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener numeros');
+      toast.error('El documento solo puede contener números');
       return;
     }
     if (
       trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
       trimmedDocument.length > DOCUMENT_MAX_LENGTH
     ) {
-      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} digitos`);
+      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
       return;
     }
     if (!trimmedEmail) {
-      toast.error('El correo electronico es obligatorio');
+      toast.error('El correo electrónico es obligatorio');
       return;
     }
     if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
-      toast.error(`El correo electronico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
+      toast.error(`El correo electrónico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      toast.error('El correo electronico no tiene un formato valido');
+      toast.error('El correo electrónico no tiene un formato válido');
       return;
     }
     if (!trimmedProgram) {
-      toast.error('El programa academico es obligatorio');
+      toast.error('El programa académico es obligatorio');
       return;
     }
     if (!trimmedLocation) {
@@ -1206,7 +1472,7 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!effectiveTerritorial) {
-      toast.error('La seccional es obligatoria');
+      toast.error('La territorial es obligatoria');
       return;
     }
 
@@ -1229,12 +1495,6 @@ export function GraduatesManagementModule() {
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
 
-      const updatedTerritorial =
-        editForm.territorial ||
-        (editForm.location
-          ? territorialBySede.get(normalizeKey(editForm.location))
-          : selectedUser.territorial);
-
       setGraduates((prev) =>
         prev.map((graduate) =>
           graduate.id === selectedUser.id
@@ -1249,7 +1509,7 @@ export function GraduatesManagementModule() {
                 numLibro: cleanNumLibro,
                 program: trimmedProgram || graduate.program,
                 location: trimmedLocation || graduate.location,
-                territorial: updatedTerritorial || graduate.territorial,
+                territorial: effectiveTerritorial || graduate.territorial,
               }
             : graduate
         )
@@ -1312,7 +1572,7 @@ export function GraduatesManagementModule() {
   const handleOpenExportModal = () => {
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1324,8 +1584,8 @@ export function GraduatesManagementModule() {
 
     toast.info('No hay graduados para exportar', {
       description: hasActiveFilters
-        ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-        : 'Aun no existen graduados registrados para exportacion.',
+        ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+        : 'Aún no existen graduados registrados para exportación.',
     });
   };
 
@@ -1333,7 +1593,7 @@ export function GraduatesManagementModule() {
     if (isExporting) return;
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1342,7 +1602,7 @@ export function GraduatesManagementModule() {
     const endDate = parseDateOnly(exportEndDate);
 
     if (startDate && endDate && startDate > endDate) {
-      toast.error('Rango de fechas invalido', {
+      toast.error('Rango de fechas inválido', {
         description: 'La fecha inicial no puede ser mayor que la fecha final.',
       });
       return;
@@ -1353,8 +1613,8 @@ export function GraduatesManagementModule() {
     if (filteredUsers.length === 0) {
       toast.info('No hay graduados para exportar', {
         description: hasActiveFilters
-          ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-          : 'Aun no existen graduados registrados para exportacion.',
+          ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+          : 'Aún no existen graduados registrados para exportación.',
       });
       setIsExporting(false);
       return;
@@ -1383,8 +1643,8 @@ export function GraduatesManagementModule() {
       'Nombre completo',
       'Correo',
       'Programa académico',
-      'Sede',
       'Territorial',
+      'Sede (CETAP)',
       'Número de registro',
       'Número de folio',
       'Número de libro',
@@ -1401,8 +1661,8 @@ export function GraduatesManagementModule() {
           `${user.firstName} ${user.lastName}`.trim(),
           user.email,
           user.program || '',
-          user.location || '',
           user.territorial || '',
+          user.location || '',
           formatRegistroDisplay(user.numRegistro) === 'N/A' ? '' : formatRegistroDisplay(user.numRegistro),
           formatRegistroDisplay(user.numFolio) === 'N/A' ? '' : formatRegistroDisplay(user.numFolio),
           formatRegistroDisplay(user.numLibro) === 'N/A' ? '' : formatRegistroDisplay(user.numLibro),
@@ -1425,7 +1685,7 @@ export function GraduatesManagementModule() {
     link.click();
     URL.revokeObjectURL(url);
 
-    toast.success('Exportacion completada', {
+    toast.success('Exportación completada', {
       description: `Se exportaron ${rows.length} graduados.`,
     });
     setIsExportModalOpen(false);
@@ -1456,6 +1716,15 @@ export function GraduatesManagementModule() {
       />
 
       {/* Header - DÍA 5: ResponsiveHeader */}
+      <BulkGraduatesUploadModal
+        open={isBulkUploadModalOpen}
+        onOpenChange={setIsBulkUploadModalOpen}
+        onImported={handleBulkGraduatesImported}
+        programOptions={PROGRAMAS_GRADUADOS}
+        territorialOptions={editTerritorialOptions}
+        sedeTerritorialOptions={bulkSedeTerritorialOptions}
+      />
+
       <ResponsiveHeader
         title="Gestión de Graduados"
         description="Administra graduados y genera certificados de verificación de títulos"
@@ -1466,14 +1735,25 @@ export function GraduatesManagementModule() {
           onClick: () => handleVerifyTitle(),
           variant: "primary"
         } : undefined}
-        secondaryActions={canExportGraduates ? [
-          {
-            label: "Exportar",
-            icon: Download,
-            onClick: handleOpenExportModal,
-            variant: "secondary"
-          }
-        ] : []}
+        secondaryActions={[
+          ...(canCreateGraduates ? [
+            {
+              label: "Carga Masiva",
+              icon: Upload,
+              onClick: handleOpenBulkUploadModal,
+              variant: "secondary" as const,
+              className: "border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white"
+            }
+          ] : []),
+          ...(canExportGraduates ? [
+            {
+              label: "Exportar",
+              icon: Download,
+              onClick: handleOpenExportModal,
+              variant: "secondary" as const
+            }
+          ] : [])
+        ]}
       />
 
       {/* Búsqueda y Filtros */}
@@ -1585,32 +1865,6 @@ export function GraduatesManagementModule() {
               ))}
             </select>
 
-            {/* ✅ NUEVO: Filtro por Sede */}
-            <select
-              value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '150px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todas las sedes</option>
-              {sedesOptions.map((sede) => (
-                <option key={sede} value={sede}>{sede}</option>
-              ))}
-            </select>
-
             {/* Filtro Territorial */}
             <select
               value={locationFilter}
@@ -1631,9 +1885,35 @@ export function GraduatesManagementModule() {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="all">Todas las seccionales</option>
+              <option value="all">Todas las territoriales</option>
               {territorialOptions.map((territorial) => (
                 <option key={territorial} value={territorial}>{territorial}</option>
+              ))}
+            </select>
+
+            {/* Filtro por Sede */}
+            <select
+              value={sedeFilter}
+              onChange={(e) => setSedeFilter(e.target.value)}
+              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
+              style={{
+                borderColor: '#D1D5DB',
+                color: '#1F2937',
+                minWidth: '150px',
+                outline: 'none'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              <option value="all">Todas las sedes (CETAP)</option>
+              {sedesOptions.map((sede) => (
+                <option key={sede} value={sede}>{sede}</option>
               ))}
             </select>
 
@@ -1675,7 +1955,7 @@ export function GraduatesManagementModule() {
               Cargando graduados...
             </h3>
             <p className="text-sm text-[#6B7280]">
-              Estamos consultando la base de datos academica.
+              Estamos consultando la base de datos académica.
             </p>
           </div>
         ) : paginatedUsers.length === 0 ? (
@@ -1723,10 +2003,31 @@ export function GraduatesManagementModule() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                className={`overflow-hidden border-r border-b border-l-4 border-r-[#E5E7EB] border-b-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedUserId === user.id
+                    ? 'relative z-[1] border-l-[#003DA5] bg-[#F8FBFF]'
+                    : 'border-l-transparent hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal con Columnas */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedUserId === user.id}
+                  aria-label={`Ver detalles de ${user.firstName} ${user.lastName}`}
+                  onClick={() => handleViewDetails(user)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(user);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedUserId === user.id
+                      ? 'bg-gradient-to-r from-[#EFF6FF] via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado (Avatar + Nombre + Contacto) */}
                     <div className="col-span-3">
@@ -1811,9 +2112,16 @@ export function GraduatesManagementModule() {
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(user)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(user);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedUserId === user.id ? '#F0F6FF' : '#F9FAFB',
@@ -1833,6 +2141,7 @@ export function GraduatesManagementModule() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
@@ -1876,10 +2185,10 @@ export function GraduatesManagementModule() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-slate-200 [&>div]:bg-white [&>div]:p-3 [&>div]:shadow-sm">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documento
@@ -1906,24 +2215,24 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Sede
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
-                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {user.location}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Territorial
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Building2 className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.territorial || 'Sin territorial'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Sede (CETAP)
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.location}
                             </p>
                           </div>
                         </div>
@@ -2194,7 +2503,7 @@ export function GraduatesManagementModule() {
                   <div className="min-w-0">
                     <DialogTitle className="flex items-center gap-2">
                       <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
-                      Archivos del titulo
+                      Archivos del título
                     </DialogTitle>
                     <DialogDescription>
                       {filesModalUser
@@ -2231,7 +2540,7 @@ export function GraduatesManagementModule() {
                       {MAX_FILES_PER_GRADUATE}
                     </p>
                     <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
-                      Limite
+                      Límite
                     </p>
                   </div>
                 </div>
@@ -2254,14 +2563,14 @@ export function GraduatesManagementModule() {
                         {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE} espacios usados
                       </p>
                       <p className="mt-0.5 text-xs" style={{ color: '#92400E' }}>
-                        Peso maximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
+                        Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
                       </p>
                     </div>
                     <span
                       className="rounded-full px-3 py-1 text-xs font-semibold"
                       style={{ background: '#FEF3C7', color: '#92400E' }}
                     >
-                      Limite {MAX_FILES_PER_GRADUATE}
+                      Límite {MAX_FILES_PER_GRADUATE}
                     </span>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: '#FEF3C7' }}>
@@ -2286,7 +2595,7 @@ export function GraduatesManagementModule() {
                     Documentos del graduado
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {['PDF', 'Word', 'Excel', 'Imagenes'].map((type) => (
+                    {['PDF', 'Word', 'Excel', 'Imágenes'].map((type) => (
                       <span
                         key={type}
                         className="rounded-full border bg-white px-3 py-1 text-xs font-semibold"
@@ -2462,7 +2771,7 @@ export function GraduatesManagementModule() {
                     No hay archivos cargados
                   </p>
                   <p className="mt-1 text-xs" style={{ color: '#64748B' }}>
-                    Aqui se mostraran los documentos asociados al graduado.
+                    Aquí se mostrarán los documentos asociados al graduado.
                   </p>
                 </div>
               ) : (
@@ -2809,9 +3118,48 @@ export function GraduatesManagementModule() {
 
             <div className="space-y-2">
 
+              <Label htmlFor="edit-territorial">
+
+                Territorial
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
+              <select
+
+                id="edit-territorial"
+
+                value={editForm.territorial || selectedTerritorial || ''}
+
+                onChange={(e) => handleTerritorialChange(e.target.value)}
+
+                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+
+                style={{ borderColor: '#D1D5DB' }}
+
+                required
+
+              >
+
+                <option value="">Seleccionar territorial</option>
+
+                {editTerritorialOptions.map((territorial) => (
+
+                  <option key={territorial} value={territorial}>{territorial}</option>
+
+                ))}
+
+              </select>
+
+            </div>
+
+
+            <div className="space-y-2">
+
               <Label htmlFor="edit-location">
 
-                Sede
+                Sede (CETAP)
 
                 <span className="text-red-500"> *</span>
 
@@ -2835,48 +3183,9 @@ export function GraduatesManagementModule() {
 
                 <option value="">Seleccionar sede</option>
 
-                {sedesOptions.map((sede) => (
+                {editSedesOptions.map((sede) => (
 
                   <option key={sede} value={sede}>{sede}</option>
-
-                ))}
-
-              </select>
-
-            </div>
-
-
-            <div className="space-y-2">
-
-              <Label htmlFor="edit-territorial">
-
-                Territorial
-
-                <span className="text-red-500"> *</span>
-
-              </Label>
-
-              <select
-
-                id="edit-territorial"
-
-                value={editForm.territorial || selectedTerritorial || ''}
-
-                onChange={(e) => setEditForm({ ...editForm, territorial: e.target.value })}
-
-                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
-
-                style={{ borderColor: '#D1D5DB' }}
-
-                required
-
-              >
-
-                <option value="">Seleccionar seccional</option>
-
-                {territorialOptions.map((territorial) => (
-
-                  <option key={territorial} value={territorial}>{territorial}</option>
 
                 ))}
 
@@ -3157,10 +3466,10 @@ export function GraduatesManagementModule() {
                 <label htmlFor="includeSignature" className="flex-1 text-sm cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-gray-600" />
-                    <span className="font-medium text-gray-900">Incluir Firma Digital</span>
+                    <span className="font-medium text-gray-900">Incluir firma institucional</span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Agrega firma digital oficial de ESAP para mayor seguridad
+                    Agrega la firma visual del firmante autorizado de ESAP al certificado
                   </p>
                 </label>
               </div>

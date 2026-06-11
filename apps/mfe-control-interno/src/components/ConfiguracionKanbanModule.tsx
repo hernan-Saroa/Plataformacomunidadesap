@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ✅ Hook para conexión con backend
-import { useConfiguracionKanban, type EtapaKanbanFrontend as EtapaKanban, type ConfiguracionGeneralKanban as ConfiguracionGeneral } from './services/useConfiguracionKanban';
+import { useConfiguracionKanban, TipoTablero, type EtapaKanbanFrontend as EtapaKanban, type ConfiguracionGeneralKanban as ConfiguracionGeneral } from './services/useConfiguracionKanban';
 
 // ✅ Notificar cambios al KanbanConfigContext
 import { notificarCambioConfigKanban, type EtapaSLAConfig } from './context/KanbanConfigContext';
@@ -69,6 +69,8 @@ function sincronizarEtapasTableroLocalStorage(etapas: EtapaKanban[]) {
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ConfiguracionKanbanModule() {
+  const [tipoTableroActual, setTipoTableroActual] = useState<TipoTablero>(TipoTablero.AUDITORIAS);
+
   // ✅ Usar hook para conectar con backend
   const {
     tableroId,
@@ -81,7 +83,7 @@ export function ConfiguracionKanbanModule() {
     eliminarEtapa,
     actualizarConfigGeneral,
     recargarDatos,
-  } = useConfiguracionKanban();
+  } = useConfiguracionKanban(tipoTableroActual);
 
   const [etapaEditando, setEtapaEditando] = useState<EtapaKanban | null>(null);
   const [mostrarModalEtapa, setMostrarModalEtapa] = useState(false);
@@ -222,6 +224,20 @@ export function ConfiguracionKanbanModule() {
         titulo="Configuración del Kanban"
         subtitulo="Personaliza etapas, SLA, límites WIP y reglas de transición"
       >
+        <div className="flex bg-gray-100 p-0.5 rounded-lg mr-2">
+          <button
+            onClick={() => setTipoTableroActual(TipoTablero.AUDITORIAS)}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${tipoTableroActual === TipoTablero.AUDITORIAS ? 'bg-white shadow-sm text-blue-700' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            Auditorías
+          </button>
+          <button
+            onClick={() => setTipoTableroActual(TipoTablero.PLANES_MEJORAMIENTO)}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${tipoTableroActual === TipoTablero.PLANES_MEJORAMIENTO ? 'bg-white shadow-sm text-blue-700' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            Planes de Mejora
+          </button>
+        </div>
         {tableroId && (
           <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
             Conectado
@@ -432,10 +448,10 @@ function TabEtapas({ etapas, onAgregar, onEditar, onEliminar }: TabEtapasProps) 
                     <div className="text-xs text-yellow-600 font-semibold">Alerta Previa</div>
                     <div className="text-lg font-black text-yellow-700">{etapa.alertaPrevia}d</div>
                   </div>
-                  <div className="bg-green-50 rounded-lg p-2">
-                    <div className="text-xs text-green-600 font-semibold">Estado</div>
-                    <div className="text-xs font-bold text-green-700">
-                      {etapa.notificacionesActivas ? '✓ Activo' : '✗ Inactivo'}
+                  <div className={`rounded-lg p-2 ${ etapa.visible ? 'bg-green-50' : 'bg-red-50' }`}>
+                    <div className={`text-xs font-semibold ${ etapa.visible ? 'text-green-600' : 'text-red-600' }`}>Estado</div>
+                    <div className={`text-xs font-bold ${ etapa.visible ? 'text-green-700' : 'text-red-700' }`}>
+                      {etapa.visible ? '✓ Activo' : '✗ Inactivo'}
                     </div>
                   </div>
                 </div>
@@ -898,14 +914,14 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 z-[9999]"
       onClick={onCerrar}
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.9, y: 20 }}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <form onSubmit={handleSubmit}>
@@ -931,7 +947,7 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
           </div>
 
           {/* Formulario */}
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 overflow-y-auto" style={{maxHeight: '72vh'}}>
             {/* Nombre */}
             <div>
               <label className="block text-sm font-bold text-gray-900 mb-2">
@@ -965,7 +981,7 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
               <label className="block text-sm font-bold text-gray-900 mb-2">
                 Color de la Etapa
               </label>
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+              <div className="grid grid-cols-8 sm:grid-cols-8 gap-4">
                 {COLORES_PREDEFINIDOS.map((color) => (
                   <button
                     key={color.valor}
@@ -976,7 +992,7 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
                         ? 'ring-4 ring-blue-600 ring-offset-2'
                         : 'hover:ring-2 hover:ring-gray-300'
                     }`}
-                    style={{ backgroundColor: color.valor }}
+                    style={{ backgroundColor: color.valor, width: '4.5rem', height: '4.5rem' }}
                     title={color.nombre}
                   />
                 ))}
@@ -1046,7 +1062,24 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
                 <p className="text-xs text-gray-500 mt-1">Días antes de vencer para alertar</p>
               </div>
             </div>
-
+            {/* Activar/Desactivar */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="font-bold text-gray-900">Activar etapa</span>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, visible: !form.visible })}
+                className={`relative w-12 h-6 rounded-full transition-all ${
+                  form.visible ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <div
+                  style={{ top: '2px'}}
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                    form.visible ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
             {/* Opciones especiales */}
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -1059,6 +1092,7 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
                   }`}
                 >
                   <div
+                    style={{ top: '2px'}}
                     className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
                       form.notificacionesActivas ? 'translate-x-6' : 'translate-x-0'
                     }`}
@@ -1076,6 +1110,7 @@ function ModalEtapa({ etapa, onGuardar, onCerrar }: ModalEtapaProps) {
                   }`}
                 >
                   <div
+                    style={{ top: '2px'}}
                     className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
                       form.reglaTransicionAutomatica ? 'translate-x-6' : 'translate-x-0'
                     }`}

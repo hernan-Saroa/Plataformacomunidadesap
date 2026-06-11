@@ -184,6 +184,21 @@ export class GraduationCertificateRequest {
   @Column({ name: 'review_timeline', type: 'jsonb', default: () => "'[]'::jsonb" })
   reviewTimeline: GraduationReviewTimelineEntry[];
 
+  @Column({ name: 'requester_support_original_name', type: 'varchar', length: 255, nullable: true })
+  requesterSupportOriginalName: string | null;
+
+  @Column({ name: 'requester_support_stored_name', type: 'varchar', length: 255, nullable: true })
+  requesterSupportStoredName: string | null;
+
+  @Column({ name: 'requester_support_mime_type', type: 'varchar', length: 150, nullable: true })
+  requesterSupportMimeType: string | null;
+
+  @Column({ name: 'requester_support_size_bytes', type: 'integer', nullable: true })
+  requesterSupportSizeBytes: number | null;
+
+  @Column({ name: 'requester_support_uploaded_at', type: 'timestamp', nullable: true })
+  requesterSupportUploadedAt: Date | null;
+
   // Fechas
   @CreateDateColumn({ name: 'request_date' })
   requestDate: Date;

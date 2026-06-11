@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanesMejoramientoService } from './planes-mejoramiento.service';
+import { PlanMejoramientoRol4TareaSyncService } from './plan-mejoramiento-rol4-tarea-sync.service';
 import { PlanesMejoramientoController } from './planes-mejoramiento.controller';
 import { DocumentosPlanService } from './documentos-plan.service';
 import { DocumentosPlanController } from './documentos-plan.controller';
@@ -33,8 +34,17 @@ import { AuthModule } from '../../auth/auth.module';
     AuthModule,
   ],
   controllers: [PlanesMejoramientoController, DocumentosPlanController],
-  providers: [PlanesMejoramientoService, DocumentosPlanService],
-  exports: [PlanesMejoramientoService, DocumentosPlanService, TypeOrmModule],
+  providers: [
+    PlanesMejoramientoService,
+    DocumentosPlanService,
+    PlanMejoramientoRol4TareaSyncService,
+  ],
+  exports: [
+    PlanesMejoramientoService,
+    DocumentosPlanService,
+    PlanMejoramientoRol4TareaSyncService,
+    TypeOrmModule,
+  ],
 })
 export class PlanesMejoramientoModule {}
 

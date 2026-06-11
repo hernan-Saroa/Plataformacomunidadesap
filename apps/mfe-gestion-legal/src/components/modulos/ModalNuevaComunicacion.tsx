@@ -308,8 +308,9 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
           body: cuerpo.trim(),
           cc: ccEmails.length > 0 ? ccEmails : undefined,
           attachments: attachmentsBase64.length > 0 ? attachmentsBase64 : undefined,
+          // Solo solicitamos read receipt (cuando el destinatario abre el correo).
+          // NO requestDeliveryReceipt — genera DSN automáticos del MTA que ensucian la bandeja.
           requestReadReceipt,
-          requestDeliveryReceipt: requestReadReceipt,
         });
         isSuccess = result?.success !== false;
       }

@@ -25,3 +25,19 @@ export interface UpdateGraduateDto {
   campus?: string;
   seccionalName?: string;
 }
+
+export interface CreateGraduateDto extends UpdateGraduateDto {
+  createdBy?: string;
+}
+
+export interface BulkCreateGraduateError {
+  rowNumber: number;
+  idNumber?: string;
+  programName?: string;
+  message: string;
+}
+
+export interface BulkCreateGraduatesDto {
+  graduates: CreateGraduateDto[];
+  createdBy?: string;
+}

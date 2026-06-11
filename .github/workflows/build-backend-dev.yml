@@ -3,9 +3,10 @@ name: Build and Push Backend (DEV)
 on:
   push:
     branches:
-      - micro-frontend
-      - development
-      - feat/ci-cd-dev
+      - dev
+      - qa
+      - pre
+      - prod
 
 env:
   REGISTRY: ghcr.io

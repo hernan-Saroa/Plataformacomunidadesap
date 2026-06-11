@@ -38,7 +38,9 @@ import {
   Scale,
   Clock,
   Loader2,
-  CheckSquare
+  CheckSquare,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -662,6 +664,7 @@ export function RolePermissionsEditor({
   );
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set());
   const [activeAcademicProfileId, setActiveAcademicProfileId] = useState<AcademicProfileId | null>(null);
   const activeAcademicProfile = activeAcademicProfileId
     ? ACADEMIC_PROFILES.find((profile) => profile.id === activeAcademicProfileId) || null
@@ -712,6 +715,18 @@ export function RolePermissionsEditor({
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ')
       .trim() || 'Grupo';
+  };
+
+  const toggleModuleVisibility = (moduleId: string) => {
+    setCollapsedModules((prev) => {
+      const next = new Set(prev);
+      if (next.has(moduleId)) {
+        next.delete(moduleId);
+      } else {
+        next.add(moduleId);
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -1188,9 +1203,10 @@ export function RolePermissionsEditor({
                 editableModulePermissions.every((permission) =>
                   selectedPermissions.has(permission.id),
                 );
-              const someSelected = enabledCount > 0 && enabledCount < modulePermissions.length;
+	              const someSelected = enabledCount > 0 && enabledCount < modulePermissions.length;
+	              const isModuleCollapsed = collapsedModules.has(module.id);
 
-              return (
+	              return (
                 <Fragment key={module.id}>
                   {module.id === firstAcademicModuleId && renderAcademicProfileSelector()}
                   <motion.div
@@ -1211,38 +1227,57 @@ export function RolePermissionsEditor({
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => toggleModulePermissions(modulePermissions)}
-                      disabled={editableModulePermissions.length === 0}
-                      className={`p-2 rounded-lg transition-all ${
-                        editableModulePermissions.length === 0
-                          ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                          : allSelected
-                          ? 'bg-green-500 text-white hover:bg-green-600'
-                          : someSelected
-                          ? 'bg-amber-500 text-white hover:bg-amber-600'
-                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                      }`}
-                      title={
-                        editableModulePermissions.length === 0
-                          ? 'Sin permisos modificables'
-                          : allSelected
-                            ? 'Desmarcar permisos disponibles'
-                            : 'Marcar permisos disponibles'
-                      }
-                    >
-                      {allSelected ? (
-                        <CheckCircle className="w-5 h-5" strokeWidth={2} />
-                      ) : someSelected ? (
-                        <MinusCircle className="w-5 h-5" strokeWidth={2} />
-                      ) : (
-                        <Circle className="w-5 h-5" strokeWidth={2} />
-                      )}
-                    </button>
-                  </div>
+	                    <div className="flex items-center gap-2">
+	                      <button
+	                        type="button"
+	                        onClick={() => toggleModulePermissions(modulePermissions)}
+	                        disabled={editableModulePermissions.length === 0}
+	                        className={`p-2 rounded-lg transition-all ${
+	                          editableModulePermissions.length === 0
+	                            ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+	                            : allSelected
+	                            ? 'bg-green-500 text-white hover:bg-green-600'
+	                            : someSelected
+	                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+	                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+	                        }`}
+	                        title={
+	                          editableModulePermissions.length === 0
+	                            ? 'Sin permisos modificables'
+	                            : allSelected
+	                              ? 'Desmarcar permisos disponibles'
+	                              : 'Marcar permisos disponibles'
+	                        }
+	                      >
+	                        {allSelected ? (
+	                          <CheckCircle className="w-5 h-5" strokeWidth={2} />
+	                        ) : someSelected ? (
+	                          <MinusCircle className="w-5 h-5" strokeWidth={2} />
+	                        ) : (
+	                          <Circle className="w-5 h-5" strokeWidth={2} />
+	                        )}
+	                      </button>
+	                      <button
+	                        type="button"
+	                        onClick={() => toggleModuleVisibility(module.id)}
+	                        className="p-2 rounded-lg text-[#003DA5] hover:bg-blue-50 transition-all"
+	                        title={isModuleCollapsed ? 'Mostrar permisos del módulo' : 'Ocultar permisos del módulo'}
+	                        aria-label={isModuleCollapsed ? `Mostrar permisos de ${module.name}` : `Ocultar permisos de ${module.name}`}
+	                        aria-expanded={!isModuleCollapsed}
+	                      >
+	                        {isModuleCollapsed ? (
+	                          <ChevronRight className="w-5 h-5" strokeWidth={2} />
+	                        ) : (
+	                          <ChevronDown className="w-5 h-5" strokeWidth={2} />
+	                        )}
+	                      </button>
+	                    </div>
+	                  </div>
 
-                  {/* Permissions */}
-                  {modulePermissionsGroups.length > 0 ? (
+	                  {/* Permissions */}
+	                  {isModuleCollapsed ? (
+	                    <div></div>
+	                  ) : modulePermissionsGroups.length > 0 ? (
                     <div className="space-y-4">
                       {modulePermissionsGroups.map((permissionGroup) => (
                         <div key={permissionGroup.group} className="space-y-2">

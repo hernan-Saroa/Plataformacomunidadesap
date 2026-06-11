@@ -242,7 +242,7 @@ export function HistorialVerificacionesQR({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
@@ -309,7 +309,7 @@ export function HistorialVerificacionesQR({
         </motion.div>
       </div>
 
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
         <div className="flex items-center gap-2 mb-3">
           <Filter className="w-4 h-4 text-gray-600" />
           <span className="text-sm font-semibold text-gray-700">Filtros</span>
@@ -351,7 +351,7 @@ export function HistorialVerificacionesQR({
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -383,7 +383,7 @@ export function HistorialVerificacionesQR({
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="hover:bg-gray-50 transition-colors"
+                      className="transition-colors hover:bg-blue-50/40"
                     >
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-1">

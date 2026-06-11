@@ -48,6 +48,8 @@ type ValidationGeoContext = {
   geoRegion?: string;
   geoCity?: string;
   geoTimezone?: string;
+  geoLatitude?: string;
+  geoLongitude?: string;
 };
 
 type SearchTechnicalBonusCandidate = {
@@ -3079,7 +3081,16 @@ export class CertificatesService {
   }
 
   private normalizeGeoText(value?: string | null): string | undefined {
-    const normalized = String(value || '').trim();
+    const raw = String(value || '').trim();
+    if (!raw) return undefined;
+
+    let normalized = raw;
+    try {
+      normalized = decodeURIComponent(raw.replace(/\+/g, ' ')).trim();
+    } catch {
+      normalized = raw;
+    }
+
     if (!normalized) return undefined;
     if (
       /^(unknown|desconocido|n\/a|na|null|undefined|localhost|local)$/i.test(
@@ -3092,6 +3103,18 @@ export class CertificatesService {
       return undefined;
     }
     return normalized;
+  }
+
+  private normalizeGeoNumber(value?: string | number | null): number | undefined {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+
+    const normalized = String(value || '').trim().replace(',', '.');
+    if (!normalized) return undefined;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
 
   private normalizeGeoPayload(
@@ -3140,6 +3163,8 @@ export class CertificatesService {
       city: context.geoCity,
       region: context.geoRegion,
       country: context.geoCountry,
+      latitude: this.normalizeGeoNumber(context.geoLatitude),
+      longitude: this.normalizeGeoNumber(context.geoLongitude),
     });
   }
 
@@ -3520,7 +3545,7 @@ export class CertificatesService {
       undefined;
     const geoFromHeader = this.resolveGeoFromContext(geoContext);
     const geoFromIp = await this.resolveGeoFromIp(normalizedIp);
-    const geo = this.mergeGeoSources(geoFromIp, geoFromHeader);
+    const geo = this.mergeGeoSources(geoFromHeader, geoFromIp);
     if (!geo && normalizedIp && !this.isPrivateIp(normalizedIp)) {
       this.logger.warn(
         `Validacion sin geolocalizacion para IP publica ${normalizedIp}`,
