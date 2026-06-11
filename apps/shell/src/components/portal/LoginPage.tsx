@@ -716,7 +716,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   </AnimatePresence>
                 </div>
 
-                <p style={{ fontSize: '14px', marginTop: '28px' }} className="text-center text-gray-400">
+                <p style={{ fontSize: '14px', marginTop: '28px', display: 'none' }} className="text-center text-gray-400">
                   ¿No tienes cuenta?{' '}
                   <button className="text-[#1e5da8] hover:text-[#164078] transition-colors font-semibold">
                     Regístrate aquí

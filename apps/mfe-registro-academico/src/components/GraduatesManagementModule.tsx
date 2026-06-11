@@ -966,6 +966,117 @@ export function GraduatesManagementModule() {
     return map;
   }, [sedesCatalog, seccionalById, normalizeKey]);
 
+  const sedesByTerritorial = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+
+    seccionalesCatalog.forEach((seccional) => {
+      const seccionalName = seccional?.nomSeccional?.trim();
+      if (seccionalName) {
+        map.set(normalizeKey(seccionalName), new Set<string>());
+      }
+    });
+
+    sedesCatalog.forEach((sede) => {
+      const sedeName = sede?.nomSede?.trim();
+      if (!sedeName) return;
+
+      const seccionalName =
+        sede.seccional?.nomSeccional ||
+        (sede.idSeccional ? seccionalById.get(sede.idSeccional)?.nomSeccional : undefined);
+      if (!seccionalName) return;
+
+      const seccionalKey = normalizeKey(seccionalName);
+      if (!map.has(seccionalKey)) {
+        map.set(seccionalKey, new Set<string>());
+      }
+      map.get(seccionalKey)?.add(sedeName);
+    });
+
+    return new Map<string, string[]>(
+      Array.from(map.entries()).map(([seccionalKey, sedesSet]): [string, string[]] => [
+        seccionalKey,
+        Array.from(sedesSet).sort((a, b) => a.localeCompare(b, 'es')),
+      ]),
+    );
+  }, [seccionalesCatalog, sedesCatalog, seccionalById, normalizeKey]);
+
+  const editTerritorialOptions = useMemo(() => {
+    const options = new Set<string>(territorialOptions);
+    const mappedTerritorial = editForm.location
+      ? territorialBySede.get(normalizeKey(editForm.location))
+      : '';
+
+    if (editForm.territorial) {
+      options.add(editForm.territorial);
+    }
+    if (mappedTerritorial) {
+      options.add(mappedTerritorial);
+    }
+
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [editForm.location, editForm.territorial, territorialBySede, territorialOptions, normalizeKey]);
+
+  const editSedesOptions = useMemo(() => {
+    const selectedTerritorialKey = normalizeKey(editForm.territorial);
+    const hasSelectedTerritorialCatalog =
+      !!selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey);
+    const baseOptions = hasSelectedTerritorialCatalog
+      ? sedesByTerritorial.get(selectedTerritorialKey) || []
+      : sedesOptions;
+    const options = new Set<string>(baseOptions);
+
+    if (editForm.location) {
+      const mappedTerritorial = territorialBySede.get(normalizeKey(editForm.location));
+      if (
+        !selectedTerritorialKey ||
+        !mappedTerritorial ||
+        normalizeKey(mappedTerritorial) === selectedTerritorialKey
+      ) {
+        options.add(editForm.location);
+      }
+    }
+
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [
+    editForm.location,
+    editForm.territorial,
+    sedesByTerritorial,
+    sedesOptions,
+    territorialBySede,
+    normalizeKey,
+  ]);
+
+  useEffect(() => {
+    if (!editForm.location || !editForm.territorial) {
+      return;
+    }
+
+    const selectedTerritorialKey = normalizeKey(editForm.territorial);
+    if (!sedesByTerritorial.has(selectedTerritorialKey)) {
+      return;
+    }
+
+    const locationMatchesTerritorial =
+      sedesByTerritorial
+        .get(selectedTerritorialKey)
+        ?.some((sede) => normalizeKey(sede) === normalizeKey(editForm.location)) ?? false;
+
+    if (locationMatchesTerritorial) {
+      return;
+    }
+
+    setEditForm((prev) => {
+      if (prev.location !== editForm.location || prev.territorial !== editForm.territorial) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        location: '',
+      };
+    });
+  }, [editForm.location, editForm.territorial, sedesByTerritorial, normalizeKey]);
+
   const filteredUsers = useMemo(() => {
     return graduatesOnly.filter(user => {
       const matchesSearch = searchQuery === '' ||
@@ -1120,6 +1231,30 @@ export function GraduatesManagementModule() {
     }));
   };
 
+  const handleTerritorialChange = (value: string) => {
+    const selectedTerritorialKey = normalizeKey(value);
+    const sedesForTerritorial =
+      selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey)
+        ? sedesByTerritorial.get(selectedTerritorialKey) || []
+        : null;
+
+    setEditForm((prev) => {
+      const keepLocation =
+        !value ||
+        !prev.location ||
+        !sedesForTerritorial ||
+        sedesForTerritorial.some(
+          (sede) => normalizeKey(sede) === normalizeKey(prev.location),
+        );
+
+      return {
+        ...prev,
+        territorial: value,
+        location: keepLocation ? prev.location : '',
+      };
+    });
+  };
+
   const handleDelete = (user: GraduateRow) => {
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
@@ -1241,7 +1376,7 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!effectiveTerritorial) {
-      toast.error('La seccional es obligatoria');
+      toast.error('La territorial es obligatoria');
       return;
     }
 
@@ -1264,12 +1399,6 @@ export function GraduatesManagementModule() {
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
 
-      const updatedTerritorial =
-        editForm.territorial ||
-        (editForm.location
-          ? territorialBySede.get(normalizeKey(editForm.location))
-          : selectedUser.territorial);
-
       setGraduates((prev) =>
         prev.map((graduate) =>
           graduate.id === selectedUser.id
@@ -1284,7 +1413,7 @@ export function GraduatesManagementModule() {
                 numLibro: cleanNumLibro,
                 program: trimmedProgram || graduate.program,
                 location: trimmedLocation || graduate.location,
-                territorial: updatedTerritorial || graduate.territorial,
+                territorial: effectiveTerritorial || graduate.territorial,
               }
             : graduate
         )
@@ -1418,8 +1547,8 @@ export function GraduatesManagementModule() {
       'Nombre completo',
       'Correo',
       'Programa académico',
-      'Sede',
       'Territorial',
+      'Sede (CETAP)',
       'Número de registro',
       'Número de folio',
       'Número de libro',
@@ -1436,8 +1565,8 @@ export function GraduatesManagementModule() {
           `${user.firstName} ${user.lastName}`.trim(),
           user.email,
           user.program || '',
-          user.location || '',
           user.territorial || '',
+          user.location || '',
           formatRegistroDisplay(user.numRegistro) === 'N/A' ? '' : formatRegistroDisplay(user.numRegistro),
           formatRegistroDisplay(user.numFolio) === 'N/A' ? '' : formatRegistroDisplay(user.numFolio),
           formatRegistroDisplay(user.numLibro) === 'N/A' ? '' : formatRegistroDisplay(user.numLibro),
@@ -1620,32 +1749,6 @@ export function GraduatesManagementModule() {
               ))}
             </select>
 
-            {/* ✅ NUEVO: Filtro por Sede */}
-            <select
-              value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '150px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todas las sedes</option>
-              {sedesOptions.map((sede) => (
-                <option key={sede} value={sede}>{sede}</option>
-              ))}
-            </select>
-
             {/* Filtro Territorial */}
             <select
               value={locationFilter}
@@ -1666,9 +1769,35 @@ export function GraduatesManagementModule() {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="all">Todas las seccionales</option>
+              <option value="all">Todas las territoriales</option>
               {territorialOptions.map((territorial) => (
                 <option key={territorial} value={territorial}>{territorial}</option>
+              ))}
+            </select>
+
+            {/* Filtro por Sede */}
+            <select
+              value={sedeFilter}
+              onChange={(e) => setSedeFilter(e.target.value)}
+              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
+              style={{
+                borderColor: '#D1D5DB',
+                color: '#1F2937',
+                minWidth: '150px',
+                outline: 'none'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              <option value="all">Todas las sedes (CETAP)</option>
+              {sedesOptions.map((sede) => (
+                <option key={sede} value={sede}>{sede}</option>
               ))}
             </select>
 
@@ -1970,24 +2099,24 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Sede
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
-                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {user.location}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Territorial
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Building2 className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.territorial || 'Sin territorial'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Sede (CETAP)
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.location}
                             </p>
                           </div>
                         </div>
@@ -2873,9 +3002,48 @@ export function GraduatesManagementModule() {
 
             <div className="space-y-2">
 
+              <Label htmlFor="edit-territorial">
+
+                Territorial
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
+              <select
+
+                id="edit-territorial"
+
+                value={editForm.territorial || selectedTerritorial || ''}
+
+                onChange={(e) => handleTerritorialChange(e.target.value)}
+
+                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+
+                style={{ borderColor: '#D1D5DB' }}
+
+                required
+
+              >
+
+                <option value="">Seleccionar territorial</option>
+
+                {editTerritorialOptions.map((territorial) => (
+
+                  <option key={territorial} value={territorial}>{territorial}</option>
+
+                ))}
+
+              </select>
+
+            </div>
+
+
+            <div className="space-y-2">
+
               <Label htmlFor="edit-location">
 
-                Sede
+                Sede (CETAP)
 
                 <span className="text-red-500"> *</span>
 
@@ -2899,48 +3067,9 @@ export function GraduatesManagementModule() {
 
                 <option value="">Seleccionar sede</option>
 
-                {sedesOptions.map((sede) => (
+                {editSedesOptions.map((sede) => (
 
                   <option key={sede} value={sede}>{sede}</option>
-
-                ))}
-
-              </select>
-
-            </div>
-
-
-            <div className="space-y-2">
-
-              <Label htmlFor="edit-territorial">
-
-                Territorial
-
-                <span className="text-red-500"> *</span>
-
-              </Label>
-
-              <select
-
-                id="edit-territorial"
-
-                value={editForm.territorial || selectedTerritorial || ''}
-
-                onChange={(e) => setEditForm({ ...editForm, territorial: e.target.value })}
-
-                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
-
-                style={{ borderColor: '#D1D5DB' }}
-
-                required
-
-              >
-
-                <option value="">Seleccionar seccional</option>
-
-                {territorialOptions.map((territorial) => (
-
-                  <option key={territorial} value={territorial}>{territorial}</option>
 
                 ))}
 

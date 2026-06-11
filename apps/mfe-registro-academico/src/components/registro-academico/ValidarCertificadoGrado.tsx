@@ -293,7 +293,7 @@ export function ValidarCertificadoGrado({
   };
 
   const statusMeta = response ? statusMetaByResult[response.resultado] : null;
-  const modalMaxHeight = 'min(calc(100vh - 4rem), 760px)';
+  const modalMaxHeight = 'min(calc(100dvh - 2rem), 720px)';
 
   const renderLookupForm = (mode: 'modal' | 'landing') => (
     <div className="space-y-4 sm:space-y-6">
@@ -596,15 +596,14 @@ export function ValidarCertificadoGrado({
       <DialogPortal>
         <DialogOverlay />
 
-        <div className="pointer-events-none fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4">
+        <div className="pointer-events-none fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto p-2 py-4 sm:items-center sm:p-4">
           <DialogPrimitive.Content
             aria-describedby={descriptionId}
-            className="pointer-events-auto grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl focus:outline-none"
+            className="pointer-events-auto flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl focus:outline-none"
             style={{
-              width: 'min(92vw, 560px)',
+              width: 'min(calc(100vw - 1rem), 560px)',
               maxWidth: '560px',
               maxHeight: modalMaxHeight,
-              ...(response ? { height: modalMaxHeight } : {}),
             }}
           >
             <DialogHeader className="relative shrink-0 border-b bg-slate-50 px-4 py-4 text-left sm:px-5 sm:py-4">
@@ -633,7 +632,7 @@ export function ValidarCertificadoGrado({
               </div>
             </DialogHeader>
 
-            <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-3.5 sm:px-5 sm:py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3.5 sm:px-5 sm:py-4">
               <div className="space-y-4">
                 <Card className="border-blue-200 bg-blue-50/70 shadow-none">
                   <CardContent className="pt-4 sm:pt-4">
@@ -641,59 +640,19 @@ export function ValidarCertificadoGrado({
                   </CardContent>
                 </Card>
 
-                {!response ? (
-                  <Card className="border-slate-200 shadow-none">
-                    <CardContent className="space-y-3 pt-4 sm:pt-4">
-                      <div className="flex items-start gap-3">
-                        <Shield className="mt-0.5 h-5 w-5 text-[#003DA5]" />
-                        <div className="space-y-1">
-                          <p className="text-sm font-semibold text-slate-900">
-                            Información disponible en la validación
-                          </p>
-                          <p className="text-sm text-slate-600">
-                            El sistema consulta el certificado en tiempo real y devuelve estado, programa,
-                            datos del graduado, acta y fecha de emisión.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-slate-200 bg-white p-3.5">
-                          <p className="mb-1 text-sm font-semibold text-slate-900">Título académico</p>
-                          <p className="text-sm text-slate-600">
-                            Confirmación del programa y del título emitido.
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-white p-3.5">
-                          <p className="mb-1 text-sm font-semibold text-slate-900">Código QR</p>
-                          <p className="text-sm text-slate-600">
-                            Validación por código único o por el enlace generado en el certificado.
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-white p-3.5 sm:col-span-2">
-                          <p className="mb-1 text-sm font-semibold text-slate-900">Programa y acta</p>
-                          <p className="text-sm text-slate-600">
-                            Visualización del programa académico, territorial y número de acta.
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : null}
-
                 {renderResults()}
               </div>
             </div>
 
-            <DialogFooter className="shrink-0 border-t bg-slate-50 px-4 py-3 sm:px-5 sm:justify-between sm:py-3.5">
+            <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 sm:flex-row sm:justify-between sm:px-5 sm:py-3.5">
               <div className="flex flex-col gap-2 sm:flex-row">
                 {onBack ? (
-                  <Button type="button" variant="outline" onClick={handleBack}>
+                  <Button type="button" variant="outline" onClick={handleBack} className="w-full sm:w-auto">
                     Volver
                   </Button>
                 ) : null}
               </div>
-              <Button type="button" variant="outline" onClick={handleClose}>
+              <Button type="button" variant="outline" onClick={handleClose} className="w-full sm:w-auto">
                 Cerrar
               </Button>
             </DialogFooter>
