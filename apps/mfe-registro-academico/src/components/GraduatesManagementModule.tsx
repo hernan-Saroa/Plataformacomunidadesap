@@ -70,6 +70,7 @@ import graduadosService, {
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
+import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
@@ -147,12 +148,15 @@ export function GraduatesManagementModule() {
   });
   const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
   const canEditGraduates = authService.hasPermission(Permissions.GRADUATES_EDIT);
+  const canCreateGraduates =
+    authService.hasPermission(Permissions.GRADUATES_CREATE) || canEditGraduates;
   const canExportGraduates = authService.hasPermission(Permissions.GRADUATES_EXPORT);
   const canVerifyGraduateCertificates = authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE);
   const canShowGraduateRowActions = canEditGraduates || canVerifyGraduateCertificates;
@@ -1000,6 +1004,34 @@ export function GraduatesManagementModule() {
     );
   }, [seccionalesCatalog, sedesCatalog, seccionalById, normalizeKey]);
 
+  const bulkSedeTerritorialOptions = useMemo(() => {
+    const options: Array<{ territorial: string; sede: string }> = [];
+
+    territorialOptions.forEach((territorial) => {
+      const sedes = sedesByTerritorial.get(normalizeKey(territorial)) || [];
+      sedes.forEach((sede) => {
+        options.push({ territorial, sede });
+      });
+    });
+
+    if (options.length === 0) {
+      sedesOptions.forEach((sede) => {
+        const territorial = territorialBySede.get(normalizeKey(sede)) || '';
+        options.push({ territorial, sede });
+      });
+    }
+
+    return options.sort((a, b) =>
+      `${a.territorial} ${a.sede}`.localeCompare(`${b.territorial} ${b.sede}`, 'es'),
+    );
+  }, [
+    territorialOptions,
+    sedesByTerritorial,
+    sedesOptions,
+    territorialBySede,
+    normalizeKey,
+  ]);
+
   const editTerritorialOptions = useMemo(() => {
     const options = new Set<string>(territorialOptions);
     const mappedTerritorial = editForm.location
@@ -1301,6 +1333,70 @@ export function GraduatesManagementModule() {
       message: ''
     });
     setIsEmailModalOpen(true);
+  };
+
+  const handleOpenBulkUploadModal = () => {
+    if (!canCreateGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas permiso para registrar o editar graduados.',
+      });
+      return;
+    }
+    setIsBulkUploadModalOpen(true);
+  };
+
+  const handleBulkGraduatesImported = (createdGraduates: GraduadoData[]) => {
+    if (!createdGraduates.length) return;
+
+    const importedRows = createdGraduates.map((graduate) => {
+      const derivedName = splitFullName(graduate.fullName);
+      const firstName = (graduate.firstName || '').trim() || derivedName.firstName;
+      const lastName = (graduate.lastName || '').trim() || derivedName.lastName;
+      const campus = graduate.campus || 'Sin sede';
+      const territorial =
+        graduate.seccionalName ||
+        (campus ? territorialBySede.get(normalizeKey(campus)) : undefined);
+
+      return {
+        id: graduate.id,
+        personId: graduate.personId,
+        firstName,
+        lastName,
+        email: graduate.email || '',
+        phone: graduate.phone || 'N/A',
+        status: mapGraduateStatus(graduate.status),
+        roles: [
+          {
+            name: 'Graduado',
+            color: 'green',
+            since: graduate.graduationDate,
+          },
+        ],
+        location: campus,
+        territorial,
+        program: graduate.programName || graduate.degreeTitle || 'No especificado',
+        document: graduate.idNumber,
+        enrollmentMethod: 'massive',
+        enrollmentDate: graduate.enrollmentDate || graduate.createdAt || '',
+        graduationDate: graduate.graduationDate,
+        documentsCount: graduate.filesCount ?? 0,
+        createdBy: graduate.createdBy || 'bulk_upload',
+        asignacionesSedes: campus ? [{ nombreSede: campus }] : undefined,
+        certificatesCount: 0,
+        numRegistro: graduate.numRegistro,
+        numFolio: graduate.numFolio,
+        numLibro: graduate.numLibro,
+        createdAt: graduate.createdAt,
+        updatedAt: graduate.updatedAt,
+      } as GraduateRow;
+    });
+
+    setGraduates((prev) => {
+      const existingIds = new Set(prev.map((graduate) => graduate.id));
+      const newRows = importedRows.filter((graduate) => !existingIds.has(graduate.id));
+      return [...newRows, ...prev];
+    });
+    setCurrentPage(1);
   };
 
   // Handlers para confirmar acciones en modales
@@ -1620,6 +1716,15 @@ export function GraduatesManagementModule() {
       />
 
       {/* Header - DÍA 5: ResponsiveHeader */}
+      <BulkGraduatesUploadModal
+        open={isBulkUploadModalOpen}
+        onOpenChange={setIsBulkUploadModalOpen}
+        onImported={handleBulkGraduatesImported}
+        programOptions={PROGRAMAS_GRADUADOS}
+        territorialOptions={editTerritorialOptions}
+        sedeTerritorialOptions={bulkSedeTerritorialOptions}
+      />
+
       <ResponsiveHeader
         title="Gestión de Graduados"
         description="Administra graduados y genera certificados de verificación de títulos"
@@ -1630,14 +1735,25 @@ export function GraduatesManagementModule() {
           onClick: () => handleVerifyTitle(),
           variant: "primary"
         } : undefined}
-        secondaryActions={canExportGraduates ? [
-          {
-            label: "Exportar",
-            icon: Download,
-            onClick: handleOpenExportModal,
-            variant: "secondary"
-          }
-        ] : []}
+        secondaryActions={[
+          ...(canCreateGraduates ? [
+            {
+              label: "Carga Masiva",
+              icon: Upload,
+              onClick: handleOpenBulkUploadModal,
+              variant: "secondary" as const,
+              className: "border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white"
+            }
+          ] : []),
+          ...(canExportGraduates ? [
+            {
+              label: "Exportar",
+              icon: Download,
+              onClick: handleOpenExportModal,
+              variant: "secondary" as const
+            }
+          ] : [])
+        ]}
       />
 
       {/* Búsqueda y Filtros */}

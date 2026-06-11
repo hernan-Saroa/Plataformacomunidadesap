@@ -115,6 +115,7 @@ export enum Permissions {
   GESTION_LEGAL_CONFIGURACIONES_DELETE = 'gestion-legal.configuraciones.delete',
 
   // Registro Académico - Graduados
+  GRADUATES_CREATE = 'graduates.create',
   GRADUATES_EDIT = 'graduates.edit',
   GRADUATES_VERIFY_CERTIFICATE = 'graduates.verify_certificate',
   GRADUATES_EXPORT = 'graduates.export',
