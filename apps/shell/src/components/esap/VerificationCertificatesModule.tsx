@@ -849,7 +849,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       return;
     }
     if (!trimmedSeccionalName) {
-      toast.error('La seccional es obligatoria');
+      toast.error('La territorial es obligatoria');
       return;
     }
     if (!isExistingGraduate) {
@@ -2537,18 +2537,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Sede</p>
+                                  <p className="text-xs text-gray-600">Territorial</p>
                                   <p className="font-semibold text-gray-900">
-                                    {cert.graduate.campus || 'Sin asignar'}
+                                    {cert.graduate.seccionalName || 'Sin asignar'}
                                   </p>
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Seccional</p>
+                                  <p className="text-xs text-gray-600">Sede (CETAP)</p>
                                   <p className="font-semibold text-gray-900">
-                                    {cert.graduate.seccionalName || 'Sin asignar'}
+                                    {cert.graduate.campus || 'Sin asignar'}
                                   </p>
                                 </div>
                               </div>
@@ -3108,7 +3108,23 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-campus">Sede</Label>
+                <Label htmlFor="edit-seccional">Territorial</Label>
+                <select
+                  id="edit-seccional"
+                  value={editCertificateForm.seccionalName}
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
+                  style={{ borderColor: '#D1D5DB' }}
+                  disabled
+                >
+                  <option value="">Seleccionar territorial</option>
+                  {seccionalesOptions.map((seccional) => (
+                    <option key={seccional} value={seccional}>{seccional}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-campus">Sede (CETAP)</Label>
                 <select
                   id="edit-campus"
                   value={editCertificateForm.campus}
@@ -3119,22 +3135,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <option value="">Seleccionar sede</option>
                   {sedesOptions.map((sede) => (
                     <option key={sede} value={sede}>{sede}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-seccional">Territorial</Label>
-                <select
-                  id="edit-seccional"
-                  value={editCertificateForm.seccionalName}
-                  className="w-full border-2 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
-                  style={{ borderColor: '#D1D5DB' }}
-                  disabled
-                >
-                  <option value="">Seleccionar seccional</option>
-                  {seccionalesOptions.map((seccional) => (
-                    <option key={seccional} value={seccional}>{seccional}</option>
                   ))}
                 </select>
               </div>

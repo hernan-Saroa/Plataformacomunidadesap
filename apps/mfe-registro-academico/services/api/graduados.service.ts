@@ -44,6 +44,21 @@ export interface GraduadoData {
   updatedAt?: string;
 }
 
+export interface BulkCreateGraduadosError {
+  rowNumber: number;
+  idNumber?: string;
+  programName?: string;
+  message: string;
+}
+
+export interface BulkCreateGraduadosResponse {
+  total: number;
+  createdCount: number;
+  failedCount: number;
+  created: GraduadoData[];
+  errors: BulkCreateGraduadosError[];
+}
+
 /**
  * Interface: Solicitud de certificado de graduado
  */
@@ -716,6 +731,20 @@ const graduadosService = {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/graduates`,
         graduado,
+      );
+      return response;
+    },
+
+    /**
+     * Crear graduados masivamente
+     */
+    crearMasivo: async (
+      graduados: Partial<GraduadoData>[],
+      createdBy = "bulk_upload",
+    ): Promise<BulkCreateGraduadosResponse> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/graduates/bulk`,
+        { graduates: graduados, createdBy },
       );
       return response;
     },

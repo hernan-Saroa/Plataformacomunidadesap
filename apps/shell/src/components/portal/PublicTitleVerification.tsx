@@ -527,6 +527,7 @@ export function PublicTitleVerification({
 
   const validateRequestForm = (options?: {
     skipMissingTitleReview?: boolean;
+    requireManualReviewSupport?: boolean;
   }) => {
     const normalizedDocumentNumber = graduateDocumentNumber.trim();
     const normalizedCompanyNit = companyNIT.trim();
@@ -632,6 +633,10 @@ export function PublicTitleVerification({
       }
     }
 
+    if (options?.requireManualReviewSupport && !manualReviewSupportFile) {
+      return "Adjunta el soporte PDF de la solicitud para enviar la revisión manual";
+    }
+
     if (manualReviewSupportFile) {
       const supportValidationError =
         getManualReviewSupportValidationError(manualReviewSupportFile);
@@ -716,15 +721,17 @@ export function PublicTitleVerification({
       forceManualReview: isMissingTitleReview,
     });
 
-    const response = manualReviewSupportFile
-      ? await graduadosService.autoservicio.solicitarRevisionConSoporte(
-        requestPayload,
-        manualReviewSupportFile,
-        (progress) => setManualReviewSupportUploadProgress(progress || 1),
-      )
-      : await graduadosService.autoservicio.solicitarCertificado(
-        requestPayload,
+    if (!manualReviewSupportFile) {
+      throw new Error(
+        "Adjunta el soporte PDF de la solicitud para enviar la revisión manual",
       );
+    }
+
+    const response = await graduadosService.autoservicio.solicitarRevisionConSoporte(
+      requestPayload,
+      manualReviewSupportFile,
+      (progress) => setManualReviewSupportUploadProgress(progress || 1),
+    );
 
     if (!response.existe) {
       setReviewRequestCreated(true);
@@ -780,7 +787,9 @@ export function PublicTitleVerification({
   };
 
   const handleConfirmManualReviewCreation = async () => {
-    const validationError = validateRequestForm();
+    const validationError = validateRequestForm({
+      requireManualReviewSupport: true,
+    });
     if (validationError) {
       toast.error(validationError);
       return;
@@ -802,7 +811,9 @@ export function PublicTitleVerification({
   };
 
   const handleManualReviewSubmit = async () => {
-    const validationError = validateRequestForm();
+    const validationError = validateRequestForm({
+      requireManualReviewSupport: true,
+    });
     if (validationError) {
       toast.error(validationError);
       return;
@@ -1031,6 +1042,7 @@ export function PublicTitleVerification({
     matchSuggestions.find(
       (suggestion) => suggestion.graduateId === selectedSuggestionId,
     ) || null;
+  const hasPendingMatchSuggestions = matchSuggestions.length > 0;
   const isMissingTitleManualReview = manualReviewReason === "missing_title";
   const manualReviewDisplayRecord =
     isMissingTitleManualReview && missingTitleBaseRecord
@@ -2252,9 +2264,9 @@ export function PublicTitleVerification({
                             variant="outline"
                             onClick={() => openMissingTitleReviewPrompt()}
                             disabled={isGenerating || isConfirmingSelection}
-                            className="h-10 border-amber-300 bg-white text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                            className="group h-10 border-amber-300 bg-white text-sm font-semibold text-amber-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-400 hover:bg-amber-100 hover:text-amber-950 hover:shadow-md focus:ring-2 focus:ring-amber-200 disabled:translate-y-0 disabled:hover:bg-white"
                           >
-                            <FileText className="mr-2 h-4 w-4" />
+                            <FileText className="mr-2 h-4 w-4 text-amber-700 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:text-amber-900" />
                             Crear solicitud de revisión
                           </Button>
                         </div>
@@ -2422,11 +2434,11 @@ export function PublicTitleVerification({
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-gray-700">
                               Soporte de la solicitud{" "}
-                              <span className="text-gray-500">(opcional)</span>
+                              <span className="text-red-500">*</span>
                             </p>
                             <p className="mt-1 text-xs leading-5 text-gray-600">
-                              Si cuentas con un diploma, acta de grado o soporte
-                              relacionado, puedes adjuntarlo en PDF. Tamaño máximo:{" "}
+                              Adjunta el diploma, acta de grado o soporte
+                              relacionado en PDF. Tamaño máximo:{" "}
                               {MANUAL_REVIEW_SUPPORT_MAX_SIZE_LABEL}.
                             </p>
                           </div>
@@ -2440,9 +2452,9 @@ export function PublicTitleVerification({
                           />
                           <label
                             htmlFor="manual-review-support-file"
-                            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-50"
+                            className="group inline-flex h-11 min-w-[136px] cursor-pointer items-center justify-center rounded-lg border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 px-4 text-sm font-semibold text-amber-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-400 hover:from-amber-100 hover:to-orange-100 hover:text-amber-900 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-200 active:translate-y-0 active:shadow-sm"
                           >
-                            <UploadCloud className="mr-2 h-4 w-4" />
+                            <UploadCloud className="mr-2 h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5" />
                             {manualReviewSupportFile ? "Cambiar PDF" : "Cargar PDF"}
                           </label>
                         </div>
@@ -2493,8 +2505,8 @@ export function PublicTitleVerification({
                             )}
                           </div>
                         ) : (
-                          <p className="mt-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/40 px-3 py-2 text-xs font-medium text-amber-800">
-                            Puedes enviar la solicitud sin soporte o adjuntar un PDF si deseas ampliar la información.
+                          <p className="mt-3 rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-xs font-semibold text-amber-900">
+                            Adjunta un PDF para poder enviar la solicitud de revisión.
                           </p>
                         )}
                       </div>
@@ -2583,7 +2595,10 @@ export function PublicTitleVerification({
                     <Button
                       type="submit"
                       disabled={
-                        isGenerating || isConfirmingSelection || !acceptedTerms
+                        isGenerating ||
+                        isConfirmingSelection ||
+                        !acceptedTerms ||
+                        hasPendingMatchSuggestions
                       }
                       className="flex-1 h-10 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -2603,11 +2618,23 @@ export function PublicTitleVerification({
                       type="button"
                       onClick={handleReset}
                       variant="outline"
-                      className="h-10 px-4 text-sm font-semibold border-gray-300"
+                      disabled={
+                        isGenerating ||
+                        isConfirmingSelection ||
+                        hasPendingMatchSuggestions
+                      }
+                      className="h-10 px-4 text-sm font-semibold border-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Cancelar
                     </Button>
                   </div>
+
+                  {hasPendingMatchSuggestions && (
+                    <p className="text-xs text-blue-700 text-center">
+                      <Shield className="w-3 h-3 inline-block mr-1" />
+                      Resuelve las coincidencias encontradas usando las acciones superiores.
+                    </p>
+                  )}
 
                   {!acceptedTerms && (
                     <p className="text-xs text-gray-500 text-center">
