@@ -4415,7 +4415,7 @@ export class GraduationCertificatesService {
           {
             ...graduatePayload,
             createdBy:
-              graduatePayload.createdBy || payload.createdBy || 'bulk_upload',
+              payload.createdBy || graduatePayload.createdBy || 'bulk_upload',
           },
           { strictBulk: true },
         );

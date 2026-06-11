@@ -35,6 +35,7 @@ type BulkGraduatesUploadModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImported: (graduates: GraduadoData[]) => void;
+  createdBy?: string;
   programOptions: string[];
   territorialOptions: string[];
   sedeTerritorialOptions: SedeTerritorialOption[];
@@ -834,7 +835,6 @@ const buildParsedRow = (
         seccionalName: finalTerritorial,
         status: 'ACTIVE',
         isVerified: true,
-        createdBy: 'bulk_upload',
       };
 
   return {
@@ -870,6 +870,7 @@ export function BulkGraduatesUploadModal({
   open,
   onOpenChange,
   onImported,
+  createdBy,
   programOptions,
   territorialOptions,
   sedeTerritorialOptions,
@@ -1107,7 +1108,7 @@ export function BulkGraduatesUploadModal({
     try {
       const result = await graduadosService.graduados.crearMasivo(
         validRows.map((row) => row.payload!),
-        'bulk_upload',
+        createdBy?.trim() || 'bulk_upload',
       );
       setImportResult(result);
       if (result.created.length > 0) {
