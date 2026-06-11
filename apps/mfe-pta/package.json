@@ -12,6 +12,7 @@
     "@esap-mfe/shared-hooks": "*",
     "@esap-mfe/shared-types": "*",
     "@esap-mfe/shared-ui": "*",
+    "@supabase/supabase-js": "^2.49.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.10.1"
