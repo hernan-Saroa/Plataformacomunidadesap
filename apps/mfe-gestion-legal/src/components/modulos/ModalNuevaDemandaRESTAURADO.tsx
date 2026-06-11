@@ -2967,7 +2967,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     {isFieldVisible('abogadoResponsable', true) && (
                       <div className="space-y-2">
                         <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
-                          Abogado Defensor {isFieldRequired('abogadoResponsable', false) ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal ml-1">(Opcional)</span>}
+                          Abogado Responsable {isFieldRequired('abogadoResponsable', false) ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal ml-1">(Opcional)</span>}
                         </Label>
                         <Select
                           value={formData.abogadoResponsable}

@@ -36,7 +36,7 @@ interface Expediente {
   etapa: Etapa;
   diasRestantes: number;
   tiempoRestante: string;
-  tipoConteoTermino?: 'HABILES' | 'CALENDARIO'; // Tipo de conteo de días
+  tipoConteoTermino?: 'HABILES' | 'CALENDARIO' | 'HORAS'; // Tipo de conteo de días u horas
   colorAlerta: ColorAlerta;
   fechaNotificacion: string;
   valorDemanda?: number;
@@ -803,7 +803,19 @@ export function KanbanDefensaJudicial() {
           const tipoConteo = item.tipoConteoTermino || 'HABILES'; // Default a días hábiles
 
           if (fechaVencimiento) {
-            if (tipoConteo === 'HABILES') {
+            if (tipoConteo === 'HORAS') {
+              // Calcular horas restantes
+              const diff = fechaVencimiento.getTime() - now.getTime();
+              const horaMs = 1000 * 60 * 60;
+              const horasRestantes = Math.ceil(diff / horaMs);
+              diasRestantes = horasRestantes; // reutilizamos diasRestantes para el color de alerta
+
+              if (diff > 0) {
+                tiempoRestante = `${horasRestantes} hora${horasRestantes !== 1 ? 's' : ''}`;
+              } else {
+                tiempoRestante = `Vencido hace ${Math.abs(horasRestantes)} hora${Math.abs(horasRestantes) !== 1 ? 's' : ''}`;
+              }
+            } else if (tipoConteo === 'HABILES') {
               // Calcular días hábiles restantes
               if (fechaVencimiento > now) {
                 diasRestantes = calcularDiasHabiles(now, fechaVencimiento);
@@ -826,8 +838,12 @@ export function KanbanDefensaJudicial() {
             }
           } else {
             diasRestantes = item.terminoProcesalDias || 30;
-            const tipoLabel = tipoConteo === 'HABILES' ? 'hábiles' : 'calendario';
-            tiempoRestante = `${diasRestantes} días ${tipoLabel}`;
+            if (tipoConteo === 'HORAS') {
+              tiempoRestante = `${diasRestantes} hora${diasRestantes !== 1 ? 's' : ''}`;
+            } else {
+              const tipoLabel = tipoConteo === 'HABILES' ? 'hábiles' : 'calendario';
+              tiempoRestante = `${diasRestantes} días ${tipoLabel}`;
+            }
           }
 
           return {
@@ -845,7 +861,7 @@ export function KanbanDefensaJudicial() {
             etapa: mapEtapa(item.etapaProcesal),
             diasRestantes,
             tiempoRestante,
-            tipoConteoTermino: tipoConteo as 'HABILES' | 'CALENDARIO',
+            tipoConteoTermino: tipoConteo as 'HABILES' | 'CALENDARIO' | 'HORAS',
             colorAlerta: item.riesgoPrescripcion ? 'ROJO' : 'VERDE',
             fechaNotificacion: item.fechaNotificacion,
             valorDemanda: Number(item.cuantia) || 0,

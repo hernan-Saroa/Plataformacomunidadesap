@@ -63,7 +63,8 @@ interface ExpedienteForm {
   // Plazo
   plazoEspecial: string;
   justificacionPlazo: string;
-  tipoConteoTermino: 'HABILES' | 'CALENDARIO';
+  tipoConteoTermino: 'HABILES' | 'CALENDARIO' | 'HORAS';
+  horasTermino: string;
 }
 
 const MEDIOS_CONTROL_POR_JURISDICCION: Record<Jurisdiccion, MedioControl[]> = {
@@ -121,6 +122,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
     plazoEspecial: '',
     justificacionPlazo: '',
     tipoConteoTermino: 'HABILES',
+    horasTermino: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -277,16 +279,23 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
 
     // RN-005: Abogado DEBE ser activo
     if (!formData.abogadoId) {
-      newErrors.abogadoId = 'Abogado litigante es obligatorio';
+      newErrors.abogadoId = 'Abogado responsable es obligatorio';
     }
 
     // RN-009: Plazo especial si no es taxativo
-    if (!esPlazoTaxativo) {
+    if (!esPlazoTaxativo && formData.tipoConteoTermino !== 'HORAS') {
       if (!formData.plazoEspecial || parseInt(formData.plazoEspecial) <= 0) {
         newErrors.plazoEspecial = 'Plazo especial debe ser mayor a 0';
       }
       if (!formData.justificacionPlazo.trim()) {
         newErrors.justificacionPlazo = 'Justificación es obligatoria para plazo especial';
+      }
+    }
+
+    // Validación de horas
+    if (formData.tipoConteoTermino === 'HORAS') {
+      if (!formData.horasTermino || parseInt(formData.horasTermino) <= 0) {
+        newErrors.horasTermino = 'Debe ingresar un número de horas mayor a 0';
       }
     }
 
@@ -324,8 +333,13 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
       if (formData.valorDemanda) formDataToSend.append('cuantia', formData.valorDemanda);
 
       // RN-009: Plazo (Taxativo o Especial)
-      const diasTermino = plazoCalculado ? plazoCalculado : (formData.plazoEspecial ? formData.plazoEspecial : '30');
-      formDataToSend.append('terminoProcesalDias', String(diasTermino));
+      let terminoValor: string;
+      if (formData.tipoConteoTermino === 'HORAS') {
+        terminoValor = formData.horasTermino || '48';
+      } else {
+        terminoValor = plazoCalculado ? String(plazoCalculado) : (formData.plazoEspecial ? formData.plazoEspecial : '30');
+      }
+      formDataToSend.append('terminoProcesalDias', terminoValor);
       formDataToSend.append('tipoConteoTermino', formData.tipoConteoTermino || 'HABILES');
 
       // Enviar datos del usuario actual para asignación automática (Backend Logic)
@@ -571,7 +585,30 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     >
                       <option value="HABILES">Días Hábiles (Lunes a Viernes)</option>
                       <option value="CALENDARIO">Días Calendario (Todos los días)</option>
+                      <option value="HORAS">Horas</option>
                     </select>
+
+                    {formData.tipoConteoTermino === 'HORAS' && (
+                      <div className="mt-3">
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">
+                          Número de Horas <span className="text-red-600">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={formData.horasTermino}
+                          onChange={(e) => handleInputChange('horasTermino', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.horasTermino ? 'border-red-500' : 'border-gray-300'}`}
+                          placeholder="Ej: 48"
+                        />
+                        {errors.horasTermino && (
+                          <p className="text-xs text-red-600 mt-1">{errors.horasTermino}</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          La fecha de vencimiento se calculará sumando estas horas a la fecha de notificación.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -851,7 +888,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Abogado Litigante <span className="text-red-600">*</span>
+                Abogado Responsable <span className="text-red-600">*</span>
               </label>
               <select
                 value={formData.abogadoId}
@@ -872,7 +909,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                 <p className="text-xs text-red-600 mt-1">{errors.abogadoId}</p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                RN-007: Un expediente tiene exactamente 1 abogado litigante
+                RN-007: Un expediente tiene exactamente 1 abogado responsable
               </p>
             </div>
           </div>
