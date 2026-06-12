@@ -327,18 +327,6 @@ export class EstructuraImportService {
           if (periodRows.length > 0) {
             const periodId = periodRows[0].id;
 
-            // Crear tabla periodo_cetap si no existe
-            await queryRunner.query(`
-              CREATE TABLE IF NOT EXISTS academic_work_plan.periodo_cetap (
-                id BIGSERIAL PRIMARY KEY,
-                id_periodo_academico BIGINT NOT NULL REFERENCES academic_work_plan.periodo_academico(id),
-                id_cetap BIGINT NOT NULL REFERENCES academic_work_plan.cetap(id),
-                activo BOOLEAN DEFAULT true,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(id_periodo_academico, id_cetap)
-              )
-            `);
-
             // Asociar todos los CETAPs activos al periodo
             const allCetaps = await queryRunner.query('SELECT id, codigo FROM academic_work_plan.cetap WHERE activo = true');
             for (const cetap of allCetaps) {
