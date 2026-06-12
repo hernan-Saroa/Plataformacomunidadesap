@@ -726,7 +726,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header - World Class Design */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

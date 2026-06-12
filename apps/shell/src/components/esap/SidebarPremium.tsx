@@ -1282,9 +1282,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               {/* COPYRIGHT FOOTER ESAP - SIMPLIFICADO */}
               <div className="text-center">
                 <p className="text-[10px] text-white/70 leading-relaxed">
-                  @Esap 2026 - Todos los derechos reservados
+                  © 2026 Esap - Todos los derechos reservados
                 </p>
-              </div>
+                <p className="text-[9px] text-white/70 leading-relaxed">
+                  Última actualización: {__ESAP_BUILD_DATE__}
+                </p>
+              </div> 
             </motion.div>
           ) : (
             <motion.div
