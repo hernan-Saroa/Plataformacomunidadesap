@@ -18,6 +18,7 @@ services:
         VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
         VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
+        ESAP_BUILD_DATE: ${ESAP_BUILD_DATE:-}
     container_name: superapp-frontend-pre
     ports:
       - "80:80"

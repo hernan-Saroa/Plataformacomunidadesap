@@ -116,11 +116,14 @@ class AuthService {
    * el backend lo lee directamente y emite una nueva cookie.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    return apiClient.post<RefreshTokenResponse>(
+    const response = await apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
       {},
       { skipAuth: true }
     );
+
+    this.saveTokens(response.accessToken, response.refreshToken || response.accessToken);
+    return response;
   }
 
   /**

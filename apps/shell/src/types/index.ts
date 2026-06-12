@@ -731,6 +731,14 @@ export interface ReviewRequest {
     uploadedAt: string;
     url?: string;
   }>;
+  requesterSupportFile?: {
+    originalName: string;
+    storedName: string;
+    mimeType: string;
+    sizeBytes: number;
+    uploadedAt: string;
+    url?: string;
+  } | null;
   
   // Fechas
   createdAt: string;

@@ -6,9 +6,10 @@
 
 import { useState, ReactNode, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Menu, X, Bell } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
+import { NotificacionesDropdown } from '../components/NotificacionesDropdown';
 import { useKeyboardNavigation } from '../../../hooks/useKeyboardNavigation';
 import { KeyboardShortcutsHelper } from './KeyboardShortcutsHelper';
 import { ESAPLogo } from '../../assets/ESAPLogo';
@@ -72,6 +73,8 @@ export function ModuleLayout({
     initialSidebarCollapsed || isSmallTablet
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   // Auto-colapsar cuando la pantalla es pequeña
   useEffect(() => {
@@ -398,9 +401,34 @@ export function ModuleLayout({
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col w-full overflow-y-auto">
-        {/* Header CON BOTÓN HAMBURGUESA MOBILE */}
+        {/* Header Desktop con campana de notificaciones */}
+        {!isMobile && (
+          <div className="hidden md:flex items-center justify-end p-3 border-b" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+            <div className="relative">
+              <Button
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                variant="ghost"
+                size="sm"
+                className="text-gray-600 hover:text-[#003DA5] hover:bg-blue-50 h-9 w-9 p-0"
+              >
+                <Bell className="w-5 h-5" />
+              </Button>
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
+              )}
+              <NotificacionesDropdown
+                isOpen={notificationsOpen}
+                onClose={() => setNotificationsOpen(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Header CON BOTÓN HAMBURGUESA MOBILE Y NOTIFICACIONES */}
         {isMobile && (
-          <div className="p-3 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+          <div className="p-3 border-b-2 flex items-center justify-between" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
             <Button
               onClick={() => setMobileMenuOpen(true)}
               variant="ghost"
@@ -410,6 +438,27 @@ export function ModuleLayout({
             >
               <Menu className="w-6 h-6" />
             </Button>
+
+            <div className="relative">
+              <Button
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                variant="ghost"
+                size="sm"
+                className="flex-shrink-0"
+                style={{ color: moduleColor }}
+              >
+                <Bell className="w-5 h-5" />
+              </Button>
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadNotificationCount}
+                </span>
+              )}
+              <NotificacionesDropdown
+                isOpen={notificationsOpen}
+                onClose={() => setNotificationsOpen(false)}
+              />
+            </div>
           </div>
         )}
 

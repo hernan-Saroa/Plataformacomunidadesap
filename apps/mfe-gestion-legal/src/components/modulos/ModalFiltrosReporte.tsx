@@ -1,15 +1,18 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { X, Download, Filter } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
+import { estructuraService } from '../../../../services/api/estructura.service';
 
 interface ExpedienteParaFiltro {
   medioControl?: string;
   fechaAdmision?: string | Date;
-  provisionContable?: number;
+  provisionContable?: number | string;
   nivelRiesgo?: string;
-  ubicacionFisica?: string;
+  territorial?: string;
+  dependencia?: string;
   estado?: string;
+  camposAdicionales?: Record<string, any>;
   [key: string]: any;
 }
 
@@ -20,7 +23,8 @@ interface FiltrosReporte {
   provisionMin: string;
   provisionMax: string;
   nivelRiesgo: string[];
-  sedeTerritoriales: string;
+  territorial: string;
+  dependencia: string;
   estado: 'TODOS' | 'ACTIVO' | 'INACTIVO';
 }
 
@@ -43,34 +47,77 @@ const RANGOS_PROVISION = [
   { label: 'Más de $1.000M', min: 1_000_000_001, max: Infinity },
 ];
 
-function formatCOP(value: number): string {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value);
+const FILTROS_INICIALES: FiltrosReporte = {
+  medioControl: 'TODOS',
+  fechaAdmisionDesde: '',
+  fechaAdmisionHasta: '',
+  provisionMin: '',
+  provisionMax: '',
+  nivelRiesgo: [],
+  territorial: 'TODAS',
+  dependencia: 'TODAS',
+  estado: 'TODOS',
+};
+
+function getTerritorial(exp: ExpedienteParaFiltro): string | undefined {
+  return exp.territorial || exp.camposAdicionales?.territorial;
+}
+
+function getDependencia(exp: ExpedienteParaFiltro): string | undefined {
+  return exp.dependencia || exp.camposAdicionales?.dependencia;
+}
+
+function parseProvision(value: number | string | undefined | null): number {
+  if (value == null) return 0;
+  const n = Number(value);
+  return isNaN(n) ? 0 : n;
 }
 
 export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActual, nombreTipoActual, onGenerar }: Props) {
-  const [filtros, setFiltros] = useState<FiltrosReporte>({
-    medioControl: 'TODOS',
-    fechaAdmisionDesde: '',
-    fechaAdmisionHasta: '',
-    provisionMin: '',
-    provisionMax: '',
-    nivelRiesgo: [],
-    sedeTerritoriales: 'TODAS',
-    estado: 'TODOS',
-  });
+  const [filtros, setFiltros] = useState<FiltrosReporte>(FILTROS_INICIALES);
+  const [seccionales, setSeccionales] = useState<Array<{ idSeccional: number; nomSeccional: string }>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    estructuraService.seccionales.listar()
+      .then(res => setSeccionales((res.data || []).map((s: any) => ({
+        idSeccional: s.idSeccional,
+        nomSeccional: s.nomSeccional,
+      }))))
+      .catch(() => {});
+  }, [open]);
+
+  const seccionalesMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    seccionales.forEach(s => { map[String(s.idSeccional)] = s.nomSeccional; });
+    return map;
+  }, [seccionales]);
 
   const mediosControlDisponibles = useMemo(() => {
-    const valores = expedientes
-      .map(e => e.medioControl)
-      .filter((v): v is string => !!v);
+    const valores = expedientes.map(e => e.medioControl).filter((v): v is string => !!v);
     return ['TODOS', ...Array.from(new Set(valores)).sort()];
   }, [expedientes]);
 
-  const sedesDisponibles = useMemo(() => {
-    const valores = expedientes
-      .map(e => e.ubicacionFisica)
-      .filter((v): v is string => !!v);
-    return ['TODAS', ...Array.from(new Set(valores)).sort()];
+  const territorialesDisponibles = useMemo(() => {
+    const ids = new Set<string>();
+    expedientes.forEach(e => {
+      const t = getTerritorial(e);
+      if (t) ids.add(t);
+    });
+    const lista = Array.from(ids).map(id => ({
+      id,
+      nombre: seccionalesMap[id] || id,
+    })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return lista;
+  }, [expedientes, seccionalesMap]);
+
+  const dependenciasDisponibles = useMemo(() => {
+    const valores = new Set<string>();
+    expedientes.forEach(e => {
+      const d = getDependencia(e);
+      if (d) valores.add(d);
+    });
+    return ['TODAS', ...Array.from(valores).sort()];
   }, [expedientes]);
 
   const set = (campo: keyof FiltrosReporte, valor: any) =>
@@ -98,21 +145,28 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
         if (filtros.fechaAdmisionHasta && fecha > new Date(filtros.fechaAdmisionHasta + 'T23:59:59')) return false;
       }
 
-      // Provisión contable
+      // Provisión contable — parseamos a número para evitar problemas de tipo string/number
       const pMin = filtros.provisionMin ? Number(filtros.provisionMin) : null;
       const pMax = filtros.provisionMax ? Number(filtros.provisionMax) : null;
-      if (pMin !== null && (exp.provisionContable ?? 0) < pMin) return false;
-      if (pMax !== null && (exp.provisionContable ?? 0) > pMax) return false;
+      const provision = parseProvision(exp.provisionContable);
+      if (pMin !== null && provision < pMin) return false;
+      if (pMax !== null && provision > pMax) return false;
 
       // Nivel de riesgo
       if (filtros.nivelRiesgo.length > 0) {
         const nivel = (exp.nivelRiesgo || '').toUpperCase();
-        const coincide = filtros.nivelRiesgo.some(n => nivel.includes(n));
-        if (!coincide) return false;
+        if (!filtros.nivelRiesgo.some(n => nivel.includes(n))) return false;
       }
 
-      // Sede territorial
-      if (filtros.sedeTerritoriales !== 'TODAS' && exp.ubicacionFisica !== filtros.sedeTerritoriales) return false;
+      // Territorial
+      if (filtros.territorial !== 'TODAS') {
+        if (getTerritorial(exp) !== filtros.territorial) return false;
+      }
+
+      // Dependencia
+      if (filtros.dependencia !== 'TODAS') {
+        if (getDependencia(exp) !== filtros.dependencia) return false;
+      }
 
       // Estado
       if (filtros.estado !== 'TODOS') {
@@ -125,18 +179,7 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
     });
   }, [expedientes, filtros]);
 
-  const limpiarFiltros = () => {
-    setFiltros({
-      medioControl: 'TODOS',
-      fechaAdmisionDesde: '',
-      fechaAdmisionHasta: '',
-      provisionMin: '',
-      provisionMax: '',
-      nivelRiesgo: [],
-      sedeTerritoriales: 'TODAS',
-      estado: 'TODOS',
-    });
-  };
+  const limpiarFiltros = () => setFiltros(FILTROS_INICIALES);
 
   const handleGenerar = () => {
     const partes: string[] = [`Tipo: ${nombreTipoActual}`];
@@ -145,7 +188,10 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
       partes.push(`Admisión: ${filtros.fechaAdmisionDesde || '...'} – ${filtros.fechaAdmisionHasta || '...'}`);
     }
     if (filtros.nivelRiesgo.length > 0) partes.push(`Riesgo: ${filtros.nivelRiesgo.join(', ')}`);
-    if (filtros.sedeTerritoriales !== 'TODAS') partes.push(`Sede: ${filtros.sedeTerritoriales}`);
+    if (filtros.territorial !== 'TODAS') {
+      partes.push(`Territorial: ${seccionalesMap[filtros.territorial] || filtros.territorial}`);
+    }
+    if (filtros.dependencia !== 'TODAS') partes.push(`Dependencia: ${filtros.dependencia}`);
     if (filtros.estado !== 'TODOS') partes.push(`Estado: ${filtros.estado}`);
 
     onGenerar(expedientesFiltrados, partes.join(' | '));
@@ -254,6 +300,7 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
                   onChange={e => set('provisionMin', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
+                  max="999999999999"
                 />
               </div>
               <div>
@@ -265,6 +312,7 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
                   onChange={e => set('provisionMax', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
+                  max="999999999999"
                 />
               </div>
             </div>
@@ -301,18 +349,39 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
             <p className="text-xs text-gray-400 mt-1">Si no seleccionas ninguno, se incluyen todos los niveles.</p>
           </div>
 
-          {/* Sede Territorial */}
+          {/* Territorial */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Sede Territorial</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Territorial</label>
             <select
-              value={filtros.sedeTerritoriales}
-              onChange={e => set('sedeTerritoriales', e.target.value)}
+              value={filtros.territorial}
+              onChange={e => set('territorial', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              {sedesDisponibles.map(s => (
-                <option key={s} value={s}>{s === 'TODAS' ? 'Todas las sedes' : s}</option>
+              <option value="TODAS">Todas las territoriales</option>
+              {territorialesDisponibles.map(t => (
+                <option key={t.id} value={t.id}>{t.nombre}</option>
               ))}
             </select>
+            {territorialesDisponibles.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1">Ningún proceso tiene territorial asignada aún.</p>
+            )}
+          </div>
+
+          {/* Dependencia */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Dependencia</label>
+            <select
+              value={filtros.dependencia}
+              onChange={e => set('dependencia', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {dependenciasDisponibles.map(d => (
+                <option key={d} value={d}>{d === 'TODAS' ? 'Todas las dependencias' : d}</option>
+              ))}
+            </select>
+            {dependenciasDisponibles.length <= 1 && (
+              <p className="text-xs text-gray-400 mt-1">Ningún proceso tiene dependencia asignada aún.</p>
+            )}
           </div>
 
           {/* Estado */}

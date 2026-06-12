@@ -127,7 +127,7 @@ const CAMPOS_POR_PASO = [
       { id: 'termino', label: 'Término (Días)', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'fechaNotificacion', label: 'Fecha de Notificación', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'fechaVencimiento', label: 'Fecha de Vencimiento', defaultObligatorio: true, defaultVisible: true, fixed: true },
-      { id: 'abogadoResponsable', label: 'Abogado Defensor', defaultObligatorio: false, defaultVisible: true },
+      { id: 'abogadoResponsable', label: 'Abogado Responsable', defaultObligatorio: false, defaultVisible: true },
     ]
   },
   {
@@ -2835,9 +2835,12 @@ export function ConfiguracionesSIGL() {
                                           onChange={(e) => {
                                             const config = [...(tipo.camposAdicionalesConfig || [])];
                                             const val = e.target.value as any;
-                                            const updated = { ...c, tipo: val };
+                                            const updated: any = { ...c, tipo: val };
                                             if (val === 'documento' && (!c.tiposDocumento || c.tiposDocumento.length === 0)) {
                                               updated.tiposDocumento = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+                                            }
+                                            if ((val === 'opciones-multiple' || val === 'lista') && (!c.opciones || c.opciones.length === 0)) {
+                                              updated.opciones = [];
                                             }
                                             config[idx] = updated;
                                             actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
@@ -2852,6 +2855,8 @@ export function ConfiguracionesSIGL() {
                                           <option value="booleano">Sí/No</option>
                                           <option value="unico">Único</option>
                                           <option value="documento">Documento</option>
+                                          <option value="opciones-multiple">Opción Múltiple</option>
+                                          <option value="lista">Lista</option>
                                         </select>
                                       </div>
 
@@ -2916,6 +2921,69 @@ export function ConfiguracionesSIGL() {
                                           </button>
                                         </div>
                                       </div>
+
+                                      {/* Sub-fila de opciones para tipo 'opciones-multiple' o 'lista' */}
+                                      {(c.tipo === 'opciones-multiple' || c.tipo === 'lista') && (
+                                        <div className="w-full mt-2 pt-2 border-t border-dashed border-gray-200 flex flex-col gap-2 items-start">
+                                          <div className="flex items-center justify-between w-full">
+                                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                              {c.tipo === 'opciones-multiple' ? 'Opciones (checkboxes)' : 'Opciones del listado'}
+                                            </label>
+                                            {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                  const nextOpts = [...(c.opciones || []), ''];
+                                                  config[idx] = { ...c, opciones: nextOpts };
+                                                  actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                }}
+                                                className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded hover:bg-blue-100 font-semibold flex items-center gap-1 transition-colors"
+                                              >
+                                                <Plus className="w-3 h-3" /> Agregar opción
+                                              </button>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-col gap-1.5 w-full">
+                                            {(c.opciones || []).length === 0 && (
+                                              <p className="text-[10px] text-gray-400 italic">Sin opciones. Haz clic en "Agregar opción".</p>
+                                            )}
+                                            {(c.opciones || []).map((opt, optIdx) => (
+                                              <div key={optIdx} className="flex items-center gap-2 w-full">
+                                                <input
+                                                  disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
+                                                  type="text"
+                                                  value={opt}
+                                                  onChange={(e) => {
+                                                    const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                    const nextOpts = [...(c.opciones || [])];
+                                                    nextOpts[optIdx] = e.target.value;
+                                                    config[idx] = { ...c, opciones: nextOpts };
+                                                    actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                  }}
+                                                  placeholder={`Opción ${optIdx + 1}...`}
+                                                  className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white text-gray-800"
+                                                />
+                                                {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const config = [...(tipo.camposAdicionalesConfig || [])];
+                                                      const nextOpts = (c.opciones || []).filter((_, i) => i !== optIdx);
+                                                      config[idx] = { ...c, opciones: nextOpts };
+                                                      actualizarTipoProceso(tipo.id, { camposAdicionalesConfig: config });
+                                                    }}
+                                                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                    title="Eliminar opción"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
 
                                       {/* Sub-fila de discriminación de tipos de documento para tipo 'documento' */}
                                       {c.tipo === 'documento' && (

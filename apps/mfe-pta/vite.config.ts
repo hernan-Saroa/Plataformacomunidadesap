@@ -29,8 +29,6 @@ export default defineConfig({
     alias: [
       // Normaliza imports con sufijo de versión (ej. "lucide-react@0.487.0") a su paquete real.
       { find: /^(.+)@\d+\.\d+\.\d+$/, replacement: '$1' },
-      // Compatibilidad: código legacy usa "@supabase/supabase-js" (repo previo).
-      { find: '@supabase/supabase-js', replacement: '@jsr/supabase__supabase-js' },
       { find: 'leaflet', replacement: path.resolve(__dirname, './src/vendor/leaflet.ts') },
       { find: '@', replacement: path.resolve(__dirname, './src') },
       { find: '@esap-mfe/shared-hooks', replacement: path.resolve(__dirname, '../../packages/shared-hooks/src') },

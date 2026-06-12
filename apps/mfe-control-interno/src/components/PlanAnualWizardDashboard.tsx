@@ -38,7 +38,16 @@ import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
-import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
+import {
+  useSaveEvidencias,
+  actividadesApi,
+  planAnualApi,
+  adjuntosApi,
+  descargarAdjuntoTareaPlanAnual,
+  normalizarAdjuntosTareaDesdeBackend,
+  type CreateActividadDto,
+} from './services/plan-anual';
+import { VisorEvidenciaPlanAnualModal } from './VisorEvidenciaPlanAnualModal';
 import { configuracionesProfesionalesOCIApi } from './services/api';
 // Servicio para vinculación de auditorías con Rol 4
 import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -224,7 +233,7 @@ interface TareaSeguimiento {
   // S& Requisitos por tarea (antes estaban al nivel de actividad)
   requiereObservaciones?: boolean;
   requiereAdjuntos?: boolean;
-  adjuntosTarea?: { nombre: string; url: string; fecha: string }[];
+  adjuntosTarea?: { id?: string; nombre: string; url: string; fecha: string }[];
   // S& Fecha de entrega opcional
   fechaEntrega?: string;
   // S& Evaluación por el responsable
@@ -539,19 +548,13 @@ const WRAPPER_PASOS_SOLO_LECTURA =
   '[&_.text-orange-600]:!text-gray-500 [&_.text-orange-900]:!text-gray-700 ' +
   '[&_.text-red-700]:!text-gray-600 [&_.border-red-200]:!border-gray-300 [&_.bg-green-100]:!bg-gray-200';
 
-function descargarEvidenciaTarea(adj: { nombre: string; url?: string }) {
-  if (!adj.url) {
-    toast.info('No hay archivo disponible para descargar');
-    return;
+async function descargarEvidenciaTarea(adj: { id?: string; nombre: string; url?: string }) {
+  try {
+    await descargarAdjuntoTareaPlanAnual(adj);
+  } catch (err) {
+    console.error('Error descargando evidencia:', err);
+    toast.error(err instanceof Error ? err.message : 'No se pudo descargar el archivo');
   }
-  const enlace = document.createElement('a');
-  enlace.href = adj.url;
-  enlace.download = adj.nombre || 'evidencia';
-  enlace.rel = 'noopener noreferrer';
-  enlace.target = '_blank';
-  document.body.appendChild(enlace);
-  enlace.click();
-  document.body.removeChild(enlace);
 }
 
 function truncarNombreArchivo(nombre: string, maxLen = 42): string {
@@ -570,42 +573,85 @@ function truncarNombreArchivo(nombre: string, maxLen = 42): string {
 function ListaEvidenciasTarea({
   adjuntos,
   className = 'ml-7',
+  puedeEliminar = false,
+  onEliminar,
 }: {
-  adjuntos: Array<{ nombre: string; url?: string }>;
+  adjuntos: Array<{ id?: string; nombre: string; url?: string }>;
   className?: string;
+  puedeEliminar?: boolean;
+  onEliminar?: (adj: { id?: string; nombre: string; url?: string }) => void;
 }) {
+  const [previewAdj, setPreviewAdj] = useState<{
+    id?: string;
+    nombre: string;
+    url?: string;
+  } | null>(null);
+
   if (!adjuntos.length) return null;
   return (
-    <div className={`${className} mt-1.5 rounded-md border border-slate-200 bg-slate-50 overflow-hidden`}>
-      <p className="px-2 py-1 text-[9px] font-semibold text-slate-600 border-b border-slate-200 bg-white/60">
-        {adjuntos.length} evidencia{adjuntos.length !== 1 ? 's' : ''}
-      </p>
-      <ul className="max-h-36 overflow-y-auto overscroll-contain">
-        {adjuntos.map((adj, i) => (
-          <li
-            key={`${adj.nombre}-${i}`}
-            className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-100 last:border-b-0 min-w-0 hover:bg-white"
-          >
-            <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden />
-            <span className="flex-1 min-w-0 text-[11px] text-gray-800 truncate" title={adj.nombre}>
-              {truncarNombreArchivo(adj.nombre)}
-            </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                descargarEvidenciaTarea(adj);
-              }}
-              className="shrink-0 p-1 rounded-md hover:bg-blue-100 text-blue-700"
-              title="Descargar archivo"
-              aria-label={`Descargar ${adj.nombre}`}
+    <>
+      <div className={`${className} mt-1.5 rounded-md border border-slate-200 bg-slate-50 overflow-hidden`}>
+        <p className="px-2 py-1 text-[9px] font-semibold text-slate-600 border-b border-slate-200 bg-white/60">
+          {adjuntos.length} evidencia{adjuntos.length !== 1 ? 's' : ''}
+        </p>
+        <ul className="max-h-36 overflow-y-auto overscroll-contain">
+          {adjuntos.map((adj, i) => (
+            <li
+              key={adj.id || `${adj.nombre}-${i}`}
+              className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-100 last:border-b-0 min-w-0 hover:bg-white"
             >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+              <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden />
+              <span className="flex-1 min-w-0 text-[11px] text-gray-800 truncate" title={adj.nombre}>
+                {truncarNombreArchivo(adj.nombre)}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewAdj(adj);
+                }}
+                className="shrink-0 p-1 rounded-md hover:bg-indigo-100 text-indigo-700"
+                title="Ver evidencia"
+                aria-label={`Ver ${adj.nombre}`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  descargarEvidenciaTarea(adj);
+                }}
+                className="shrink-0 p-1 rounded-md hover:bg-blue-100 text-blue-700"
+                title="Descargar archivo"
+                aria-label={`Descargar ${adj.nombre}`}
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              {puedeEliminar && adj.id && onEliminar && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEliminar(adj);
+                  }}
+                  className="shrink-0 p-1 rounded-md hover:bg-red-100 text-red-600"
+                  title="Eliminar evidencia"
+                  aria-label={`Eliminar ${adj.nombre}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <VisorEvidenciaPlanAnualModal
+        adj={previewAdj}
+        onCerrar={() => setPreviewAdj(null)}
+        onDescargar={(adj) => descargarEvidenciaTarea(adj)}
+      />
+    </>
   );
 }
 
@@ -615,6 +661,7 @@ function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
     responsables: normalizarResponsablesTarea(t.responsables),
+    adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
   const actBase = act as ActividadBase & { fecha_corte?: string };
   const reqAuth = leerRequiereAutorizacionJefeOCIDesdeActividad(act);
@@ -6683,7 +6730,15 @@ function SeccionGestionYSeguimiento({
       requiereAdjuntos: !!t.requiereAdjuntos,
       requiereObservaciones: !!t.requiereObservaciones,
       observaciones: t.observaciones || '',
-      adjuntosTarea: t.adjuntosTarea || [],
+      adjuntosTarea: (t.adjuntosTarea || [])
+        .filter((a) => a.id || (a.url && !a.url.startsWith('blob:')))
+        .map((a) => ({
+          id: a.id,
+          nombre: a.nombre,
+          url: a.url?.startsWith('blob:') ? undefined : a.url,
+          fecha: a.fecha,
+        }))
+        .filter((a) => a.id && a.url),
       puntoControlId: t.puntoControlId || null,
     }));
 
@@ -6941,20 +6996,94 @@ function SeccionGestionYSeguimiento({
     if (!files || files.length === 0) return;
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
+
+    if (typeof actividadId !== 'string' || actividadId.length < 32) {
+      toast.error('La actividad debe estar guardada en el servidor antes de subir evidencias');
+      return;
+    }
+
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
-    const nuevosAdjuntos = Array.from(files).map(file => ({
-      nombre: file.name,
-      url: URL.createObjectURL(file),
-      fecha: new Date().toISOString(),
-    }));
-    const tareasActualizadas = tareasActuales.map(t =>
-      t.id === tareaId
-        ? { ...t, adjuntosTarea: [...(t.adjuntosTarea || []), ...nuevosAdjuntos] }
-        : t
-    );
-    await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
-    toast.success(`${nuevosAdjuntos.length} evidencia(s) agregada(s) a la tarea`);
+    const nuevosAdjuntos: { id: string; nombre: string; url: string; fecha: string }[] = [];
+
+    const toastId = toast.loading(`Subiendo ${files.length} archivo(s)...`);
+    try {
+      for (const file of Array.from(files)) {
+        const resultado = await adjuntosApi.uploadTarea(String(actividadId), file, tareaId);
+        if (!resultado.success || !resultado.data) {
+          throw new Error(resultado.error || `No se pudo subir ${file.name}`);
+        }
+        nuevosAdjuntos.push({
+          id: resultado.data.id,
+          nombre: resultado.data.nombre,
+          url: resultado.data.urlDownload,
+          fecha: resultado.data.fecha,
+        });
+      }
+
+      const tareasActualizadas = tareasActuales.map(t =>
+        t.id === tareaId
+          ? { ...t, adjuntosTarea: [...(t.adjuntosTarea || []), ...nuevosAdjuntos] }
+          : t
+      );
+      await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
+      toast.success(`${nuevosAdjuntos.length} evidencia(s) guardada(s) en el servidor`, { id: toastId });
+    } catch (err) {
+      console.error('Error subiendo evidencias:', err);
+      toast.error(err instanceof Error ? err.message : 'Error al subir evidencias', { id: toastId });
+    }
   };
+
+  const eliminarAdjuntoTarea = async (
+    rolNumero: number,
+    actividadId: string | number,
+    tareaId: string,
+    adjunto: { id?: string; nombre: string },
+  ) => {
+    if (!adjunto.id) {
+      toast.error('No se puede eliminar: el archivo no está vinculado al servidor');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar la evidencia "${adjunto.nombre}"?`)) return;
+
+    const actividadActual = plan.roles
+      .find((r) => r.numero === rolNumero)
+      ?.actividades.find((a) => a.id === actividadId);
+    if (!actividadActual) return;
+
+    const toastId = toast.loading('Eliminando evidencia...');
+    try {
+      const resultado = await adjuntosApi.delete(adjunto.id);
+      if (!resultado.success) {
+        throw new Error(resultado.error || 'No se pudo eliminar el archivo');
+      }
+
+      const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+      const tareasActualizadas = tareasActuales.map((t) =>
+        t.id === tareaId
+          ? {
+              ...t,
+              adjuntosTarea: (t.adjuntosTarea || []).filter((a) => a.id !== adjunto.id),
+              ...(t.completada &&
+              t.requiereAdjuntos &&
+              (t.adjuntosTarea || []).filter((a) => a.id !== adjunto.id).length === 0
+                ? { completada: false, fechaCompletado: undefined }
+                : {}),
+            }
+          : t,
+      );
+
+      await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
+      toast.success('Evidencia eliminada', { id: toastId });
+    } catch (err) {
+      console.error('Error eliminando evidencia:', err);
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar evidencia', { id: toastId });
+    }
+  };
+
+  const puedeGestionarEvidenciasTarea = (rol: { numero: number }) =>
+    plan.estado !== 'BORRADOR' &&
+    plan.estado !== 'EN_REVISION' &&
+    puedeGestionarTareas(rol);
 
   
   const asignarResponsableInline = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
@@ -8874,7 +9003,13 @@ function SeccionGestionYSeguimiento({
                                                     {tieneObs ? 'Añadir otra observación' : 'Observación'}
                                                   </button>
                                                 </div>
-                                                <ListaEvidenciasTarea adjuntos={tarea.adjuntosTarea || []} />
+                                                <ListaEvidenciasTarea
+                                                  adjuntos={tarea.adjuntosTarea || []}
+                                                  puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                                  onEliminar={(adj) =>
+                                                    eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
+                                                  }
+                                                />
                                                 {tieneObs && (
                                                   <div className="ml-7 mt-1.5 rounded-md border border-amber-100 bg-amber-50/50 overflow-hidden">
                                                     <p className="px-2 py-0.5 text-[9px] font-semibold text-amber-800 border-b border-amber-100">
@@ -9138,7 +9273,13 @@ function SeccionGestionYSeguimiento({
                                         )}
                                       </div>
 
-                                      <ListaEvidenciasTarea adjuntos={tarea.adjuntosTarea || []} />
+                                      <ListaEvidenciasTarea
+                                        adjuntos={tarea.adjuntosTarea || []}
+                                        puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                        onEliminar={(adj) =>
+                                          eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
+                                        }
+                                      />
 
                                       {/* Observaciones registradas */}
                                       {tieneObservacion && (

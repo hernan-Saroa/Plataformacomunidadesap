@@ -481,18 +481,12 @@ export function WizardActasWorldClass({
     try {
       let urlToDownload = plantillaUrl;
 
-      // Intentar diferentes formatos de URL
-      if (plantillaUrl.startsWith('/uploads/')) {
-        // Las plantillas se guardan en /uploads/plantillas-actas/ pero se sirven desde /files/
+      // Normalizar URL: extraer filename y construir ruta de un segmento para FilesController
+      if (plantillaUrl.startsWith('/uploads/') || (!plantillaUrl.startsWith('http') && !plantillaUrl.startsWith('/files/'))) {
         const filename = plantillaUrl.split('/').pop();
-        urlToDownload = `/files/plantillas-actas/${filename}`;
+        urlToDownload = `/files/${filename}`;
       } else if (plantillaUrl.startsWith('/files/')) {
-        // Ya está en el formato correcto
         urlToDownload = plantillaUrl;
-      } else if (!plantillaUrl.startsWith('http') && plantillaUrl.includes('plantilla-acta')) {
-        // Es una ruta relativa que contiene 'plantilla-acta', intentar convertir
-        const filename = plantillaUrl.split('/').pop();
-        urlToDownload = `/files/plantillas-actas/${filename}`;
       }
 
       console.log('Intentando descargar plantilla:', { original: plantillaUrl, processed: urlToDownload, nombreArchivo, tipoSeleccionadoId: tipoSeleccionado?.id });

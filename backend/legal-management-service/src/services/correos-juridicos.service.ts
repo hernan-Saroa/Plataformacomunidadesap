@@ -202,6 +202,60 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Detecta si un email es un Delivery Status Notification (DSN), acuse de entrega/lectura,
+     * o bounce automático del MTA. Estos correos los genera el servidor (no un humano) y no
+     * deben aparecer como comunicaciones reales en la bandeja.
+     */
+    private esDeliveryReceiptOrDSN(email: any): boolean {
+        const subject = (email.subject || '').toLowerCase().trim();
+        const fromAddress = (email.from?.emailAddress?.address || '').toLowerCase();
+        const fromName = (email.from?.emailAddress?.name || '').toLowerCase();
+
+        // Prefijos típicos de asunto en español e inglés
+        const subjectPrefixes = [
+            'retransmitido:',
+            'relayed:',
+            'delivery status notification',
+            'undelivered mail',
+            'undeliverable',
+            'mail delivery failed',
+            'failure notice',
+            'returned mail',
+            'mail delivery subsystem',
+            'leído:',
+            'read:',
+            'no leído:',
+            'not read:',
+            'acuse de recibo',
+            'delivery receipt',
+            'read receipt',
+            'recibo de entrega',
+            'recibo de lectura',
+            'sin entregar:',
+            'no entregado:',
+        ];
+        if (subjectPrefixes.some(p => subject.startsWith(p))) {
+            return true;
+        }
+
+        // Remitentes típicos del MTA
+        const senderHints = [
+            'mailer-daemon',
+            'postmaster@',
+            'microsoftexchange',
+            'noreply@',
+            'no-reply@',
+            'donotreply@',
+            'do-not-reply@',
+        ];
+        if (senderHints.some(s => fromAddress.includes(s) || fromName.includes(s))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Sync one page of emails from Microsoft Graph
      * Returns nextLink for pagination
      */
@@ -221,6 +275,13 @@ export class CorreosJuridicosService {
 
             for (const email of emails) {
                 try {
+                    // Filtrar Delivery Status Notifications (DSN), acuses de lectura/entrega y bounces.
+                    // Estos correos los genera automáticamente el MTA y no son comunicaciones reales.
+                    if (this.esDeliveryReceiptOrDSN(email)) {
+                        this.logger.log(`  ⏭️  DSN/Auto-reply omitido: "${email.subject?.substring(0, 60)}"`);
+                        continue;
+                    }
+
                     // Check if already exists
                     const existing = await this.correoRepo.findOne({
                         where: { graphMessageId: email.id },
