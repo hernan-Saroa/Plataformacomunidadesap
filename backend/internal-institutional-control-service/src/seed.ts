@@ -18,6 +18,10 @@ async function seed() {
     // Seed de plan anual 5 roles removido - los datos deben crearse manualmente
     // await seedPlanAnual5Roles(dataSource);
 
+    // ==================== TABLEROS KANBAN Y ETAPAS ====================
+    // Movido a db/migrations/328_seed_tableros_kanban_control_interno.sql
+    // para que se ejecute automaticamente en deploy.
+
     console.log('✅ Seed completado exitosamente!');
   } catch (error) {
     console.error('❌ Error durante el seed:', error);

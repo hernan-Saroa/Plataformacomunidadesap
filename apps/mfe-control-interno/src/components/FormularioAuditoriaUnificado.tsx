@@ -44,6 +44,7 @@ import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/ap
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -162,7 +163,7 @@ export interface AuditoriaUnificadaFormData {
   rolDecretoAsociado?: string;
   
   // 10. ESTADO KANBAN (para crear auditoria en columna correcta)
-  estadoKanban?: 'Plan Anual' | 'Planeación' | 'Trabajo de Campo' | 'Elaboración Informe' | 'Informe Final' | 'Seguimiento' | 'Cerrada';
+  estadoKanban?: 'Programa Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Finalizada';
 }
 
 interface FormularioAuditoriaUnificadoProps {
@@ -341,7 +342,7 @@ export function FormularioAuditoriaUnificado({
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
     rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
-    estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
+    estadoKanban: initialData?.estadoKanban || 'Programa Anual' // Por defecto crear en Plan Anual
   });
 
   useEffect(() => {
@@ -1049,30 +1050,8 @@ export function FormularioAuditoriaUnificado({
   ];
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* OVERLAY */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999]"
-            onClick={onClose}
-          />
-
-          {/* MODAL CONTENT */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-          >
-            <div
-              className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col max-w-5xl"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <Dialog open={open} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
               {/* HEADER */}
               <div className="flex items-start justify-between p-6 border-b border-gray-200">
                 <div className="flex-1">
@@ -1086,15 +1065,6 @@ export function FormularioAuditoriaUnificado({
                     Formulario Unificado de Control Interno de Gestión - ESAP
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="ml-4"
-                  aria-label="Cerrar modal"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
               </div>
 
               {/* INDICADOR DE PROGRESO */}
@@ -1227,11 +1197,8 @@ export function FormularioAuditoriaUnificado({
                   )}
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+            </DialogContent>
+          </Dialog>
   );
 }
 
@@ -2083,24 +2050,6 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
             </select>
           </FieldWrapper>
 
-          {/* Auditor Asignado - NUEVO */}
-          <FieldWrapper label="Auditor Asignado" required helpText="Persona encargada de la ejecución técnica de la auditoría">
-            <select
-              value={formData.auditorAsignado}
-              onChange={(e) => onChange('auditorAsignado', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccione el auditor asignado...</option>
-              {auditores
-                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo))
-                .map(auditor => (
-                <option key={auditor.id} value={auditor.id}>
-                  {auditor.nombre}
-                </option>
-              ))}
-            </select>
-          </FieldWrapper>
-
           {/* Equipo Adicional - TERCERO */}
           <FieldWrapper
             label="Equipo Auditor Adicional (Opcional)"
@@ -2110,7 +2059,6 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
               {auditores.filter(a =>
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
-                a.id !== formData.auditorAsignado &&
                 REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo)
               ).map(auditor => (
                 <button

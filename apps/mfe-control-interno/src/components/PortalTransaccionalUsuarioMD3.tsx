@@ -77,7 +77,7 @@ import { Label } from '@esap-mfe/shared-ui/label';
 import { Switch } from '@esap-mfe/shared-ui/switch';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { PerfilUsuarioCompletoPT } from './PerfilUsuarioCompletoPT';
-import { PORTAL_EXTERNAL_URLS } from '../config/environment';
+import { PORTAL_EXTERNAL_URLS } from '../../config/environment';
 import {
   Select,
   SelectContent,

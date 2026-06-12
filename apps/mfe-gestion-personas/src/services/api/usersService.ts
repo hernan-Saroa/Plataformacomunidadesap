@@ -5,7 +5,7 @@
  */
 
 import { apiClient } from './apiClient';
-import { API_ENDPOINTS } from '../../config/environment';
+import { API_ENDPOINTS } from '../../../config/environment';
 import type { 
   User, 
   CreateUserDTO, 

@@ -15,7 +15,7 @@ import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { estructuraService } from '../../services/estructuraService';
-import { buildApiUrl, CORS_CONFIG } from '../../config/environment';
+import { buildApiUrl, CORS_CONFIG } from '../../../config/environment';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
 import { AsignarUsuariosModal } from './AsignarUsuariosModal';
 import { ImportarEstructuraView } from './ImportarEstructuraView';

@@ -370,6 +370,8 @@ function clearSensitiveSessionState() {
 
 
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
+const INTERVALO_REFRESH_SESION_ACTIVA = 10 * 60 * 1000; // 10 minutos
+const INTERVALO_GUARDADO_ACTIVIDAD = 30 * 1000; // 30 segundos
 
 function DemoNoDisponible({ title }: { title: string }) {
   return (
@@ -429,6 +431,8 @@ export default function App() {
 
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
+  const ultimaActividadGuardadaRef = useRef(0);
+  const ultimoRefreshSesionRef = useRef(0);
 
   // ============================================
   // PERSISTENCIA DE SESIÓN
@@ -616,6 +620,47 @@ export default function App() {
   // SISTEMA DE DETECCIÓN DE INACTIVIDAD
   // ============================================
 
+  const guardarActividadSesion = useCallback(() => {
+    if (!usuarioActual || (vistaActual !== 'portal' && vistaActual !== 'backoffice')) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - ultimaActividadGuardadaRef.current < INTERVALO_GUARDADO_ACTIVIDAD) {
+      return;
+    }
+
+    ultimaActividadGuardadaRef.current = now;
+    sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
+      vista: vistaActual,
+      timestamp: now,
+    }));
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+  }, [usuarioActual, vistaActual]);
+
+  const refrescarSesionActiva = useCallback(async (force = false) => {
+    if (!usuarioActual) {
+      return false;
+    }
+
+    const now = Date.now();
+    if (!force && now - ultimoRefreshSesionRef.current < INTERVALO_REFRESH_SESION_ACTIVA) {
+      return false;
+    }
+
+    ultimoRefreshSesionRef.current = now;
+
+    try {
+      await authService.refreshToken();
+      return true;
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[Auth] No se pudo refrescar la sesion activa:', error);
+      }
+      return false;
+    }
+  }, [usuarioActual]);
+
   const resetearTimerInactividad = useCallback(() => {
     // Limpiar timers existentes
     if (timerInactividadRef.current) {
@@ -628,6 +673,9 @@ export default function App() {
 
     // Solo activar si hay usuario autenticado
     if (!usuarioActual) return;
+
+    guardarActividadSesion();
+    void refrescarSesionActiva();
 
     // Timer para mostrar alerta (14 minutos)
     timerAlertaRef.current = setTimeout(() => {
@@ -642,7 +690,7 @@ export default function App() {
     timerInactividadRef.current = setTimeout(() => {
       handleLogoutPorInactividad();
     }, TIMEOUT_INACTIVIDAD);
-  }, [usuarioActual]);
+  }, [usuarioActual, guardarActividadSesion, refrescarSesionActiva]);
 
   // Detectar actividad del usuario
   useEffect(() => {
@@ -762,9 +810,12 @@ export default function App() {
       if (rememberMe) {
         localStorage.setItem('esap-remember-session', JSON.stringify({ email: userEmail }));
       }
+      const now = Date.now();
+      ultimaActividadGuardadaRef.current = now;
+      ultimoRefreshSesionRef.current = now;
       sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
         vista: vistaActualNext,
-        timestamp: Date.now(),
+        timestamp: now,
       }));
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       resetearTimerInactividad();
@@ -893,12 +944,22 @@ export default function App() {
     }
   };
 
-  const handleContinuarSesion = () => {
+  const handleContinuarSesion = async () => {
     setMostrarAlertaInactividad(false);
+
+    const refreshed = await refrescarSesionActiva(true);
+    guardarActividadSesion();
     resetearTimerInactividad();
-    toast.success('Sesión extendida', {
-      description: 'Has renovado tu sesión exitosamente',
-    });
+
+    if (refreshed) {
+      toast.success('Sesión extendida', {
+        description: 'Has renovado tu sesión exitosamente',
+      });
+    } else {
+      toast.warning('Sesión activa', {
+        description: 'No se pudo confirmar la renovación con el servidor. Continúa trabajando mientras haya conexión.',
+      });
+    }
   };
 
   // ============================================

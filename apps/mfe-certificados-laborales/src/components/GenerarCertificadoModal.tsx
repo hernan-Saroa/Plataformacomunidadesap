@@ -558,7 +558,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
 
     setIsGenerating(true);
     toast.loading('Generando certificado...', {
-      description: 'Por favor espera mientras procesamos la información',
+      description: 'Por favor, espera mientras procesamos la información',
       id: 'generar-cert'
     });
 
@@ -572,7 +572,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     setIsGenerating(false);
 
     if (success) {
-      toast.success('Certificado generado exitosamente!', {
+      toast.success('¡Certificado generado exitosamente!', {
         description: certificadoSeleccionado
           ? `${certificadoSeleccionado.consecutivo} listo para descargar`
           : 'Certificado listo para descargar',

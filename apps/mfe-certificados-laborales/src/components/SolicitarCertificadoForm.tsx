@@ -128,7 +128,7 @@ export function SolicitarCertificadoForm() {
     } catch (error) {
       console.error('Error al procesar solicitud:', error);
       toast.error('Error al procesar tu solicitud', {
-        description: 'Por favor intenta nuevamente o contacta al área de Talento Humano'
+        description: 'Por favor, intenta nuevamente o contacta al área de Talento Humano'
       });
     } finally {
       setIsLoading(false);

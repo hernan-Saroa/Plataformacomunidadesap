@@ -15,6 +15,7 @@ import {
   Res,
   HttpException,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -42,6 +43,7 @@ import {
 } from '../services/storage.service';
 import type { Request, Response } from 'express';
 import * as fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -51,6 +53,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 import { PermissionsService } from '../auth/services/permissions.service';
+import JSZip from 'jszip';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -60,6 +63,7 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'CONTROL_DISCIPLINARIO',
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
+  'SECRETARIA_RADICADOR',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -1183,6 +1187,28 @@ export class ProcessController {
   }
 
   /**
+   * Obtener todas las noticias RADICADA con documentos adjuntos
+   * Estas noticias no tienen proceso asociado aún
+   */
+  @Get('radicated-news')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Obtener Noticias Radicadas',
+    description: 'Retorna las noticias en estado RADICADA que no tienen proceso asociado (con o sin adjuntos)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias radicadas con documentos',
+  })
+  async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
+    const access = await this.getSensitiveAccessContext(req);
+    if (!access.fullAccess) {
+      return [];
+    }
+    return await this.processService.findRadicatedNewsWithDocuments();
+  }
+
+  /**
    * Obtener todos los procesos
    */
   @Get()
@@ -1224,7 +1250,7 @@ export class ProcessController {
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async getById(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<DisciplinaryProcess> {
     const access = await this.getSensitiveAccessContext(req);
 
@@ -1310,20 +1336,65 @@ export class ProcessController {
       const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
       console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
 
-      const emailPayload = {
-        to: dto.emailDestinatario,
-        subject: `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`,
-        text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-        html: emailHtml,
-      };
+      const subject = `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`;
 
-      console.log('📧 [RemitirCompetencia] Enviando correo a:', dto.emailDestinatario);
+      let subjectFinal = subject;
+      let attachmentName: string | undefined;
+      let attachmentBase64: string | undefined;
+      let attachmentContentType = 'application/zip';
 
-      const response = await firstValueFrom(
-        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
-      );
+      const adjuntos = (noticia as any).adjuntos as string[] | undefined;
+      if (adjuntos && Array.isArray(adjuntos) && adjuntos.length > 0) {
+        try {
+          const zip = new JSZip();
+          for (const adjunto of adjuntos) {
+            try {
+              const filename = adjunto.includes('/') ? adjunto.split('/').pop()! : adjunto;
+              const filePath = this.storageService.getFullPath(adjunto);
+              const fileBuffer = await fsPromises.readFile(filePath);
+              zip.file(filename, fileBuffer);
+            } catch (adjuntoError) {
+              console.error(`⚠️ [RemitirCompetencia] Error leyendo adjunto ${adjunto}:`, adjuntoError);
+            }
+          }
+          const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+          attachmentName = `adjuntos_${dto.radicado || noticia.radicado}.zip`;
+          attachmentBase64 = zipBuffer.toString('base64');
+          subjectFinal = `${subject} (${adjuntos.length} archivo(s) adjunto(s))`;
+          console.log(`📎 [RemitirCompetencia] ZIP creado con ${adjuntos.length} archivo(s)`);
+        } catch (zipError) {
+          console.error(`⚠️ [RemitirCompetencia] Error creando ZIP:`, zipError);
+        }
+      }
 
-      console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);
+      const remindersBaseUrl = (notificationsServiceUrl || '').replace(/\/+$/, '');
+
+      if (attachmentBase64 && attachmentName) {
+        const emailPayload: any = {
+          to: dto.emailDestinatario,
+          subject: subjectFinal,
+          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+          html: emailHtml,
+          attachmentName,
+          attachmentBase64,
+          attachmentContentType,
+        };
+        const responseWithAttachment = await firstValueFrom(
+          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send-with-attachment`, emailPayload),
+        );
+        console.log('📧 [RemitirCompetencia] Correo con ZIP enviado:', responseWithAttachment.data);
+      } else {
+        const emailPayload = {
+          to: dto.emailDestinatario,
+          subject: subjectFinal,
+          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+          html: emailHtml,
+        };
+        const response = await firstValueFrom(
+          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload),
+        );
+        console.log('📧 [RemitirCompetencia] Correo enviado:', response.data);
+      }
 
       // 5. Generar número RC
       const anio = new Date().getFullYear();
@@ -1538,21 +1609,4 @@ export class ProcessController {
      }
    }
 
-   /**
-    * Obtener todas las noticias RADICADA con documentos adjuntos
-    * Estas noticias no tienen proceso asociado aún
-    */
-   @Get('radicated-news')
-   @HttpCode(HttpStatus.OK)
-   @ApiOperation({
-     summary: 'Obtener Noticias Radicadas con Documentos',
-     description: 'Retorna las noticias en estado RADICADA que tienen archivos adjuntos pero no tienen proceso asociado',
-   })
-   @ApiResponse({
-     status: 200,
-     description: 'Lista de noticias radicadas con documentos',
-   })
-   async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
-     return await this.processService.findRadicatedNewsWithDocuments();
-   }
  }

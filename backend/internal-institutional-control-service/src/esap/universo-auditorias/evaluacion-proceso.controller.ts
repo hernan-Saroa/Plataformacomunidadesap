@@ -14,6 +14,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -27,7 +28,7 @@ import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Permissions } from '../../auth/decorators/permissions.decorator';
 import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import { EvaluacionProcesoService } from './evaluacion-proceso.service';
-import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto } from './dto/evaluacion-proceso.dto';
+import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto, PatchAuditableManualDto } from './dto/evaluacion-proceso.dto';
 
 @Controller('universo-auditorias/evaluaciones')
 export class EvaluacionProcesoController {
@@ -108,6 +109,20 @@ export class EvaluacionProcesoController {
   @Permissions(CIP.AUDITORIA_EDIT)
   update(@Param('id') id: string, @Body() updateDto: UpdateEvaluacionProcesoDto) {
     return this.evaluacionService.update(id, updateDto);
+  }
+
+  /**
+   * PATCH /universo-auditorias/evaluaciones/:id/auditable
+   * Override manual de priorización (columna Aud.)
+   */
+  @Patch(':id/auditable')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  patchAuditable(
+    @Param('id') id: string,
+    @Body() body: PatchAuditableManualDto,
+  ) {
+    return this.evaluacionService.patchAuditableManual(id, body.auditableManual ?? null);
   }
 
   /**

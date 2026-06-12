@@ -9,13 +9,14 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Plus, Edit2, Trash2, Download, X, FileText, AlertCircle, 
-  Info, HelpCircle, CheckCircle, ClipboardList, Users, Mic, 
+import {
+  Plus, Edit2, Trash2, Download, X, FileText, AlertCircle,
+  Info, HelpCircle, CheckCircle, ClipboardList, Users, Mic,
   File, Folder, Eye, Files, Clock, ChevronDown, ChevronRight,
   FileSignature, Gavel
 } from 'lucide-react';
 import { toast } from 'sonner';
+import disciplinaryService from '../../../../services/api/disciplinary.service';
 
 // ============ TIPOS DE ACTAS ============
 
@@ -138,10 +139,10 @@ export function SeccionPlantillasActasUnificada({
 
   const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
     const link = document.createElement('a');
-    link.href = plantilla.url;
+    link.href = disciplinaryService.getAbsoluteFileUrl(plantilla.url);
     link.download = plantilla.nombreArchivo;
     link.click();
-    
+
     toast.success('Plantilla descargada', {
       description: plantilla.nombreArchivo
     });
@@ -490,7 +491,7 @@ export function SeccionPlantillasActasUnificada({
 
       {/* Modales simplificados */}
       {vistaDetalles && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 1000 }}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}

@@ -31,7 +31,9 @@ import {
   UploadCloud,
   Paperclip,
   Trash2,
-  FileCheck2
+  FileCheck2,
+  Download,
+  BarChart3
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -46,6 +48,7 @@ import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import type { Seccional, Sede } from '../../services/api/types';
+import { GRADUATE_PROGRAM_OPTIONS } from '../../constants/academicPrograms';
 
 type ApprovalForm = {
   fullName: string;
@@ -58,6 +61,12 @@ type ApprovalForm = {
   numRegistro: string;
   numFolio: string;
   numLibro: string;
+};
+
+type ReviewSupportPreview = {
+  url: string;
+  name: string;
+  fileType: 'pdf' | 'image' | 'other';
 };
 
 type ReviewRequestsScope = 'all' | 'mine';
@@ -97,6 +106,7 @@ export function ReviewRequestsModule({
     numFolio: '',
     numLibro: '',
   });
+  const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [isApprovalFileDragActive, setIsApprovalFileDragActive] = useState(false);
   const [existingApprovalFiles, setExistingApprovalFiles] = useState<
@@ -109,9 +119,12 @@ export function ReviewRequestsModule({
     currentFilePercent: 0,
     overallPercent: 0,
   });
+  const [reviewSupportPreview, setReviewSupportPreview] =
+    useState<ReviewSupportPreview | null>(null);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
+  const [sedesBySeccional, setSedesBySeccional] = useState<Record<string, string[]>>({});
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -206,19 +219,7 @@ export function ReviewRequestsModule({
     (request.approvalStatus !== 'HEAD_OBSERVATION' ||
       canManageApprovalConcepts);
   const isMyReviewsScope = scope === 'mine';
-  const PROGRAMAS_ESAP = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
+  const PROGRAMAS_ESAP: readonly string[] = GRADUATE_PROGRAM_OPTIONS;
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
@@ -238,6 +239,29 @@ export function ReviewRequestsModule({
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+
+  const hasCatalogKey = <T,>(catalog: Record<string, T>, key: string) =>
+    Object.prototype.hasOwnProperty.call(catalog, key);
+
+  const normalizeComparableProgram = (value?: string | null) =>
+    (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const programAlreadyExistsForGraduate = (programName: string) => {
+    const normalizedProgramName = normalizeComparableProgram(programName);
+    if (!normalizedProgramName) {
+      return false;
+    }
+
+    return existingGraduatePrograms.some(
+      (program) => normalizeComparableProgram(program) === normalizedProgramName,
+    );
+  };
 
   const normalizeName = (value?: string) => {
     const normalized = (value || '').trim();
@@ -548,6 +572,72 @@ export function ReviewRequestsModule({
     }
   };
 
+  const getRequesterSupportFileType = (
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ): ReviewSupportPreview['fileType'] => {
+    const name = (file.originalName || '').toLowerCase();
+    const mimeType = (file.mimeType || '').toLowerCase();
+    if (name.endsWith('.pdf') || mimeType.includes('pdf')) return 'pdf';
+    if (mimeType.startsWith('image/')) return 'image';
+    return 'other';
+  };
+
+  const handleDownloadRequesterSupportFile = async (
+    request: ReviewRequest,
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ) => {
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(request.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.originalName || 'soporte-solicitud.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error('No se pudo descargar el soporte', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  const handlePreviewRequesterSupportFile = async (
+    request: ReviewRequest,
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ) => {
+    const fileType = getRequesterSupportFileType(file);
+    if (fileType === 'other') {
+      toast.info('Este archivo no tiene vista previa disponible', {
+        description: 'Puedes descargarlo para abrirlo en tu equipo.',
+      });
+      return;
+    }
+
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(request.id);
+      const url = URL.createObjectURL(blob);
+      setReviewSupportPreview({
+        url,
+        name: file.originalName || 'Soporte de solicitud',
+        fileType,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo visualizar el soporte', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (reviewSupportPreview?.url) {
+        URL.revokeObjectURL(reviewSupportPreview.url);
+      }
+    };
+  }, [reviewSupportPreview?.url]);
+
   const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
   const allowedFileMimeTypes = new Set([
     'application/pdf',
@@ -626,20 +716,20 @@ export function ReviewRequestsModule({
     const currentTotal = existingApprovalFiles.length + approvalFiles.length;
     const availableSlots = MAX_APPROVAL_FILES - currentTotal;
     if (availableSlots <= 0) {
-      toast.error(`Ya alcanzaste el maximo de ${MAX_APPROVAL_FILES} archivos`);
+      toast.error(`Ya alcanzaste el máximo de ${MAX_APPROVAL_FILES} archivos`);
       return;
     }
 
     if (uniqueFiles.length > availableSlots) {
-      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) mas`, {
-        description: `La solicitud admite maximo ${MAX_APPROVAL_FILES} archivos en total.`,
+      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) más`, {
+        description: `La solicitud admite máximo ${MAX_APPROVAL_FILES} archivos en total.`,
       });
       return;
     }
 
     const invalidFile = uniqueFiles.find((file) => !isAllowedFile(file));
     if (invalidFile) {
-      toast.error('Solo se permiten archivos PDF, Word, Excel o imagenes', {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes', {
         description: invalidFile.name,
       });
       return;
@@ -648,7 +738,7 @@ export function ReviewRequestsModule({
     const oversizedFile = uniqueFiles.find((file) => file.size > MAX_APPROVAL_FILE_SIZE_BYTES);
     if (oversizedFile) {
       toast.error('El archivo es muy pesado', {
-        description: `El archivo "${oversizedFile.name}" supera el limite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
       });
       return;
     }
@@ -816,6 +906,7 @@ export function ReviewRequestsModule({
       headReviewerName: request.headReviewerName,
       reviewTimeline: request.reviewTimeline || [],
       reviewFiles: request.reviewFiles || [],
+      requesterSupportFile: request.requesterSupportFile || null,
       updatedAt: request.updatedAt,
     };
   };
@@ -954,6 +1045,14 @@ export function ReviewRequestsModule({
         });
 
         const territorialMap: Record<string, string> = {};
+        const sedesBySeccionalMap: Record<string, Set<string>> = {};
+        seccionales.forEach((seccional) => {
+          const seccionalName = normalizeName(seccional?.nomSeccional);
+          if (seccionalName) {
+            sedesBySeccionalMap[normalizeKey(seccionalName)] = new Set<string>();
+          }
+        });
+
         sedes.forEach((sede) => {
           const sedeName = normalizeName(sede?.nomSede);
           if (!sedeName) return;
@@ -962,15 +1061,28 @@ export function ReviewRequestsModule({
             (sede?.idSeccional ? seccionalNameById.get(sede.idSeccional) || '' : '');
           if (seccionalName) {
             territorialMap[normalizeKey(sedeName)] = seccionalName;
+            const seccionalKey = normalizeKey(seccionalName);
+            if (!sedesBySeccionalMap[seccionalKey]) {
+              sedesBySeccionalMap[seccionalKey] = new Set<string>();
+            }
+            sedesBySeccionalMap[seccionalKey].add(sedeName);
           }
+        });
+
+        const sedesBySeccionalCatalog: Record<string, string[]> = {};
+        Object.entries(sedesBySeccionalMap).forEach(([seccionalKey, sedesSet]) => {
+          sedesBySeccionalCatalog[seccionalKey] = Array.from(sedesSet).sort((a, b) =>
+            a.localeCompare(b, 'es'),
+          );
         });
 
         setSedesOptions(Array.from(new Set(sedesList)).sort((a, b) => a.localeCompare(b, 'es')));
         setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
         setSeccionalBySede(territorialMap);
+        setSedesBySeccional(sedesBySeccionalCatalog);
 
       } catch (error) {
-        console.error('Error cargando catalogos de aprobacion:', error);
+        console.error('Error cargando catálogos de aprobación:', error);
       }
     };
 
@@ -982,14 +1094,40 @@ export function ReviewRequestsModule({
   }, []);
 
   const programNameOptions = useMemo(() => PROGRAMAS_ESAP, []);
+  const selectedProgramAlreadyExists = useMemo(
+    () => programAlreadyExistsForGraduate(approvalForm.programName),
+    [approvalForm.programName, existingGraduatePrograms],
+  );
+  const duplicateProgramMessage =
+    'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.';
 
   const campusOptions = useMemo(() => {
-    const options = new Set<string>(sedesOptions);
+    const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+    const hasSelectedSeccionalCatalog =
+      !!selectedSeccionalKey && hasCatalogKey(sedesBySeccional, selectedSeccionalKey);
+    const baseOptions = hasSelectedSeccionalCatalog
+      ? sedesBySeccional[selectedSeccionalKey]
+      : sedesOptions;
+    const options = new Set<string>(baseOptions);
+
     if (approvalForm.campus) {
-      options.add(approvalForm.campus);
+      const mappedSeccional = seccionalBySede[normalizeKey(approvalForm.campus)];
+      if (
+        !selectedSeccionalKey ||
+        !mappedSeccional ||
+        normalizeKey(mappedSeccional) === selectedSeccionalKey
+      ) {
+        options.add(approvalForm.campus);
+      }
     }
     return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [approvalForm.campus, sedesOptions]);
+  }, [
+    approvalForm.campus,
+    approvalForm.seccionalName,
+    seccionalBySede,
+    sedesBySeccional,
+    sedesOptions,
+  ]);
 
   const seccionalSelectOptions = useMemo(() => {
     const options = new Set<string>(seccionalesOptions);
@@ -1036,6 +1174,38 @@ export function ReviewRequestsModule({
       };
     });
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede]);
+
+  useEffect(() => {
+    if (!approvalForm.campus || !approvalForm.seccionalName) {
+      return;
+    }
+
+    const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+    if (!hasCatalogKey(sedesBySeccional, selectedSeccionalKey)) {
+      return;
+    }
+
+    const campusMatchesSeccional = sedesBySeccional[selectedSeccionalKey].some(
+      (sede) => normalizeKey(sede) === normalizeKey(approvalForm.campus),
+    );
+    if (campusMatchesSeccional) {
+      return;
+    }
+
+    setApprovalForm((prev) => {
+      if (
+        prev.campus !== approvalForm.campus ||
+        prev.seccionalName !== approvalForm.seccionalName
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        campus: '',
+      };
+    });
+  }, [approvalForm.campus, approvalForm.seccionalName, sedesBySeccional]);
 
   const getRequestSortTime = (request: ReviewRequest) => {
     const createdAt = parseDateSafe(request.createdAt)?.getTime() ?? 0;
@@ -1298,6 +1468,7 @@ export function ReviewRequestsModule({
     setShowReviewModal(true);
     setApprovalFiles([]);
     setExistingApprovalFiles(action === 'approve' ? request.reviewFiles || [] : []);
+    setExistingGraduatePrograms([]);
     resetApprovalUploadProgress();
 
     if (action !== 'approve') {
@@ -1308,6 +1479,14 @@ export function ReviewRequestsModule({
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
       setExistingApprovalFiles(detail.reviewFiles || request.reviewFiles || []);
+      const existingProgramsByKey = new Map<string, string>();
+      const rememberExistingProgram = (programName?: string | null) => {
+        const trimmedProgramName = (programName || '').trim();
+        const normalizedProgramName = normalizeComparableProgram(trimmedProgramName);
+        if (trimmedProgramName && normalizedProgramName) {
+          existingProgramsByKey.set(normalizedProgramName, trimmedProgramName);
+        }
+      };
       const graduationDate = toDateInputValue(
         detail.graduationDate || request.graduationDate
       );
@@ -1345,6 +1524,25 @@ export function ReviewRequestsModule({
           .map((value) => (value || '').trim())
           .find((value) => value.length > 0) || '';
 
+      try {
+        const documentForExistingPrograms = sanitizeDigits(
+          detail.idNumber || request.graduateDocumentNumber,
+          DOCUMENT_MAX_LENGTH,
+        );
+        if (documentForExistingPrograms) {
+          const existingTitles =
+            await graduadosService.graduados.listarTitulosPorCedula(
+              documentForExistingPrograms,
+            );
+          existingTitles.forEach((title) => {
+            rememberExistingProgram(title.programName);
+            rememberExistingProgram(title.degreeTitle);
+          });
+        }
+      } catch (error) {
+        console.warn('No se pudieron cargar los títulos existentes:', error);
+      }
+
       let nextForm: ApprovalForm = {
         fullName: resolvedFullName,
         idNumber: sanitizeDigits(
@@ -1366,6 +1564,8 @@ export function ReviewRequestsModule({
       if (detail.graduateId) {
         try {
           const graduate = await graduadosService.graduados.obtenerPorId(detail.graduateId);
+          rememberExistingProgram(graduate.programName);
+          rememberExistingProgram(graduate.degreeTitle);
           nextForm = {
             ...nextForm,
             fullName: graduate.fullName || nextForm.fullName,
@@ -1373,7 +1573,9 @@ export function ReviewRequestsModule({
               graduate.idNumber || nextForm.idNumber,
               DOCUMENT_MAX_LENGTH,
             ),
-            email: graduate.email || nextForm.email,
+            email: isCompanyRequester
+              ? graduate.email || nextForm.email
+              : nextForm.email || graduate.email,
             programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
               ? (graduate.programName || '').trim()
               : nextForm.programName,
@@ -1389,6 +1591,8 @@ export function ReviewRequestsModule({
           console.error('Error cargando graduado asociado:', error);
         }
       }
+
+      setExistingGraduatePrograms(Array.from(existingProgramsByKey.values()));
 
       const savedPayload =
         detail.reviewPayload && typeof detail.reviewPayload === 'object'
@@ -1419,13 +1623,13 @@ export function ReviewRequestsModule({
     if (!trimmedReviewNotes) {
       toast.error(
         reviewAction === 'approve'
-          ? 'Por favor ingresa notas de revision'
-          : 'Por favor ingresa la descripcion del rechazo',
+          ? 'Por favor ingresa notas de revisión'
+          : 'Por favor ingresa la descripción del rechazo',
       );
       return;
     }
     if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
-      toast.error(`Las notas de revision no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
+      toast.error(`Las notas de revisión no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
       return;
     }
 
@@ -1467,27 +1671,31 @@ export function ReviewRequestsModule({
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (trimmedEmail.length > EMAIL_MAX_LENGTH || !emailRegex.test(trimmedEmail)) {
-        toast.error('El email no tiene un formato valido');
+        toast.error('El email no tiene un formato válido');
         return;
       }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
         return;
       }
+      if (selectedProgramAlreadyExists) {
+        toast.error(duplicateProgramMessage);
+        return;
+      }
       if (!approvalForm.graduationDate) {
-        toast.error('Selecciona la fecha de graduacion');
+        toast.error('Selecciona la fecha de graduación');
         return;
       }
       if (!graduationDate) {
-        toast.error('La fecha de graduacion no tiene un formato valido');
+        toast.error('La fecha de graduación no tiene un formato válido');
         return;
       }
       if (graduationDate.getFullYear() < MIN_GRADUATION_YEAR) {
-        toast.error(`La fecha de graduacion no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
+        toast.error(`La fecha de graduación no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
         return;
       }
       if (graduationDate.getTime() > today.getTime()) {
-        toast.error('La fecha de graduacion no puede ser futura');
+        toast.error('La fecha de graduación no puede ser futura');
         return;
       }
       if (!approvalForm.campus) {
@@ -1495,19 +1703,19 @@ export function ReviewRequestsModule({
         return;
       }
       if (!approvalForm.seccionalName) {
-        toast.error('Selecciona la seccional');
+        toast.error('Selecciona la territorial');
         return;
       }
       if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
-        toast.error('El numero de registro es obligatorio y debe tener maximo 10 digitos');
+        toast.error('El número de registro es obligatorio y debe tener máximo 10 dígitos');
         return;
       }
       if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
-        toast.error('El numero de folio es obligatorio y debe tener maximo 10 digitos');
+        toast.error('El número de folio es obligatorio y debe tener máximo 10 dígitos');
         return;
       }
       if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
-        toast.error('El numero de libro es obligatorio y debe tener maximo 10 digitos');
+        toast.error('El número de libro es obligatorio y debe tener máximo 10 dígitos');
         return;
       }
 
@@ -1549,9 +1757,9 @@ export function ReviewRequestsModule({
           reviewerId,
           reviewerEmail,
         );
-        toast.success('Solicitud marcada como en revision', {
+        toast.success('Revisión iniciada', {
           description:
-            'Se envio un correo de actualizacion sobre el proceso al solicitante.',
+            'Se envió un correo al solicitante informando que la revisión fue iniciada.',
         });
       } else if (
         confirmAction.type === 'approve' ||
@@ -1591,7 +1799,7 @@ export function ReviewRequestsModule({
                 },
               );
             } catch (uploadError: any) {
-              console.error('Error subiendo archivo de revision:', uploadError);
+              console.error('Error subiendo archivo de revisión:', uploadError);
               if (isPayloadTooLargeError(uploadError)) {
                 toast.error('El archivo es muy pesado', {
                   description: `El archivo "${file.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
@@ -1616,17 +1824,17 @@ export function ReviewRequestsModule({
           confirmAction.request.id,
           {
             decision: confirmAction.type === 'approve' ? 'APPROVED' : 'REJECTED',
-            reason: confirmAction.notes || 'Concepto registrado por revision manual',
-            reviewNotes: confirmAction.notes || 'Concepto registrado por revision manual',
+            reason: confirmAction.notes || 'Concepto registrado por revisión manual',
+            reviewNotes: confirmAction.notes || 'Concepto registrado por revisión manual',
             reviewerName,
             reviewerId,
             reviewerEmail,
             ...(confirmAction.approvalDetails || {}),
           },
         );
-        toast.success('Concepto enviado a aprobacion final', {
+        toast.success('Concepto enviado a aprobación final', {
           description:
-            'El aprobador definira la respuesta definitiva antes de enviar correos o certificados.',
+            'El aprobador definirá la respuesta definitiva antes de enviar correos o certificados.',
         });
       }
 
@@ -1658,14 +1866,26 @@ export function ReviewRequestsModule({
 
   const reviewActionLabel =
     reviewAction === 'approve'
-      ? 'Cargar informacion revisada'
+      ? 'Cargar información revisada'
       : 'Registrar novedad de rechazo';
   const confirmActionLabel =
     confirmAction?.type === 'start_review'
-      ? 'Enviar a revisión'
+      ? 'Iniciar revisión'
       : confirmAction?.type === 'approve'
-        ? 'Cargar informacion revisada'
+        ? 'Cargar información revisada'
         : 'Registrar novedad de rechazo';
+  const confirmDialogTitle =
+    confirmAction?.type === 'start_review'
+      ? 'Iniciar revisión'
+      : 'Confirmar Acción';
+  const confirmDialogDescription =
+    confirmAction?.type === 'start_review'
+      ? 'Confirma que deseas iniciar la revisión. El solicitante recibirá una notificación por correo.'
+      : 'Verifica que deseas continuar con esta acción.';
+  const confirmButtonLabel =
+    confirmAction?.type === 'start_review'
+      ? 'Iniciar revisión'
+      : 'Confirmar';
 
   const formatTimelineActor = (
     actorName?: string,
@@ -1740,7 +1960,7 @@ export function ReviewRequestsModule({
   const reviewDecisionLabel = (decision?: string | null) => {
     if (decision === 'APPROVED') return 'Aprobar';
     if (decision === 'REJECTED') return 'Rechazar';
-    if (decision === 'OBSERVATION') return 'Observacion';
+    if (decision === 'OBSERVATION') return 'Observación';
     return 'Sin concepto';
   };
 
@@ -1755,152 +1975,94 @@ export function ReviewRequestsModule({
         ].includes(event.type),
       );
 
+  const requestMetricCards = [
+    {
+      id: 'total',
+      label: 'Total',
+      value: displayStats.total,
+      subtitle: isMyReviewsScope ? 'Mis revisiones' : 'Solicitudes',
+      color: '#64748B',
+    },
+    {
+      id: 'pending',
+      label: isMyReviewsScope ? 'Por revisar' : 'Pendientes',
+      value: isMyReviewsScope ? myPendingRequests.length : displayStats.pending,
+      subtitle: isMyReviewsScope ? 'Pendientes y devueltas' : 'Sin revisar',
+      color: '#D97706',
+    },
+    {
+      id: 'under-review',
+      label: isMyReviewsScope ? 'Devueltas' : 'En Revisión',
+      value: isMyReviewsScope ? myReturnedCount : displayStats.underReview,
+      subtitle: isMyReviewsScope ? 'Con observación' : 'En proceso',
+      color: isMyReviewsScope ? '#D97706' : '#2563EB',
+    },
+    {
+      id: 'approved',
+      label: isMyReviewsScope ? 'Enviadas' : 'Aprobadas',
+      value: isMyReviewsScope ? mySubmittedCount : displayStats.approved,
+      subtitle: isMyReviewsScope ? 'Esperando validación' : 'Resueltas',
+      color: '#059669',
+    },
+    {
+      id: 'rejected',
+      label: isMyReviewsScope ? 'Cerradas' : 'Rechazadas',
+      value: isMyReviewsScope ? myClosedCount : displayStats.rejected,
+      subtitle: isMyReviewsScope ? 'Finalizadas' : 'No aprobadas',
+      color: isMyReviewsScope ? '#475569' : '#DC2626',
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Banner informativo de solicitudes */}
+      {/* Indicadores de solicitudes */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
+        className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4"
       >
-        {/* Card 1: Total */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Total
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {displayStats.total}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Mis revisiones' : 'Solicitudes'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)' }}
-              >
-                <FileText className="w-7 h-7 text-white" />
-              </div>
+        <div className="mb-3 flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <BarChart3 className="mt-0.5 h-4 w-4 text-[#003DA5]" />
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide text-slate-900">
+                Indicadores:
+              </p>
+              <p className="text-xs font-medium text-slate-500">
+                Vista rápida del estado de las solicitudes
+              </p>
             </div>
           </div>
-        </Card>
+          <span className="text-xs font-semibold text-slate-500">
+            Resumen actual
+          </span>
+        </div>
 
-        {/* Card 2: Pendientes */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Por revisar' : 'Pendientes'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? myPendingRequests.length : displayStats.pending}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Pendientes y devueltas' : 'Sin revisar'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
-              >
-                <Clock className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 3: En Revisión */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Devueltas' : 'En Revisión'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? myReturnedCount : displayStats.underReview}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Con observacion' : 'En proceso'}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {requestMetricCards.map((metric) => (
+            <Card
+              key={metric.id}
+              aria-label={`${metric.label}: ${metric.value} ${metric.subtitle}`}
+              className="gap-0 rounded-lg border border-l-4 border-slate-200 bg-white shadow-none cursor-default select-none"
+              style={{ borderLeftColor: metric.color }}
+            >
+              <div className="flex min-h-[92px] items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-600">
+                    {metric.label}
+                  </p>
+                  <p className="mt-2 truncate text-xs text-slate-500">
+                    {metric.subtitle}
+                  </p>
+                </div>
+                <p className="shrink-0 text-3xl font-semibold leading-none text-slate-900 tabular-nums">
+                  {metric.value}
                 </p>
               </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{
-                  background: isMyReviewsScope
-                    ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
-                    : 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)',
-                }}
-              >
-                <RefreshCw className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 4: Aprobadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Enviadas' : 'Aprobadas'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? mySubmittedCount : displayStats.approved}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Esperando validacion' : 'Resueltas'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-              >
-                <CheckCircle className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 5: Rechazadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Cerradas' : 'Rechazadas'}
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {isMyReviewsScope ? myClosedCount : displayStats.rejected}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  {isMyReviewsScope ? 'Finalizadas' : 'No aprobadas'}
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{
-                  background: isMyReviewsScope
-                    ? 'linear-gradient(135deg, #64748B 0%, #334155 100%)'
-                    : 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-                }}
-              >
-                {isMyReviewsScope ? (
-                  <ClipboardCheck className="w-7 h-7 text-white" />
-                ) : (
-                  <XCircle className="w-7 h-7 text-white" />
-                )}
-              </div>
-            </div>
-          </div>
-        </Card>
-
+            </Card>
+          ))}
+        </div>
       </motion.div>
 
       {isMyReviewsScope && (
@@ -2131,7 +2293,7 @@ export function ReviewRequestsModule({
                 : isMyReviewsScope
                   ? myReviewView === 'pending'
                     ? 'No hay solicitudes propias por revisar o corregir en este momento'
-                    : 'Todavia no tienes solicitudes propias enviadas o cerradas'
+                    : 'Todavía no tienes solicitudes propias enviadas o cerradas'
                   : 'No hay solicitudes en este momento'}
             </p>
             {hasActiveFilters && (
@@ -2263,12 +2425,12 @@ export function ReviewRequestsModule({
                         )}
                         {request.approvalStatus === 'OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Observacion aprobador
+                            Observación aprobador
                           </Badge>
                         )}
                         {request.approvalStatus === 'HEAD_OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Observacion jefe
+                            Observación jefe
                           </Badge>
                         )}
                       </div>
@@ -2330,7 +2492,7 @@ export function ReviewRequestsModule({
                             <>
                               <DropdownMenuItem onClick={() => handleStartReview(request)}>
                                 <RefreshCw className="w-4 h-4 mr-2" />
-                                Enviar a Revisión
+                                Iniciar revisión
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -2339,7 +2501,7 @@ export function ReviewRequestsModule({
                             <>
                               <DropdownMenuItem disabled>
                                 <Clock className="w-4 h-4 mr-2" />
-                                Pendiente de validacion
+                                Pendiente de validación
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -2348,7 +2510,7 @@ export function ReviewRequestsModule({
                             <>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
-                                Cargar informacion revisada
+                                Cargar información revisada
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'reject')}>
                                 <XCircle className="w-4 h-4 mr-2" />
@@ -2412,7 +2574,7 @@ export function ReviewRequestsModule({
                               <div className="flex items-start gap-2">
                                 <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Apellido</p>
+                                  <p className="text-xs text-gray-600">Nombre completo</p>
                                   <p className="font-semibold text-gray-900">
                                     {request.graduateLastName || 'Sin registrar'}
                                   </p>
@@ -2502,6 +2664,75 @@ export function ReviewRequestsModule({
                           </div>
                         </div>
 
+                        <div className="bg-white border border-amber-200 rounded-lg p-4">
+                          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                              <Paperclip className="w-4 h-4 text-amber-600" />
+                              Soporte del solicitante
+                            </h4>
+                            <Badge className="w-fit border border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                              {request.requesterSupportFile ? '1 archivo' : 'Sin adjunto'}
+                            </Badge>
+                          </div>
+
+                          {request.requesterSupportFile ? (
+                            <div className="max-w-2xl">
+                              {(() => {
+                                const file = request.requesterSupportFile;
+                                const fileType = getRequesterSupportFileType(file);
+                                return (
+                                  <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                        <FileText className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-gray-900">
+                                          {file.originalName || 'Soporte de solicitud'}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                          {formatBytes(file.sizeBytes)}
+                                          {file.uploadedAt
+                                            ? ` - ${formatDate(file.uploadedAt)}`
+                                            : ''}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-shrink-0 items-center gap-1">
+                                      {fileType !== 'other' && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handlePreviewRequesterSupportFile(request, file)
+                                          }
+                                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                          title="Visualizar soporte"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDownloadRequesterSupportFile(request, file)
+                                        }
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                        title="Descargar soporte"
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                              Esta solicitud no tiene soporte adjunto del solicitante.
+                            </div>
+                          )}
+                        </div>
+
                         {/* Botones de Acción Rápida */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <h4 className="text-sm font-semibold text-gray-900 mb-3">
@@ -2524,7 +2755,7 @@ export function ReviewRequestsModule({
                                 }}
                               >
                                 <Eye className="w-4 h-4" />
-                                Revisar Solicitud
+                                Iniciar revisión
                               </button>
                             )}
                             <button
@@ -2778,7 +3009,7 @@ export function ReviewRequestsModule({
         </motion.div>
       )}
 
-      {/* Modal: Revisar Solicitud */}
+      {/* Modal: Gestionar solicitud */}
       <Dialog
         open={showReviewModal}
         onOpenChange={(open) => {
@@ -2799,7 +3030,7 @@ export function ReviewRequestsModule({
               {reviewActionLabel}
             </DialogTitle>
             <DialogDescription>
-              Registra el concepto del revisor para que el aprobador tome la decision final
+              Registra el concepto del revisor para que el aprobador tome la decisión final
             </DialogDescription>
           </DialogHeader>
 
@@ -2846,8 +3077,8 @@ export function ReviewRequestsModule({
                     <div className="text-sm">
                       <p className="font-semibold text-amber-900">
                         {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
-                          ? 'Observacion del jefe'
-                          : 'Observacion del aprobador'}
+                          ? 'Observación del jefe'
+                          : 'Observación del aprobador'}
                       </p>
                       <p className="mt-1 text-amber-800">
                         {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
@@ -2873,7 +3104,7 @@ export function ReviewRequestsModule({
                 onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
                 placeholder={
                   reviewAction === 'approve'
-                    ? 'Describe la informacion revisada y los soportes cargados...'
+                    ? 'Describe la información revisada y los soportes cargados...'
                     : 'Describe la novedad encontrada para que el aprobador la evalúe...'
                 }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
@@ -2886,7 +3117,7 @@ export function ReviewRequestsModule({
               <div className="review-approval-card space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-900">Datos del graduado</p>
-                  <span className="text-xs text-gray-500">Acta y diploma se generan automaticamente</span>
+                  <span className="text-xs text-gray-500">Acta y diploma se generan automáticamente</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -2947,7 +3178,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de registro<span className="text-red-500"> *</span>
+                      Número de registro<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2969,7 +3200,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de folio<span className="text-red-500"> *</span>
+                      Número de folio<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2991,7 +3222,7 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de libro<span className="text-red-500"> *</span>
+                      Número de libro<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -3018,20 +3249,33 @@ export function ReviewRequestsModule({
                     <select
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
-                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className={`review-approval-input w-full rounded-lg border-2 px-3 py-2 text-sm ${
+                        selectedProgramAlreadyExists
+                          ? 'border-red-300 bg-red-50 focus:border-red-500'
+                          : 'border-gray-300'
+                      }`}
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar programa</option>
-                      {programNameOptions.map((programa) => (
-                        <option key={programa} value={programa}>
+                      {programNameOptions.map((programa) => {
+                        const alreadyExists = programAlreadyExistsForGraduate(programa);
+                        return (
+                        <option key={programa} value={programa} disabled={alreadyExists}>
                           {programa}
+                          {alreadyExists ? ' (ya existe)' : ''}
                         </option>
-                      ))}
+                        );
+                      })}
                     </select>
+                    {selectedProgramAlreadyExists && (
+                      <p className="text-xs font-semibold leading-5 text-red-600">
+                        {duplicateProgramMessage}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Fecha de graduacion<span className="text-red-500"> *</span>
+                      Fecha de graduación<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="date"
@@ -3045,7 +3289,48 @@ export function ReviewRequestsModule({
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Sede<span className="text-red-500"> *</span>
+                      Territorial<span className="text-red-500"> *</span>
+                    </label>
+                    <select
+                      value={approvalForm.seccionalName}
+                      onChange={(e) => {
+                        const nextSeccional = e.target.value;
+                        const nextSeccionalKey = normalizeKey(nextSeccional);
+                        const sedesForSeccional =
+                          nextSeccionalKey && hasCatalogKey(sedesBySeccional, nextSeccionalKey)
+                            ? sedesBySeccional[nextSeccionalKey]
+                            : null;
+
+                        setApprovalForm((prev) => {
+                          const keepCampus =
+                            !nextSeccional ||
+                            !prev.campus ||
+                            !sedesForSeccional ||
+                            sedesForSeccional.some(
+                              (sede) => normalizeKey(sede) === normalizeKey(prev.campus),
+                            );
+
+                          return {
+                            ...prev,
+                            seccionalName: nextSeccional,
+                            campus: keepCampus ? prev.campus : '',
+                          };
+                        });
+                      }}
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData}
+                    >
+                      <option value="">Seleccionar territorial</option>
+                      {seccionalSelectOptions.map((seccional) => (
+                        <option key={seccional} value={seccional}>
+                          {seccional}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Sede (CETAP)<span className="text-red-500"> *</span>
                     </label>
                     <select
                       value={approvalForm.campus}
@@ -3059,8 +3344,8 @@ export function ReviewRequestsModule({
                           ...prev,
                           campus: nextCampus,
                           seccionalName: nextCampus
-                            ? mappedSeccional || ''
-                            : '',
+                            ? mappedSeccional || prev.seccionalName
+                            : prev.seccionalName,
                         }));
                       }}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3070,26 +3355,6 @@ export function ReviewRequestsModule({
                       {campusOptions.map((sede) => (
                         <option key={sede} value={sede}>
                           {sede}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
-                      Territorial<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.seccionalName}
-                      onChange={(e) =>
-                        setApprovalForm({ ...approvalForm, seccionalName: e.target.value })
-                      }
-                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar seccional</option>
-                      {seccionalSelectOptions.map((seccional) => (
-                        <option key={seccional} value={seccional}>
-                          {seccional}
                         </option>
                       ))}
                     </select>
@@ -3138,10 +3403,10 @@ export function ReviewRequestsModule({
                         </span>
                         <div>
                           <p className="text-sm font-semibold text-gray-900">
-                            Soportes de revision
+                            Soportes de revisión
                           </p>
                           <p className="text-xs text-gray-500">
-                            PDF, Word, Excel o imagenes hasta {MAX_APPROVAL_FILE_SIZE_LABEL}
+                            PDF, Word, Excel o imágenes hasta {MAX_APPROVAL_FILE_SIZE_LABEL}
                           </p>
                         </div>
                       </div>
@@ -3166,7 +3431,7 @@ export function ReviewRequestsModule({
                       <UploadCloud className="mb-2 h-7 w-7" />
                       <span className="text-sm font-semibold">
                         {isApprovalFilePickerDisabled
-                          ? 'Limite de archivos alcanzado'
+                          ? 'Límite de archivos alcanzado'
                           : 'Seleccionar o soltar archivos'}
                       </span>
                       <span className="mt-1 text-xs">
@@ -3210,8 +3475,8 @@ export function ReviewRequestsModule({
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-blue-800">
-                        Si un archivo estaba mal, quitalo y adjunta la version
-                        corregida. Los demas se conservaran.
+                        Si un archivo estaba mal, quítalo y adjunta la versión
+                        corregida. Los demás se conservarán.
                       </p>
                     </div>
                   )}
@@ -3264,9 +3529,9 @@ export function ReviewRequestsModule({
                 <div className="text-xs text-amber-800">
                   <p className="font-semibold mb-1">Al enviar el concepto:</p>
                   <ul className="list-disc list-inside space-y-0.5">
-                    <li>No se genera certificado ni correo final todavia</li>
-                    <li>La solicitud queda pendiente de aprobacion final</li>
-                    <li>Esta accion queda registrada en la linea de tiempo</li>
+                    <li>No se genera certificado ni correo final todavía</li>
+                    <li>La solicitud queda pendiente de aprobación final</li>
+                    <li>Esta acción queda registrada en la línea de tiempo</li>
                   </ul>
                 </div>
               </div>
@@ -3298,6 +3563,80 @@ export function ReviewRequestsModule({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={Boolean(reviewSupportPreview)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewSupportPreview(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="flex flex-col gap-0 overflow-hidden rounded-xl border-0 p-0 shadow-2xl"
+          style={{
+            width: 'min(92vw, 860px)',
+            height: 'min(88vh, 900px)',
+            maxWidth: 'none',
+          }}
+        >
+          <div className="flex-shrink-0 bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white/20">
+                  <FileText className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="truncate text-lg font-semibold text-white">
+                    Vista previa - Soporte
+                  </DialogTitle>
+                  <DialogDescription className="truncate text-sm text-blue-100">
+                    {reviewSupportPreview?.name}
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1">
+                {reviewSupportPreview?.url && (
+                  <a
+                    href={reviewSupportPreview.url}
+                    download={reviewSupportPreview.name || 'soporte-solicitud.pdf'}
+                    className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+                    title="Descargar soporte"
+                  >
+                    <Download className="h-5 w-5" />
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setReviewSupportPreview(null)}
+                  className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+                  title="Cerrar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden bg-gray-100">
+            {reviewSupportPreview?.fileType === 'pdf' && (
+              <iframe
+                src={`${reviewSupportPreview.url}#navpanes=0&zoom=page-width`}
+                title={reviewSupportPreview.name}
+                className="h-full w-full border-0"
+              />
+            )}
+            {reviewSupportPreview?.fileType === 'image' && (
+              <div className="flex h-full items-center justify-center p-4">
+                <img
+                  src={reviewSupportPreview.url}
+                  alt={reviewSupportPreview.name}
+                  className="max-h-full max-w-full rounded-lg object-contain shadow"
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal: Confirmar Cambio de Estado */}
       <Dialog
         open={showConfirmModal}
@@ -3312,7 +3651,13 @@ export function ReviewRequestsModule({
         }}
       >
         <DialogContent
-          className="w-[92vw] max-w-lg"
+          className="top-1/2 -translate-y-1/2"
+          style={{
+            width: 'min(360px, calc(100vw - 2rem), calc(100vh - 2rem))',
+            height: 'min(360px, calc(100vw - 2rem), calc(100vh - 2rem))',
+            maxWidth: 'none',
+            gridTemplateRows: 'auto 1fr auto',
+          }}
           onEscapeKeyDown={(event) => {
             if (isUpdating) {
               event.preventDefault();
@@ -3327,15 +3672,15 @@ export function ReviewRequestsModule({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />
-              Confirmar Acción
+              {confirmDialogTitle}
             </DialogTitle>
             <DialogDescription>
-              Verifica que deseas continuar con esta acción.
+              {confirmDialogDescription}
             </DialogDescription>
           </DialogHeader>
 
           {confirmAction && (
-            <div className="py-4 space-y-4">
+            <div className="flex flex-col justify-center py-2 space-y-4">
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
                 <p className="font-semibold text-gray-900 mb-1">{confirmActionLabel}</p>
                 <p>
@@ -3394,7 +3739,7 @@ export function ReviewRequestsModule({
               disabled={isUpdating}
             >
               <CheckCircle className="w-4 h-4" />
-              {isUpdating ? 'Procesando...' : 'Confirmar'}
+              {isUpdating ? 'Procesando...' : confirmButtonLabel}
             </button>
           </DialogFooter>
         </DialogContent>

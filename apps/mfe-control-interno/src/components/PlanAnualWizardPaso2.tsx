@@ -63,9 +63,10 @@ interface Paso2Props {
   rolesConfig: RolConfig[];
   onRolesChange: (config: RolConfig[]) => void;
   actividadesPorRol: Record<number, ActividadBase[]>;
+  soloLectura?: boolean;
 }
 
-export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }: Paso2Props) {
+export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol, soloLectura = false }: Paso2Props) {
   const [rolExpandido, setRolExpandido] = useState<number | null>(1);
   const [mostrarFormActividad, setMostrarFormActividad] = useState<number | null>(null);
   const [nuevaActividad, setNuevaActividad] = useState<ActividadBase>({
@@ -79,6 +80,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
   });
 
   const toggleActividad = (numeroRol: number, nombreActividad: string) => {
+    if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.nombre === nombreActividad);
@@ -110,6 +112,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
   };
 
   const agregarActividadCustom = (numeroRol: number) => {
+    if (soloLectura) return;
     if (!nuevaActividad.nombre.trim()) {
       toast.error('El nombre de la actividad es obligatorio');
       return;
@@ -140,6 +143,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
   };
 
   const eliminarActividadCustom = (numeroRol: number, index: number) => {
+    if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         return {
@@ -154,6 +158,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
   };
 
   const agregarResponsable = (numeroRol: number, auditor: Auditor) => {
+    if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         return { ...rol, responsables: [auditor] };
@@ -164,6 +169,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
   };
 
   const eliminarResponsable = (numeroRol: number, auditorId: string) => {
+    if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         return { ...rol, responsables: rol.responsables.filter(r => r.id !== auditorId) };
@@ -272,38 +278,42 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                             responsablesRol.map(auditor => (
                               <div key={auditor.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-900 rounded-lg text-sm">
                                 <span>👤 {auditor.nombre}</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    eliminarResponsable(rol.numero, auditor.id);
-                                  }}
-                                  className="hover:text-red-600"
-                                >
-                                  ✕
-                                </button>
+                                {!soloLectura && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      eliminarResponsable(rol.numero, auditor.id);
+                                    }}
+                                    className="hover:text-red-600"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
                               </div>
                             ))
                           )}
                         </div>
-                        <select
-                          onChange={(e) => {
-                            const auditor = AUDITORES.find(a => a.id === e.target.value);
-                            if (auditor) {
-                              agregarResponsable(rol.numero, auditor);
-                              e.target.value = '';
-                            }
-                          }}
-                          className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                          onClick={(e) => e.stopPropagation()}
-                          defaultValue=""
-                        >
-                          <option value="">➕ Agregar responsable...</option>
-                          {AUDITORES.filter(a => !responsablesRol.some(r => r.id === a.id)).map(auditor => (
-                            <option key={auditor.id} value={auditor.id}>
-                              {auditor.nombre} - {auditor.cargo}
-                            </option>
-                          ))}
-                        </select>
+                        {!soloLectura && (
+                          <select
+                            onChange={(e) => {
+                              const auditor = AUDITORES.find(a => a.id === e.target.value);
+                              if (auditor) {
+                                agregarResponsable(rol.numero, auditor);
+                                e.target.value = '';
+                              }
+                            }}
+                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                            onClick={(e) => e.stopPropagation()}
+                            defaultValue=""
+                          >
+                            <option value="">➕ Agregar responsable...</option>
+                            {AUDITORES.filter(a => !responsablesRol.some(r => r.id === a.id)).map(auditor => (
+                              <option key={auditor.id} value={auditor.id}>
+                                {auditor.nombre} - {auditor.cargo}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
 
                       {/* Actividades del Decreto 648 */}
@@ -318,7 +328,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                             return (
                               <label
                                 key={index}
-                                className={`flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+                                className={`flex items-start gap-3 p-3 border-2 rounded-lg transition-colors ${soloLectura ? 'cursor-default' : 'cursor-pointer'} ${
                                   seleccionada
                                     ? 'border-blue-400 bg-blue-50'
                                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -329,7 +339,8 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                                   type="checkbox"
                                   checked={seleccionada}
                                   onChange={() => toggleActividad(rol.numero, actividad.nombre)}
-                                  className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5"
+                                  disabled={soloLectura}
+                                  className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5 disabled:opacity-60"
                                 />
                                 <div className="flex-1 min-w-0">
                                   <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
@@ -358,95 +369,99 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                                   <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
                                   <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
                                 </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (confirm('¿Eliminar esta actividad personalizada?')) {
-                                      eliminarActividadCustom(rol.numero, index);
-                                    }
-                                  }}
-                                  className="text-red-600 hover:text-red-800 p-1"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
+                                {!soloLectura && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm('¿Eliminar esta actividad personalizada?')) {
+                                        eliminarActividadCustom(rol.numero, index);
+                                      }
+                                    }}
+                                    className="text-red-600 hover:text-red-800 p-1"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>
                         </div>
                       )}
 
-                      {/* Formulario nueva actividad */}
-                      {mostrarFormActividad === rol.numero ? (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-blue-900">Nueva actividad personalizada</h4>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMostrarFormActividad(null);
-                              }}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            value={nuevaActividad.nombre}
-                            onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })}
-                            placeholder="Nombre de la actividad"
-                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                      {!soloLectura && (
+                        /* Formulario nueva actividad */
+                        mostrarFormActividad === rol.numero ? (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
                             onClick={(e) => e.stopPropagation()}
-                          />
-                          <textarea
-                            value={nuevaActividad.descripcion}
-                            onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })}
-                            placeholder="Descripción"
-                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                            rows={2}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                agregarActividadCustom(rol.numero);
-                              }}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
-                            >
-                              ✓ Agregar
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMostrarFormActividad(null);
-                              }}
-                              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMostrarFormActividad(rol.numero);
-                          }}
-                          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Agregar actividad personalizada
-                        </button>
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-semibold text-blue-900">Nueva actividad personalizada</h4>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMostrarFormActividad(null);
+                                }}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={nuevaActividad.nombre}
+                              onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })}
+                              placeholder="Nombre de la actividad"
+                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <textarea
+                              value={nuevaActividad.descripcion}
+                              onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })}
+                              placeholder="Descripción"
+                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                              rows={2}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  agregarActividadCustom(rol.numero);
+                                }}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                              >
+                                ✓ Agregar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMostrarFormActividad(null);
+                                }}
+                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMostrarFormActividad(rol.numero);
+                            }}
+                            className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Agregar actividad personalizada
+                          </button>
+                        )
                       )}
                     </div>
                   </motion.div>

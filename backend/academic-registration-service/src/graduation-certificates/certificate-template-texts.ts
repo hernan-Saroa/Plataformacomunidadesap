@@ -12,6 +12,7 @@ export interface GraduationCertificateTemplateTexts {
   closingText: string;
   signerTitle: string;
   validationMessage: string;
+  footerAddress: string;
 }
 
 export interface GraduationCertificateTemplateSnapshot {
@@ -24,6 +25,8 @@ export interface GraduationCertificateTemplateSnapshot {
   signerId: string | null;
   institutionLogoUrl: string | null;
   institutionLogoFilename: string | null;
+  footerLogoUrl: string | null;
+  footerLogoFilename: string | null;
   signerNameOverride: string | null;
   signatureUrlOverride: string | null;
   signatureFilenameOverride: string | null;
@@ -44,6 +47,8 @@ type GraduationCertificateTemplateSnapshotSource = {
   signerId?: string | null;
   institutionLogoUrl?: string | null;
   institutionLogoFilename?: string | null;
+  footerLogoUrl?: string | null;
+  footerLogoFilename?: string | null;
   signerNameOverride?: string | null;
   signatureUrlOverride?: string | null;
   signatureFilenameOverride?: string | null;
@@ -69,7 +74,14 @@ export const DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS: GraduationCertificat
     signerTitle: 'Direccion Tecnica Registro y Control',
     validationMessage:
       'Puede validar la autenticidad de esta verificacion en',
+    footerAddress:
+      'Sede Nacional - Bogota - Calle 44 No. 53 - 37 CAN\nPBX: 2202790 - Fax: (091) 2202790 Ext. 7205\nCorreo Electronico: ventanillaunica@esap.edu.co\nwww.esap.edu.co',
   };
+
+function normalizeRequiredTemplateText(value: unknown, fallback: string): string {
+  const text = String(value ?? '').trim();
+  return text ? String(value) : fallback;
+}
 
 export function normalizeGraduationCertificateTemplateTexts(
   value?: Partial<GraduationCertificateTemplateTexts> | null,
@@ -77,28 +89,61 @@ export function normalizeGraduationCertificateTemplateTexts(
   const defaults = DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
 
   return {
-    cityDatePrefix: String(value?.cityDatePrefix ?? defaults.cityDatePrefix),
-    institutionTitle: String(
-      value?.institutionTitle ?? defaults.institutionTitle,
+    cityDatePrefix: normalizeRequiredTemplateText(
+      value?.cityDatePrefix,
+      defaults.cityDatePrefix,
     ),
-    certificateTitle: String(
-      value?.certificateTitle ?? defaults.certificateTitle,
+    institutionTitle: normalizeRequiredTemplateText(
+      value?.institutionTitle,
+      defaults.institutionTitle,
     ),
-    addressee: String(value?.addressee ?? defaults.addressee),
-    introParagraph: String(value?.introParagraph ?? defaults.introParagraph),
-    degreeLabel: String(value?.degreeLabel ?? defaults.degreeLabel),
-    graduateNameLabel: String(
-      value?.graduateNameLabel ?? defaults.graduateNameLabel,
+    certificateTitle: normalizeRequiredTemplateText(
+      value?.certificateTitle,
+      defaults.certificateTitle,
     ),
-    documentLabel: String(value?.documentLabel ?? defaults.documentLabel),
-    issuePlaceDateLabel: String(
-      value?.issuePlaceDateLabel ?? defaults.issuePlaceDateLabel,
+    addressee: normalizeRequiredTemplateText(
+      value?.addressee,
+      defaults.addressee,
     ),
-    registryLabel: String(value?.registryLabel ?? defaults.registryLabel),
-    closingText: String(value?.closingText ?? defaults.closingText),
-    signerTitle: String(value?.signerTitle ?? defaults.signerTitle),
-    validationMessage: String(
-      value?.validationMessage ?? defaults.validationMessage,
+    introParagraph: normalizeRequiredTemplateText(
+      value?.introParagraph,
+      defaults.introParagraph,
+    ),
+    degreeLabel: normalizeRequiredTemplateText(
+      value?.degreeLabel,
+      defaults.degreeLabel,
+    ),
+    graduateNameLabel: normalizeRequiredTemplateText(
+      value?.graduateNameLabel,
+      defaults.graduateNameLabel,
+    ),
+    documentLabel: normalizeRequiredTemplateText(
+      value?.documentLabel,
+      defaults.documentLabel,
+    ),
+    issuePlaceDateLabel: normalizeRequiredTemplateText(
+      value?.issuePlaceDateLabel,
+      defaults.issuePlaceDateLabel,
+    ),
+    registryLabel: normalizeRequiredTemplateText(
+      value?.registryLabel,
+      defaults.registryLabel,
+    ),
+    closingText: normalizeRequiredTemplateText(
+      value?.closingText,
+      defaults.closingText,
+    ),
+    signerTitle: normalizeRequiredTemplateText(
+      value?.signerTitle,
+      defaults.signerTitle,
+    ),
+    validationMessage: normalizeRequiredTemplateText(
+      value?.validationMessage,
+      defaults.validationMessage,
+    ),
+    footerAddress: normalizeRequiredTemplateText(
+      value?.footerAddress,
+      defaults.footerAddress,
     ),
   };
 }
@@ -166,6 +211,8 @@ export function buildGraduationCertificateTemplateSnapshot(
     signerId: source?.signerId || null,
     institutionLogoUrl: source?.institutionLogoUrl || null,
     institutionLogoFilename: source?.institutionLogoFilename || null,
+    footerLogoUrl: source?.footerLogoUrl || null,
+    footerLogoFilename: source?.footerLogoFilename || null,
     signerNameOverride: source?.signerNameOverride || null,
     signatureUrlOverride: source?.signatureUrlOverride || null,
     signatureFilenameOverride: source?.signatureFilenameOverride || null,
@@ -223,6 +270,10 @@ export function parseGraduationCertificateTemplateSnapshot(
       : null,
     institutionLogoFilename: parsed.institutionLogoFilename
       ? String(parsed.institutionLogoFilename)
+      : null,
+    footerLogoUrl: parsed.footerLogoUrl ? String(parsed.footerLogoUrl) : null,
+    footerLogoFilename: parsed.footerLogoFilename
+      ? String(parsed.footerLogoFilename)
       : null,
     signerNameOverride: parsed.signerNameOverride
       ? String(parsed.signerNameOverride)

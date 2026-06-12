@@ -26,6 +26,14 @@ import {
   type UpdateEtapaKanbanDto,
 } from '../../../../services/api/tablerosKanbanService';
 
+export { TipoTablero };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TIPOS Y DEFAULTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS FRONTEND (para el componente)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -45,6 +53,7 @@ export interface EtapaKanbanFrontend {
   esFinal: boolean;
   reglaTransicionAutomatica: boolean;
   condicionTransicion?: string;
+  visible: boolean;
 }
 
 export interface ConfiguracionGeneralKanban {
@@ -85,6 +94,7 @@ function mapearEtapaBackendAFrontend(etapa: EtapaKanbanBackend): EtapaKanbanFron
     esFinal: etapa.estado === EstadoEtapa.FINAL,
     reglaTransicionAutomatica: !etapa.permitirRetroceso,
     condicionTransicion: undefined, // El backend no tiene este campo aún
+    visible: etapa.visible,
   };
 }
 
@@ -92,8 +102,8 @@ function mapearEtapaBackendAFrontend(etapa: EtapaKanbanBackend): EtapaKanbanFron
  * Mapear etapa del frontend al formato del backend para creación
  */
 function mapearEtapaFrontendABackendCreate(etapa: EtapaKanbanFrontend): CreateEtapaKanbanDto {
-  // Convertir días y horas a tiempoSLA decimal
-  const tiempoSLA = etapa.slaDias + (etapa.slaHoras / 24);
+  // Convertir días y horas a tiempoSLA decimal (redondeado a entero)
+  const tiempoSLA = Math.round(etapa.slaDias + (etapa.slaHoras / 24));
 
   // Determinar el estado
   let estado: EstadoEtapa;
@@ -128,12 +138,11 @@ function mapearEtapaFrontendABackendUpdate(etapa: Partial<EtapaKanbanFrontend>):
 
   if (etapa.nombre !== undefined) dto.nombre = etapa.nombre;
   if (etapa.descripcion !== undefined) dto.descripcion = etapa.descripcion || undefined;
-  if (etapa.orden !== undefined) dto.orden = etapa.orden;
   if (etapa.color !== undefined) dto.color = etapa.color;
   
-  // Convertir días y horas a tiempoSLA decimal
+  // Convertir días y horas a tiempoSLA decimal (redondeado a entero)
   if (etapa.slaDias !== undefined || etapa.slaHoras !== undefined) {
-    dto.tiempoSLA = (etapa.slaDias || 0) + ((etapa.slaHoras || 0) / 24);
+    dto.tiempoSLA = Math.round((etapa.slaDias || 0) + ((etapa.slaHoras || 0) / 24));
   }
   
   if (etapa.limiteWIP !== undefined) {
@@ -161,6 +170,10 @@ function mapearEtapaFrontendABackendUpdate(etapa: Partial<EtapaKanbanFrontend>):
   
   if (etapa.reglaTransicionAutomatica !== undefined) {
     dto.permitirRetroceso = !etapa.reglaTransicionAutomatica;
+  }
+
+  if (etapa.visible !== undefined) {
+    dto.visible = etapa.visible;
   }
 
   return dto;
@@ -208,7 +221,9 @@ const CONFIG_GENERAL_DEFAULT: ConfiguracionGeneralKanban = {
 // HOOK PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function useConfiguracionKanban(): UseConfiguracionKanbanResult {
+export function useConfiguracionKanban(
+  tipo: TipoTablero = TipoTablero.AUDITORIAS
+): UseConfiguracionKanbanResult {
   // Estado
   const [tableroId, setTableroId] = useState<string | null>(null);
   const [etapas, setEtapas] = useState<EtapaKanbanFrontend[]>([]);
@@ -225,14 +240,13 @@ export function useConfiguracionKanban(): UseConfiguracionKanbanResult {
     setError(null);
 
     try {
-      console.log('📥 [useConfiguracionKanban] Cargando tablero de auditorías...');
+      console.log(`📥 [useConfiguracionKanban] Cargando tablero tipo: ${tipo}...`);
 
-      // Buscar el tablero de auditorías
-      const tablero = await tablerosKanbanService.getByTipo(TipoTablero.AUDITORIAS);
+      const tablero = await tablerosKanbanService.getByTipo(tipo);
 
       if (tablero) {
         const etapasBrutas = tablero.etapas || [];
-        console.log(`✅ [useConfiguracionKanban] Tablero encontrado: ${tablero.id} con ${etapasBrutas.length} etapas`);
+        console.log(`✅ [useConfiguracionKanban] Tablero listo: ${tablero.id} con ${etapasBrutas.length} etapas`);
         
         setTableroId(tablero.id);
         
@@ -242,21 +256,14 @@ export function useConfiguracionKanban(): UseConfiguracionKanbanResult {
           .map(mapearEtapaBackendAFrontend);
         
         setEtapas(etapasMapeadas);
+
+        // Cargar configuración visual desde la BD o usar default
+        if (tablero.configuracionVisual) {
+          setConfigGeneral({ ...CONFIG_GENERAL_DEFAULT, ...tablero.configuracionVisual });
+        }
       } else {
-        console.warn('⚠️ [useConfiguracionKanban] No se encontró tablero de auditorías');
         setTableroId(null);
         setEtapas([]);
-      }
-
-      // Cargar configuración general del localStorage
-      const configGuardada = localStorage.getItem('kanban_config_general');
-      if (configGuardada) {
-        try {
-          const config = JSON.parse(configGuardada);
-          setConfigGeneral({ ...CONFIG_GENERAL_DEFAULT, ...config });
-        } catch {
-          // Si falla, usar defaults
-        }
       }
 
     } catch (err) {
@@ -267,7 +274,7 @@ export function useConfiguracionKanban(): UseConfiguracionKanbanResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tipo]);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -420,17 +427,28 @@ export function useConfiguracionKanban(): UseConfiguracionKanbanResult {
   }, [tableroId, cargarDatos]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CONFIGURACIÓN GENERAL (guardada localmente)
+  // CONFIGURACIÓN GENERAL (Guardada en BD)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const actualizarConfigGeneral = useCallback((config: Partial<ConfiguracionGeneralKanban>) => {
+  const actualizarConfigGeneral = useCallback(async (config: Partial<ConfiguracionGeneralKanban>) => {
+    let nuevaConfig: ConfiguracionGeneralKanban = {} as ConfiguracionGeneralKanban;
+    
     setConfigGeneral(prev => {
-      const nuevaConfig = { ...prev, ...config };
-      // Guardar en localStorage
-      localStorage.setItem('kanban_config_general', JSON.stringify(nuevaConfig));
+      nuevaConfig = { ...prev, ...config };
       return nuevaConfig;
     });
-  }, []);
+
+    if (tableroId) {
+      try {
+        await tablerosKanbanService.update(tableroId, {
+          configuracionVisual: nuevaConfig
+        });
+      } catch (error) {
+        console.error('Error guardando configuración visual en backend:', error);
+        toast.error('Error al guardar las preferencias visuales en la base de datos');
+      }
+    }
+  }, [tableroId]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // RETORNAR RESULTADO
