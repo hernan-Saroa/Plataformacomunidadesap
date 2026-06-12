@@ -127,7 +127,7 @@ const CAMPOS_POR_PASO = [
       { id: 'termino', label: 'Término (Días)', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'fechaNotificacion', label: 'Fecha de Notificación', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'fechaVencimiento', label: 'Fecha de Vencimiento', defaultObligatorio: true, defaultVisible: true, fixed: true },
-      { id: 'abogadoResponsable', label: 'Abogado Defensor', defaultObligatorio: false, defaultVisible: true },
+      { id: 'abogadoResponsable', label: 'Abogado Responsable', defaultObligatorio: false, defaultVisible: true },
     ]
   },
   {

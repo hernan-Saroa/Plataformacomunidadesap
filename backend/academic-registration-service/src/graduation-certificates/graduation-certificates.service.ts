@@ -1985,6 +1985,24 @@ export class GraduationCertificatesService {
     return `DIPL-${year}-${sequence}`;
   }
 
+  private async generateGraduateDiplomaNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    let sequence = (await this.graduateRepository.count()) + 1;
+
+    for (let attempts = 0; attempts < 1000; attempts += 1) {
+      const candidate = `DIPL-${year}-${sequence}`;
+      const exists = await this.graduateRepository.findOne({
+        where: { diplomaNumber: candidate },
+      });
+      if (!exists) return candidate;
+      sequence += 1;
+    }
+
+    throw new InternalServerErrorException(
+      'No se pudo generar un numero de diploma unico.',
+    );
+  }
+
   private async generateActaNumber(): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
@@ -2032,9 +2050,68 @@ export class GraduationCertificatesService {
     return normalized;
   }
 
-  private buildGraduateCreateData(
+  private isValidGraduateEmail(value: string): boolean {
+    const email = value.trim().toLowerCase();
+    if (!email) return true;
+    if (email.length > 254 || /\s/.test(email)) return false;
+
+    const parts = email.split('@');
+    if (parts.length !== 2) return false;
+
+    const [localPart, domain] = parts;
+    if (!localPart || !domain || localPart.length > 64) return false;
+    if (
+      localPart.startsWith('.') ||
+      localPart.endsWith('.') ||
+      localPart.includes('..')
+    ) {
+      return false;
+    }
+    if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(localPart)) {
+      return false;
+    }
+
+    if (
+      domain.startsWith('.') ||
+      domain.endsWith('.') ||
+      domain.includes('..')
+    ) {
+      return false;
+    }
+    if (!/^[a-z0-9.-]+$/i.test(domain)) return false;
+
+    const domainLabels = domain.split('.');
+    if (domainLabels.length < 2) return false;
+
+    const validDomainLabels = domainLabels.every((label) => {
+      if (!label || label.length > 63) return false;
+      return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label);
+    });
+    if (!validDomainLabels) return false;
+
+    const tld = domainLabels[domainLabels.length - 1];
+    return /^[a-z]{2,24}$/i.test(tld);
+  }
+
+  private validateGraduateTextLength(
+    value: string,
+    label: string,
+    maxLength: number,
+  ): void {
+    if (value.length > maxLength) {
+      throw new BadRequestException(
+        `${label} no puede superar ${maxLength} caracteres.`,
+      );
+    }
+    if (/[\u0000-\u001F\u007F]/.test(value)) {
+      throw new BadRequestException(`${label} contiene caracteres no permitidos.`);
+    }
+  }
+
+  private async buildGraduateCreateData(
     payload: CreateGraduateDto,
-  ): DeepPartial<Graduate> {
+    options: { strictBulk?: boolean } = {},
+  ): Promise<DeepPartial<Graduate>> {
     const firstName = (payload.firstName || '').trim();
     const lastName = (payload.lastName || '').trim();
     const combinedName = `${firstName} ${lastName}`.trim();
@@ -2042,10 +2119,31 @@ export class GraduationCertificatesService {
     if (!fullName) {
       throw new BadRequestException('El nombre del graduado es obligatorio.');
     }
+    if (!/^[\p{L}\s.'-]+$/u.test(fullName) || /\d/.test(fullName)) {
+      throw new BadRequestException(
+        'El nombre del graduado solo debe contener letras, espacios, puntos, guiones o apostrofes.',
+      );
+    }
+    this.validateGraduateTextLength(fullName, 'El nombre del graduado', 255);
 
     const idNumber = (payload.idNumber || '').trim();
     if (!idNumber) {
       throw new BadRequestException('El numero de documento es obligatorio.');
+    }
+    if (!/^\d+$/.test(idNumber)) {
+      throw new BadRequestException(
+        'El numero de documento solo debe contener digitos.',
+      );
+    }
+    if (idNumber.length < 5 || idNumber.length > 20) {
+      throw new BadRequestException(
+        'El numero de documento debe tener entre 5 y 20 digitos.',
+      );
+    }
+    if (/^0+$/.test(idNumber)) {
+      throw new BadRequestException(
+        'El numero de documento no puede estar compuesto solo por ceros.',
+      );
     }
 
     const programName = (
@@ -2056,6 +2154,7 @@ export class GraduationCertificatesService {
     if (!programName) {
       throw new BadRequestException('El programa o titulo es obligatorio.');
     }
+    this.validateGraduateTextLength(programName, 'El programa o titulo', 255);
 
     const graduationDate = this.parseDate(payload.graduationDate);
     if (!graduationDate) {
@@ -2074,11 +2173,15 @@ export class GraduationCertificatesService {
     const derivedName = this.splitFullName(fullName);
     const enrollmentDate = this.parseDate(payload.enrollmentDate) || new Date();
     enrollmentDate.setHours(12, 0, 0, 0);
-    const diplomaNumber = this.normalizeGraduateNumericControl(
-      payload.diplomaNumber,
-      'DIPLOMA',
-      6,
-    );
+    const diplomaNumber = options.strictBulk
+      ? await this.generateGraduateDiplomaNumber()
+      : payload.diplomaNumber
+        ? this.normalizeGraduateNumericControl(
+            payload.diplomaNumber,
+            'DIPLOMA',
+            6,
+          )
+        : undefined;
     const actaNumber = this.normalizeGraduateNumericControl(
       payload.actaNumber || payload.numActa,
       'ACTA',
@@ -2105,22 +2208,39 @@ export class GraduationCertificatesService {
       3,
     );
     const email = (payload.email || '').trim().toLowerCase();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email && !this.isValidGraduateEmail(email)) {
       throw new BadRequestException('El correo no tiene un formato valido.');
     }
     const rawPhone = (payload.phone || '').trim();
-    const phone = rawPhone.replace(/\D+/g, '');
     if (rawPhone) {
-      if (!/^[0-9+\-\s()]+$/.test(rawPhone)) {
+      if (!/^\d+$/.test(rawPhone)) {
         throw new BadRequestException(
-          'El telefono solo debe contener numeros y separadores basicos.',
+          'El telefono solo debe contener numeros, sin espacios, letras, guiones ni parentesis.',
         );
       }
-      if (phone.length < 7 || phone.length > 15) {
+      if (rawPhone.length < 7 || rawPhone.length > 10) {
         throw new BadRequestException(
-          'El telefono debe tener entre 7 y 15 digitos.',
+          'El telefono debe tener entre 7 y 10 digitos.',
         );
       }
+    }
+    const degreeTitle = (payload.degreeTitle || programName).trim();
+    this.validateGraduateTextLength(degreeTitle, 'El titulo', 255);
+    const campus = (payload.campus || '').trim();
+    const seccionalName = (payload.seccionalName || '').trim();
+    if (options.strictBulk && !campus) {
+      throw new BadRequestException('La sede es obligatoria en la carga masiva.');
+    }
+    if (options.strictBulk && !seccionalName) {
+      throw new BadRequestException(
+        'La territorial es obligatoria en la carga masiva.',
+      );
+    }
+    if (campus) {
+      this.validateGraduateTextLength(campus, 'La sede', 100);
+    }
+    if (seccionalName) {
+      this.validateGraduateTextLength(seccionalName, 'La territorial', 255);
     }
 
     return {
@@ -2132,7 +2252,7 @@ export class GraduationCertificatesService {
       idNumber,
       idIssueDate: this.parseDate(payload.idIssueDate) || undefined,
       email: email || undefined,
-      phone: phone || undefined,
+      phone: rawPhone || undefined,
       programName,
       programType:
         (payload.programType || '').trim() ||
@@ -2140,7 +2260,7 @@ export class GraduationCertificatesService {
       enrollmentDate,
       graduationDate,
       ceremonyDate: this.parseDate(payload.ceremonyDate) || undefined,
-      degreeTitle: (payload.degreeTitle || programName).trim(),
+      degreeTitle,
       diplomaNumber,
       actaNumber,
       resolutionNumber:
@@ -2151,8 +2271,8 @@ export class GraduationCertificatesService {
       numRegistro,
       status: (payload.status || 'ACTIVE').trim().toUpperCase(),
       isVerified: payload.isVerified ?? true,
-      campus: (payload.campus || '').trim() || undefined,
-      seccionalName: (payload.seccionalName || '').trim() || undefined,
+      campus: campus || undefined,
+      seccionalName: seccionalName || undefined,
       createdBy: (payload.createdBy || 'manual').trim(),
     };
   }
@@ -4199,14 +4319,21 @@ export class GraduationCertificatesService {
   /**
    * ADMIN: Crear graduado
    */
-  async crearGraduado(payload: CreateGraduateDto) {
-    const graduateData = this.buildGraduateCreateData(payload);
+  async crearGraduado(
+    payload: CreateGraduateDto,
+    options: { strictBulk?: boolean } = {},
+  ) {
+    const graduateData = await this.buildGraduateCreateData(payload, options);
 
-    const duplicatedGraduate = await this.graduateRepository.findOne({
-      where: {
-        idNumber: graduateData.idNumber,
-        programName: graduateData.programName,
-      },
+    const existingGraduatesByDocument = await this.graduateRepository.find({
+      where: { idNumber: graduateData.idNumber as string },
+    });
+    const normalizedProgramName = this.normalizeName(
+      String(graduateData.programName || ''),
+    );
+    const duplicatedGraduate = existingGraduatesByDocument.find((graduate) => {
+      const existingProgramName = graduate.programName || graduate.degreeTitle || '';
+      return this.normalizeName(existingProgramName) === normalizedProgramName;
     });
     if (duplicatedGraduate) {
       throw new ConflictException(
@@ -4216,11 +4343,11 @@ export class GraduationCertificatesService {
 
     if (graduateData.diplomaNumber) {
       const duplicatedDiploma = await this.graduateRepository.findOne({
-        where: { diplomaNumber: graduateData.diplomaNumber },
+        where: { diplomaNumber: graduateData.diplomaNumber as string },
       });
       if (duplicatedDiploma) {
         throw new ConflictException(
-          'Ya existe un graduado con este nÃºmero de diploma.',
+          'Ya existe un graduado con este numero de diploma.',
         );
       }
     }
@@ -4284,11 +4411,14 @@ export class GraduationCertificatesService {
       }
 
       try {
-        const saved = await this.crearGraduado({
-          ...graduatePayload,
-          createdBy:
-            graduatePayload.createdBy || payload.createdBy || 'bulk_upload',
-        });
+        const saved = await this.crearGraduado(
+          {
+            ...graduatePayload,
+            createdBy:
+              payload.createdBy || graduatePayload.createdBy || 'bulk_upload',
+          },
+          { strictBulk: true },
+        );
         created.push(saved);
       } catch (error) {
         errors.push({

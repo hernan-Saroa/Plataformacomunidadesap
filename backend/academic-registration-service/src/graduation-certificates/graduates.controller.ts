@@ -10,6 +10,7 @@ import {
   UploadedFiles,
   BadRequestException,
   Res,
+  Req,
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import type {
@@ -21,7 +22,20 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+
+const getHeaderValue = (value?: string | string[]) =>
+  Array.isArray(value) ? value[0] : value;
+
+const getGatewayActorName = (req: Request): string | undefined => {
+  const name =
+    getHeaderValue(req.headers['x-user-name']) ||
+    getHeaderValue(req.headers['x-user-email']) ||
+    getHeaderValue(req.headers['x-user-username']) ||
+    getHeaderValue(req.headers['x-user-id']);
+
+  return String(name || '').trim() || undefined;
+};
 
 @Controller(['graduates', 'academic-registration/api/v1/graduates'])
 export class GraduatesController {
@@ -53,8 +67,15 @@ export class GraduatesController {
   }
 
   @Post('bulk')
-  async crearGraduadosMasivamente(@Body() payload: BulkCreateGraduatesDto) {
-    return await this.service.crearGraduadosMasivamente(payload);
+  async crearGraduadosMasivamente(
+    @Body() payload: BulkCreateGraduatesDto,
+    @Req() req: Request,
+  ) {
+    const actorName = getGatewayActorName(req);
+    return await this.service.crearGraduadosMasivamente({
+      ...payload,
+      createdBy: actorName ? `bulk_upload:${actorName}` : payload.createdBy,
+    });
   }
 
   @Put(':id')

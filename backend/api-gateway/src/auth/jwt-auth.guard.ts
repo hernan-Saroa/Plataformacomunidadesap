@@ -1,4 +1,4 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from './public.decorator';
@@ -66,6 +66,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request>();
 
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     if (this.isPublic(context) || this.matchesPublicPath(request)) {
       return true;
     }
@@ -73,21 +77,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  handleRequest(err, user, info) {
+  handleRequest(err, user, _info) {
     if (err || !user) {
-      const fs = require('fs');
-      const msg = `API Gateway Error: ${err ? err.message : 'no err'}\nInfo: ${info ? (info.message || info) : 'no info'}\nUser: ${JSON.stringify(user)}\n`;
-      try { fs.appendFileSync('C:\\\\Users\\\\Hernan_Buitrago\\\\.gemini\\\\antigravity-ide\\\\brain\\\\883b3a72-b726-4e69-988f-a5e16cb54cd3\\\\scratch\\\\gateway-jwt-error.log', msg); } catch(e) {}
-      throw err || new (require('@nestjs/common').UnauthorizedException)();
+      throw err || new UnauthorizedException();
     }
     return user;
   }
 
   private isPublic(context: ExecutionContext) {
-    console.log('DEBUG [JwtAuthGuard] isPublic called');
-console.log('Handler:', context.getHandler());
-console.log('Class:', context.getClass());
-
     return this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
