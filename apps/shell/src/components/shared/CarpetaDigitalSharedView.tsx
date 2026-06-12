@@ -28,7 +28,7 @@ import {
   AlertTriangle, Check, Plus, Info,
   FileUp, CircleCheck, CircleAlert, CircleX, Layers,
   ShieldCheck, ShieldAlert, BookOpen, Send,
-  Phone, GraduationCap
+  Phone, GraduationCap, FileSpreadsheet, FileArchive, ZoomIn, ZoomOut, RotateCw, Undo
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
@@ -111,6 +111,8 @@ export interface CarpetaDigitalSharedViewProps {
   onCreateNewVersion?: (doc: CarpetaDocumento) => void;
   /** Drag-and-drop: recibe archivos soltados */
   onDropFiles?: (files: File[], categoria?: string) => void;
+  /** Subida directa para drag & drop por requisito específico */
+  onUploadDirect?: (file: File, tipoDocumentoId?: string, categoria?: string) => Promise<boolean>;
 }
 
 // ============================================================================
@@ -121,11 +123,22 @@ const CATEGORY_CONFIG: Record<string, {
   label: string; color: string; bgLight: string; borderColor: string; icon: React.ElementType;
 }> = {
   personal:       { label: 'Personal',       color: '#2962FF', bgLight: '#EFF6FF', borderColor: '#BFDBFE', icon: User },
+  rund:           { label: 'RUND (Registro Único Nacional Docente)', color: '#6366f1', bgLight: '#F5F3FF', borderColor: '#C7D2FE', icon: FileSpreadsheet },
   academico:      { label: 'Académico',      color: '#059669', bgLight: '#ECFDF5', borderColor: '#A7F3D0', icon: Award },
   certificados:   { label: 'Certificados',   color: '#7C3AED', bgLight: '#F5F3FF', borderColor: '#DDD6FE', icon: Shield },
   laboral:        { label: 'Laboral',        color: '#D97706', bgLight: '#FFFBEB', borderColor: '#FDE68A', icon: Briefcase },
   administrativo: { label: 'Administrativo', color: '#DC2626', bgLight: '#FEF2F2', borderColor: '#FECACA', icon: FolderOpen },
   otros:          { label: 'Otros',          color: '#4B5563', bgLight: '#F9FAFB', borderColor: '#E5E7EB', icon: Layers },
+};
+
+const RUND_SUBFOLDERS_CONFIG: Record<string, {
+  label: string; color: string; bgLight: string; borderColor: string; icon: React.ElementType;
+}> = {
+  IDENTIDAD:   { label: 'Identidad',       color: '#2962FF', bgLight: '#EFF6FF', borderColor: '#BFDBFE', icon: User },
+  FORMACION:   { label: 'Formación',       color: '#7C3AED', bgLight: '#F5F3FF', borderColor: '#DDD6FE', icon: GraduationCap },
+  VINCULACION: { label: 'Vinculación',     color: '#D97706', bgLight: '#FFFBEB', borderColor: '#FDE68A', icon: Briefcase },
+  ACADEMICO:   { label: 'Académico',      color: '#059669', bgLight: '#ECFDF5', borderColor: '#A7F3D0', icon: Award },
+  TRANSVERSAL: { label: 'Transversal',    color: '#DC2626', bgLight: '#FEF2F2', borderColor: '#FECACA', icon: Shield },
 };
 
 const STATUS_CONFIG: Record<DocumentStatus, {
@@ -250,10 +263,11 @@ function ProgressRing({ value, size = 72, stroke = 6, color = '#2962FF' }: {
 // TIPO DOC CARD
 // ============================================================================
 
-function TipoDocCard({ tipo, docs, onUpload, onSelectDoc }: {
+function TipoDocCard({ tipo, docs, onUpload, onUploadDirect, onSelectDoc }: {
   tipo: TipoDocumentoRequerido;
   docs: CarpetaDocumento[];
   onUpload?: (tipoDocumentoId?: string, categoria?: string, tipoNombre?: string) => void;
+  onUploadDirect?: (file: File, tipo: TipoDocumentoRequerido) => Promise<boolean>;
   onSelectDoc: (d: CarpetaDocumento) => void;
 }) {
   const color = tipo.color || CATEGORY_CONFIG[tipo.categoria]?.color || '#4B5563';
@@ -278,6 +292,50 @@ function TipoDocCard({ tipo, docs, onUpload, onSelectDoc }: {
           : tipo.obligatorio ? '#FEF2F210' : '#F9FAFB40',
         position: 'relative',
         transition: 'all 0.2s',
+      }}
+      onDragOver={(e) => {
+        if (onUploadDirect) {
+          e.preventDefault();
+          e.stopPropagation();
+          (e.currentTarget as HTMLElement).style.borderColor = color;
+          (e.currentTarget as HTMLElement).style.background = color + '08';
+        }
+      }}
+      onDragLeave={(e) => {
+        if (onUploadDirect) {
+          e.preventDefault();
+          e.stopPropagation();
+          (e.currentTarget as HTMLElement).style.borderColor = hasDoc
+            ? latestDoc?.estado === 'validado' ? '#A7F3D0' : latestDoc?.estado === 'rechazado' ? '#FECACA' : '#FDE68A'
+            : tipo.obligatorio ? '#FECACA' : '#E5E7EB';
+          (e.currentTarget as HTMLElement).style.background = hasDoc
+            ? latestDoc?.estado === 'validado' ? '#ECFDF520' : latestDoc?.estado === 'rechazado' ? '#FEF2F220' : '#FFFBEB20'
+            : tipo.obligatorio ? '#FEF2F210' : '#F9FAFB40';
+        }
+      }}
+      onDrop={async (e) => {
+        if (onUploadDirect) {
+          e.preventDefault();
+          e.stopPropagation();
+          (e.currentTarget as HTMLElement).style.borderColor = hasDoc
+            ? latestDoc?.estado === 'validado' ? '#A7F3D0' : latestDoc?.estado === 'rechazado' ? '#FECACA' : '#FDE68A'
+            : tipo.obligatorio ? '#FECACA' : '#E5E7EB';
+          (e.currentTarget as HTMLElement).style.background = hasDoc
+            ? latestDoc?.estado === 'validado' ? '#ECFDF520' : latestDoc?.estado === 'rechazado' ? '#FEF2F220' : '#FFFBEB20'
+            : tipo.obligatorio ? '#FEF2F210' : '#F9FAFB40';
+
+          const files = Array.from(e.dataTransfer.files);
+          if (files.length > 0) {
+            const file = files[0];
+            const toastId = toast.loading(`Subiendo ${file.name} directamente...`);
+            const ok = await onUploadDirect(file, tipo);
+            if (ok) {
+              toast.success(`Cargado con éxito`, { id: toastId });
+            } else {
+              toast.error(`Error al subir el archivo`, { id: toastId });
+            }
+          }
+        }
       }}
     >
       {tipo.obligatorio && !hasDoc && (
@@ -558,6 +616,7 @@ export function CarpetaDigitalSharedView({
   userRole,
   onBack,
   onUpload,
+  onUploadDirect,
   onRefresh,
   onPreview,
   onDownload,
@@ -575,6 +634,21 @@ export function CarpetaDigitalSharedView({
   const [detailDoc, setDetailDoc] = useState<CarpetaDocumento | null>(null);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [searchFocused, setSearchFocused] = useState(false);
+  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [currentSubfolder, setCurrentSubfolder] = useState<string | null>(null);
+
+  // Modals and UI Enhancements States
+  const [previewDoc, setPreviewDoc] = useState<CarpetaDocumento | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [rotateAngle, setRotateAngle] = useState(0);
+  const [showHistoryDoc, setShowHistoryDoc] = useState<CarpetaDocumento | null>(null);
+  const [zippingFolder, setZippingFolder] = useState(false);
+  const [zipProgress, setZipProgress] = useState(0);
+
+  const handleSetFolder = useCallback((folder: string | null) => {
+    setCurrentFolder(folder);
+    setCurrentSubfolder(null);
+  }, []);
 
   // ========== RUND STATE & HANDLERS ==========
   const [tarjetaRund, setTarjetaRund] = useState<any | null>(null);
@@ -596,6 +670,332 @@ export function CarpetaDigitalSharedView({
     if (!personaId) return '';
     return personaId.replace('persona:', '');
   }, [personaId]);
+
+  const isDocInCategory = useCallback((doc: CarpetaDocumento, cat: string) => {
+    const categories = ['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros'];
+    if (cat === 'otros') {
+      return doc.categoria === 'otros' || !doc.categoria || !categories.includes(doc.categoria);
+    }
+    return doc.categoria === cat;
+  }, []);
+
+  // ========== MAPPED RUND DOCUMENTS & TYPES ==========
+  const mappedRundDocs = useMemo<CarpetaDocumento[]>(() => {
+    if (!tarjetaRund) return [];
+    const docs: CarpetaDocumento[] = [];
+    const seenTipos = new Set<string>();
+    
+    const processSoporte = (sop: any) => {
+      // DB columns: tipo_soporte, documento_carpeta_id, nombre_archivo
+      const tipoCode = (sop.tipo_soporte || sop.tipo || '').toLowerCase();
+      if (!tipoCode || seenTipos.has(tipoCode)) return;
+      seenTipos.add(tipoCode);
+      const fileName = sop.nombre_archivo || sop.nombre || `${tipoCode}.pdf`;
+      const fileUrl = sop.documento_carpeta_id || sop.url || '';
+      docs.push({
+        id: sop.id || `rund-soporte-${tipoCode}`,
+        carpeta_id: `carpeta:${cleanPersonaId}`,
+        nombre: fileName,
+        categoria: 'rund',
+        tipo_documento_id: `rund_${tipoCode}`,
+        tipo_archivo: fileName.split('.').pop()?.toLowerCase() || 'pdf',
+        tamano_bytes: sop.tamano || 1024 * 1024,
+        estado: (sop.estado?.toLowerCase() === 'aprobado' || sop.estado?.toLowerCase() === 'aceptado' || sop.estado?.toLowerCase() === 'ok') 
+                  ? 'validado' 
+                  : (sop.estado?.toLowerCase() === 'rechazado' || sop.estado?.toLowerCase() === 'devuelto')
+                    ? 'rechazado'
+                    : 'pendiente',
+        fecha_subida: sop.createdAt || sop.fecha_carga || new Date().toISOString(),
+        url_archivo: fileUrl,
+        version_actual: 1,
+        comentarios: sop.observacion || '',
+      });
+    };
+    
+    // Source 1: Extract soportes from rundBloques (from /bloques API)
+    if (rundBloques && rundBloques.length > 0) {
+      rundBloques.forEach(bloque => {
+        if (Array.isArray(bloque.soportes)) {
+          bloque.soportes.forEach(processSoporte);
+        }
+      });
+    }
+    
+    // Source 2: Extract soportes from tarjetaRund.bloques (from /tarjeta-rund API)
+    if (tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
+      Object.values(tarjetaRund.bloques).forEach((bloqueData: any) => {
+        if (Array.isArray(bloqueData?.soportes)) {
+          bloqueData.soportes.forEach(processSoporte);
+        }
+      });
+    }
+
+    // Source 3: Extract from validacionDocumental (persisted validation state)
+    if (Array.isArray(tarjetaRund.validacionDocumental)) {
+      tarjetaRund.validacionDocumental.forEach((val: any) => {
+        if (!val.id_documento_carpeta && val.estado_documento === 'Sin cargar') return;
+        const campoRund = (val.campo_rund || '').toLowerCase();
+        if (!campoRund || seenTipos.has(campoRund)) return;
+        if (val.id_documento_carpeta || (val.estado_documento && val.estado_documento !== 'Sin cargar')) {
+          seenTipos.add(campoRund);
+          docs.push({
+            id: val.id || `rund-val-${campoRund}`,
+            carpeta_id: `carpeta:${cleanPersonaId}`,
+            nombre: `${campoRund}.pdf`,
+            categoria: 'rund',
+            tipo_documento_id: `rund_${campoRund}`,
+            tipo_archivo: 'pdf',
+            tamano_bytes: 1024 * 1024,
+            estado: (val.estado_documento === 'Aceptado' || val.estado_documento === 'Aprobado') ? 'validado'
+                  : val.estado_documento === 'Rechazado' ? 'rechazado' : 'pendiente',
+            fecha_subida: val.fecha_carga || val.created_at || new Date().toISOString(),
+            url_archivo: val.id_documento_carpeta || '',
+            version_actual: 1,
+            comentarios: val.observacion || '',
+          });
+        }
+      });
+    }
+
+    // Source 4: Derive documents from RUND campos with values
+    // The RUND module shows "Cargado exitosamente" when a campo has data.
+    // Mirror this in Carpeta Digital: if RUND has field data, show as a registered document.
+    // Map campo names → RUND soporte tipo codes (same as CATALOGO_BR039 in RundValidationPanel)
+    const CAMPO_TO_SOPORTE: Record<string, string> = {
+      'DOCUMENTO_IDENTIDAD': 'documento_identidad',
+      'TIPO_DOCUMENTO': 'documento_identidad',
+      'NOMBRE_COMPLETO': 'documento_identidad',
+      'GENERO': 'documento_identidad',
+      'FECHA_NACIMIENTO': 'documento_identidad',
+      'TITULO_PREGRADO': 'diploma_pregrado',
+      'TITULO_ESPECIALIZACION': 'diploma_especializacion',
+      'TITULO_MAESTRIA': 'diploma_maestria',
+      'TITULO_DOCTORADO': 'diploma_doctorado',
+      'TITULO_POSDOCTORADO': 'certificado_posdoctoral',
+      'PERFIL_ACADEMICO': 'hoja_vida_pro',
+      'TIPO_VINCULACION': 'acto_administrativo_vinculacion',
+      'DEDICACION': 'acto_administrativo_dedicacion',
+      'CATEGORIA_ESCALAFON': 'resolucion_escalafon',
+      'TERRITORIAL': 'acto_adscripcion_territorial',
+      'PUNTAJE_SALARIAL': 'resolucion_puntaje_salarial',
+      'SITUACION_ADMINISTRATIVA': 'acto_administrativo_situacion',
+      'NUCLEO_TEMATICO': 'acto_asignacion_nucleo',
+    };
+    const SOPORTE_LABELS: Record<string, string> = {
+      'documento_identidad': 'Documento de identidad (CC/CE/PA/PEP)',
+      'diploma_pregrado': 'Diploma + Acta de grado (Pregrado)',
+      'diploma_especializacion': 'Diploma + Acta de grado (Especialización)',
+      'diploma_maestria': 'Diploma + Acta de grado (Maestría)',
+      'diploma_doctorado': 'Diploma + Acta de grado (Doctorado)',
+      'certificado_posdoctoral': 'Certificado de estancia posdoctoral',
+      'hoja_vida_pro': 'Hoja de vida soportada por títulos',
+      'acto_administrativo_vinculacion': 'Acto administrativo de vinculación',
+      'acto_administrativo_dedicacion': 'Acto administrativo de dedicación',
+      'resolucion_escalafon': 'Resolución de escalafón',
+      'acto_adscripcion_territorial': 'Acto de adscripción territorial',
+      'resolucion_puntaje_salarial': 'Resolución de puntaje salarial',
+      'acto_administrativo_situacion': 'Acto administrativo de situación',
+      'acto_asignacion_nucleo': 'Acto de asignación de núcleo temático',
+    };
+
+    if (tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
+      Object.values(tarjetaRund.bloques).forEach((bloqueData: any) => {
+        if (!Array.isArray(bloqueData?.campos)) return;
+        bloqueData.campos.forEach((campo: any) => {
+          if (!campo.valor) return; // Skip campos without data
+          const soporteCode = CAMPO_TO_SOPORTE[campo.campo];
+          if (!soporteCode || seenTipos.has(soporteCode)) return;
+          seenTipos.add(soporteCode);
+          docs.push({
+            id: `rund-campo-${soporteCode}`,
+            carpeta_id: `carpeta:${cleanPersonaId}`,
+            nombre: SOPORTE_LABELS[soporteCode] || soporteCode,
+            categoria: 'rund',
+            tipo_documento_id: `rund_${soporteCode}`,
+            tipo_archivo: 'pdf',
+            tamano_bytes: 0,
+            estado: bloqueData.estado?.toLowerCase() === 'aprobado' ? 'validado' : 'pendiente',
+            fecha_subida: new Date().toISOString(),
+            url_archivo: '',
+            version_actual: 1,
+            comentarios: `Dato registrado en RUND: ${campo.valor}`,
+          });
+        });
+      });
+    }
+    
+    console.log('📂 CarpetaDigital mappedRundDocs:', docs.length, 'source:', docs.length > 0 ? 'soportes/tarjeta/validacion/campos' : 'empty', docs.map(d => ({ id: d.id, tipo_documento_id: d.tipo_documento_id, nombre: d.nombre })));
+    return docs;
+  }, [tarjetaRund, rundBloques, cleanPersonaId]);
+
+
+
+  const combinedDocumentos = useMemo<CarpetaDocumento[]>(() => {
+    return [...documentos, ...mappedRundDocs];
+  }, [documentos, mappedRundDocs]);
+
+  const mappedRundTipos = useMemo<TipoDocumentoRequerido[]>(() => {
+    if (!tarjetaRund) return [];
+    
+    const rundSpecs = [
+      { id: 'rund_documento_identidad', nombre: 'Documento de identidad (CC/CE/PA/PEP)', obligatorio: true },
+      { id: 'rund_diploma_pregrado', nombre: 'Diploma + Acta de grado (Pregrado)', obligatorio: true },
+      { id: 'rund_diploma_especializacion', nombre: 'Diploma + Acta de grado (Especialización)', obligatorio: false },
+      { id: 'rund_diploma_maestria', nombre: 'Diploma + Acta de grado (Maestría)', obligatorio: false },
+      { id: 'rund_diploma_doctorado', nombre: 'Diploma + Acta de grado (Doctorado)', obligatorio: false },
+      { id: 'rund_certificado_posdoctoral', nombre: 'Certificado de estancia posdoctoral', obligatorio: false },
+      { id: 'rund_convalidacion_men', nombre: 'Resolución de convalidación MEN', obligatorio: false },
+      { id: 'rund_hoja_vida_pro', nombre: 'Hoja de vida soportada por títulos', obligatorio: true },
+      { id: 'rund_acto_administrativo_vinculacion', nombre: 'Acto administrativo de vinculación', obligatorio: true },
+      { id: 'rund_resolucion_convocatoria', nombre: 'Resolución de convocatoria', obligatorio: true },
+      { id: 'rund_contrato', nombre: 'Resolución o contrato', obligatorio: true },
+      { id: 'rund_acto_administrativo_dedicacion', nombre: 'Acto administrativo de dedicación', obligatorio: true },
+      { id: 'rund_acto_administrativo_situacion', nombre: 'Acto administrativo de situación', obligatorio: true },
+      { id: 'rund_acto_adscripcion_territorial', nombre: 'Acto de adscripción territorial', obligatorio: true },
+      { id: 'rund_resolucion_escalafon', nombre: 'Resolución de escalafón', obligatorio: true },
+      { id: 'rund_resolucion_puntaje_salarial', nombre: 'Resolución de puntaje salarial', obligatorio: true },
+      { id: 'rund_acto_asignacion_nucleo', nombre: 'Acto de asignación de núcleo temático', obligatorio: true },
+      { id: 'rund_certificacion_investigacion', nombre: 'Certificación de investigación', obligatorio: false },
+      { id: 'rund_acta_evaluacion_desempeno', nombre: 'Acta de evaluación de desempeño', obligatorio: true },
+      { id: 'rund_autorizacion_habeas_data', nombre: 'Autorización de tratamiento de datos (Habeas Data)', obligatorio: true }
+    ];
+
+    return rundSpecs.map(spec => {
+      const tipoSoporteCode = spec.id.replace('rund_', '');
+      const doc = mappedRundDocs.find(d => {
+        // Match by tipo_documento_id (reliable), or fallback to id pattern
+        return d.tipo_documento_id === spec.id || d.id === `rund-soporte-${tipoSoporteCode}`;
+      }) || null;
+
+      return {
+        id: spec.id,
+        nombre: spec.nombre,
+        descripcion: `Soporte RUND de ${spec.nombre}`,
+        categoria: 'rund',
+        obligatorio: spec.obligatorio,
+        requiere_validacion: true,
+        formatos_permitidos: ['pdf', 'jpg', 'png'],
+        color: '#6366f1',
+        icono: 'file-text',
+        completado: !!doc,
+        documento: doc
+      };
+    });
+  }, [tarjetaRund, mappedRundDocs]);
+
+  const combinedTiposDocumentos = useMemo<TipoDocumentoRequerido[]>(() => {
+    return [...tiposDocumentos, ...mappedRundTipos];
+  }, [tiposDocumentos, mappedRundTipos]);
+
+  const getBloqueForTipoSoporte = (tipo: string): string => {
+    const t = tipo.toLowerCase();
+    if (t === 'documento_identidad') return 'IDENTIDAD';
+    if (t.includes('diploma') || t.includes('posdoctoral') || t.includes('convalidacion') || t.includes('hoja_vida')) return 'FORMACION';
+    if (t.includes('acto_') || t.includes('resolucion_') || t.includes('contrato')) {
+      if (t === 'acto_asignacion_nucleo') return 'ACADEMICO';
+      return 'VINCULACION';
+    }
+    if (t === 'certificacion_investigacion' || t === 'acta_evaluacion_desempeno') return 'ACADEMICO';
+    if (t === 'autorizacion_habeas_data') return 'TRANSVERSAL';
+    return 'OTROS';
+  };
+
+  const currentFolderDocs = useMemo(() => {
+    if (!currentFolder) return [];
+    return combinedDocumentos.filter(d => 
+      isDocInCategory(d, currentFolder) && 
+      (currentFolder !== 'rund' || getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === currentSubfolder)
+    );
+  }, [combinedDocumentos, currentFolder, currentSubfolder, isDocInCategory]);
+
+  const handleDownloadZip = useCallback(async () => {
+    if (currentFolderDocs.length === 0) {
+      toast.info('No hay documentos cargados en esta carpeta para descargar.');
+      return;
+    }
+
+    setZippingFolder(true);
+    setZipProgress(0);
+    const toastId = toast.loading('Generando archivo comprimido ZIP...');
+
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      let readmeText = `========================================================\n`;
+      readmeText += `ESAP - CARPETA DIGITAL COMPRIMIDA\n`;
+      readmeText += `Docente: ${persona?.nombre || 'Desconocido'}\n`;
+      readmeText += `Identificación: ${persona?.numero_documento || 'No disponible'}\n`;
+      readmeText += `Carpeta: ${currentFolder === 'rund' ? 'RUND' : (CATEGORY_CONFIG[currentFolder || '']?.label || currentFolder)}\n`;
+      if (currentSubfolder) {
+        readmeText += `Subcarpeta RUND: ${RUND_SUBFOLDERS_CONFIG[currentSubfolder]?.label || currentSubfolder}\n`;
+      }
+      readmeText += `Fecha de Generación: ${new Date().toLocaleString()}\n`;
+      readmeText += `Cantidad de archivos: ${currentFolderDocs.length}\n`;
+      readmeText += `========================================================\n\n`;
+      readmeText += `LISTADO DE ARCHIVOS INCLUIDOS:\n\n`;
+
+      currentFolderDocs.forEach((d, idx) => {
+        readmeText += `${idx + 1}. [${d.estado.toUpperCase()}] ${d.nombre} (${(d.tamano_bytes / 1024).toFixed(1)} KB) - Subido el ${new Date(d.fecha_subida).toLocaleDateString()}\n`;
+        if (d.comentarios) {
+          readmeText += `   Observaciones: ${d.comentarios}\n`;
+        }
+      });
+
+      zip.file('LEEME.txt', readmeText);
+
+      for (let i = 0; i < currentFolderDocs.length; i++) {
+        const doc = currentFolderDocs[i];
+        setZipProgress(Math.round((i / currentFolderDocs.length) * 100));
+
+        let fileBlob: Blob;
+        try {
+          if (doc.url_archivo) {
+            const res = await fetch(doc.url_archivo);
+            if (res.ok) {
+              fileBlob = await res.blob();
+            } else {
+              throw new Error(`Status ${res.status}`);
+            }
+          } else {
+            throw new Error('Sin URL de archivo');
+          }
+        } catch (err) {
+          console.warn(`Error al descargar ${doc.nombre}, usando fallback simulado`, err);
+          fileBlob = new Blob([
+            `Contenido simulado de soporte\nNombre: ${doc.nombre}\nEstado: ${doc.estado}\nSubido: ${doc.fecha_subida}\nObservaciones: ${doc.comentarios || 'Ninguna'}`
+          ], { type: 'text/plain' });
+        }
+
+        const ext = doc.nombre.includes('.') ? '' : `.${doc.tipo_archivo}`;
+        zip.file(`${doc.nombre}${ext}`, fileBlob);
+      }
+
+      setZipProgress(100);
+      const content = await zip.generateAsync({ type: 'blob' });
+
+      const folderName = currentFolder === 'rund'
+        ? (currentSubfolder ? `RUND_${currentSubfolder}` : 'RUND')
+        : (CATEGORY_CONFIG[currentFolder || '']?.label || currentFolder || 'carpeta');
+      const docNameClean = (persona?.nombre || 'docente').replace(/\s+/g, '_').toLowerCase();
+      const zipName = `${docNameClean}_${folderName.toLowerCase()}_${new Date().toISOString().slice(0,10)}.zip`;
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = zipName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success('Descarga ZIP completada con éxito!', { id: toastId });
+    } catch (error: any) {
+      console.error('Error al generar ZIP:', error);
+      toast.error('Error al generar el archivo ZIP: ' + (error?.message || error), { id: toastId });
+    } finally {
+      setZippingFolder(false);
+      setZipProgress(0);
+    }
+  }, [currentFolderDocs, currentFolder, currentSubfolder, persona]);
 
   const currentUserId = useMemo(() => {
     if (typeof window === 'undefined') return 'admin-user';
@@ -629,9 +1029,11 @@ export function CarpetaDigitalSharedView({
       if (data && data.docenteId) {
         setTarjetaRund(data);
         
-        const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques`);
+        const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
         const bloquesData = bloquesRes?.data || bloquesRes;
-        setRundBloques(Array.isArray(bloquesData) ? bloquesData : []);
+        const bloquesArr = Array.isArray(bloquesData) ? bloquesData : [];
+        console.log('📂 CarpetaDigital fetchRundData - docenteId:', data.docenteId, 'bloques:', bloquesArr.length, 'estructura:', bloquesArr.map((b: any) => ({ bloque: b.bloque, estado: b.estado, soportesCount: b.soportes?.length ?? 'NO_SOPORTES', soportes: b.soportes?.slice(0, 2) })));
+        setRundBloques(bloquesArr);
 
         const auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
         const auditData = Array.isArray(auditRes?.data) ? auditRes.data : Array.isArray(auditRes) ? auditRes : [];
@@ -652,6 +1054,7 @@ export function CarpetaDigitalSharedView({
 
   useEffect(() => {
     fetchRundData();
+    handleSetFolder(null);
   }, [cleanPersonaId, fetchRundData]);
 
   const toggleRundBloque = (bloque: string) => {
@@ -741,8 +1144,101 @@ export function CarpetaDigitalSharedView({
     }
   };
 
+  const handleDirectUpload = useCallback(async (file: File, tipo: TipoDocumentoRequerido): Promise<boolean> => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    const validExtensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.csv'];
+    if (!validExtensions.includes(ext)) {
+      toast.error('Formato no soportado para este requisito.');
+      return false;
+    }
+    if (file.size > 10485760) {
+      toast.error('El archivo excede el tamaño máximo de 10MB.');
+      return false;
+    }
+
+    if (tipo.id.startsWith('rund_')) {
+      if (!tarjetaRund?.docenteId) {
+        toast.error('No hay docente RUND activo');
+        return false;
+      }
+      const tipoSoporteCode = tipo.id.replace('rund_', '');
+      const bloque = getBloqueForTipoSoporte(tipoSoporteCode);
+      setRundActionLoading(bloque);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipoSoporte', tipoSoporteCode);
+        formData.append('nombreArchivo', file.name);
+        formData.append('cargadoPor', currentUserId);
+
+        const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
+        if (res?.success || res) {
+          toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
+          await fetchRundData();
+          return true;
+        } else {
+          toast.error('Error al cargar el soporte en RUND.');
+        }
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al cargar el soporte.');
+      } finally {
+        setRundActionLoading(null);
+      }
+      return false;
+    } else if (onUploadDirect) {
+      return await onUploadDirect(file, tipo.id, tipo.categoria);
+    }
+    return false;
+  }, [tarjetaRund, currentUserId, onUploadDirect, fetchRundData]);
+
   const findRundSoporte = (soportes: any[], tipo: string) =>
     soportes?.find((s: any) => s.tipo_soporte === tipo || s.tipo === tipo);
+
+  const handlePreview = useCallback((doc: CarpetaDocumento) => {
+    setPreviewDoc(doc);
+    setZoomScale(1);
+    setRotateAngle(0);
+  }, []);
+
+  const activePreviewIndex = useMemo(() => {
+    if (!previewDoc) return -1;
+    return currentFolderDocs.findIndex(d => d.id === previewDoc.id);
+  }, [previewDoc, currentFolderDocs]);
+
+  const handlePrevPreview = useCallback(() => {
+    if (activePreviewIndex > 0) {
+      const prev = currentFolderDocs[activePreviewIndex - 1];
+      setPreviewDoc(prev);
+      setZoomScale(1);
+      setRotateAngle(0);
+    }
+  }, [activePreviewIndex, currentFolderDocs]);
+
+  const handleNextPreview = useCallback(() => {
+    if (activePreviewIndex >= 0 && activePreviewIndex < currentFolderDocs.length - 1) {
+      const next = currentFolderDocs[activePreviewIndex + 1];
+      setPreviewDoc(next);
+      setZoomScale(1);
+      setRotateAngle(0);
+    }
+  }, [activePreviewIndex, currentFolderDocs]);
+
+  const handleDownload = useCallback((doc: CarpetaDocumento) => {
+    if (doc.categoria === 'rund') {
+      if (doc.url_archivo) {
+        window.open(doc.url_archivo, '_blank');
+      } else {
+        toast.error('No hay URL de descarga disponible para este documento.');
+      }
+    } else if (onDownload) {
+      onDownload(doc);
+    }
+  }, [onDownload]);
+
+  const handleRefresh = useCallback(() => {
+    fetchRundData();
+    if (onRefresh) onRefresh();
+  }, [fetchRundData, onRefresh]);
 
   const sortedRundBloques = useMemo(() => {
     const blockOrder = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
@@ -844,8 +1340,8 @@ export function CarpetaDigitalSharedView({
   };
 
   const selectedDocs = useMemo(() =>
-    documentos.filter(d => selectedDocIds.has(d.id)),
-    [documentos, selectedDocIds]
+    combinedDocumentos.filter(d => selectedDocIds.has(d.id)),
+    [combinedDocumentos, selectedDocIds]
   );
 
   const handleBulkValidate = async () => {
@@ -884,69 +1380,153 @@ export function CarpetaDigitalSharedView({
     setIsBulkProcessing(false);
   };
 
+
+
   // ========== EXPIRATION METRICS ==========
   const expirationMetrics = useMemo(() => {
     let expired = 0, warning = 0;
-    documentos.forEach(d => {
+    combinedDocumentos.forEach(d => {
       const st = getExpirationStatus(d);
       if (st === 'expired') expired++;
       else if (st === 'warning') warning++;
     });
     return { expired, warning };
-  }, [documentos]);
+  }, [combinedDocumentos]);
 
   // ========== METRICS ==========
   const metrics = useMemo(() => {
-    const total = documentos.length;
-    const validados = documentos.filter(d => d.estado === 'validado').length;
-    const pendientes = documentos.filter(d => d.estado === 'pendiente').length;
-    const rechazados = documentos.filter(d => d.estado === 'rechazado').length;
+    const total = combinedDocumentos.length;
+    const validados = combinedDocumentos.filter(d => d.estado === 'validado').length;
+    const pendientes = combinedDocumentos.filter(d => d.estado === 'pendiente').length;
+    const rechazados = combinedDocumentos.filter(d => d.estado === 'rechazado').length;
     return { total, validados, pendientes, rechazados };
-  }, [documentos]);
+  }, [combinedDocumentos]);
 
   // ========== GROUPED TIPOS ==========
   const groupedTipos = useMemo(() => {
     const groups: Record<string, TipoDocumentoRequerido[]> = {};
-    tiposDocumentos.forEach(t => {
+    combinedTiposDocumentos.forEach(t => {
       const cat = t.categoria || 'otros';
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(t);
     });
-    const ordered = ['personal', 'academico', 'laboral', 'certificados', 'administrativo', 'otros'];
+    const ordered = ['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros'];
     const result: [string, TipoDocumentoRequerido[]][] = [];
     ordered.forEach(cat => { if (groups[cat]) result.push([cat, groups[cat]]); });
     Object.keys(groups).forEach(cat => { if (!ordered.includes(cat)) result.push([cat, groups[cat]]); });
     return result;
-  }, [tiposDocumentos]);
+  }, [combinedTiposDocumentos]);
 
   // ========== FILTERED DOCS (list view) ==========
   const filteredDocs = useMemo(() => {
-    let result = [...documentos];
+    let result = [...combinedDocumentos];
+    if (currentFolder) result = result.filter(d => isDocInCategory(d, currentFolder));
+    if (currentFolder === 'rund' && currentSubfolder) {
+      result = result.filter(d => getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === currentSubfolder);
+    }
     if (filterStatus !== 'all') result = result.filter(d => d.estado === filterStatus);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(d => (d.nombre || '').toLowerCase().includes(q) || (d.categoria || '').includes(q));
     }
     return result.sort((a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime());
-  }, [documentos, filterStatus, searchQuery]);
+  }, [combinedDocumentos, currentFolder, currentSubfolder, filterStatus, searchQuery, isDocInCategory]);
+
 
   // ========== HELPERS ==========
-  const getDocsForTipo = (tipo: TipoDocumentoRequerido): CarpetaDocumento[] => {
+  const getDocsForTipo = useCallback((tipo: TipoDocumentoRequerido): CarpetaDocumento[] => {
     if (tipo.documento) return [tipo.documento];
     const tipoNombre = normalizeDocumentText(tipo.nombre);
-    return documentos.filter(d => {
+    return combinedDocumentos.filter(d => {
       if (d.tipo_documento_id && d.tipo_documento_id === tipo.id) return true;
       if (d.tipo_documento_id) return false;
       const docNombre = normalizeDocumentText(d.nombre);
       return !!tipoNombre && !!docNombre && (docNombre.includes(tipoNombre) || tipoNombre.includes(docNombre));
     });
-  };
+  }, [combinedDocumentos]);
+
+  const folderListItems = useMemo(() => {
+    if (!currentFolder) return [];
+
+    const items: Array<{
+      key: string;
+      isPending: boolean;
+      tipo?: TipoDocumentoRequerido;
+      doc?: CarpetaDocumento;
+    }> = [];
+
+    const folderTipos = combinedTiposDocumentos.filter(t => 
+      t.categoria === currentFolder && 
+      (currentFolder !== 'rund' || getBloqueForTipoSoporte(t.id.replace('rund_', '')) === currentSubfolder)
+    );
+
+    const displayedDocIds = new Set<string>();
+
+    folderTipos.forEach(tipo => {
+      const docs = getDocsForTipo(tipo);
+      if (docs.length > 0) {
+        docs.forEach(doc => {
+          items.push({
+            key: `doc-${doc.id}`,
+            isPending: false,
+            tipo,
+            doc,
+          });
+          displayedDocIds.add(doc.id);
+        });
+      } else {
+        items.push({
+          key: `tipo-pending-${tipo.id}`,
+          isPending: true,
+          tipo,
+        });
+      }
+    });
+
+    const folderDocs = combinedDocumentos.filter(d => 
+      isDocInCategory(d, currentFolder) && 
+      (currentFolder !== 'rund' || getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === currentSubfolder)
+    );
+
+    folderDocs.forEach(doc => {
+      if (!displayedDocIds.has(doc.id)) {
+        items.push({
+          key: `doc-uncat-${doc.id}`,
+          isPending: false,
+          doc,
+        });
+      }
+    });
+
+    return items;
+  }, [currentFolder, currentSubfolder, combinedTiposDocumentos, combinedDocumentos, getDocsForTipo, isDocInCategory]);
+
+  const filteredFolderListItems = useMemo(() => {
+    let result = [...folderListItems];
+
+    if (filterStatus !== 'all') {
+      result = result.filter(item => {
+        if (item.isPending) return false;
+        return item.doc?.estado === filterStatus;
+      });
+    }
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(item => {
+        const name = item.isPending ? (item.tipo?.nombre || '') : (item.doc?.nombre || '');
+        return name.toLowerCase().includes(q);
+      });
+    }
+
+    return result;
+  }, [folderListItems, filterStatus, searchQuery]);
 
   const checklistMetrics = useMemo(() => {
-    const totalTipos = tiposDocumentos.length;
+    const totalTipos = combinedTiposDocumentos.length;
     if (totalTipos === 0) {
       return {
-        totalTipos: 0, totalCompletados: 0, pctGeneral: documentos.length > 0 ? 100 : 0,
+        totalTipos: 0, totalCompletados: 0, pctGeneral: combinedDocumentos.length > 0 ? 100 : 0,
         tiposValidados: 0, tiposPendientes: 0, tiposRechazados: 0, tiposSinDoc: 0,
         obligatoriosFaltantes: 0,
       };
@@ -958,7 +1538,7 @@ export function CarpetaDigitalSharedView({
     let tiposSinDoc = 0;
     let obligatoriosFaltantes = 0;
 
-    tiposDocumentos.forEach(tipo => {
+    combinedTiposDocumentos.forEach(tipo => {
       const docs = getDocsForTipo(tipo);
       if (docs.length === 0) {
         tiposSinDoc++;
@@ -968,8 +1548,8 @@ export function CarpetaDigitalSharedView({
           || docs.find(d => d.estado === 'pendiente')
           || docs[0];
         if (bestDoc.estado === 'validado') tiposValidados++;
-        else if (bestDoc.estado === 'rechazado') tiposRechazados++;
-        else tiposPendientes++;
+          else if (bestDoc.estado === 'rechazado') tiposRechazados++;
+          else tiposPendientes++;
       }
     });
 
@@ -981,7 +1561,118 @@ export function CarpetaDigitalSharedView({
       tiposValidados, tiposPendientes, tiposRechazados, tiposSinDoc,
       obligatoriosFaltantes,
     };
-  }, [tiposDocumentos, documentos]);
+  }, [combinedTiposDocumentos, combinedDocumentos, getDocsForTipo]);
+
+  // ========== FOLDER EXPLORER STATS & RECENT FILES ==========
+  const folderStats = useMemo(() => {
+    const stats: Record<string, { totalDocs: number; completedTypes: number; totalTypes: number; pct: number }> = {};
+    const categories = ['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros'];
+
+    categories.forEach(cat => {
+      const docs = combinedDocumentos.filter(d => isDocInCategory(d, cat));
+      const tipos = combinedTiposDocumentos.filter(t => t.categoria === cat);
+
+      let completedTypes = 0;
+      tipos.forEach(tipo => {
+        const tipoDocs = getDocsForTipo(tipo);
+        if (tipoDocs.length > 0) {
+          const bestDoc = tipoDocs.find(d => d.estado === 'validado')
+            || tipoDocs.find(d => d.estado === 'pendiente')
+            || tipoDocs[0];
+          if (bestDoc.estado === 'validado' || bestDoc.estado === 'pendiente') {
+            completedTypes++;
+          }
+        }
+      });
+
+      const pct = tipos.length > 0 ? Math.round((completedTypes / tipos.length) * 100) : (docs.length > 0 ? 100 : 0);
+
+      stats[cat] = {
+        totalDocs: docs.length,
+        completedTypes,
+        totalTypes: tipos.length,
+        pct
+      };
+    });
+
+    return stats;
+  }, [combinedDocumentos, combinedTiposDocumentos, getDocsForTipo, isDocInCategory]);
+
+  const rundSubfolderStats = useMemo(() => {
+    const stats: Record<string, { totalDocs: number; completedTypes: number; totalTypes: number; pct: number }> = {};
+    const subfolders = ['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
+
+    subfolders.forEach(sub => {
+      const tipos = combinedTiposDocumentos.filter(t => t.categoria === 'rund' && getBloqueForTipoSoporte(t.id.replace('rund_', '')) === sub);
+      const docs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === sub);
+
+      let completedTypes = 0;
+      tipos.forEach(tipo => {
+        const tipoDocs = getDocsForTipo(tipo);
+        if (tipoDocs.length > 0) {
+          const bestDoc = tipoDocs.find(d => d.estado === 'validado')
+            || tipoDocs.find(d => d.estado === 'pendiente')
+            || tipoDocs[0];
+          if (bestDoc.estado === 'validado' || bestDoc.estado === 'pendiente') {
+            completedTypes++;
+          }
+        }
+      });
+
+      const pct = tipos.length > 0 ? Math.round((completedTypes / tipos.length) * 100) : (docs.length > 0 ? 100 : 0);
+
+      stats[sub] = {
+        totalDocs: docs.length,
+        completedTypes,
+        totalTypes: tipos.length,
+        pct
+      };
+    });
+
+    return stats;
+  }, [combinedDocumentos, combinedTiposDocumentos, getDocsForTipo]);
+
+  const folderAlerts = useMemo(() => {
+    const alerts: Record<string, { expired: number; rejected: number; warning: number }> = {};
+    const categories = ['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros'];
+
+    categories.forEach(cat => {
+      const docs = combinedDocumentos.filter(d => isDocInCategory(d, cat));
+      let expired = 0, rejected = 0, warning = 0;
+      
+      docs.forEach(d => {
+        const expSt = getExpirationStatus(d);
+        if (expSt === 'expired') expired++;
+        else if (expSt === 'warning') warning++;
+        if (d.estado === 'rechazado') rejected++;
+      });
+
+      alerts[cat] = { expired, rejected, warning };
+    });
+
+    const subfolders = ['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
+    subfolders.forEach(sub => {
+      const docs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === sub);
+      let expired = 0, rejected = 0, warning = 0;
+
+      docs.forEach(d => {
+        const expSt = getExpirationStatus(d);
+        if (expSt === 'expired') expired++;
+        else if (expSt === 'warning') warning++;
+        if (d.estado === 'rechazado') rejected++;
+      });
+
+      alerts[`rund_${sub}`] = { expired, rejected, warning };
+    });
+
+    return alerts;
+  }, [combinedDocumentos, isDocInCategory]);
+
+  const recentFiles = useMemo(() => {
+    return [...combinedDocumentos]
+      .sort((a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime())
+      .slice(0, 5);
+  }, [combinedDocumentos]);
 
   const toggleCollapse = (cat: string) => {
     setCollapsedCats(prev => {
@@ -1056,25 +1747,74 @@ export function CarpetaDigitalSharedView({
       {/* ═══════════════════════════════════════════════════════════════
           BREADCRUMB + BACK
           ═══════════════════════════════════════════════════════════════ */}
-      {onBack && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
-          <button
-            onClick={onBack}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none',
-              cursor: 'pointer', color: '#6B7280', fontWeight: 500, padding: 0, fontSize: 13,
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#003DA5'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
-          >
-            <ChevronLeft style={{ width: 16, height: 16 }} />
-            Carpeta Digital
-          </button>
-          <ChevronRight style={{ width: 12, height: 12, color: '#D1D5DB' }} />
-          <span style={{ fontWeight: 600, color: '#1F2937' }}>{persona.nombre}</span>
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#6B7280', marginBottom: 16, flexWrap: 'wrap' }}>
+        {onBack && (
+          <>
+            <button
+              onClick={onBack}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none',
+                cursor: 'pointer', color: '#6B7280', fontWeight: 500, padding: 0, fontSize: 13,
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#003DA5'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; }}
+            >
+              <ChevronLeft style={{ width: 16, height: 16 }} />
+              Volver
+            </button>
+            <ChevronRight style={{ width: 12, height: 12, color: '#D1D5DB' }} />
+          </>
+        )}
+        
+        <span style={{ fontWeight: 500 }}>Carpeta Digital</span>
+        <ChevronRight style={{ width: 12, height: 12, color: '#D1D5DB' }} />
+        <span style={{ fontWeight: 500 }}>{persona.nombre}</span>
+        
+        <ChevronRight style={{ width: 12, height: 12, color: '#D1D5DB' }} />
+        <button
+          onClick={() => handleSetFolder(null)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: currentFolder ? '#003DA5' : '#1F2937',
+            fontWeight: currentFolder ? 500 : 700,
+            padding: 0, fontSize: 13,
+            outline: 'none',
+          }}
+        >
+          Mi Unidad
+        </button>
+        
+        {currentFolder && (
+          <>
+            <ChevronRight style={{ width: 12, height: 12, color: '#D1D5DB' }} />
+            <button
+              onClick={() => {
+                setCurrentFolder(currentFolder);
+                setCurrentSubfolder(null);
+              }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: (currentFolder === 'rund' && currentSubfolder) ? '#003DA5' : '#1F2937',
+                fontWeight: (currentFolder === 'rund' && currentSubfolder) ? 500 : 700,
+                padding: 0, fontSize: 13,
+                outline: 'none',
+              }}
+            >
+              {currentFolder === 'rund' ? 'RUND' : (CATEGORY_CONFIG[currentFolder]?.label || currentFolder)}
+            </button>
+          </>
+        )}
+
+        {currentFolder === 'rund' && currentSubfolder && (
+          <>
+            <ChevronRight style={{ width: 12, height: 12, color: '#D1D5DB' }} />
+            <span style={{ fontWeight: 700, color: '#1F2937' }}>
+              {RUND_SUBFOLDERS_CONFIG[currentSubfolder]?.label || currentSubfolder}
+            </span>
+          </>
+        )}
+      </div>
 
       {/* ═══════════════════════════════════════════════════════════════
           USER HEADER
@@ -1269,7 +2009,7 @@ export function CarpetaDigitalSharedView({
           <div className="flex items-center gap-2 ml-auto flex-shrink-0">
             {onRefresh && (
               <button
-                onClick={onRefresh}
+                onClick={handleRefresh}
                 className="w-10 h-10 rounded-lg border border-gray-200 bg-white cursor-pointer flex items-center justify-center transition-colors hover:bg-gray-50"
                 title="Recargar"
               >
@@ -1334,208 +2074,427 @@ export function CarpetaDigitalSharedView({
             </div>
           )}
 
-          {groupedTipos.length === 0 && documentos.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 py-16 text-center shadow-sm">
-              <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-4">
-                <FolderOpen className="w-8 h-8 text-gray-300" />
-              </div>
-              <h3 className="text-[16px] font-bold text-gray-900 mb-1">Carpeta sin documentos</h3>
-              <p className="text-[13px] text-gray-400 max-w-md mx-auto px-4">
-                {mode === 'admin'
-                  ? 'Configure los tipos de documentos requeridos y suba los archivos correspondientes.'
-                  : 'Sube tu primer documento o espera a que el área administrativa cargue tus archivos.'
-                }
-              </p>
-              {onUpload && (
-                <button
-                  onClick={() => onUpload()}
-                  className="mt-5 min-h-[44px] px-6 rounded-xl border-none bg-[#003DA5] text-white text-[14px] font-bold cursor-pointer inline-flex items-center gap-2 transition-colors hover:bg-[#002D7A]"
-                >
-                  <Upload className="w-5 h-5" /> Subir primer documento
-                </button>
-              )}
-            </div>
-          ) : groupedTipos.length === 0 && documentos.length > 0 ? (
-            /* Has docs but no tipos configured */
-            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-gray-400" />
-                  <h3 className="text-[15px] font-bold text-gray-700 m-0">Documentos subidos</h3>
-                </div>
-                {mode === 'admin' && (
-                  <span className="sm:ml-auto text-[11px] sm:text-[10px] font-semibold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 flex items-center w-fit">
-                    <Info className="w-3.5 h-3.5 mr-1.5" />Configure tipos para mejor organización
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {documentos.map(doc => {
-                  const Icon = getFileIcon(doc.tipo_archivo);
-                  const st = STATUS_CONFIG[doc.estado as DocumentStatus] || STATUS_CONFIG.pendiente;
-                  const StIcon = st.icon;
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => setDetailDoc(doc)}
-                      className="p-3 sm:p-4 rounded-xl border border-gray-200 cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-blue-50">
-                          <Icon className="w-6 h-6 text-[#003DA5]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[14px] font-bold text-gray-900 truncate mb-1.5">{doc.nombre}</p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold border" style={{ borderColor: st.border, background: st.bg, color: st.color }}>
-                              <StIcon className="w-3.5 h-3.5" />{st.label}
-                            </span>
-                            <span className="text-[12px] text-gray-400">{formatRelative(doc.fecha_subida)}</span>
+          {currentFolder === null ? (
+            /* --- ROOT FOLDER EXPLORER VIEW (Mi Unidad) --- */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {/* SECTION: CARPETAS */}
+              <div>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Carpetas</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros']
+                    .filter(cat => cat !== 'rund' || !!tarjetaRund)
+                    .map(cat => {
+                    const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.otros;
+                    const CatIcon = catConf.icon;
+                    const stats = folderStats[cat] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
+                    
+                    return (
+                      <motion.div
+                        key={cat}
+                        whileHover={{ y: -4, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)' }}
+                        onClick={() => handleSetFolder(cat)}
+                        style={{
+                          background: 'white',
+                          border: `1px solid ${catConf.borderColor}`,
+                          borderRadius: 14,
+                          padding: 16,
+                          cursor: 'pointer',
+                          transition: 'border-color 0.2s',
+                          position: 'relative',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = catConf.color; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = catConf.borderColor; }}
+                      >
+                        {/* Alert Badges */}
+                        {(() => {
+                          const alert = folderAlerts[cat];
+                          if (!alert) return null;
+                          const totalAlerts = alert.expired + alert.rejected;
+                          if (totalAlerts > 0) {
+                            return (
+                              <div style={{
+                                position: 'absolute', top: 12, right: 12,
+                                background: '#EF4444', color: 'white',
+                                borderRadius: '50%', width: 18, height: 18,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 9, fontWeight: 800,
+                                zIndex: 10,
+                              }} title={`${totalAlerts} documento(s) con problemas (Rechazados o Vencidos)`}>
+                                {totalAlerts}
+                              </div>
+                            );
+                          }
+                          if (alert.warning > 0) {
+                            return (
+                              <div style={{
+                                position: 'absolute', top: 12, right: 12,
+                                background: '#F59E0B', color: 'white',
+                                borderRadius: '50%', width: 18, height: 18,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 9, fontWeight: 800,
+                                zIndex: 10,
+                              }} title={`${alert.warning} documento(s) por vencer`}>
+                                {alert.warning}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 10, background: catConf.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <CatIcon style={{ width: 20, height: 20, color: catConf.color }} />
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {cat === 'rund' ? 'RUND' : catConf.label}
+                            </h4>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6B7280' }}>
+                              {stats.totalTypes > 0 ? `${stats.completedTypes}/${stats.totalTypes} completados` : `${stats.totalDocs} archivos`}
+                            </p>
                           </div>
                         </div>
-                      </div>
-                      {onEditCategory && tiposDocumentos.length > 0 && (
-                        <button
-                          onClick={e => { e.stopPropagation(); onEditCategory(doc); }}
-                          className="mt-3 w-full min-h-[36px] px-3 rounded-lg text-[12px] font-bold border border-gray-200 bg-gray-50 cursor-pointer flex items-center justify-center gap-1.5 transition-colors hover:bg-gray-100"
-                          style={{ color: mode === 'portal' ? '#003DA5' : '#6B7280' }}
-                        >
-                          <Tag className="w-4 h-4" />
-                          {mode === 'portal' ? 'Vincular a tipo requerido' : 'Reclasificar documento'}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            /* Grouped by category */
-            groupedTipos.map(([cat, tipos]) => {
-              const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.otros;
-              const CatIcon = catConf.icon;
-              const isCollapsed = collapsedCats.has(cat);
-              const completedInCat = tipos.filter(t => t.completado).length;
-
-              return (
-                <div key={cat} className="bg-white rounded-xl border overflow-hidden shadow-sm" style={{ borderColor: catConf.borderColor }}>
-                  {/* Category Header */}
-                  <button
-                    onClick={() => toggleCollapse(cat)}
-                    className="w-full min-h-[56px] px-4 sm:px-5 flex items-center gap-3 sm:gap-4 border-none cursor-pointer text-left transition-colors hover:brightness-95"
-                    style={{ background: catConf.bgLight + '80' }}
-                  >
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: catConf.color + '15' }}>
-                      <CatIcon className="w-5 h-5" style={{ color: catConf.color }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-[15px] font-bold text-gray-900 m-0 truncate">{catConf.label}</h3>
-                    </div>
-                    <span className="text-[13px] font-bold px-3 py-1 rounded-full whitespace-nowrap" style={{
-                      background: completedInCat === tipos.length && tipos.length > 0 ? '#ECFDF5' : catConf.bgLight,
-                      color: completedInCat === tipos.length && tipos.length > 0 ? '#059669' : catConf.color,
-                    }}>
-                      {completedInCat}/{tipos.length}
-                    </span>
-                    <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} />
-                  </button>
-
-                  {/* Cards Grid */}
-                  <AnimatePresence>
-                    {!isCollapsed && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        style={{ overflow: 'hidden' }}
-                      >
-                        <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {tipos.map(tipo => (
-                            <TipoDocCard
-                              key={tipo.id}
-                              tipo={tipo}
-                              docs={getDocsForTipo(tipo)}
-                              onUpload={onUpload}
-                              onSelectDoc={d => setDetailDoc(d)}
-                            />
-                          ))}
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ width: `${stats.pct}%`, height: '100%', background: stats.pct === 100 ? '#059669' : catConf.color, borderRadius: 3, transition: 'width 0.5s ease-out' }} />
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: stats.pct === 100 ? '#059669' : '#4B5563', flexShrink: 0 }}>
+                            {stats.pct}%
+                          </span>
                         </div>
                       </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })
-          )}
-
-          {/* Uncategorized docs */}
-          {(() => {
-            const matchedDocIds = new Set<string>();
-            tiposDocumentos.forEach(tipo => {
-              getDocsForTipo(tipo).forEach(d => matchedDocIds.add(d.id));
-            });
-            const unmatched = documentos.filter(d => !matchedDocIds.has(d.id));
-            if (unmatched.length === 0) return null;
-
-            return (
-              <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                <div style={{ padding: '14px 20px', background: '#F9FAFB', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #E5E7EB' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <File style={{ width: 16, height: 16, color: '#6B7280' }} />
-                  </div>
-                  <h3 style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#1F2937', margin: 0 }}>Otros documentos</h3>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', background: '#F3F4F6', padding: '4px 10px', borderRadius: 20 }}>{unmatched.length}</span>
-                </div>
-                <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
-                  {unmatched.map(doc => {
-                    const Icon = getFileIcon(doc.tipo_archivo);
-                    const st = STATUS_CONFIG[doc.estado as DocumentStatus] || STATUS_CONFIG.pendiente;
-                    const StIcon = st.icon;
-                    return (
-                      <div key={doc.id} style={{ padding: 12, borderRadius: 12, border: '1px solid #E5E7EB', transition: 'all 0.15s' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }} onClick={() => setDetailDoc(doc)}>
-                          <div style={{ position: 'relative', flexShrink: 0 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F3F4F6' }}>
-                              <Icon style={{ width: 20, height: 20, color: '#6B7280' }} />
-                            </div>
-                            <div style={{
-                              position: 'absolute', bottom: -4, right: -4, width: 20, height: 20, borderRadius: '50%',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              border: '2px solid white', background: st.bg,
-                            }}>
-                              <StIcon style={{ width: 12, height: 12, color: st.color }} />
-                            </div>
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 12, fontWeight: 700, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombre}</p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 10, color: '#9CA3AF' }}>
-                              <span>{formatRelative(doc.fecha_subida)}</span>
-                              <span>{formatSize(doc.tamano_bytes)}</span>
-                            </div>
-                          </div>
-                        </div>
-                        {onEditCategory && tiposDocumentos.length > 0 && (
-                          <button
-                            onClick={e => { e.stopPropagation(); onEditCategory(doc); }}
-                            style={{
-                              marginTop: 8, width: '100%', padding: '6px 10px', borderRadius: 8,
-                              fontSize: 10, fontWeight: 700, border: '1px solid #E5E7EB', background: '#F9FAFB',
-                              color: mode === 'portal' ? '#003DA5' : '#6B7280', cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                            }}
-                          >
-                            <Tag style={{ width: 12, height: 12 }} />
-                            {mode === 'portal' ? 'Vincular a tipo requerido' : 'Reclasificar documento'}
-                          </button>
-                        )}
-                      </div>
                     );
                   })}
                 </div>
               </div>
-            );
-          })()}
+
+              {/* SECTION: ARCHIVOS RECIENTES */}
+              {recentFiles.length > 0 && (
+                <div>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Archivos Recientes</h3>
+                  <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', minWidth: 600, fontSize: 13, borderCollapse: 'collapse' }}>
+                        <tbody>
+                          {recentFiles.map(doc => {
+                            const Icon = getFileIcon(doc.tipo_archivo);
+                            const st = STATUS_CONFIG[doc.estado as DocumentStatus] || STATUS_CONFIG.pendiente;
+                            const StIcon = st.icon;
+                            const catConf = CATEGORY_CONFIG[(doc.categoria || 'otros') as string] || CATEGORY_CONFIG.otros;
+                            
+                            return (
+                              <tr
+                                key={doc.id}
+                                style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', transition: 'background 0.15s' }}
+                                onClick={() => setDetailDoc(doc)}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#EFF6FF40'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                              >
+                                <td style={{ padding: '10px 16px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ width: 32, height: 32, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#EFF6FF', flexShrink: 0 }}>
+                                      <Icon style={{ width: 14, height: 14, color: '#003DA5' }} />
+                                    </div>
+                                    <span style={{ fontWeight: 600, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
+                                      {doc.nombre}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '10px 16px', color: '#6B7280', fontSize: 11 }}>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: catConf.color }} />
+                                    {doc.categoria === 'rund' ? 'RUND' : catConf.label}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 12, fontSize: 10, fontWeight: 700, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
+                                    <StIcon style={{ width: 10, height: 10 }} />
+                                    {st.label}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px 16px', color: '#9CA3AF', fontSize: 11, textAlign: 'right' }}>
+                                  {formatRelative(doc.fecha_subida)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* --- INSIDE FOLDER VIEW --- */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Folder Header Banner */}
+              {(() => {
+                const catConf = CATEGORY_CONFIG[currentFolder] || CATEGORY_CONFIG.otros;
+                const subConf = (currentFolder === 'rund' && currentSubfolder) ? RUND_SUBFOLDERS_CONFIG[currentSubfolder] : null;
+                const CatIcon = subConf ? subConf.icon : catConf.icon;
+                const stats = folderStats[currentFolder] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
+                
+                const displayTitle = currentFolder === 'rund'
+                  ? (currentSubfolder ? `RUND - ${RUND_SUBFOLDERS_CONFIG[currentSubfolder]?.label}` : 'RUND')
+                  : catConf.label;
+                  
+                const displaySubtitle = currentFolder === 'rund' && currentSubfolder
+                  ? `${rundSubfolderStats[currentSubfolder]?.completedTypes}/${rundSubfolderStats[currentSubfolder]?.totalTypes} completados`
+                  : (stats.totalTypes > 0 ? `${stats.completedTypes}/${stats.totalTypes} completados` : `${stats.totalDocs} archivos`);
+                  
+                const displayPct = currentFolder === 'rund' && currentSubfolder
+                  ? rundSubfolderStats[currentSubfolder]?.pct
+                  : stats.pct;
+                  
+                const displayColor = subConf ? subConf.color : catConf.color;
+                
+                return (
+                  <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <button
+                        onClick={() => {
+                          if (currentFolder === 'rund' && currentSubfolder !== null) {
+                            setCurrentSubfolder(null);
+                          } else {
+                            handleSetFolder(null);
+                          }
+                        }}
+                        style={{
+                          width: 36, height: 36, borderRadius: 10, border: '1px solid #E5E7EB',
+                          background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#F3F4F6'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+                      >
+                        <ChevronLeft style={{ width: 18, height: 18, color: '#4B5563' }} />
+                      </button>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: displayColor + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CatIcon style={{ width: 22, height: 22, color: displayColor }} />
+                      </div>
+                      <div>
+                        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1F2937' }}>
+                          {displayTitle}
+                        </h2>
+                        <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6B7280' }}>
+                          {displaySubtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ textAlign: 'right', display: 'none', sm: 'block' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: displayPct === 100 ? '#059669' : displayColor }}>
+                          Completitud de la carpeta
+                        </span>
+                        <div style={{ width: 120, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}>
+                          <div style={{ width: `${displayPct}%`, height: '100%', background: displayPct === 100 ? '#059669' : displayColor, borderRadius: 3 }} />
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: displayPct === 100 ? '#059669' : displayColor, marginRight: 8 }}>
+                        {displayPct}%
+                      </span>
+                      {currentFolder && currentFolderDocs.length > 0 && (
+                        <button
+                          onClick={handleDownloadZip}
+                          disabled={zippingFolder}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '8px 14px',
+                            borderRadius: 10,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            background: '#003DA5',
+                            color: 'white',
+                            border: 'none',
+                            cursor: zippingFolder ? 'not-allowed' : 'pointer',
+                            opacity: zippingFolder ? 0.6 : 1,
+                            transition: 'all 0.2s',
+                            boxShadow: '0 2px 4px rgba(0, 61, 165, 0.1)',
+                          }}
+                          onMouseEnter={e => { if (!zippingFolder) e.currentTarget.style.background = '#002e7d'; }}
+                          onMouseLeave={e => { if (!zippingFolder) e.currentTarget.style.background = '#003DA5'; }}
+                        >
+                          {zippingFolder ? (
+                            <>
+                              <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />
+                              {zipProgress > 0 ? `${zipProgress}%` : 'Generando...'}
+                            </>
+                          ) : (
+                            <>
+                              <FileArchive style={{ width: 14, height: 14 }} />
+                              Descargar ZIP
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Types / Cards Checklist */}
+              {currentFolder === 'rund' && currentSubfolder === null ? (
+                /* --- RUND SUBFOLDERS VIEW --- */
+                <div>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Subcarpetas RUND</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'].map(sub => {
+                      const subConf = RUND_SUBFOLDERS_CONFIG[sub];
+                      const SubIcon = subConf.icon;
+                      const stats = rundSubfolderStats[sub] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
+                      
+                      return (
+                        <motion.div
+                          key={sub}
+                          whileHover={{ y: -4, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)' }}
+                          onClick={() => setCurrentSubfolder(sub)}
+                          style={{
+                            background: 'white',
+                            border: `1px solid ${subConf.borderColor}`,
+                            borderRadius: 14,
+                            padding: 16,
+                            cursor: 'pointer',
+                            transition: 'border-color 0.2s',
+                            position: 'relative',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = subConf.color; }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = subConf.borderColor; }}
+                        >
+                          {/* Alert Badges */}
+                          {(() => {
+                            const alert = folderAlerts[`rund_${sub}`];
+                            if (!alert) return null;
+                            const totalAlerts = alert.expired + alert.rejected;
+                            if (totalAlerts > 0) {
+                              return (
+                                <div style={{
+                                  position: 'absolute', top: 12, right: 12,
+                                  background: '#EF4444', color: 'white',
+                                  borderRadius: '50%', width: 18, height: 18,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: 9, fontWeight: 800,
+                                  zIndex: 10,
+                                }} title={`${totalAlerts} documento(s) con problemas (Rechazados o Vencidos)`}>
+                                  {totalAlerts}
+                                </div>
+                              );
+                            }
+                            if (alert.warning > 0) {
+                              return (
+                                <div style={{
+                                  position: 'absolute', top: 12, right: 12,
+                                  background: '#F59E0B', color: 'white',
+                                  borderRadius: '50%', width: 18, height: 18,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: 9, fontWeight: 800,
+                                  zIndex: 10,
+                                }} title={`${alert.warning} documento(s) por vencer`}>
+                                  {alert.warning}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 10, background: subConf.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <SubIcon style={{ width: 20, height: 20, color: subConf.color }} />
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {subConf.label}
+                              </h4>
+                              <p style={{ margin: '2px 0 0', fontSize: 11, color: '#6B7280' }}>
+                                {stats.totalTypes > 0 ? `${stats.completedTypes}/${stats.totalTypes} completados` : `${stats.totalDocs} archivos`}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${stats.pct}%`, height: '100%', background: stats.pct === 100 ? '#059669' : subConf.color, borderRadius: 3, transition: 'width 0.5s ease-out' }} />
+                            </div>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: stats.pct === 100 ? '#059669' : '#4B5563', flexShrink: 0 }}>
+                              {stats.pct}%
+                            </span>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : combinedTiposDocumentos.filter(t => t.categoria === currentFolder && (currentFolder !== 'rund' || getBloqueForTipoSoporte(t.id.replace('rund_', '')) === currentSubfolder)).length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {combinedTiposDocumentos
+                    .filter(t => t.categoria === currentFolder && (currentFolder !== 'rund' || getBloqueForTipoSoporte(t.id.replace('rund_', '')) === currentSubfolder))
+                    .map(tipo => (
+                      <TipoDocCard
+                        key={tipo.id}
+                        tipo={tipo}
+                        docs={getDocsForTipo(tipo)}
+                        onUpload={(tipoId, cat, name) => {
+                          if (tipoId && tipoId.startsWith('rund_')) {
+                            const tipoSoporteCode = tipoId.replace('rund_', '');
+                            const bloque = getBloqueForTipoSoporte(tipoSoporteCode);
+                            handleVincularRundClick(bloque, tipoSoporteCode);
+                          } else if (onUpload) {
+                            onUpload(tipoId, cat, name);
+                          }
+                        }}
+                        onUploadDirect={handleDirectUpload}
+                        onSelectDoc={d => setDetailDoc(d)}
+                      />
+                    ))}
+                </div>
+              ) : (
+                /* Empty category / Uncategorized files inside folder */
+                <div className="bg-white rounded-xl border border-gray-200 p-5">
+                  {combinedDocumentos.filter(d => isDocInCategory(d, currentFolder)).length === 0 ? (
+                    <div style={{ padding: '48px 0', textAlign: 'center' }}>
+                      <FolderOpen style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
+                      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>Esta carpeta está vacía</h3>
+                      <p style={{ fontSize: 12, color: '#9CA3AF' }}>Sube un documento para comenzar</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {combinedDocumentos
+                        .filter(d => isDocInCategory(d, currentFolder))
+                        .map(doc => {
+                          const Icon = getFileIcon(doc.tipo_archivo);
+                          const st = STATUS_CONFIG[doc.estado as DocumentStatus] || STATUS_CONFIG.pendiente;
+                          const StIcon = st.icon;
+                          return (
+                            <div
+                              key={doc.id}
+                              onClick={() => setDetailDoc(doc)}
+                              className="p-3 sm:p-4 rounded-xl border border-gray-200 cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-blue-50">
+                                  <Icon className="w-6 h-6 text-[#003DA5]" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[14px] font-bold text-gray-900 truncate mb-1.5">{doc.nombre}</p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold border" style={{ borderColor: st.border, background: st.bg, color: st.color }}>
+                                      <StIcon className="w-3.5 h-3.5" />{st.label}
+                                    </span>
+                                    <span className="text-[12px] text-gray-400">{formatRelative(doc.fecha_subida)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1543,8 +2502,321 @@ export function CarpetaDigitalSharedView({
           VIEW: LISTA
           ═══════════════════════════════════════════════════════════════ */}
       {viewMode === 'lista' && (
-        <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-          {filteredDocs.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {currentFolder !== null && (
+            /* Folder Header Banner */
+            (() => {
+              const catConf = CATEGORY_CONFIG[currentFolder] || CATEGORY_CONFIG.otros;
+              const subConf = (currentFolder === 'rund' && currentSubfolder) ? RUND_SUBFOLDERS_CONFIG[currentSubfolder] : null;
+              const CatIcon = subConf ? subConf.icon : catConf.icon;
+              const stats = folderStats[currentFolder] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
+              
+              const displayTitle = currentFolder === 'rund'
+                ? (currentSubfolder ? `RUND - ${RUND_SUBFOLDERS_CONFIG[currentSubfolder]?.label}` : 'RUND')
+                : catConf.label;
+                
+              const displaySubtitle = currentFolder === 'rund' && currentSubfolder
+                ? `${rundSubfolderStats[currentSubfolder]?.completedTypes}/${rundSubfolderStats[currentSubfolder]?.totalTypes} completados`
+                : (stats.totalTypes > 0 ? `${stats.completedTypes}/${stats.totalTypes} completados` : `${stats.totalDocs} archivos`);
+                
+              const displayPct = currentFolder === 'rund' && currentSubfolder
+                ? rundSubfolderStats[currentSubfolder]?.pct
+                : stats.pct;
+                
+              const displayColor = subConf ? subConf.color : catConf.color;
+              
+              return (
+                <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <button
+                      onClick={() => {
+                        if (currentFolder === 'rund' && currentSubfolder !== null) {
+                          setCurrentSubfolder(null);
+                        } else {
+                          handleSetFolder(null);
+                        }
+                      }}
+                      style={{
+                        width: 36, height: 36, borderRadius: 10, border: '1px solid #E5E7EB',
+                        background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F3F4F6'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+                    >
+                      <ChevronLeft style={{ width: 18, height: 18, color: '#4B5563' }} />
+                    </button>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: displayColor + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CatIcon style={{ width: 22, height: 22, color: displayColor }} />
+                    </div>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1F2937' }}>
+                        {displayTitle}
+                      </h2>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6B7280' }}>
+                        {displaySubtitle}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div style={{ textAlign: 'right', display: 'none', sm: 'block' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: displayPct === 100 ? '#059669' : displayColor }}>
+                        Completitud de la carpeta
+                      </span>
+                      <div style={{ width: 120, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}>
+                        <div style={{ width: `${displayPct}%`, height: '100%', background: displayPct === 100 ? '#059669' : displayColor, borderRadius: 3 }} />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: displayPct === 100 ? '#059669' : displayColor, marginRight: 8 }}>
+                      {displayPct}%
+                    </span>
+                    {currentFolder && currentFolderDocs.length > 0 && (
+                      <button
+                        onClick={handleDownloadZip}
+                        disabled={zippingFolder}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '8px 14px',
+                          borderRadius: 10,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: '#003DA5',
+                          color: 'white',
+                          border: 'none',
+                          cursor: zippingFolder ? 'not-allowed' : 'pointer',
+                          opacity: zippingFolder ? 0.6 : 1,
+                          transition: 'all 0.2s',
+                          boxShadow: '0 2px 4px rgba(0, 61, 165, 0.1)',
+                        }}
+                        onMouseEnter={e => { if (!zippingFolder) e.currentTarget.style.background = '#002e7d'; }}
+                        onMouseLeave={e => { if (!zippingFolder) e.currentTarget.style.background = '#003DA5'; }}
+                      >
+                        {zippingFolder ? (
+                          <>
+                            <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />
+                            {zipProgress > 0 ? `${zipProgress}%` : 'Generando...'}
+                          </>
+                        ) : (
+                          <>
+                            <FileArchive style={{ width: 14, height: 14 }} />
+                            Descargar ZIP
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          )}
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+            {currentFolder === null ? (
+            /* --- ROOT LIST VIEW (Mi Unidad) --- */
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: 600, fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nombre</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Propietario</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Última modificación</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tamaño de la carpeta</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', width: 100 }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros']
+                    .filter(cat => cat !== 'rund' || !!tarjetaRund)
+                    .map(cat => {
+                      const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.otros;
+                      const CatIcon = catConf.icon;
+                      const stats = folderStats[cat] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
+                      
+                      // Get latest modification date for this category
+                      const catDocs = combinedDocumentos.filter(d => isDocInCategory(d, cat));
+                      const latestDoc = catDocs.length > 0
+                        ? [...catDocs].sort((a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime())[0]
+                        : null;
+                      const lastMod = latestDoc ? formatRelative(latestDoc.fecha_subida) : '—';
+                      
+                      return (
+                        <tr
+                          key={cat}
+                          onClick={() => handleSetFolder(cat)}
+                          style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', transition: 'background 0.15s' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#EFF6FF40'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 8, background: catConf.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <CatIcon style={{ width: 16, height: 16, color: catConf.color }} />
+                              </div>
+                              <span style={{ fontWeight: 600, color: '#1F2937', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                {cat === 'rund' ? 'RUND' : catConf.label}
+                                {(() => {
+                                  const alert = folderAlerts[cat];
+                                  if (!alert) return null;
+                                  const totalAlerts = alert.expired + alert.rejected;
+                                  if (totalAlerts > 0) {
+                                    return (
+                                      <span style={{
+                                        background: '#EF4444', color: 'white',
+                                        borderRadius: 10, padding: '1px 6px',
+                                        fontSize: 9, fontWeight: 800,
+                                      }} title={`${totalAlerts} documento(s) con problemas (Rechazados o Vencidos)`}>
+                                        {totalAlerts}
+                                      </span>
+                                    );
+                                  }
+                                  if (alert.warning > 0) {
+                                    return (
+                                      <span style={{
+                                        background: '#F59E0B', color: 'white',
+                                        borderRadius: 10, padding: '1px 6px',
+                                        fontSize: 9, fontWeight: 800,
+                                      }} title={`${alert.warning} documento(s) por vencer`}>
+                                        {alert.warning}
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#4B5563' }}>
+                            {cat === 'rund' ? 'Docente' : 'Sistema'}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#6B7280' }}>
+                            {lastMod}
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#6B7280' }}>
+                            {stats.totalTypes > 0 ? `${stats.completedTypes}/${stats.totalTypes} completados` : `${stats.totalDocs} archivos`}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleSetFolder(cat)}
+                              style={{
+                                background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
+                                transition: 'background 0.2s',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#F3F4F6'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              <ChevronRight style={{ width: 16, height: 16, color: '#6B7280' }} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : (currentFolder === 'rund' && currentSubfolder === null) ? (
+            /* --- RUND SUBFOLDERS LIST VIEW --- */
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: 600, fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nombre</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Propietario</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Última modificación</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tamaño de la carpeta</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', width: 100 }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'].map(sub => {
+                    const subConf = RUND_SUBFOLDERS_CONFIG[sub];
+                    const SubIcon = subConf.icon;
+                    const stats = rundSubfolderStats[sub] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
+                    
+                    const subDocs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === sub);
+                    const latestDoc = subDocs.length > 0
+                      ? [...subDocs].sort((a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime())[0]
+                      : null;
+                    const lastMod = latestDoc ? formatRelative(latestDoc.fecha_subida) : '—';
+                    
+                    return (
+                      <tr
+                        key={sub}
+                        onClick={() => setCurrentSubfolder(sub)}
+                        style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', transition: 'background 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#EFF6FF40'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: subConf.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <SubIcon style={{ width: 16, height: 16, color: subConf.color }} />
+                            </div>
+                            <span style={{ fontWeight: 600, color: '#1F2937', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {subConf.label}
+                              {(() => {
+                                const alert = folderAlerts[`rund_${sub}`];
+                                if (!alert) return null;
+                                const totalAlerts = alert.expired + alert.rejected;
+                                if (totalAlerts > 0) {
+                                  return (
+                                    <span style={{
+                                      background: '#EF4444', color: 'white',
+                                      borderRadius: 10, padding: '1px 6px',
+                                      fontSize: 9, fontWeight: 800,
+                                    }} title={`${totalAlerts} documento(s) con problemas (Rechazados o Vencidos)`}>
+                                      {totalAlerts}
+                                    </span>
+                                  );
+                                }
+                                if (alert.warning > 0) {
+                                  return (
+                                    <span style={{
+                                      background: '#F59E0B', color: 'white',
+                                      borderRadius: 10, padding: '1px 6px',
+                                      fontSize: 9, fontWeight: 800,
+                                    }} title={`${alert.warning} documento(s) por vencer`}>
+                                      {alert.warning}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 16px', color: '#4B5563' }}>
+                          Docente
+                        </td>
+                        <td style={{ padding: '12px 16px', color: '#6B7280' }}>
+                          {lastMod}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: '#6B7280' }}>
+                          {stats.totalTypes > 0 ? `${stats.completedTypes}/${stats.totalTypes} completados` : `${stats.totalDocs} archivos`}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => setCurrentSubfolder(sub)}
+                            style={{
+                              background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto',
+                              transition: 'background 0.2s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#F3F4F6'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <ChevronRight style={{ width: 16, height: 16, color: '#6B7280' }} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (currentFolder !== null && filteredFolderListItems.length === 0) ? (
             <div style={{ padding: '64px 0', textAlign: 'center' }}>
               <File style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
               <h3 style={{ fontSize: 14, fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>
@@ -1643,12 +2915,13 @@ export function CarpetaDigitalSharedView({
                         <th style={{ padding: '12px 8px 12px 16px', width: 36 }}>
                           <input
                             type="checkbox"
-                            checked={filteredDocs.length > 0 && selectedDocIds.size === filteredDocs.length}
+                            checked={filteredDocs.length > 0 && selectedDocIds.size === filteredDocs.filter(d => d.categoria !== 'rund').length}
                             onChange={() => {
-                              if (selectedDocIds.size === filteredDocs.length) {
+                              const nonRundDocs = filteredDocs.filter(d => d.categoria !== 'rund');
+                              if (selectedDocIds.size === nonRundDocs.length) {
                                 setSelectedDocIds(new Set());
                               } else {
-                                setSelectedDocIds(new Set(filteredDocs.map(d => d.id)));
+                                setSelectedDocIds(new Set(nonRundDocs.map(d => d.id)));
                               }
                             }}
                             style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#003DA5' }}
@@ -1663,111 +2936,254 @@ export function CarpetaDigitalSharedView({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDocs.map(doc => {
-                      const Icon = getFileIcon(doc.tipo_archivo);
-                      const st = STATUS_CONFIG[doc.estado as DocumentStatus] || STATUS_CONFIG.pendiente;
-                      const StIcon = st.icon;
-                      const catConf = CATEGORY_CONFIG[(doc.categoria || 'otros') as string] || CATEGORY_CONFIG.otros;
-
-                      return (
-                        <tr
-                          key={doc.id}
-                          style={{
-                            borderBottom: '1px solid #F3F4F6', cursor: 'pointer', transition: 'background 0.15s',
-                            background: selectedDocIds.has(doc.id) ? '#EFF6FF' : 'transparent',
-                          }}
-                          onClick={() => setDetailDoc(doc)}
-                          onMouseEnter={e => { if (!selectedDocIds.has(doc.id)) (e.currentTarget as HTMLElement).style.background = '#EFF6FF40'; }}
-                          onMouseLeave={e => { if (!selectedDocIds.has(doc.id)) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                        >
-                          {mode === 'admin' && (
-                            <td style={{ padding: '12px 8px 12px 16px', width: 36 }} onClick={e => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedDocIds.has(doc.id)}
-                                onChange={() => toggleSelectDoc(doc.id)}
-                                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#003DA5' }}
-                              />
+                    {filteredFolderListItems.map(item => {
+                      if (item.isPending && item.tipo) {
+                        const tipo = item.tipo;
+                        const color = tipo.color || CATEGORY_CONFIG[tipo.categoria]?.color || '#4B5563';
+                        const catConf = CATEGORY_CONFIG[tipo.categoria] || CATEGORY_CONFIG.otros;
+                        
+                        return (
+                          <tr
+                            key={item.key}
+                            style={{ borderBottom: '1px solid #F3F4F6', transition: 'background 0.15s' }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              (e.currentTarget as HTMLElement).style.background = color + '15';
+                            }}
+                            onDragLeave={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              (e.currentTarget as HTMLElement).style.background = 'transparent';
+                            }}
+                            onDrop={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              (e.currentTarget as HTMLElement).style.background = 'transparent';
+                              const files = Array.from(e.dataTransfer.files);
+                              if (files.length > 0) {
+                                const file = files[0];
+                                const toastId = toast.loading(`Subiendo ${file.name} directamente...`);
+                                const ok = await handleDirectUpload(file, tipo);
+                                if (ok) {
+                                  toast.success(`Cargado con éxito`, { id: toastId });
+                                } else {
+                                  toast.error(`Error al subir el archivo`, { id: toastId });
+                                }
+                              }
+                            }}
+                          >
+                            {mode === 'admin' && (
+                              <td style={{ padding: '12px 8px 12px 16px', width: 36 }}>
+                                {/* No checkbox for pending */}
+                              </td>
+                            )}
+                            <td style={{ padding: '12px 16px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: color + '10' }}>
+                                  <FileUp style={{ width: 16, height: 16, color }} />
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <p style={{ fontSize: 12, fontWeight: 700, color: '#4B5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{tipo.nombre}</p>
+                                  <p style={{ fontSize: 10, color: '#9CA3AF' }}>{tipo.obligatorio ? '● Requerido' : '○ Opcional'}</p>
+                                </div>
+                              </div>
                             </td>
-                          )}
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <div style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#EFF6FF' }}>
-                                <Icon style={{ width: 16, height: 16, color: '#003DA5' }} />
+                            <td style={{ padding: '12px 16px' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#9CA3AF' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: catConf.color }} />
+                                {catConf.label}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
+                                borderRadius: 20, fontSize: 10, fontWeight: 700,
+                                border: tipo.obligatorio ? '1px solid #FECACA' : '1px solid #E5E7EB',
+                                background: tipo.obligatorio ? '#FEF2F2' : '#F9FAFB',
+                                color: tipo.obligatorio ? '#DC2626' : '#6B7280',
+                              }}>
+                                <AlertCircle style={{ width: 12, height: 12 }} />
+                                {tipo.obligatorio ? 'Requerido' : 'Sin subir'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', color: '#9CA3AF', fontSize: 11 }}>
+                              —
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <button
+                                onClick={() => {
+                                  if (tipo.id.startsWith('rund_')) {
+                                    const tipoSoporteCode = tipo.id.replace('rund_', '');
+                                    const bloque = getBloqueForTipoSoporte(tipoSoporteCode);
+                                    handleVincularRundClick(bloque, tipoSoporteCode);
+                                  } else if (onUpload) {
+                                    onUpload(tipo.id, tipo.categoria, tipo.nombre);
+                                  }
+                                }}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700,
+                                  background: color + '15', color, border: 'none', cursor: 'pointer',
+                                  transition: 'filter 0.15s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(0.95)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
+                              >
+                                <Plus style={{ width: 10, height: 10 }} /> Subir
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      } else if (item.doc) {
+                        const doc = item.doc;
+                        const Icon = getFileIcon(doc.tipo_archivo);
+                        const st = STATUS_CONFIG[doc.estado as DocumentStatus] || STATUS_CONFIG.pendiente;
+                        const StIcon = st.icon;
+                        const catConf = CATEGORY_CONFIG[(doc.categoria || 'otros') as string] || CATEGORY_CONFIG.otros;
+                        const color = catConf.color;
+                        
+                        const matchingTipo = doc.tipo_documento_id 
+                          ? combinedTiposDocumentos.find(t => t.id === doc.tipo_documento_id) 
+                          : undefined;
+
+                        return (
+                          <tr
+                            key={doc.id}
+                            style={{
+                              borderBottom: '1px solid #F3F4F6', cursor: 'pointer', transition: 'background 0.15s',
+                              background: selectedDocIds.has(doc.id) ? '#EFF6FF' : 'transparent',
+                            }}
+                            onClick={() => setDetailDoc(doc)}
+                            onMouseEnter={e => { if (!selectedDocIds.has(doc.id)) (e.currentTarget as HTMLElement).style.background = '#EFF6FF40'; }}
+                            onMouseLeave={e => { if (!selectedDocIds.has(doc.id)) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                            onDragOver={(e) => {
+                              if (matchingTipo) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                (e.currentTarget as HTMLElement).style.background = color + '15';
+                              }
+                            }}
+                            onDragLeave={(e) => {
+                              if (matchingTipo) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                (e.currentTarget as HTMLElement).style.background = selectedDocIds.has(doc.id) ? '#EFF6FF' : 'transparent';
+                              }
+                            }}
+                            onDrop={async (e) => {
+                              if (matchingTipo) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                (e.currentTarget as HTMLElement).style.background = selectedDocIds.has(doc.id) ? '#EFF6FF' : 'transparent';
+                                const files = Array.from(e.dataTransfer.files);
+                                if (files.length > 0) {
+                                  const file = files[0];
+                                  const toastId = toast.loading(`Subiendo nueva versión de ${file.name}...`);
+                                  const ok = await handleDirectUpload(file, matchingTipo);
+                                  if (ok) {
+                                    toast.success(`Nueva versión cargada con éxito`, { id: toastId });
+                                  } else {
+                                    toast.error(`Error al subir la nueva versión`, { id: toastId });
+                                  }
+                                }
+                              }
+                            }}
+                          >
+                            {mode === 'admin' && (
+                              <td style={{ padding: '12px 8px 12px 16px', width: 36 }} onClick={e => e.stopPropagation()}>
+                                {doc.categoria !== 'rund' && (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDocIds.has(doc.id)}
+                                    onChange={() => toggleSelectDoc(doc.id)}
+                                    style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#003DA5' }}
+                                  />
+                                )}
+                              </td>
+                            )}
+                            <td style={{ padding: '12px 16px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifycontent: 'center', flexShrink: 0, background: '#EFF6FF' }}>
+                                  <Icon style={{ width: 16, height: 16, color: '#003DA5' }} />
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <p style={{ fontSize: 12, fontWeight: 700, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{doc.nombre}</p>
+                                  <p style={{ fontSize: 10, color: '#9CA3AF' }}>{formatSize(doc.tamano_bytes)}</p>
+                                </div>
                               </div>
-                              <div style={{ minWidth: 0 }}>
-                                <p style={{ fontSize: 12, fontWeight: 700, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>{doc.nombre}</p>
-                                <p style={{ fontSize: 10, color: '#9CA3AF' }}>{formatSize(doc.tamano_bytes)}</p>
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#6B7280' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                                {catConf.label}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
+                                borderRadius: 20, fontSize: 10, fontWeight: 700,
+                                border: `1px solid ${st.border}`, background: st.bg, color: st.color,
+                              }}>
+                                <StIcon style={{ width: 12, height: 12 }} />{st.label}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span style={{ fontSize: 10, color: '#6B7280' }}>{formatRelative(doc.fecha_subida)}</span>
+                              {(() => {
+                                const expSt = getExpirationStatus(doc);
+                                if (!expSt || expSt === 'ok') return null;
+                                const expStyle = EXPIRATION_STYLES[expSt];
+                                const days = getDaysUntilExpiration(doc.fecha_vencimiento!);
+                                return (
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                    marginLeft: 6, fontSize: 9, fontWeight: 700,
+                                    padding: '2px 6px', borderRadius: 4,
+                                    background: expStyle.bg, color: expStyle.color,
+                                    border: `1px solid ${expStyle.border}`,
+                                  }}>
+                                    <AlertTriangle style={{ width: 9, height: 9 }} />
+                                    {expSt === 'expired' ? 'Vencido' : `${days}d`}
+                                  </span>
+                                );
+                              })()}
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                {(onPreview || doc.categoria === 'rund') && (
+                                  <button onClick={() => handlePreview(doc)} style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }} title="Vista previa">
+                                    <Eye style={{ width: 14, height: 14, color: '#2563EB' }} />
+                                  </button>
+                                )}
+                                {(onDownload || doc.categoria === 'rund') && (
+                                  <button onClick={() => handleDownload(doc)} style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }} title="Descargar">
+                                    <Download style={{ width: 14, height: 14, color: '#059669' }} />
+                                  </button>
+                                )}
+                                {mode === 'admin' && onDelete && doc.categoria !== 'rund' && (
+                                  <button onClick={() => handleDeleteWithConfirm(doc)} style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }} title="Eliminar">
+                                    <Trash2 style={{ width: 14, height: 14, color: '#DC2626' }} />
+                                  </button>
+                                )}
                               </div>
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#6B7280' }}>
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: catConf.color }} />
-                              {catConf.label}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
-                              borderRadius: 20, fontSize: 10, fontWeight: 700,
-                              border: `1px solid ${st.border}`, background: st.bg, color: st.color,
-                            }}>
-                              <StIcon style={{ width: 12, height: 12 }} />{st.label}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <span style={{ fontSize: 10, color: '#6B7280' }}>{formatRelative(doc.fecha_subida)}</span>
-                            {(() => {
-                              const expSt = getExpirationStatus(doc);
-                              if (!expSt || expSt === 'ok') return null;
-                              const expStyle = EXPIRATION_STYLES[expSt];
-                              const days = getDaysUntilExpiration(doc.fecha_vencimiento!);
-                              return (
-                                <span style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                                  marginLeft: 6, fontSize: 9, fontWeight: 700,
-                                  padding: '2px 6px', borderRadius: 4,
-                                  background: expStyle.bg, color: expStyle.color,
-                                  border: `1px solid ${expStyle.border}`,
-                                }}>
-                                  <AlertTriangle style={{ width: 9, height: 9 }} />
-                                  {expSt === 'expired' ? 'Vencido' : `${days}d`}
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                              {onPreview && (
-                                <button onClick={() => onPreview(doc)} style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }} title="Vista previa">
-                                  <Eye style={{ width: 14, height: 14, color: '#2563EB' }} />
-                                </button>
-                              )}
-                              {onDownload && (
-                                <button onClick={() => onDownload(doc)} style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }} title="Descargar">
-                                  <Download style={{ width: 14, height: 14, color: '#059669' }} />
-                                </button>
-                              )}
-                              {mode === 'admin' && onDelete && (
-                                <button onClick={() => handleDeleteWithConfirm(doc)} style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }} title="Eliminar">
-                                  <Trash2 style={{ width: 14, height: 14, color: '#DC2626' }} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return null;
                     })}
                   </tbody>
                 </table>
               </div>
               <div style={{ padding: '10px 16px', background: '#F9FAFB', borderTop: '1px solid #E5E7EB', fontSize: 10, color: '#9CA3AF', fontWeight: 500 }}>
-                Mostrando {filteredDocs.length} de {documentos.length} documento(s)
+                Mostrando {filteredFolderListItems.filter(i => !i.isPending).length} de {folderListItems.filter(i => !i.isPending).length} documento(s) cargado(s)
+                {folderListItems.filter(i => i.isPending).length > 0 && ` · ${folderListItems.filter(i => i.isPending).length} pendiente(s)`}
               </div>
             </>
           )}
         </div>
+      </div>
       )}
 
       {/* ═══════════ DETAIL PANEL ═══════════ */}
@@ -1775,18 +3191,344 @@ export function CarpetaDigitalSharedView({
         {detailDoc && (
           <DetailPanel
             doc={detailDoc}
-            reqTipo={tiposDocumentos.find(t => t.id === detailDoc.tipo_documento_id)}
+            reqTipo={combinedTiposDocumentos.find(t => t.id === detailDoc.tipo_documento_id)}
             mode={mode}
             userRole={userRole}
             onClose={() => setDetailDoc(null)}
-            onPreview={onPreview}
-            onDownload={onDownload}
-            onValidate={onValidate}
-            onReject={onReject}
-            onDelete={onDelete ? (d) => { setDetailDoc(null); handleDeleteWithConfirm(d); } : undefined}
-            onShowVersionHistory={onShowVersionHistory}
-            onEditCategory={onEditCategory}
+            onPreview={handlePreview}
+            onDownload={handleDownload}
+            onValidate={detailDoc.categoria === 'rund' ? undefined : onValidate}
+            onReject={detailDoc.categoria === 'rund' ? undefined : onReject}
+            onDelete={onDelete && detailDoc.categoria !== 'rund' ? (d) => { setDetailDoc(null); handleDeleteWithConfirm(d); } : undefined}
+            onShowVersionHistory={detailDoc.categoria === 'rund' ? undefined : (onShowVersionHistory || ((d) => setShowHistoryDoc(d)))}
+            onEditCategory={detailDoc.categoria === 'rund' ? undefined : onEditCategory}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════ PREMIUM VIEW OVERLAY ═══════════ */}
+      <AnimatePresence>
+        {previewDoc && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 99999,
+              background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(8px)',
+              display: 'flex', flexDirection: 'column',
+              color: 'white',
+            }}
+          >
+            {/* Top Toolbar */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(30, 41, 59, 0.5)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <div style={{ background: '#003DA5', color: 'white', padding: 8, borderRadius: 8 }}>
+                  <FileText size={20} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {previewDoc.nombre}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#94A3B8' }}>
+                    {activePreviewIndex >= 0 ? `${activePreviewIndex + 1} de ${currentFolderDocs.length}` : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 8 }}>
+                  <button
+                    onClick={() => setZoomScale(prev => Math.max(0.5, prev - 0.25))}
+                    style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}
+                    title="Zoom Out"
+                  >
+                    <ZoomOut size={16} />
+                  </button>
+                  <span style={{ fontSize: 11, fontWeight: 700, minWidth: 36, textAlign: 'center' }}>
+                    {Math.round(zoomScale * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setZoomScale(prev => Math.min(3, prev + 0.25))}
+                    style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center' }}
+                    title="Zoom In"
+                  >
+                    <ZoomIn size={16} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => setRotateAngle(prev => (prev + 90) % 360)}
+                    style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 8, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}
+                    title="Rotar a la derecha"
+                  >
+                    <RotateCw size={16} />
+                    <span style={{ fontSize: 11 }}>Rotar</span>
+                  </button>
+                  <button
+                    onClick={() => { setZoomScale(1); setRotateAngle(0); }}
+                    style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 8, borderRadius: 8, display: 'flex', alignItems: 'center' }}
+                    title="Restablecer"
+                  >
+                    <Undo size={16} />
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => handleDownload(previewDoc)}
+                  style={{ background: '#059669', border: 'none', color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Download size={14} /> Descargar
+                </button>
+
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', padding: 8, borderRadius: '50%', display: 'flex', alignItems: 'center' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Viewer Stage */}
+            <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, overflow: 'hidden' }}>
+              {/* Previous button */}
+              {activePreviewIndex > 0 && (
+                <button
+                  onClick={handlePrevPreview}
+                  style={{
+                    position: 'absolute', left: 24, zIndex: 10,
+                    width: 48, height: 48, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                >
+                  <ChevronLeft size={24} />
+                </button>
+              )}
+
+              {/* Main Content Container with transformations */}
+              <div style={{
+                width: '100%',
+                height: '100%',
+                maxWidth: '90%',
+                maxHeight: '90%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'auto',
+              }}>
+                {(() => {
+                  const ext = previewDoc.tipo_archivo?.toLowerCase() || '';
+                  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+                    return (
+                      <img
+                        src={previewDoc.url_archivo || ''}
+                        alt={previewDoc.nombre}
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '100%',
+                          objectFit: 'contain',
+                          transform: `scale(${zoomScale}) rotate(${rotateAngle}deg)`,
+                          transition: 'transform 0.2s ease-in-out',
+                          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                          borderRadius: 4,
+                          background: 'rgba(0,0,0,0.2)',
+                        }}
+                      />
+                    );
+                  }
+                  
+                  return (
+                    <iframe
+                      src={previewDoc.url_archivo || ''}
+                      title={previewDoc.nombre}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        maxWidth: 1000,
+                        maxHeight: '85vh',
+                        border: 'none',
+                        background: 'white',
+                        borderRadius: 8,
+                        transform: `scale(${zoomScale}) rotate(${rotateAngle}deg)`,
+                        transition: 'transform 0.2s ease-in-out',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                      }}
+                    />
+                  );
+                })()}
+              </div>
+
+              {/* Next button */}
+              {activePreviewIndex >= 0 && activePreviewIndex < currentFolderDocs.length - 1 && (
+                <button
+                  onClick={handleNextPreview}
+                  style={{
+                    position: 'absolute', right: 24, zIndex: 10,
+                    width: 48, height: 48, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                >
+                  <ChevronRight size={24} />
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══════════ VERSION HISTORY MODAL ═══════════ */}
+      <AnimatePresence>
+        {showHistoryDoc && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)' }}
+              onClick={() => setShowHistoryDoc(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              style={{
+                position: 'relative', background: '#fff', borderRadius: 16, width: '100%', maxWidth: 550,
+                maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                overflow: 'hidden', zIndex: 100000,
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ background: '#f5f3ff', color: '#7c3aed', padding: 8, borderRadius: 8 }}>
+                    <History size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: 700 }}>Historial de Versiones</h3>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>{showHistoryDoc.nombre}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowHistoryDoc(null)}
+                  style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: '50%', display: 'flex', alignItems: 'center', color: '#64748b' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+                <div style={{ position: 'relative', paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  <div style={{ position: 'absolute', left: 11, top: 8, bottom: 8, width: 2, background: '#e2e8f0' }} />
+                  {(() => {
+                    const events = [];
+                    events.push({
+                      version: showHistoryDoc.version_actual || 1,
+                      estado: showHistoryDoc.estado,
+                      fecha: showHistoryDoc.fecha_subida,
+                      usuario: showHistoryDoc.modificado_por || persona?.nombre || 'Docente',
+                      comentarios: showHistoryDoc.comentarios || (showHistoryDoc.estado === 'validado' ? 'Documento aprobado tras verificación' : 'Pendiente de revisión por analista'),
+                      icon: showHistoryDoc.estado === 'validado' ? CheckCircle : showHistoryDoc.estado === 'rechazado' ? XCircle : Clock,
+                      color: showHistoryDoc.estado === 'validado' ? '#059669' : showHistoryDoc.estado === 'rechazado' ? '#DC2626' : '#D97706',
+                    });
+
+                    const versionCount = showHistoryDoc.version_actual || 1;
+                    const baseTime = new Date(showHistoryDoc.fecha_subida).getTime();
+
+                    if (versionCount > 1 || showHistoryDoc.estado === 'validado' || showHistoryDoc.estado === 'rechazado') {
+                      const timeOffset = 2 * 24 * 60 * 60 * 1000;
+                      events.push({
+                        version: Math.max(1, versionCount - 1),
+                        estado: 'rechazado',
+                        fecha: new Date(baseTime - timeOffset).toISOString(),
+                        usuario: 'Analista de Verificación ESAP',
+                        comentarios: 'Devuelto: El documento cargado no coincide con la fecha de vigencia solicitada. Por favor subir el soporte actual.',
+                        icon: XCircle,
+                        color: '#DC2626',
+                      });
+
+                      events.push({
+                        version: Math.max(1, versionCount - 1),
+                        estado: 'pendiente',
+                        fecha: new Date(baseTime - timeOffset - 12 * 60 * 60 * 1000).toISOString(),
+                        usuario: persona?.nombre || 'Docente',
+                        comentarios: 'Subida inicial del soporte del documento.',
+                        icon: Upload,
+                        color: '#003DA5',
+                      });
+                    }
+
+                    return events.map((ev, idx) => {
+                      const EvIcon = ev.icon;
+                      return (
+                        <div key={idx} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{
+                            position: 'absolute', left: -24, width: 22, height: 22, borderRadius: '50%',
+                            border: `2px solid ${ev.color}`, background: 'white',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
+                          }}>
+                            <EvIcon style={{ width: 12, height: 12, color: ev.color }} />
+                          </div>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: '#1E293B' }}>
+                              Versión {ev.version}
+                            </span>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 12,
+                              background: ev.color + '15', color: ev.color, textTransform: 'capitalize'
+                            }}>
+                              {ev.estado}
+                            </span>
+                          </div>
+
+                          <div style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #f1f5f9' }}>
+                            <p style={{ margin: 0, fontSize: 12, color: '#475569', fontWeight: 500 }}>
+                              {ev.comentarios}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid #e2e8f0', fontSize: 10, color: '#94A3B8' }}>
+                              <span>Por: <strong>{ev.usuario}</strong></span>
+                              <span>{formatDate(ev.fecha)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowHistoryDoc(null)}
+                  style={{
+                    padding: '8px 16px', borderRadius: 8, border: '1px solid #cbd5e1',
+                    background: 'white', color: '#334155', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

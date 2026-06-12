@@ -279,16 +279,6 @@ export class BancoDocentesController {
       const result = await this.service.getBloques(id);
       return { success: true, data: result };
     } catch (e: any) {
-      // If table doesn't exist, try to ensure it and retry
-      if (e.message?.includes('does not exist') || e.message?.includes('no existe')) {
-        try {
-          await this.service.ensureRundTables();
-          const result = await this.service.getBloques(id);
-          return { success: true, data: result };
-        } catch {
-          // Still failed
-        }
-      }
       return { success: true, data: [], message: e.message };
     }
   }

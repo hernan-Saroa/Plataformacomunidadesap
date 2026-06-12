@@ -273,6 +273,23 @@ export function DigitalFolderSection({
         mode="admin"
         userRole={auth.userRole}
         onUpload={canUpload ? (tipoDocId, cat) => handleUpload(cat, tipoDocId) : undefined}
+        onUploadDirect={canUpload ? async (file, tipoId, categoria) => {
+          try {
+            const data = await supabaseService.documentos.uploadFile(file, activeCarpetaId!, categoria || 'otros', {
+              tipo_documento_id: tipoId,
+            });
+            if (data.success) {
+              if (selectedUserId) cargarDocumentos(selectedUserId);
+              return true;
+            } else {
+              toast.error('Error al subir documento', { description: data.error });
+            }
+          } catch (e) {
+            console.error('Error en onUploadDirect:', e);
+            toast.error('Error al subir documento');
+          }
+          return false;
+        } : undefined}
         onRefresh={() => { if (selectedUserId) cargarDocumentos(selectedUserId); }}
         onPreview={handlePreview}
         onDownload={handleDownload}

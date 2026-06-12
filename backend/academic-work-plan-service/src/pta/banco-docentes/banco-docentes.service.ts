@@ -640,8 +640,8 @@ export class BancoDocentesService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.dataSource.query('CREATE SEQUENCE IF NOT EXISTS academic_work_plan.docente_id_rund_seq START WITH 1 INCREMENT BY 1');
-    this.logger.log('Sequence academic_work_plan.docente_id_rund_seq verified');
+    // DDL moved to db/migrations/333_create_rund_tables_and_sequence.sql
+    this.logger.log('BancoDocentesService initialized');
   }
 
   private async getTerritoriales(): Promise<AuthSeccionalTerritorial[]> {
@@ -1856,52 +1856,13 @@ export class BancoDocentesService implements OnModuleInit {
     TRANSVERSAL: ['autorizacion_habeas_data'],
   };
 
-  /**
-   * Ensure RUND tables exist (auto-create if missing).
-   */
-  async ensureRundTables() {
-    await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS academic_work_plan."RundCampoEstado" (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        docente_id VARCHAR(255) NOT NULL,
-        bloque VARCHAR(50) NOT NULL,
-        estado VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
-        cargado_por VARCHAR(255),
-        revisado_por VARCHAR(255),
-        observacion TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        canal_origen VARCHAR(50),
-        soporte_ids JSONB NOT NULL DEFAULT '[]',
-        fecha_revision TIMESTAMP,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
-        "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.dataSource.query(`
-      CREATE TABLE IF NOT EXISTS academic_work_plan."RundSoporteCampo" (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        docente_id VARCHAR(255) NOT NULL,
-        bloque VARCHAR(50) NOT NULL,
-        tipo VARCHAR(100) NOT NULL,
-        nombre VARCHAR(500),
-        url TEXT,
-        estado VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
-        cargado_por VARCHAR(255),
-        revisado_por VARCHAR(255),
-        observacion TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
-        "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
-  }
+  // DDL for RundCampoEstado and RundSoporteCampo moved to:
+  //   db/migrations/333_create_rund_tables_and_sequence.sql
 
   /**
    * BR-044 â€” Obtener estados de aprobaciÃ³n por bloque para un docente.
    */
   async getBloques(docenteId: string) {
-    // Ensure tables exist before querying
-    await this.ensureRundTables();
 
     const bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
@@ -2172,7 +2133,7 @@ export class BancoDocentesService implements OnModuleInit {
     const id = randomUUID();
     await this.dataSource.query(
       `INSERT INTO academic_work_plan."RundSoporteCampo" 
-       (id, docente_id, bloque, tipo, url, nombre, estado, cargado_por, "createdAt")
+       (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
        VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', $7, NOW())`,
       [id, docenteId, bloqueUpper, data.tipoSoporte, data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || null],
     );

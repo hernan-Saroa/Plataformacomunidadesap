@@ -730,11 +730,33 @@ export class EstructuraOrganizacionalService {
           }
         }
 
+        const inputCapEst = row.capacidad_estudiantes || row.capacidad_estudiante || row.capacidadestudiantes || row.capacidadestudiante || row.estudiantes;
+        const inputCapDoc = row.capacidad_docentes || row.capacidad_docente || row.capacidaddocentes || row.capacidaddocente || row.docentes;
+
+        const capacidadEstudiantes = inputCapEst !== undefined && inputCapEst !== null && inputCapEst !== '' ? parseInt(inputCapEst, 10) : null;
+        const capacidadDocentes = inputCapDoc !== undefined && inputCapDoc !== null && inputCapDoc !== '' ? parseInt(inputCapDoc, 10) : null;
+
         if (existingSede.length > 0) {
           sedeId = existingSede[0].id_sede;
           await queryRunner.query(
-            'UPDATE auth.sedes SET nom_sede = $1, id_seccional = $2, id_geopolitica = COALESCE($3, id_geopolitica), fec_ult_act = CURRENT_DATE, sede_act = $4 WHERE id_sede = $5',
-            [nomSede, seccionalId, cityGeoId, isRowActive ? 'ACTIVA' : 'INACTIVA', sedeId]
+            `UPDATE auth.sedes 
+             SET nom_sede = $1, 
+                 id_seccional = $2, 
+                 id_geopolitica = COALESCE($3, id_geopolitica), 
+                 fec_ult_act = CURRENT_DATE, 
+                 sede_act = $4,
+                 capacidad_estudiantes = COALESCE($5, capacidad_estudiantes),
+                 capacidad_docentes = COALESCE($6, capacidad_docentes)
+             WHERE id_sede = $7`,
+            [
+              nomSede,
+              seccionalId,
+              cityGeoId,
+              isRowActive ? 'ACTIVA' : 'INACTIVA',
+              capacidadEstudiantes,
+              capacidadDocentes,
+              sedeId
+            ]
           );
           sedesActualizadas++;
         } else {
@@ -742,9 +764,31 @@ export class EstructuraOrganizacionalService {
           const nextSedeId = (parseInt(maxSede[0]?.max_id) || 0) + 1;
           sedeId = nextSedeId.toString();
 
+          const finalCapEst = capacidadEstudiantes !== null ? capacidadEstudiantes : (nomSede.toLowerCase().includes('central') ? 5000 : 150);
+          const finalCapDoc = capacidadDocentes !== null ? capacidadDocentes : (nomSede.toLowerCase().includes('central') ? 500 : 15);
+
           await queryRunner.query(
-            'INSERT INTO auth.sedes (id_sede, cod_sede, nom_sede, id_seccional, id_geopolitica, fec_creacion, sede_act) VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, $6)',
-            [sedeId, codSede, nomSede, seccionalId, cityGeoId, isRowActive ? 'ACTIVA' : 'INACTIVA']
+            `INSERT INTO auth.sedes (
+              id_sede, 
+              cod_sede, 
+              nom_sede, 
+              id_seccional, 
+              id_geopolitica, 
+              fec_creacion, 
+              sede_act, 
+              capacidad_estudiantes, 
+              capacidad_docentes
+             ) VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, $6, $7, $8)`,
+            [
+              sedeId,
+              codSede,
+              nomSede,
+              seccionalId,
+              cityGeoId,
+              isRowActive ? 'ACTIVA' : 'INACTIVA',
+              finalCapEst,
+              finalCapDoc
+            ]
           );
           sedesCreadas++;
         }

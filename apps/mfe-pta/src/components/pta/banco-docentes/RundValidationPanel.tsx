@@ -444,7 +444,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       formData.append('docenteNombre', nombreCompleto);
       formData.append('docenteDocumento', docIdentidad);
       formData.append('tipoSoporte', tipoSoporte);
-      formData.append('cargadoPor', validadoPorStr);
+      formData.append('cargadoPor', currentUserId);
       
       formData.append('file', file);
 
