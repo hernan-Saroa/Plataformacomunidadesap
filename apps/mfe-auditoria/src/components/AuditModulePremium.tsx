@@ -1227,96 +1227,98 @@ export function AuditModulePremium() {
   return (
     <>
     <Toaster position="bottom-right" richColors />
-    <div className="space-y-4 md:space-y-6 pb-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-white to-blue-50/30 rounded-2xl p-4 md:p-6 shadow-lg border border-gray-100"
+        transition={{ duration: 0.3 }}
       >
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl bg-gradient-to-br from-[#1e5da8] to-blue-600 flex items-center justify-center shadow-lg">
-                <Shield className="w-6 h-6 md:w-7 md:h-7 text-white" strokeWidth={2} />
+        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5" style={{marginBottom: '20px'}}>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+            <div className="flex items-start gap-3 md:gap-4">
+              <div 
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#EBF0FA' }}
+              >
+                <Shield className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
               </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-extrabold text-[--esap-gray-900] tracking-tight">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
                   Auditoría Premium
                 </h1>
-                <p className="text-xs md:text-sm font-medium text-[--esap-gray-600] mt-1">
+                <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
                   Trazabilidad completa con análisis avanzado de seguridad
                 </p>
               </div>
             </div>
-          </div>
+            {/* Export Button */}
+            <div className="relative">
+              <motion.button
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-[#003DA5] text-white hover:bg-[#002D7A] rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all text-sm md:text-base w-full lg:w-auto justify-center group"
+              >
+                <Download className="w-4 h-4 group-hover:animate-bounce" />
+                <span>Exportar</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${exportMenuOpen ? 'rotate-180' : ''}`} />
+              </motion.button>
 
-          {/* Export Button */}
-          <div className="relative">
-            <motion.button
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setExportMenuOpen(!exportMenuOpen)}
-              className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-gradient-to-r from-[#1e5da8] to-blue-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all text-sm md:text-base w-full lg:w-auto justify-center group"
-            >
-              <Download className="w-4 h-4 group-hover:animate-bounce" />
-              <span>Exportar</span>
-              <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${exportMenuOpen ? 'rotate-180' : ''}`} />
-            </motion.button>
-
-            {exportMenuOpen && (
-              <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setExportMenuOpen(false)}
-                />
-                
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50"
-                >
-                  <div className="p-2">
-                    <button
-                      onClick={() => handleExport('csv')}
-                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                        <FileText className="w-4 h-4 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">Exportar CSV</p>
-                        <p className="text-xs text-gray-500">Archivo de datos</p>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleExport('excel')}
-                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
-                        <FileText className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">Exportar Excel</p>
-                        <p className="text-xs text-gray-500">Hoja de cálculo</p>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleExport('pdf')}
-                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
-                        <FileText className="w-4 h-4 text-red-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">Exportar PDF</p>
-                        <p className="text-xs text-gray-500">Documento portátil</p>
-                      </div>
-                    </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
+              {exportMenuOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setExportMenuOpen(false)}
+                  />
+                  
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50"
+                  >
+                    <div className="p-2">
+                      <button
+                        onClick={() => handleExport('csv')}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                          <FileText className="w-4 h-4 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">Exportar CSV</p>
+                          <p className="text-xs text-gray-500">Archivo de datos</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleExport('excel')}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                          <FileText className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">Exportar Excel</p>
+                          <p className="text-xs text-gray-500">Hoja de cálculo</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleExport('pdf')}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                          <FileText className="w-4 h-4 text-red-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">Exportar PDF</p>
+                          <p className="text-xs text-gray-500">Documento portátil</p>
+                        </div>
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
