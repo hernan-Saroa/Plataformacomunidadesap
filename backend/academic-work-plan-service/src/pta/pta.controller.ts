@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Logger,
   Param,
   Patch,
   Post,
@@ -53,6 +54,8 @@ const buildDiskStorage = (folder: string, prefix: string) =>
 @Public()
 @Controller()
 export class PtaController {
+  private readonly logger = new Logger(PtaController.name);
+
   constructor(private readonly ptaService: PtaService) {}
 
   // ─────────────────────────────
@@ -169,8 +172,13 @@ export class PtaController {
 
   @Get('mis-ptas/:docenteId')
   async getMis(@Param('docenteId') docenteId: string, @Query('periodo') periodo?: string) {
-    const data = await this.ptaService.getPTAsByDocente(docenteId, periodo);
-    return { success: true, data };
+    try {
+      const data = await this.ptaService.getPTAsByDocente(docenteId, periodo);
+      return { success: true, data };
+    } catch (error: any) {
+      this.logger.warn(`getPTAsByDocente failed for docente ${docenteId}: ${error.message}`);
+      return { success: true, data: [] };
+    }
   }
 
   @Get('id/:id')
@@ -395,8 +403,13 @@ export class PtaController {
 
   @Get('solicitudes/docente/:docenteId')
   async getSolicitudesDocente(@Param('docenteId') docenteId: string) {
-    const data = await this.ptaService.getMisSolicitudesPTA(docenteId);
-    return { success: true, data };
+    try {
+      const data = await this.ptaService.getMisSolicitudesPTA(docenteId);
+      return { success: true, data };
+    } catch (error: any) {
+      this.logger.warn(`getMisSolicitudesPTA failed for docente ${docenteId}: ${error.message}`);
+      return { success: true, data: [] };
+    }
   }
 
   @Patch('solicitudes/:solicitudId/resolver')
@@ -606,8 +619,15 @@ export class PtaController {
   // Integraciones externas (stubs)
   // ─────────────────────────────
   @Get('rund/docente/:docenteId')
-  getRUNDDocente(@Param('docenteId') docenteId: string) {
-    return { success: true, data: { docenteId, resumen: null } };
+  async getRUNDDocente(@Param('docenteId') docenteId: string) {
+    const data = await this.ptaService.getRUNDDocente(docenteId);
+    return { success: true, data };
+  }
+
+  @Post('rund/docente/:docenteId/sync-documents')
+  async syncRUNDDocuments(@Param('docenteId') docenteId: string, @Body() body: any) {
+    const data = await this.ptaService.syncRUNDDocuments(docenteId, body?.documentos || []);
+    return { success: true, data };
   }
 
   @Get('rund/resumen')
@@ -707,5 +727,17 @@ export class PtaController {
   @Delete('reportes/scheduler/history')
   clearSchedulerHistory() {
     return { success: true };
+  }
+
+  @Get(':ptaId/componentes-aprobacion')
+  async getComponentesAprobacion(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getComponentesAprobacion(ptaId);
+    return { success: true, data };
+  }
+
+  @Post(':ptaId/aprobar-componente')
+  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any) {
+    const data = await this.ptaService.aprobarComponente(ptaId, body);
+    return { success: true, data };
   }
 }

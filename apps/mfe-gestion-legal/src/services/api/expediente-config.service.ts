@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import { API_ENDPOINTS } from '../../config/environment';
+import { API_ENDPOINTS } from '../../../../config/environment';
 
 export const expedienteConfigService = {
     async recalcularPlazosPorTipoProceso(tipoProceso: string, deltaDias: number): Promise<{ updated: number }> {

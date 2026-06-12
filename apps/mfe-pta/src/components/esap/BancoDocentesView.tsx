@@ -6,7 +6,8 @@
  * Incluye: gestión, carga masiva, estadísticas, filtros
  */
 
-import React, { useState, useMemo, Fragment } from 'react';
+import React, { useState, useEffect, useMemo, Fragment } from 'react';
+import { apiClient } from '../../../../shell/src/services/api';
 import { useTableColumns, ColumnSelector, ColumnDefinition } from '../../hooks/useTableColumns';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -72,6 +73,28 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
   const [filterEscalafon, setFilterEscalafon] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // ─── Periodo Académico ───
+  const [periodos, setPeriodos] = useState<any[]>([]);
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState<string>('');
+  const [showPeriodoDropdown, setShowPeriodoDropdown] = useState(false);
+
+  useEffect(() => {
+    const cargarPeriodos = async () => {
+      try {
+        const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+        const data = Array.isArray(res) ? res : [];
+        setPeriodos(data);
+        const activo = data.find((p: any) => p.estado === 'en_curso');
+        if (activo) setPeriodoSeleccionado(activo.codigo || `${activo.anio}-${activo.semestre}`);
+      } catch { setPeriodoSeleccionado('2025-2'); }
+    };
+    cargarPeriodos();
+  }, []);
+
+  const periodoActivo = periodos.find((p: any) => p.estado === 'en_curso');
+  const periodoActivoCodigo = periodoActivo?.codigo || periodoActivo?.periodo || '2025-2';
+  const esPeriodoActivo = !periodoSeleccionado || periodoSeleccionado === periodoActivoCodigo;
   const [expandedDocenteId, setExpandedDocenteId] = useState<string | null>(null);
 
   // Mapear los datos reales para the table view y buscar / filtrar
@@ -80,12 +103,14 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [previewData, setPreviewData] = useState<BancoDocentePreviewRow[] | null>(null);
   const [filtroEstadoCarga, setFiltroEstadoCarga] = useState('');
   const [hasAppliedPreview, setHasAppliedPreview] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
+  };
   // Get docentes from users (those with Docente role)
   const docentesFromUsers = useMemo(() => {
     return allUsers.filter(u => 
@@ -129,6 +154,7 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
         escalafon: cleanBancoDocenteText(perfilDocente.escalafon || u.escalafon || u.categoria_escalafon || bancoDocente.categoria) || 'Asistente',
         correo: cleanBancoDocenteText(u.correo_institucional || bancoDocente.correo_institucional || u.email) || '',
         horas,
+        periodo: cleanBancoDocenteText(perfilDocente.periodoCarga || bancoDocente.periodo_carga || bancoDocente.periodoCarga || u.periodo_carga || u.periodoCarga),
         id: u.id,
         status: u.status || 'active',
         rawUser: u
@@ -146,9 +172,10 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
       const matchTer = filterTerritorial === 'all' || d.territorial === filterTerritorial;
       const matchDed = filterDedicacion === 'all' || d.dedicacionCode === filterDedicacion;
       const matchEsc = filterEscalafon === 'all' || d.escalafon === filterEscalafon;
-      return matchSearch && matchTer && matchDed && matchEsc;
+      const matchPeriodo = !periodoSeleccionado || d.periodo === periodoSeleccionado;
+      return matchSearch && matchTer && matchDed && matchEsc && matchPeriodo;
     });
-  }, [docentes, searchQuery, filterTerritorial, filterDedicacion, filterEscalafon]);
+  }, [docentes, searchQuery, filterTerritorial, filterDedicacion, filterEscalafon, periodoSeleccionado]);
 
   const totalPages = Math.ceil(filteredDocentes.length / itemsPerPage);
   const paginatedDocentes = filteredDocentes.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -355,20 +382,6 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
     .sort((a, b) => b[1] - a[1])
     .map(([name, value]) => ({ name: name.length > 12 ? name.substring(0, 12) + '...' : name, fullName: name, value }));
 
-  const exportarDocentesExcel = () => {
-    const usersToExport = docentesFromUsers.filter(Boolean);
-
-    if (usersToExport.length === 0) {
-      toast.error('No hay docentes para exportar');
-      return;
-    }
-
-    downloadBancoDocentesExport(usersToExport);
-    toast.success('Exportacion completada', {
-      description: `${usersToExport.length} docentes oficiales exportados a Excel desde el Banco de Docentes.`,
-    });
-  };
-
   const descargarPlantilla = () => {
     downloadBancoDocentesTemplate();
     toast.success('Plantilla del Banco de Docentes descargada');
@@ -379,67 +392,89 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
     setExpandedDocenteId((currentId) => currentId === docenteId ? null : docenteId);
   };
 
-  const refrescarDocentes = async () => {
-    setIsRefreshing(true);
-    try {
-      setExpandedDocenteId(null);
-      await Promise.resolve(onReloadUsers());
-      toast.success('Banco de Docentes actualizado', {
-        description: 'La vista se recargo con los datos mas recientes del backend.',
-      });
-    } catch (error: any) {
-      toast.error('No fue posible recargar docentes', {
-        description: error?.message || 'Ocurrio un error al consultar nuevamente el Banco de Docentes.',
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header - World Class Design */}
+      <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 md:gap-4">
           {!hideBackBtn && (
             <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
           )}
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#EBF0FA' }}>
+            <Users className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
+          </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Users className="w-6 h-6 text-[#003DA5]" />
+            <h2 className="text-lg md:text-xl font-bold text-gray-900">
               Banco de Docentes ESAP
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            {/* Selector de Periodo Académico */}
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PERIODO:</span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowPeriodoDropdown(!showPeriodoDropdown)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
+                >
+                  {periodoSeleccionado || '2025-2'}
+                  {esPeriodoActivo && (
+                    <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
+                  )}
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                {showPeriodoDropdown && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdown(false)} />
+                    <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
+                      <div className="px-3 py-2 border-b border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
+                      </div>
+                      {periodos.length > 0 ? periodos.map((p: any, idx: number) => {
+                        const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                        const esActivo = p.estado === 'en_curso';
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => { setPeriodoSeleccionado(codigo); setShowPeriodoDropdown(false); }}
+                            className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                              codigo === periodoSeleccionado ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
+                            {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
+                          </button>
+                        );
+                      }) : (
+                        <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              {!esPeriodoActivo && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Solo lectura
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
               {docentes.length} docentes oficiales sincronizados desde el listado maestro y almacenados en Personas
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={exportarDocentesExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm text-sm"
-          >
-            <FileDown className="w-4 h-4" />
-            Exportar Excel
-          </button>
-          <button
-            onClick={refrescarDocentes}
-            disabled={isRefreshing}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-            title="Recargar docentes"
-          >
-            <RefreshCw className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <ColumnSelector columns={DOCENTES_COLUMNS} visibleCols={visibleCols} setVisibleCols={setVisibleCols} />
+          {/* Botones de acción eliminados según solicitud */}
         </div>
+      </div>
       </div>
 
       {/* Sub-navigation tabs */}
       <div className="flex gap-1 mt-4 border-t border-gray-100 pt-4">
         {[
-          { key: 'listado' as SubView, label: 'Listado de Docentes', icon: Users },
+          { key: 'listado' as SubView, label: 'Banco de Docentes', icon: Users },
           { key: 'estadisticas' as SubView, label: 'Estadisticas', icon: BarChart3 },
           { key: 'carga-masiva' as SubView, label: 'Carga Masiva', icon: Upload },
         ].map(tab => (
@@ -813,227 +848,256 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
 
       {/* ═══ CARGA MASIVA VIEW ═══ */}
       {subView === 'carga-masiva' && (
-        <div className="max-w-4xl mx-auto space-y-5">
-          {/* Info banner */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-            <Info className="w-5 h-5 text-[#003DA5] flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
-              <strong>Carga Masiva de Docentes — Especificacion PARTE XXVI, Sec. 26.1.1</strong>
-              <p className="mt-1 text-blue-700">
-                Carga flexible con las columnas del ListadoDocentes oficial. No todos los 31 campos son obligatorios:
-                se exigen documento, nombre, territorial, vinculación y dedicación; categoría y núcleo temático quedan como recomendados.
-                La plantilla incluye ejemplo, catálogos y el sistema muestra un visor final con filas aplicadas, fallidas y motivo detallado.
-              </p>
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm flex flex-col min-h-[calc(100vh-280px)] overflow-hidden">
+          {/* Stepper Header */}
+          <div className="px-6 py-4 bg-gray-50 flex items-center justify-center border-b border-gray-100">
+            <div className="flex items-center">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold ${!previewData && !isApplying ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' : 'bg-emerald-500 text-white'}`}>
+                {!previewData && !isApplying ? '1' : <CheckCircle className="w-4 h-4" />}
+              </div>
+              <span className={`ml-3 text-xs font-bold uppercase tracking-wider ${!previewData && !isApplying ? 'text-[#003DA5]' : 'text-emerald-600'}`}>Subir archivo</span>
+              
+              <div className={`w-12 h-px mx-4 ${previewData || isApplying ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+              
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold ${previewData && !isApplying ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' : (hasAppliedPreview || isApplying ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-400')}`}>
+                {hasAppliedPreview || isApplying ? <CheckCircle className="w-4 h-4" /> : '2'}
+              </div>
+              <span className={`ml-3 text-xs font-bold uppercase tracking-wider ${previewData && !isApplying ? 'text-[#003DA5]' : (hasAppliedPreview || isApplying ? 'text-emerald-600' : 'text-gray-400')}`}>Validar datos</span>
+              
+              <div className={`w-12 h-px mx-4 ${isApplying || hasAppliedPreview ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+              
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold ${(isApplying || hasAppliedPreview) ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' : 'bg-gray-200 text-gray-400'}`}>
+                3
+              </div>
+              <span className={`ml-3 text-xs font-bold uppercase tracking-wider ${(isApplying || hasAppliedPreview) ? 'text-[#003DA5]' : 'text-gray-400'}`}>Importar</span>
             </div>
           </div>
 
-          {/* Upload area */}
-          {!previewData && (
-            <Card className="p-5 border border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Subir Archivo de Docentes</h3>
-                <button
-                  className="text-xs flex items-center gap-1.5 text-[#003DA5] font-medium hover:underline"
-                  onClick={descargarPlantilla}
-                >
-                  <FileDown className="w-4 h-4" />
-                  Descargar Plantilla
-                </button>
+          <div className="flex-1 flex flex-col relative">
+            {/* ── PASO 3: IMPORTANDO ── */}
+            {isApplying ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-20">
+                <div className="relative w-20 h-20">
+                  <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
+                  <div className="absolute inset-0 rounded-full border-4 border-[#003DA5] border-t-transparent animate-spin"></div>
+                </div>
+                <h3 className="mt-6 text-base font-bold text-gray-900">Aplicando cambios...</h3>
+                <p className="mt-2 text-xs text-gray-500 font-medium">Por favor espere, sincronizando docentes oficiales con la base de datos.</p>
               </div>
-
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-                  isDragging ? 'border-[#003DA5] bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                }`}
-              >
-                <input type="file" id="docente-file-upload" className="hidden" accept=".xlsx,.csv" onChange={handleFileChange} />
-                <label htmlFor="docente-file-upload" className="cursor-pointer flex flex-col items-center">
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
-                    <Upload className="w-6 h-6 text-[#003DA5]" />
+            ) : previewData && previewStats ? (
+              /* ── PASO 2: VALIDACION Y RESULTADOS ── */
+              <div className="flex flex-col flex-1">
+                {/* Banner */}
+                <div className={`px-6 py-4 border-b flex items-center justify-between ${hasAppliedPreview ? 'bg-emerald-50/30 border-emerald-100' : (previewStats.invalidos > 0 ? 'bg-red-50/30 border-red-100' : 'bg-emerald-50/30 border-emerald-100')}`}>
+                  <div className="flex items-center gap-3">
+                    {hasAppliedPreview ? <CheckCircle className="w-6 h-6 text-emerald-600" /> : (previewStats.invalidos > 0 ? <AlertCircle className="w-6 h-6 text-red-600" /> : <CheckCircle className="w-6 h-6 text-emerald-600" />)}
+                    <div>
+                      <h3 className={`text-sm font-bold ${hasAppliedPreview ? 'text-emerald-800' : (previewStats.invalidos > 0 ? 'text-red-800' : 'text-emerald-800')}`}>
+                        {hasAppliedPreview ? 'Importación finalizada con éxito' : (previewStats.invalidos > 0 ? 'Existen errores de validación en algunas filas' : 'Validación exitosa')}
+                      </h3>
+                      <p className={`text-xs mt-0.5 font-medium ${hasAppliedPreview ? 'text-emerald-600' : (previewStats.invalidos > 0 ? 'text-red-600' : 'text-emerald-600')}`}>
+                        {hasAppliedPreview ? `Se han procesado correctamente los docentes. Revisa la tabla inferior.` : (previewStats.invalidos > 0 ? `Corrige los errores en tu archivo y vuelve a subirlo, o importa solo las filas válidas.` : `${previewStats.validos} registros listos para ser importados.`)}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm font-medium text-gray-900 mb-1">
-                    {file ? file.name : 'Haga clic para subir o arrastre el archivo aqui'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {file ? `${(file.size / 1024).toFixed(2)} KB` : 'XLSX, CSV (Max. 10MB) — Formato DOCENTES_ESAP_[PERIODO]'}
-                  </p>
-                </label>
-              </div>
-
-              {file && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={simularProcesamiento}
-                    disabled={isProcessing}
-                    className="bg-[#003DA5] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors disabled:opacity-70 flex items-center gap-2"
-                  >
-                    {isProcessing ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Procesando validaciones V-01 a V-10...</>
-                    ) : (
-                      <><CheckCircle className="w-4 h-4" /> Validar y Conciliar Archivo</>
-                    )}
-                  </button>
-                </div>
-              )}
-            </Card>
-          )}
-
-          {/* Preview results */}
-          {previewData && previewStats && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-              <Card className="p-5 border border-gray-200">
-                <div className="flex flex-col gap-2 mb-4">
-                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
-                    {hasAppliedPreview ? 'Resultado Final de la Carga' : 'Resultados de Validacion'}
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    {hasAppliedPreview
-                      ? 'La tabla conserva el resultado final por fila para revisar qué se aplicó, qué falló y el motivo.'
-                      : 'Primero se validan las filas del archivo. Después puedes aplicar solo las filas procesables.'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                  {[
-                    { label: 'Registros', value: previewStats.total, bg: 'bg-gray-50', border: 'border-gray-100', color: 'text-gray-900', filter: '' },
-                    { label: 'Validos', value: previewStats.validos, bg: 'bg-emerald-50', border: 'border-emerald-100', color: 'text-emerald-700', filter: 'valido' },
-                    { label: 'Errores', value: previewStats.invalidos, bg: 'bg-red-50', border: 'border-red-100', color: 'text-red-700', filter: 'invalido' },
-                    { label: 'Advertencias', value: previewStats.advertencias, bg: 'bg-amber-50', border: 'border-amber-100', color: 'text-amber-700', filter: 'advertencia' },
-                  ].map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setFiltroEstadoCarga(s.filter)}
-                      className={`p-3 ${s.bg} rounded-xl border ${s.border} text-center transition-all hover:ring-2 hover:ring-blue-200 ${filtroEstadoCarga === s.filter ? 'ring-2 ring-[#003DA5]' : ''}`}
-                    >
-                      <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                      <div className={`text-xs uppercase tracking-wide mt-0.5 ${s.color}`}>{s.label}</div>
+                  <div className="flex items-center gap-3">
+                    <button onClick={resetCargaMasiva} className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold transition-all shadow-sm">
+                      {hasAppliedPreview ? 'Cargar otro archivo' : 'Cambiar archivo'}
                     </button>
+                    {!hasAppliedPreview && previewStats.procesables > 0 && (
+                      <button onClick={aplicarCambios} className="px-4 py-2 bg-[#003DA5] hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2">
+                        <Send className="w-4 h-4" /> Importar {previewStats.procesables} {previewStats.procesables !== previewStats.total ? 'válidos' : 'ahora'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Métricas */}
+                <div className="grid grid-cols-4 gap-6 px-6 py-5 border-b border-gray-100">
+                  {[
+                    { label: 'TOTAL FILAS', value: previewStats.total, color: 'bg-blue-50 text-[#003DA5]', icon: Database },
+                    { label: 'VÁLIDAS', value: previewStats.validos, color: 'bg-emerald-50 text-emerald-600', icon: CheckCircle },
+                    { label: 'CON ERRORES', value: previewStats.invalidos, color: 'bg-red-50 text-red-600', icon: XCircle },
+                    { label: 'ADVERTENCIAS', value: previewStats.advertencias, color: 'bg-amber-50 text-amber-600', icon: AlertTriangle },
+                  ].map((s, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${s.color}`}>
+                        <s.icon className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-black text-gray-900">{s.value}</div>
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{s.label}</div>
+                      </div>
+                    </div>
                   ))}
                 </div>
 
-                {hasAppliedPreview && applyStats && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    {[
-                      { label: 'Aplicados', value: applyStats.procesados, bg: 'bg-emerald-50', border: 'border-emerald-100', color: 'text-emerald-700' },
-                      { label: 'Fallidos', value: applyStats.fallidos, bg: 'bg-red-50', border: 'border-red-100', color: 'text-red-700' },
-                      { label: 'Omitidos', value: applyStats.omitidos, bg: 'bg-slate-50', border: 'border-slate-200', color: 'text-slate-700' },
-                      { label: 'Pendientes', value: applyStats.pendientes, bg: 'bg-blue-50', border: 'border-blue-100', color: 'text-blue-700' },
-                    ].map((s, i) => (
-                      <div key={i} className={`p-3 ${s.bg} rounded-xl border ${s.border} text-center`}>
-                        <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                        <div className={`text-xs uppercase tracking-wide mt-0.5 ${s.color}`}>{s.label}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                      <thead className="bg-gray-50 text-gray-700 font-medium border-b border-gray-200">
-                        <tr>
-                          <th className="px-4 py-3">Validacion</th>
-                          <th className="px-4 py-3">Carga</th>
-                          <th className="px-4 py-3">Accion</th>
-                          <th className="px-4 py-3">Documento</th>
-                          <th className="px-4 py-3">Nombre</th>
-                          <th className="px-4 py-3">Observaciones</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(filteredPreview || []).map(row => (
-                          <tr
-                            key={row.id}
-                            className={
-                              row.resultadoAplicacion === 'fallido'
-                                ? 'bg-red-50/20'
-                                : row.estado === 'invalido'
-                                  ? 'bg-red-50/30'
-                                  : row.resultadoAplicacion === 'procesado'
-                                    ? 'bg-emerald-50/20'
-                                    : ''
-                            }
+                {/* Master-Detail */}
+                <div className="flex flex-1 min-h-[360px] max-h-[500px]">
+                  <div className="w-[260px] border-r border-gray-100 flex flex-col bg-gray-50/50">
+                    <div className="p-4 border-b border-gray-100">
+                      <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">Filtros de Estado</h4>
+                      <div className="space-y-1.5">
+                        {[
+                          { id: '', label: 'Todos los registros', count: previewStats.total },
+                          { id: 'valido', label: 'Válidos', count: previewStats.validos },
+                          { id: 'invalido', label: 'Con Errores', count: previewStats.invalidos },
+                          { id: 'advertencia', label: 'Advertencias', count: previewStats.advertencias },
+                        ].map((f, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setFiltroEstadoCarga(f.id)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all ${filtroEstadoCarga === f.id ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' : 'hover:bg-gray-100 text-gray-600'}`}
                           >
-                            <td className="px-4 py-3">
-                              {row.estado === 'valido' && <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-1 rounded text-xs font-medium border border-emerald-200"><CheckCircle className="w-3.5 h-3.5" /> Valido</span>}
-                              {row.estado === 'advertencia' && <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-1 rounded text-xs font-medium border border-amber-200"><AlertCircle className="w-3.5 h-3.5" /> Advertencia</span>}
-                              {row.estado === 'invalido' && <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-1 rounded text-xs font-medium border border-red-200"><AlertCircle className="w-3.5 h-3.5" /> Error</span>}
-                            </td>
-                            <td className="px-4 py-3">
-                              {row.resultadoAplicacion === 'pendiente' && <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-1 rounded text-xs font-medium border border-blue-200"><Loader2 className="w-3.5 h-3.5" /> Pendiente</span>}
-                              {row.resultadoAplicacion === 'procesado' && <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-1 rounded text-xs font-medium border border-emerald-200"><CheckCircle className="w-3.5 h-3.5" /> Aplicado</span>}
-                              {row.resultadoAplicacion === 'fallido' && <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-1 rounded text-xs font-medium border border-red-200"><AlertCircle className="w-3.5 h-3.5" /> Fallo</span>}
-                              {row.resultadoAplicacion === 'omitido' && <span className="inline-flex items-center gap-1 text-slate-700 bg-slate-100 px-2 py-1 rounded text-xs font-medium border border-slate-200"><X className="w-3.5 h-3.5" /> Omitido</span>}
-                            </td>
-                            <td className="px-4 py-3">
-                              {row.accion === 'insert' && <span className="text-blue-600 font-medium text-xs bg-blue-50 px-2 py-1 rounded">INSERTAR</span>}
-                              {row.accion === 'update' && <span className="text-purple-600 font-medium text-xs bg-purple-50 px-2 py-1 rounded">ACTUALIZAR</span>}
-                              {row.accion === 'no_change' && <span className="text-gray-400 font-medium text-xs">SIN CAMBIOS</span>}
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs">{row.identificador}</td>
-                            <td className="px-4 py-3 text-gray-700 truncate max-w-[200px]">{row.nombre}</td>
-                            <td className="px-4 py-3 text-xs whitespace-normal max-w-[320px]">
-                              <div className="space-y-1">
-                                {row.errores.map((mensaje, i) => (
-                                  <div key={`error-${row.id}-${i}`} className="text-red-600">{mensaje}</div>
-                                ))}
-                                {row.advertencias.map((mensaje, i) => (
-                                  <div key={`warning-${row.id}-${i}`} className="text-amber-600">{mensaje}</div>
-                                ))}
-                                {row.mensajeAplicacion && (
-                                  <div
-                                    className={
-                                      row.resultadoAplicacion === 'procesado'
-                                        ? 'text-emerald-700'
-                                        : row.resultadoAplicacion === 'fallido'
-                                          ? 'text-red-700'
-                                          : row.resultadoAplicacion === 'omitido'
-                                            ? 'text-slate-600'
-                                            : 'text-blue-700'
-                                    }
-                                  >
-                                    {row.mensajeAplicacion}
-                                  </div>
-                                )}
-                                {row.errores.length === 0 && row.advertencias.length === 0 && !row.mensajeAplicacion && (
-                                  <span className="text-emerald-600">Fila lista para aplicar.</span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
+                            <span>{f.label}</span>
+                            <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${filtroEstadoCarga === f.id ? 'bg-white/20 text-white' : 'bg-white border border-gray-200 text-gray-500'}`}>
+                              {f.count}
+                            </span>
+                          </button>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex flex-col bg-white">
+                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900">Vista Detallada</h4>
+                        <p className="text-xs text-gray-400 mt-0.5 font-medium">Mostrando {filteredPreview?.length || 0} registros</p>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-auto">
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-white text-[10px] text-gray-400 font-bold uppercase tracking-widest sticky top-0 border-b border-gray-100 z-10 shadow-sm shadow-gray-100">
+                          <tr>
+                            <th className="px-5 py-3">Validación / Carga</th>
+                            <th className="px-5 py-3">Acción</th>
+                            <th className="px-5 py-3">Documento</th>
+                            <th className="px-5 py-3">Nombre</th>
+                            <th className="px-5 py-3">Observaciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {(filteredPreview || []).map(row => (
+                            <tr key={row.id} className={`hover:bg-blue-50/30 transition-colors ${row.resultadoAplicacion === 'fallido' || row.estado === 'invalido' ? 'bg-red-50/10' : ''}`}>
+                              <td className="px-5 py-3">
+                                <div className="flex flex-col gap-1.5">
+                                  {row.estado === 'valido' && <span className="inline-flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-emerald-200/50"><CheckCircle className="w-3 h-3" /> Válido</span>}
+                                  {row.estado === 'advertencia' && <span className="inline-flex items-center gap-1.5 text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-amber-200/50"><AlertTriangle className="w-3 h-3" /> Advertencia</span>}
+                                  {row.estado === 'invalido' && <span className="inline-flex items-center gap-1.5 text-red-600 bg-red-50 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-red-200/50"><AlertCircle className="w-3 h-3" /> Error</span>}
+                                  
+                                  {row.resultadoAplicacion === 'pendiente' && <span className="inline-flex items-center gap-1.5 text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-gray-200/50">Pendiente</span>}
+                                  {row.resultadoAplicacion === 'procesado' && <span className="inline-flex items-center gap-1.5 text-[#003DA5] bg-blue-50 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-blue-200/50"><CheckCircle className="w-3 h-3" /> Aplicado</span>}
+                                  {row.resultadoAplicacion === 'fallido' && <span className="inline-flex items-center gap-1.5 text-red-600 bg-red-50 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-red-200/50"><XCircle className="w-3 h-3" /> Falló</span>}
+                                  {row.resultadoAplicacion === 'omitido' && <span className="inline-flex items-center gap-1.5 text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md text-[10px] font-bold w-max border border-slate-200/50">Omitido</span>}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3">
+                                {row.accion === 'insert' && <span className="text-emerald-600 font-bold text-[10px]">CREAR</span>}
+                                {row.accion === 'update' && <span className="text-blue-600 font-bold text-[10px]">ACTUALIZAR</span>}
+                                {row.accion === 'no_change' && <span className="text-gray-400 font-bold text-[10px]">SIN CAMBIOS</span>}
+                              </td>
+                              <td className="px-5 py-3 font-mono text-xs text-gray-600">{row.identificador}</td>
+                              <td className="px-5 py-3 font-medium text-gray-900 truncate max-w-[200px]">{row.nombre}</td>
+                              <td className="px-5 py-3 text-xs whitespace-normal max-w-[320px]">
+                                <div className="space-y-1">
+                                  {row.errores.map((m, i) => <div key={`e-${i}`} className="text-red-600 font-medium">{m}</div>)}
+                                  {row.advertencias.map((m, i) => <div key={`w-${i}`} className="text-amber-600 font-medium">{m}</div>)}
+                                  {row.mensajeAplicacion && <div className={row.resultadoAplicacion === 'procesado' ? 'text-[#003DA5] font-medium' : 'text-red-600 font-medium'}>{row.mensajeAplicacion}</div>}
+                                  {row.errores.length === 0 && row.advertencias.length === 0 && !row.mensajeAplicacion && <span className="text-gray-400 italic">Listo para aplicar</span>}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-
-                <div className="mt-5 flex justify-between items-center border-t border-gray-100 pt-4">
-                  <button
-                    onClick={resetCargaMasiva}
-                    className="text-gray-500 hover:text-gray-700 font-medium text-sm px-4 py-2"
-                  >
-                    Cargar otro archivo
-                  </button>
-                  <button
-                    onClick={aplicarCambios}
-                    disabled={isApplying || hasAppliedPreview || previewStats.procesables === 0}
-                    className="bg-[#003DA5] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isApplying ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Aplicando...</>
-                    ) : hasAppliedPreview ? (
-                      <><CheckCircle className="w-4 h-4" /> Carga aplicada</>
-                    ) : (
-                      <><Send className="w-4 h-4" /> Aplicar Cambios ({previewStats.procesables} procesables)</>
-                    )}
-                  </button>
+              </div>
+            ) : (
+              /* ── PASO 1: UPLOAD & INSTRUCCIONES ── */
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 p-8 gap-10">
+                {/* Izquierda: Drop Zone */}
+                <div
+                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); handleDrop(e); }}
+                  onClick={triggerFileSelect}
+                  className={`border-2 border-dashed rounded-3xl flex flex-col items-center justify-center p-10 text-center cursor-pointer transition-all min-h-[380px] ${
+                    isDragging ? 'border-[#003DA5] bg-blue-50/50 scale-[0.98]' : file ? 'border-emerald-300 bg-emerald-50/30' : 'border-gray-200 hover:border-[#003DA5]/40 hover:bg-gray-50/50'
+                  }`}
+                >
+                  <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.csv" onChange={handleFileChange} />
+                  
+                  {file ? (
+                    <>
+                      <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mb-6 shadow-sm border border-emerald-200">
+                        <FileSpreadsheet className="w-8 h-8" />
+                      </div>
+                      <p className="font-extrabold text-gray-900 text-base mb-1.5">{file.name}</p>
+                      <p className="text-xs text-gray-500 mb-8 font-medium">{(file.size / 1024).toFixed(1)} KB — Listo para procesar</p>
+                      
+                      <div className="flex gap-3 w-full max-w-[280px]">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setFile(null); }} className="flex-1 px-4 py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold transition-all shadow-sm">
+                          Remover
+                        </button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); simularProcesamiento(); }} disabled={isProcessing} className="flex-[2] px-4 py-3 bg-[#003DA5] hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2">
+                          {isProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Procesando</> : 'Validar Archivo'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 bg-blue-50 text-[#003DA5] rounded-xl flex items-center justify-center mb-6 border border-blue-100 shadow-sm">
+                        <Upload className="w-8 h-8" />
+                      </div>
+                      <h3 className="font-bold text-gray-900 text-base mb-2">Sube tu archivo de docentes</h3>
+                      <p className="text-xs text-gray-500 max-w-[240px] font-medium leading-relaxed mb-6">
+                        Arrastra tu Excel (.xlsx) o haz clic para explorar en tus carpetas.
+                      </p>
+                      <span className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg text-[11px] font-bold shadow-sm">
+                        Seleccionar archivo
+                      </span>
+                    </>
+                  )}
                 </div>
-              </Card>
-            </motion.div>
-          )}
+
+                {/* Derecha: Instrucciones */}
+                <div className="flex flex-col h-full">
+                  <div className="bg-blue-50/50 rounded-2xl p-8 border border-blue-100 flex-1 flex flex-col">
+                    <h3 className="text-sm font-bold text-[#003DA5] uppercase tracking-wider mb-6 flex items-center gap-2">
+                      <Info className="w-4 h-4" /> Instrucciones de Carga
+                    </h3>
+                    
+                    <div className="space-y-6 flex-1">
+                      {[
+                        { title: 'Descargue la plantilla', desc: 'Obtenga el formato oficial con las columnas requeridas.' },
+                        { title: 'Complete los datos', desc: 'Llene la información sin modificar las cabeceras ni el formato original.' },
+                        { title: 'Suba el archivo', desc: 'Sube el archivo para iniciar la validación automática de datos.' },
+                        { title: 'Valide y Confirme', desc: 'Revisa los errores, corrige si es necesario e importa los válidos.' },
+                      ].map((step, i) => (
+                        <div key={i} className="flex gap-4">
+                          <div className="w-6 h-6 rounded-lg bg-[#003DA5]/10 text-[#003DA5] flex items-center justify-center text-[11px] font-bold shrink-0">
+                            {i + 1}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-gray-800 mb-1">{step.title}</div>
+                            <div className="text-[11px] text-gray-500 leading-relaxed font-medium">{step.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button onClick={descargarPlantilla} className="w-full mt-6 px-5 py-3.5 bg-white border border-blue-200 text-[#003DA5] hover:bg-blue-50 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm">
+                      <FileDown className="w-4 h-4" /> Descargar Plantilla Excel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -913,7 +913,7 @@ export function V14CertificadoDigitalPortal({ ptas, userName, onVerificar }: Cer
                     )}
                     <div>
                       <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                        PTA — Periodo {pta.periodo || '2026-1'}
+                        PTA — Periodo {pta.periodo || '2025-2'}
                       </div>
                       <div style={{ fontSize: '0.68rem', opacity: 0.85 }}>
                         {hasFirma ? `Cert: ${pta.firma_digital.certificado_id}` : 'Firma digital pendiente'}

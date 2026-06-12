@@ -1,46 +1,61 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ProgramaAcademico } from './programa.entity';
 
-@Entity({ schema: 'academic_work_plan', name: 'Asignatura' })
+@Entity({ schema: 'academic_work_plan', name: 'asignatura' })
 export class Asignatura {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ name: 'programaId', type: 'text' })
+  @Column({ name: 'id_programa', type: 'bigint' })
   programaId: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'varchar', length: 200 })
   nombre: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   codigo?: string;
 
-  @Column({ type: 'integer', default: 3 })
+  @Column({ type: 'smallint' })
   creditos: number;
 
-  @Column({ type: 'integer', default: 144 })
-  horas: number;
+  @Column({ name: 'id_ubicacion_semestral', type: 'smallint' })
+  semestreId: number;
 
-  @Column({ name: 'nucleoTematico', type: 'text', nullable: true })
-  nucleoTematico?: string;
+  @Column({ name: 'id_nucleo_tematico', type: 'bigint' })
+  nucleoTematicoId: string;
 
-  @Column({ type: 'text', nullable: true })
-  semestre?: string;
+  @Column({ name: 'id_facultad', type: 'bigint' })
+  facultadId: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', length: 30, default: 'sin_definir' })
   modalidad?: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  tipo?: string;
+  @Column({ name: 'horas_fijas_pta', type: 'int', nullable: true })
+  horasFijasPta?: number;
 
-  @CreateDateColumn({ name: 'createdAt', type: 'timestamp with time zone' })
+  @Column({ name: 'tipo_excepcion', type: 'varchar', length: 40, nullable: true })
+  tipoExcepcion?: string;
+
+  @Column({ type: 'boolean', default: true })
+  activa: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  observaciones?: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp without time zone' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt', type: 'timestamp with time zone' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp without time zone', nullable: true })
   updatedAt: Date;
+
+  // Compatibility fields for the frontend
+  semestre?: string;
+  horas?: number;
+  tipo?: string;
+  nucleoTematico?: string;
 
   // Relation to Programa (optional, for eager loading)
   @ManyToOne(() => ProgramaAcademico, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'programaId' })
+  @JoinColumn({ name: 'id_programa' })
   programa?: ProgramaAcademico;
-}
+}

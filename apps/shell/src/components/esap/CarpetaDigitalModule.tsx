@@ -41,7 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Container4K } from '../ui/container-4k';
-import { ResponsiveHeader } from '../ui/responsive-header';
+import { ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { DocumentUploadModal } from './DocumentUploadModal';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { DocumentVersionHistoryModal } from './DocumentVersionHistoryModal';

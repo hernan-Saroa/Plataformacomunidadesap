@@ -2,18 +2,18 @@
  * Cliente API Base
  *
  * Maneja todas las requests HTTP al backend con:
- * - Autenticación automática
+ * - Autenticaciï¿½n automï¿½tica
  * - Refresh de tokens
  * - Manejo de errores
  * - Retry logic
  * - Request/Response interceptors
  *
- * MODOS DE CONEXIÓN:
+ * MODOS DE CONEXIï¿½N:
  * - Gateway Mode: Todas las requests van a http://localhost:3000/{service}/api/v1/{path}
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
+import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 
@@ -60,7 +60,7 @@ export class ApiClient {
   private refreshSubscribers: Array<(token: string) => void> = [];
 
   constructor(baseURL?: string) {
-    // Usar la URL base del API Gateway desde la configuración de entorno
+    // Usar la URL base del API Gateway desde la configuraciï¿½n de entorno
     this.baseURL = baseURL || config.API_BASE_URL;
     this.timeout = config.API_TIMEOUT;
     this.retryConfig = {
@@ -71,7 +71,7 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // MÉTODOS PÚBLICOS
+  // Mï¿½TODOS Pï¿½BLICOS
   // ==========================================================================
 
   /**
@@ -194,7 +194,7 @@ export class ApiClient {
       _authRetry = false,
     } = resolvedOptions;
 
-    // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
+    // Para upload, no enviamos Content-Type header (el browser lo setea automï¿½ticamente con boundary)
     const headers = getDefaultHeaders(true);
     delete (headers as any)['Content-Type'];
 
@@ -299,7 +299,7 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // MÉTODOS PRIVADOS
+  // Mï¿½TODOS PRIVADOS
   // ==========================================================================
 
   /**
@@ -382,7 +382,7 @@ export class ApiClient {
 
       clearTimeout(timeoutId);
 
-      // Token expirado: refrescar y reintentar UNA sola vez conservando método y body.
+      // Token expirado: refrescar y reintentar UNA sola vez conservando mï¿½todo y body.
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
@@ -529,7 +529,7 @@ export class ApiClient {
       if (response.ok) {
         data = {} as any; // For 200 OK with empty body
       } else {
-        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        const emptyError: any = new Error('Error en la peticiï¿½n (sin detalles)');
         emptyError.status = response.status;
         emptyError.response = { status: response.status, data: null };
         throw emptyError;
@@ -578,7 +578,7 @@ export class ApiClient {
           errorMessage = errObj.message.join(', ');
         }
       }
-      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raíz
+      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raï¿½z
         errorMessage = (data as any).message;
         details = (data as any).message;
       }
@@ -602,7 +602,7 @@ export class ApiClient {
 
     // Fallback for when response is not OK but data structure is unexpected
     if (!response.ok) {
-      let errorMessage = 'Error en la petición';
+      let errorMessage = 'Error en la peticiï¿½n';
       if ('message' in data) {
         if (typeof (data as any).message === 'string') {
           errorMessage = (data as any).message;
@@ -616,7 +616,7 @@ export class ApiClient {
       throw error;
     }
 
-    throw new Error('Respuesta inválida del servidor');
+    throw new Error('Respuesta invï¿½lida del servidor');
   }
 
   /**
@@ -664,15 +664,15 @@ export class ApiClient {
     this.refreshSubscribers = [];
   }
   /**
-   * Muestra toast de error según el código HTTP
+   * Muestra toast de error segï¿½n el cï¿½digo HTTP
    */
   private showErrorToast(status: number, message: string): void {
     const errorMessages: Record<number, string> = {
-      400: 'Solicitud inválida',
+      400: 'Solicitud invï¿½lida',
       401: 'No autorizado',
       403: 'Acceso denegado',
       404: 'Recurso no encontrado',
-      422: 'Error de validación',
+      422: 'Error de validaciï¿½n',
       429: 'Demasiadas solicitudes',
       500: 'Error interno del servidor',
       502: 'Gateway no disponible',
@@ -688,7 +688,7 @@ export class ApiClient {
   }
 
   /**
-   * Construye URL completa con parámetros
+   * Construye URL completa con parï¿½metros
    *
    * En modo 'gateway': /auth/api/v1/login -> http://localhost:3000/auth/api/v1/login
    * En modo 'direct':  /auth/api/v1/login -> http://localhost:3002/login
@@ -734,7 +734,7 @@ export class ApiClient {
       }
     }
 
-    // Agregar parámetros de query
+    // Agregar parï¿½metros de query
     if (params && Object.keys(params).length > 0) {
       const url = new URL(fullUrl);
       Object.entries(params).forEach(([key, value]) => {
@@ -760,7 +760,7 @@ export class ApiClient {
   }
 
   /**
-   * Limpia cache (si está habilitado)
+   * Limpia cache (si estï¿½ habilitado)
    */
   public clearCache(): void {
     if (config.FEATURES.enableCache) {

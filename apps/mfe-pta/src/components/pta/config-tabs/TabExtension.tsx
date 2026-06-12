@@ -18,7 +18,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   };
   const addSeccion = () => {
     const key = `seccion_${Date.now()}`;
-    handleChange('ext_secciones', [...secciones, { key, label: 'Nueva Sección', color: '#6366f1', orden: secciones.length + 1 }]);
+    handleChange('ext_secciones', [...secciones, { key, label: 'Nueva Sección', color: '#6366f1', orden: secciones.length + 1, multiplicador: 1 }]);
     handleChange('ext_actividades', { ...actividades, [key]: [] });
     setSeccionActiva(key);
   };
@@ -245,6 +245,13 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                       <input type="number" value={sec.orden}
                         onChange={e => updateSeccion(idx, 'orden', e.target.value)}
                         className="w-full bg-white border border-slate-200 text-slate-800 font-bold text-sm rounded-lg px-3 py-1.5 text-center focus:ring-2 focus:ring-violet-500/20 outline-none" />
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-[0.65rem] font-bold text-slate-500 uppercase tracking-wider mb-1" title="Multiplicador de horas ejecutadas. Ej: 2 = horas×2 para calcular total">Multiplicador</label>
+                      <input type="number" value={sec.multiplicador ?? 1} min={1} max={10} step={1}
+                        onChange={e => updateSeccion(idx, 'multiplicador', Number(e.target.value) || 1)}
+                        className="w-full bg-white border border-slate-200 text-slate-800 font-bold text-sm rounded-lg px-3 py-1.5 text-center focus:ring-2 focus:ring-violet-500/20 outline-none" />
+                      <span className="text-[9px] text-slate-400 mt-0.5 block">×horas</span>
                     </div>
                     <div className="flex items-end">
                       <button onClick={() => removeSeccion(idx)}

@@ -40,11 +40,12 @@ export class AuthService {
   private readonly signatureOtpTtlMs = 5 * 60 * 1000; // 5 minutos
 
   async login(dto: LoginDto) {
-    const identifier = dto.email || dto.username;
-    if (!identifier) {
+    const rawIdentifier = dto.email || dto.username;
+    if (!rawIdentifier) {
       throw new UnauthorizedException('Se requiere email o username');
     }
 
+    const identifier = rawIdentifier.trim().toLowerCase();
     const isEmail = identifier.includes('@');
     const user = isEmail
       ? await this.usersService.findByEmail(identifier)

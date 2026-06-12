@@ -51,7 +51,7 @@ export function CronogramaProcesoPTA() {
   const [estadisticas, setEstadisticas] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [expandedFase, setExpandedFase] = useState<string | null>('fase-2');
-  const [periodo] = useState('2026-1');
+  const [periodo] = useState('2025-2');
 
   useEffect(() => {
     loadData();

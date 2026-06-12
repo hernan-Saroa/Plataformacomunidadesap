@@ -120,7 +120,7 @@ function ptasToKanbanCards(ptas: any[], rules?: any): KanbanCard[] {
       horasDisponibles: horasDisp,
       pctCarga,
       diasEnEstado,
-      periodo: pta.periodo || '2026-1',
+      periodo: pta.periodo || '2025-2',
       prioridad,
       maxDiasSla: maxDias,
     };

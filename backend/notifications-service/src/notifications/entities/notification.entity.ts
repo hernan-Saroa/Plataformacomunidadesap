@@ -1,3 +1,4 @@
+// Rebuild triggered after database truncation
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,10 +11,10 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid', { name: 'id_notificacion' })
   id_notificacion: string;
 
-  @Column({ name: 'id_usuario_destinatario', type: 'uuid' })
+  @Column({ name: 'id_usuario_destinatario', type: 'uuid', nullable: true })
   id_usuario_destinatario: string;
 
-  @Column({ name: 'tipo_notificacion', length: 100 })
+  @Column({ name: 'tipo_notificacion', length: 100, nullable: true })
   tipo_notificacion: string;
 
   @Column({ length: 255 })

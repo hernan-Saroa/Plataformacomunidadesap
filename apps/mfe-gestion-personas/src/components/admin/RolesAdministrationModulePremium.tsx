@@ -40,6 +40,7 @@ import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
+import { ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { CreateRoleModal } from './CreateRoleModal';
 import { EditRoleModal } from './EditRoleModal';
 import { RolePermissionsEditor } from './RolePermissionsEditor';
@@ -645,39 +646,23 @@ export function RolesAdministrationModulePremium() {
 
   const hasActiveFilters = searchTerm || filterType !== 'todos' || filterStatus !== 'todos' || filter2FA !== 'todos' || filterSistemaDestino !== 'todos';
 
+  const primaryAction = isSuperAdmin ? {
+    label: "Crear Rol",
+    icon: Plus,
+    onClick: () => setIsCreateModalOpen(true),
+    variant: "primary",
+  } : undefined;
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 flex items-center justify-center shrink-0">
-              <ShieldIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                Roles y Permisos
-              </h1>
-              <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
-                Administra roles del sistema y asigna permisos granulares
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {isSuperAdmin && (
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="text-sm">Crear Rol</span>
-          </button>
-        )}
-      </div>
-
-
+      <ResponsiveHeader
+        key="header"
+        title="Roles y Permisos"
+        description="Administra roles del sistema y asigna permisos granulares"
+        icon={ShieldIcon}
+        primaryAction={primaryAction}
+      />
 
       {/* Búsqueda y Filtros Premium */}
       <motion.div

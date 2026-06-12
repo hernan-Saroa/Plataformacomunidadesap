@@ -217,7 +217,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
       kpis: [{ label:'Total', value: r.totalPersonas }, { label:'Usuarios Activos', value: r.totalUsuarios }, { label:'Tasa Actividad', value:`${(ef.tasaPersonasActivas||0).toFixed(0)}%` }],
       chart: generoData.length > 0 ? (<div><p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Género</p><MiniDonut data={generoData} size={80} inner={25} /></div>) : null,
     },
-    { key: 'docentes', label: 'Banco de Docentes', icon: BookOpen, color: '#0EA5E9', sid: 'banco-docentes-pta', health: stats.saludModulos?.docentes, idx: 1,
+    { key: 'docentes', label: 'Registro Único Nacional Docente (RUND)', icon: BookOpen, color: '#0EA5E9', sid: 'banco-docentes-pta', health: stats.saludModulos?.docentes, idx: 1,
       kpis: [{ label:'Docentes', value: r.totalDocentes }, { label:'Sin CETAP', value: r.docentesSinCetap, warn: true }, { label:'Cobertura', value:`${(ef.tasaCetapCobertura||0).toFixed(0)}%` }],
       chart: vinData.length > 0 ? (
         <div className="grid grid-cols-2 gap-3">

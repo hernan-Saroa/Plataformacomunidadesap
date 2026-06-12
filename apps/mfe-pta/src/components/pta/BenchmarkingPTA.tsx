@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { getDashboardKPIs } from '../../services/api/ptaApi';
 
-const PERIODOS_HISTORICOS = ['2024-1', '2024-2', '2025-1', '2025-2', '2026-1'];
+const PERIODOS_HISTORICOS = ['2024-1', '2024-2', '2025-1', '2025-2', '2025-2'];
 const COLORS_SERIES = ['#003DA5', '#059669', '#D97706', '#DC2626', '#7C3AED', '#0891B2'];
 
 interface PeriodData {

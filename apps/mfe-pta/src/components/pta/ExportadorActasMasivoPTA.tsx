@@ -68,7 +68,7 @@ export function ExportadorActasMasivoPTA() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filtroTerritorial, setFiltroTerritorial] = useState('');
   const [filtroResultado, setFiltroResultado] = useState<'' | 'CONCERTADO' | 'ESCALADO_SNA'>('');
-  const [filtroPeriodo, setFiltroPeriodo] = useState('2026-1');
+  const [filtroPeriodo, setFiltroPeriodo] = useState('2025-2');
   const [searchQuery, setSearchQuery] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);

@@ -1,20 +1,20 @@
 /**
- * ═══════════════════════════════════════════════════════════════
- * RESPONSIVE HEADER - VERSIÓN CORREGIDA V3 (ULTRA-AGRESIVA)
- * ═══════════════════════════════════════════════════════════════
+ * â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+ * RESPONSIVE HEADER - VERSIÃ“N CORREGIDA V3 (ULTRA-AGRESIVA)
+ * â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
  * 
- * 🚨 SOLUCIÓN AGRESIVA: SIDEBAR DESPLEGADO OCULTA BOTONES
+ * ðŸš¨ SOLUCIÃ“N AGRESIVA: SIDEBAR DESPLEGADO OCULTA BOTONES
  * 
  * ESTRATEGIA ULTRA-RESPONSIVE:
- * ✅ Breakpoints más agresivos (800px → 1200px)
- * ✅ Menú "Más opciones" (tres puntos) en lugar de todos los botones
- * ✅ Solo botón primario siempre visible + menú desplegable
- * ✅ Descripción se oculta en modo compacto
- * ✅ TODAS las funcionalidades SIEMPRE accesibles
+ * âœ… Breakpoints mÃ¡s agresivos (800px â†’ 1200px)
+ * âœ… MenÃº "MÃ¡s opciones" (tres puntos) en lugar de todos los botones
+ * âœ… Solo botÃ³n primario siempre visible + menÃº desplegable
+ * âœ… DescripciÃ³n se oculta en modo compacto
+ * âœ… TODAS las funcionalidades SIEMPRE accesibles
  * 
  * NUEVOS BREAKPOINTS:
- * - < 800px:   Solo botón primario + menú "⋮"
- * - 800-1200px: Botón primario completo + iconos secundarios
+ * - < 800px:   Solo botÃ³n primario + menÃº "â‹®"
+ * - 800-1200px: BotÃ³n primario completo + iconos secundarios
  * - > 1200px:  Todos los botones completos
  */
 
@@ -31,13 +31,13 @@ interface ResponsiveHeaderAction {
 }
 
 export interface ResponsiveHeaderProps {
-  /** Título principal del módulo */
+  /** TÃ­tulo principal del mÃ³dulo */
   title: string;
   
-  /** Descripción o subtítulo */
+  /** DescripciÃ³n o subtÃ­tulo */
   description?: string;
   
-  /** Ícono del módulo (opcional) */
+  /** Ãcono del mÃ³dulo (opcional) */
   icon?: LucideIcon;
   
   /** Badge de estado o contador (opcional) */
@@ -46,13 +46,13 @@ export interface ResponsiveHeaderProps {
     variant?: 'default' | 'success' | 'warning' | 'danger';
   };
   
-  /** Acción principal (botón CTA) */
+  /** AcciÃ³n principal (botÃ³n CTA) */
   primaryAction?: ResponsiveHeaderAction;
   
   /** Acciones secundarias (botones adicionales) */
   secondaryActions?: ResponsiveHeaderAction[];
   
-  /** Breadcrumbs de navegación (opcional) */
+  /** Breadcrumbs de navegaciÃ³n (opcional) */
   breadcrumbs?: Array<{ label: string; href?: string }>;
   
   /** Clase adicional para el contenedor */
@@ -74,7 +74,7 @@ export function ResponsiveHeader({
   const [containerWidth, setContainerWidth] = useState(0);
   const headerRef = useRef<HTMLDivElement>(null);
   
-  // 🚀 DETECTAR ANCHO REAL DEL CONTENEDOR (no del viewport)
+  // ðŸš€ DETECTAR ANCHO REAL DEL CONTENEDOR (no del viewport)
   useEffect(() => {
     const updateWidth = () => {
       if (headerRef.current) {
@@ -99,10 +99,10 @@ export function ResponsiveHeader({
     };
   }, []);
   
-  // 🎯 LÓGICA DE RENDERIZADO ULTRA-AGRESIVA
-  // Breakpoints ajustados para máxima compatibilidad con sidebar desplegado
+  // ðŸŽ¯ LÃ“GICA DE RENDERIZADO ULTRA-AGRESIVA
+  // Breakpoints ajustados para mÃ¡xima compatibilidad con sidebar desplegado
   // LAPTOP 1366px + SIDEBAR DESPLEGADO (280px) = 1086px disponibles
-  const shouldShowMinimal = containerWidth < 1100;       // < 1100px: Solo primario + menú
+  const shouldShowMinimal = containerWidth < 1100;       // < 1100px: Solo primario + menÃº
   const shouldShowCompact = containerWidth >= 1100 && containerWidth < 1300; // Iconos
   const shouldShowFull = containerWidth >= 1300;         // Completo
   
@@ -142,7 +142,8 @@ export function ResponsiveHeader({
   return (
     <div
       ref={headerRef}
-      className={className}
+      className={`rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5 ${className}`}
+      data-wc="worldclass-v2"
     >
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
         {/* Left Section: Title, Description, Icon, Badge */}
@@ -168,24 +169,23 @@ export function ResponsiveHeader({
         )}
 
         {/* Title Section */}
-        <div className="flex items-start gap-2 md:gap-3">
-          {/* Icon (opcional) */}
+        <div className="flex items-start gap-3 md:gap-4">
+          {/* Icon - White card style with light blue bg */}
           {Icon && (
             <div 
-              className="w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{
-                background: '#003DA5',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
+                backgroundColor: '#EBF0FA'
               }}
             >
-              <Icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
+              <Icon className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
             </div>
           )}
 
           {/* Title + Description */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg md:text-xl lg:text-2xl font-extrabold text-[--esap-gray-900] tracking-tight">
+              <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
                 {title}
               </h1>
               
@@ -199,7 +199,7 @@ export function ResponsiveHeader({
 
             {/* Description - Ocultar en modo compacto */}
             {description && !shouldShowMinimal && (
-              <p className="text-[11px] md:text-xs text-[--esap-gray-600] mt-0.5 md:mt-1">
+              <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
                 {description}
               </p>
             )}
@@ -210,7 +210,7 @@ export function ResponsiveHeader({
         {/* Right Section: Actions - RENDERIZADO ULTRA-AGRESIVO */}
         {allActions.length > 0 && (
           <div key="header-actions" className="flex items-center">
-          {/* 🚀 MODO COMPLETO: Todos los botones (> 1200px) */}
+          {/* ðŸš€ MODO COMPLETO: Todos los botones (> 1200px) */}
           {shouldShowFull && (
             <div key="actions-full" className="flex flex-wrap items-center gap-2">
               {/* Secondary Actions */}
@@ -244,7 +244,7 @@ export function ResponsiveHeader({
             </div>
           )}
 
-          {/* 📱 MODO COMPACTO: Iconos secundarios + botón primario (800-1199px) */}
+          {/* ðŸ“± MODO COMPACTO: Iconos secundarios + botÃ³n primario (800-1199px) */}
           {shouldShowCompact && (
             <div key="actions-compact" className="flex flex-wrap items-center gap-2">
               {/* Secondary Actions - Solo iconos */}
@@ -277,7 +277,7 @@ export function ResponsiveHeader({
             </div>
           )}
 
-          {/* 🎯 MODO MINIMAL: Solo primario + menú "⋮" (< 800px) */}
+          {/* ðŸŽ¯ MODO MINIMAL: Solo primario + menÃº "â‹®" (< 800px) */}
           {shouldShowMinimal && (
             <div key="actions-minimal" className="flex items-center gap-2">
               {/* Primary Action - Siempre visible */}
@@ -293,13 +293,13 @@ export function ResponsiveHeader({
                 </button>
               )}
 
-              {/* Menú "Más opciones" - Solo si hay acciones secundarias */}
+              {/* MenÃº "MÃ¡s opciones" - Solo si hay acciones secundarias */}
               {secondaryActions.length > 0 && (
                 <div key="secondary-menu" className="relative">
                   <button
                     onClick={() => setIsMenuOpen(!isMenuOpen)}
                     className={getActionClassName('ghost')}
-                    title="Más opciones"
+                    title="MÃ¡s opciones"
                   >
                     <MoreVertical className="w-5 h-5" />
                   </button>
@@ -314,9 +314,9 @@ export function ResponsiveHeader({
                       <div
                         className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
                       >
-                          {/* Header del menú */}
+                          {/* Header del menÃº */}
                           <div className="bg-[#003DA5] px-4 py-2.5">
-                            <p className="text-xs font-bold text-white">Más Opciones</p>
+                            <p className="text-xs font-bold text-white">MÃ¡s Opciones</p>
                           </div>
 
                           {/* Lista de acciones secundarias */}

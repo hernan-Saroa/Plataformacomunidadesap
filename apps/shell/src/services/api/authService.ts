@@ -310,7 +310,7 @@ class AuthService {
     try {
       return await this.verifyToken();
     } catch (error) {
-      console.warn('[AuthService] No se pudo verificar la sesión tras login; usando usuario de la respuesta inicial.', error);
+      console.info('[AuthService] Verificación post-login no disponible; usando respuesta inicial.');
       return fallbackUser;
     }
   }

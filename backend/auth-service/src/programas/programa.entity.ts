@@ -1,62 +1,55 @@
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-@Entity({ schema: 'academic_work_plan', name: 'programas' })
+@Entity({ schema: 'academic_work_plan', name: 'programa' })
 export class ProgramaAcademico {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'varchar', length: 20, unique: true })
   codigo: string;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: 'varchar', length: 100, unique: true })
   nombre: string;
 
-  @Column({ type: 'text', nullable: true })
-  descripcion?: string;
+  @Column({ name: 'nombre_excel', type: 'varchar', length: 100, unique: true })
+  nombreExcel: string;
 
-  @Column({ name: 'nivel_formacion', type: 'varchar', length: 255, nullable: true })
-  nivelFormacion?: string;
+  @Column({ name: 'nombre_corto', type: 'varchar', length: 30, unique: true })
+  nombreCorto: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  facultad?: string;
+  @Column({ name: 'id_facultad', type: 'bigint' })
+  idFacultad: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  modalidad?: string;
+  @Column({ type: 'varchar', length: 20 })
+  tipo: string; // 'pregrado' | 'especializacion' | 'maestria'
 
-  @Column({ type: 'integer', nullable: true })
-  duracion?: number;
+  @Column({ type: 'varchar', length: 20 })
+  modalidad: string; // 'presencial' | 'distancia' | 'mixto'
 
-  @Column({ type: 'integer', nullable: true })
-  creditos?: number;
+  @Column({ name: 'horas_base_por_credito', type: 'int', default: 16 })
+  horasBasePorCredito: number;
 
-  @Column({ name: 'costo_matricula', type: 'decimal', precision: 10, scale: 2, nullable: true })
-  costoMatricula?: number;
+  @Column({ name: 'horas_pregrado_central', type: 'int', nullable: true })
+  horasPregradoCentral: number | null;
 
-  @Column({ name: 'requisitos_de_ingreso', type: 'text', nullable: true })
-  requisitosDeIngreso?: string;
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  jornada?: string;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  sede?: string;
-
-  @Column({ name: 'registro_calificado', type: 'jsonb', nullable: true })
-  registroCalificado?: any;
-
-  @Column({ name: 'perfil_egresado', type: 'text', nullable: true })
-  perfilEgresado?: string;
-
-  @Column({ type: 'varchar', length: 50, default: 'ACTIVO' })
-  estado: string;
-
-  @Column({ name: 'created_at', type: 'timestamp with time zone', default: () => 'NOW()' })
+  @Column({ name: 'created_at', type: 'timestamp without time zone', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @Column({ name: 'updated_at', type: 'timestamp with time zone', default: () => 'NOW()' })
-  updatedAt: Date;
+  @Column({ name: 'updated_at', type: 'timestamp without time zone', nullable: true })
+  updatedAt: Date | null;
 
-  // Virtual properties for calculated plan de estudios stats (populated by service)
+  // Compatibility fields for the frontend (simulating the old schema columns)
+  estado?: string;
+  nivelFormacion?: string;
+  descripcion?: string;
+  duracion?: number;
+  creditos?: number;
+  sede?: string;
+  facultad?: string;
   totalAsignaturas?: number;
   creditosPlan?: number;
 }
+

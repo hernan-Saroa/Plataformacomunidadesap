@@ -56,7 +56,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
                 <p className="text-sm text-gray-600 mt-2">Documento Generado: {today}</p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-bold bg-gray-100 px-3 py-1 rounded">Periodo: {pta?.periodo || '2026-1'}</p>
+                <p className="text-sm font-bold bg-gray-100 px-3 py-1 rounded">Periodo: {pta?.periodo || '2025-2'}</p>
                 <p className="text-xs text-gray-500 mt-2">ID Sistema: {pta?.id?.substring(0,8) || 'DOC-001'}</p>
               </div>
             </div>

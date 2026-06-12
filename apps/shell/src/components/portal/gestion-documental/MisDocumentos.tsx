@@ -257,6 +257,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
     <div>
       {/* ═══ UNIFIED SHARED VIEW ═══ */}
       <CarpetaDigitalSharedView
+        personaId={personaId}
         persona={persona}
         documentos={documentos}
         tiposDocumentos={tiposDocumentos}
@@ -273,6 +274,30 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
             setUploadTipoNombre(undefined);
           }
           setShowUpload(true);
+        }}
+        onUploadDirect={async (file, tipoId, categoria) => {
+          try {
+            let res = await uploadDocumentoCarpetaDigital({
+              file,
+              personaId,
+              categoria: mapCategoriaToUpload(categoria || 'otros'),
+              tipoDocumento: tipoId,
+              descripcion: 'Cargado mediante arrastrar y soltar directo'
+            }).catch(() => ({ success: false }));
+            if (!res.success) {
+              res = await documentosService.uploadFile(file, `carpeta:${personaId}`, mapCategoriaToUpload(categoria || 'otros'), {
+                tipo_documento_id: tipoId,
+                descripcion: 'Cargado mediante arrastrar y soltar directo',
+              });
+            }
+            if (res.success) {
+              loadData();
+              return true;
+            }
+          } catch (e) {
+            console.error('Error in onUploadDirect portal:', e);
+          }
+          return false;
         }}
         onRefresh={loadData}
         onPreview={(doc) => {
