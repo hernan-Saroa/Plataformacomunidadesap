@@ -111,7 +111,7 @@ export function MapaCoberturaTerritorialPTA() {
       setLoading(true);
       try {
         const [ptaRes] = await Promise.all([
-          getAllPTAs({ periodo: '2026-1' }),
+          getAllPTAs({ periodo: '2025-2' }),
           getCatalogoTerritoriales(),
         ]);
         // Validación robusta: asegurar que siempre sea un array

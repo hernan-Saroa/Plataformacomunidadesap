@@ -21,6 +21,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { CarpetaDigitalModule } from './carpeta-digital/carpeta-digital.module';
 import { CarpetaDigital } from './carpeta-digital/carpeta-digital.entity';
 import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
+import { EstructuraImportModule } from './estructura-import/estructura-import.module';
 
 @NestModule({
   imports: [
@@ -55,6 +56,7 @@ import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
     AsignaturasModule,
     PortalModule,
     CarpetaDigitalModule,
+    EstructuraImportModule,
   ],
   providers: [
     {

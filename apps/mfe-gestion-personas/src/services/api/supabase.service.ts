@@ -337,19 +337,30 @@ export const documentosService = {
       comentarios: '',
     };
     setDocsForPerson(personKey, [doc, ...docs]);
+    await syncPersonDocumentsToPTABackend(`carpeta:${personKey}`);
     return { success: true, data: doc };
   },
 
   async update(id: string, updates: any): Promise<ServiceResult<any>> {
-    return updateDoc(id, updates);
+    const res = updateDoc(id, updates);
+    if (res.success && res.data) {
+      await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
+    }
+    return res;
   },
 
   async delete(id: string): Promise<ServiceResult> {
     const map = getDocsMap();
+    let affectedCarpeta: string | null = null;
     Object.keys(map).forEach((key) => {
+      const found = map[key].find((doc) => doc.id === id);
+      if (found) affectedCarpeta = key;
       map[key] = map[key].filter((doc) => doc.id !== id);
     });
     setDocsMap(map);
+    if (affectedCarpeta) {
+      await syncPersonDocumentsToPTABackend(`carpeta:${affectedCarpeta}`);
+    }
     return { success: true };
   },
 
@@ -359,11 +370,19 @@ export const documentosService = {
   },
 
   async validarDocumento(id: string): Promise<ServiceResult<any>> {
-    return updateDoc(id, { estado: 'validado', fecha_validacion: new Date().toISOString(), validado_por: 'Administrador' });
+    const res = updateDoc(id, { estado: 'validado', fecha_validacion: new Date().toISOString(), validado_por: 'Administrador' });
+    if (res.success && res.data) {
+      await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
+    }
+    return res;
   },
 
   async rechazarDocumento(id: string, _validadorId?: string, motivo?: string): Promise<ServiceResult<any>> {
-    return updateDoc(id, { estado: 'rechazado', comentarios: motivo || 'Rechazado' });
+    const res = updateDoc(id, { estado: 'rechazado', comentarios: motivo || 'Rechazado' });
+    if (res.success && res.data) {
+      await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
+    }
+    return res;
   },
 
   async eliminarTodosLosDocumentos(): Promise<ServiceResult> {
@@ -382,11 +401,18 @@ export const documentosService = {
   },
 
   async reclassify(id: string, data: { categoria?: string; tipo_documento_id?: string }): Promise<ServiceResult<any>> {
-    return updateDoc(id, data);
+    const res = updateDoc(id, data);
+    if (res.success && res.data) {
+      await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
+    }
+    return res;
   },
 
   async updateDocumentCategory(id: string, categoria: string, tipoDocumentoId?: string): Promise<ServiceResult<any>> {
     const result = await updateDoc(id, { categoria, tipo_documento_id: tipoDocumentoId });
+    if (result.success && result.data) {
+      await syncPersonDocumentsToPTABackend(result.data.carpeta_id);
+    }
     return { ...result, version: { numero_version: findDoc(id)?.version_actual || 1 } };
   },
 
@@ -394,7 +420,7 @@ export const documentosService = {
     const doc = findDoc(id);
     if (!doc) return { success: false, error: 'Documento no encontrado' };
     const nextVersion = (doc.version_actual || 1) + 1;
-    return updateDoc(id, {
+    const res = updateDoc(id, {
       nombre: file.name,
       tamano_bytes: file.size,
       tipo_archivo: file.name.split('.').pop()?.toLowerCase() || doc.tipo_archivo,
@@ -403,7 +429,12 @@ export const documentosService = {
       comentarios,
       etiqueta,
       url_archivo: objectUrlForFile(file),
+      estado: 'pendiente'
     });
+    if (res.success && res.data) {
+      await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
+    }
+    return res;
   },
 
   async getVersiones(id: string): Promise<ServiceResult<any>> {
@@ -433,7 +464,11 @@ export const documentosService = {
   },
 
   async restaurarVersion(id: string): Promise<ServiceResult<any>> {
-    return updateDoc(id, { ultima_modificacion: new Date().toISOString() });
+    const res = updateDoc(id, { ultima_modificacion: new Date().toISOString() });
+    if (res.success && res.data) {
+      await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
+    }
+    return res;
   },
 
   async actualizarEtiquetaVersion(): Promise<ServiceResult> {
@@ -444,6 +479,27 @@ export const documentosService = {
     return { success: true };
   },
 };
+
+async function syncPersonDocumentsToPTABackend(carpetaId: string): Promise<void> {
+  try {
+    const personKey = normalizeCarpetaId(carpetaId);
+    const docs = getDocsForPerson(personKey);
+    // Call the sync documents endpoint
+    await apiClient.post(`/pta/api/v1/rund/docente/${personKey}/sync-documents`, {
+      documentos: docs.map((d: any) => ({
+        id: d.id,
+        categoria: d.categoria,
+        estado: d.estado,
+        fecha_subida: d.fecha_subida || d.fecha_carga,
+        fecha_validacion: d.fecha_validacion,
+        validado_por: d.validado_por,
+        comentarios: d.comentarios || d.observacion
+      }))
+    }, { skipErrorToast: true });
+  } catch (error) {
+    console.error('Error syncing documents to PTA backend:', error);
+  }
+}
 
 function findDoc(id: string): any | null {
   const map = getDocsMap();

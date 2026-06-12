@@ -43,25 +43,19 @@ export function CreateSeccionalSedeModal({
   const [seccionalForm, setSeccionalForm] = useState({
     codSeccional: '',
     nomSeccional: '',
-    idUbiSeccional: undefined as number | undefined,
+    ordenVisualizacion: 999,
+    activo: true,
   });
 
   // Form state para Sede (extendido con nuevos campos)
   const [sedeForm, setSedeForm] = useState({
     codSede: '',
     nomSede: '',
-    idGeopolitica: undefined as number | undefined,
     idSeccional: undefined as number | undefined,
-    dirSede: '',
-    telSede: '',
-    emailSede: '',
-    capacidadEstudiantes: undefined as number | undefined,
-    capacidadDocentes: undefined as number | undefined,
+    tipo: 'cetap',
+    latitud: undefined as number | undefined,
+    longitud: undefined as number | undefined,
     sedeAct: 'ACTIVO',
-    permiteInscripciones: true,
-    permiteMatriculas: true,
-    visiblePortal: true,
-    observaciones: '',
   });
 
   const [selectedDepartamento, setSelectedDepartamento] = useState<number | undefined>();
@@ -78,38 +72,24 @@ export function CreateSeccionalSedeModal({
   useEffect(() => {
     if (editItem && isOpen) {
       if (tipo === 'seccional') {
-        const seccional = editItem as Seccional;
+        const seccional = editItem as any; // Seccional might not have all new types yet
         setSeccionalForm({
           codSeccional: seccional.codSeccional || '',
           nomSeccional: seccional.nomSeccional,
-          idUbiSeccional: seccional.idUbiSeccional,
+          ordenVisualizacion: seccional.ordenVisualizacion ?? 999,
+          activo: seccional.activo ?? true,
         });
-        if (seccional.ubicacion?.idPadre) {
-          setSelectedDepartamento(seccional.ubicacion.idPadre);
-          cargarCiudades(seccional.ubicacion.idPadre);
-        }
       } else {
-        const sede = editItem as Sede;
+        const sede = editItem as any; // Sede might not have all new types yet
         setSedeForm({
           codSede: sede.codSede || '',
           nomSede: sede.nomSede,
-          idGeopolitica: sede.idGeopolitica,
           idSeccional: sede.idSeccional,
-          dirSede: sede.dirSede || '',
-          telSede: sede.telSede || '',
-          emailSede: sede.emailSede || '',
-          capacidadEstudiantes: sede.capacidadEstudiantes,
-          capacidadDocentes: sede.capacidadDocentes,
+          tipo: sede.tipo || 'cetap',
+          latitud: sede.numLatitud,
+          longitud: sede.numLongitud,
           sedeAct: sede.sedeAct || 'ACTIVO',
-          permiteInscripciones: sede.permiteInscripciones ?? true,
-          permiteMatriculas: sede.permiteMatriculas ?? true,
-          visiblePortal: sede.visiblePortal ?? true,
-          observaciones: sede.observaciones || '',
         });
-        if (sede.geopolitica?.idPadre) {
-          setSelectedDepartamento(sede.geopolitica.idPadre);
-          cargarCiudades(sede.geopolitica.idPadre);
-        }
       }
     }
   }, [editItem, isOpen, tipo]);
@@ -117,25 +97,16 @@ export function CreateSeccionalSedeModal({
   // Reset form al cerrar
   useEffect(() => {
     if (!isOpen) {
-      setSeccionalForm({ codSeccional: '', nomSeccional: '', idUbiSeccional: undefined });
+      setSeccionalForm({ codSeccional: '', nomSeccional: '', ordenVisualizacion: 999, activo: true });
       setSedeForm({
         codSede: '',
         nomSede: '',
-        idGeopolitica: undefined,
         idSeccional: undefined,
-        dirSede: '',
-        telSede: '',
-        emailSede: '',
-        capacidadEstudiantes: undefined,
-        capacidadDocentes: undefined,
+        tipo: 'cetap',
+        latitud: undefined,
+        longitud: undefined,
         sedeAct: 'ACTIVO',
-        permiteInscripciones: true,
-        permiteMatriculas: true,
-        visiblePortal: true,
-        observaciones: '',
       });
-      setSelectedDepartamento(undefined);
-      setCiudades([]);
       setErrors({});
     }
   }, [isOpen]);
@@ -201,18 +172,6 @@ export function CreateSeccionalSedeModal({
       if (!sedeForm.idSeccional) {
         newErrors.idSeccional = 'Debe seleccionar una seccional';
       }
-      // Campos obligatorios
-      if (!sedeForm.emailSede || !sedeForm.emailSede.trim()) {
-        newErrors.emailSede = 'El correo electronico es obligatorio';
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sedeForm.emailSede)) {
-        newErrors.emailSede = 'El email no tiene un formato valido';
-      }
-      if (sedeForm.capacidadEstudiantes === undefined || sedeForm.capacidadEstudiantes === null) {
-        newErrors.capacidadEstudiantes = 'La capacidad de estudiantes es obligatoria';
-      }
-      if (sedeForm.capacidadDocentes === undefined || sedeForm.capacidadDocentes === null) {
-        newErrors.capacidadDocentes = 'La capacidad de docentes es obligatoria';
-      }
     }
 
     setErrors(newErrors);
@@ -234,7 +193,8 @@ export function CreateSeccionalSedeModal({
         const data: CreateSeccionalData = {
           codSeccional: seccionalForm.codSeccional.trim() || undefined,
           nomSeccional: seccionalForm.nomSeccional.trim(),
-          idUbiSeccional: seccionalForm.idUbiSeccional,
+          ordenVisualizacion: seccionalForm.ordenVisualizacion,
+          activo: seccionalForm.activo,
         };
 
         if (isEditMode) {
@@ -248,18 +208,11 @@ export function CreateSeccionalSedeModal({
         const data: CreateSedeData = {
           codSede: sedeForm.codSede.trim() || undefined,
           nomSede: sedeForm.nomSede.trim(),
-          idGeopolitica: sedeForm.idGeopolitica ? Number(sedeForm.idGeopolitica) : undefined,
           idSeccional: sedeForm.idSeccional ? Number(sedeForm.idSeccional) : undefined,
-          dirSede: sedeForm.dirSede.trim() || undefined,
-          telSede: sedeForm.telSede.trim() || undefined,
-          emailSede: sedeForm.emailSede.trim(),
-          capacidadEstudiantes: sedeForm.capacidadEstudiantes ? Number(sedeForm.capacidadEstudiantes) : undefined,
-          capacidadDocentes: sedeForm.capacidadDocentes ? Number(sedeForm.capacidadDocentes) : undefined,
+          tipo: sedeForm.tipo,
+          latitud: sedeForm.latitud,
+          longitud: sedeForm.longitud,
           sedeAct: sedeForm.sedeAct || undefined,
-          permiteInscripciones: sedeForm.permiteInscripciones,
-          permiteMatriculas: sedeForm.permiteMatriculas,
-          visiblePortal: sedeForm.visiblePortal,
-          observaciones: sedeForm.observaciones.trim() || undefined,
         };
 
         if (isEditMode) {
@@ -375,40 +328,28 @@ export function CreateSeccionalSedeModal({
                       )}
                     </div>
 
-                    {/* Ubicacion Seccional */}
+                    {/* Orden Visualizacion */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <MapPin className="w-4 h-4 inline mr-1" />
-                        Ubicacion (Ciudad)
+                        Orden de Visualizacion
                       </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <select
-                          value={selectedDepartamento || ''}
-                          onChange={(e) => handleDepartamentoChange(Number(e.target.value))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                          disabled={loadingGeo}
-                        >
-                          <option value="">Departamento...</option>
-                          {departamentos.map(d => (
-                            <option key={d.idGeopolitica} value={d.idGeopolitica}>
-                              {d.nomDivGeopolitica}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={seccionalForm.idUbiSeccional || ''}
-                          onChange={(e) => setSeccionalForm(prev => ({ ...prev, idUbiSeccional: Number(e.target.value) || undefined }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                          disabled={!selectedDepartamento || loadingGeo}
-                        >
-                          <option value="">Ciudad...</option>
-                          {ciudades.map(c => (
-                            <option key={c.idGeopolitica} value={c.idGeopolitica}>
-                              {c.nomDivGeopolitica}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <input
+                        type="number"
+                        value={seccionalForm.ordenVisualizacion}
+                        onChange={(e) => setSeccionalForm(prev => ({ ...prev, ordenVisualizacion: Number(e.target.value) }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                      />
+                    </div>
+
+                    {/* Estado */}
+                    <div className="flex items-center gap-2 mt-4 p-3 bg-gray-50 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={seccionalForm.activo}
+                        onChange={(e) => setSeccionalForm(prev => ({ ...prev, activo: e.target.checked }))}
+                        className="w-4 h-4 rounded text-[#003DA5] focus:ring-[#003DA5]"
+                      />
+                      <span className="text-sm font-medium text-gray-900">Seccional Activa</span>
                     </div>
                   </>
                 ) : (
@@ -506,222 +447,58 @@ export function CreateSeccionalSedeModal({
                         )}
                       </div>
 
-                      {/* Ubicacion Sede */}
+                      {/* Tipo Sede */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <MapPin className="w-4 h-4 inline mr-1" />
-                          Ubicacion (Ciudad)
+                          Tipo de Sede *
                         </label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <select
-                            value={selectedDepartamento || ''}
-                            onChange={(e) => handleDepartamentoChange(Number(e.target.value))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                            disabled={loadingGeo}
-                          >
-                            <option value="">Departamento...</option>
-                            {departamentos.map(d => (
-                              <option key={d.idGeopolitica} value={d.idGeopolitica}>
-                                {d.nomDivGeopolitica}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={sedeForm.idGeopolitica || ''}
-                            onChange={(e) => setSedeForm(prev => ({ ...prev, idGeopolitica: Number(e.target.value) || undefined }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                            disabled={!selectedDepartamento || loadingGeo}
-                          >
-                            <option value="">Ciudad...</option>
-                            {ciudades.map(c => (
-                              <option key={c.idGeopolitica} value={c.idGeopolitica}>
-                                {c.nomDivGeopolitica}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Capacidades */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            <GraduationCap className="w-4 h-4 inline mr-1" />
-                            Capacidad Estudiantes *
-                          </label>
-                          <input
-                            type="number"
-                            value={sedeForm.capacidadEstudiantes ?? ''}
-                            onChange={(e) => setSedeForm(prev => ({
-                              ...prev,
-                              capacidadEstudiantes: e.target.value ? Number(e.target.value) : undefined
-                            }))}
-                            placeholder="500"
-                            min={0}
-                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
-                              errors.capacidadEstudiantes ? 'border-red-500' : 'border-gray-300'
-                            }`}
-                          />
-                          {errors.capacidadEstudiantes && (
-                            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              {errors.capacidadEstudiantes}
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            <Users className="w-4 h-4 inline mr-1" />
-                            Capacidad Docentes *
-                          </label>
-                          <input
-                            type="number"
-                            value={sedeForm.capacidadDocentes ?? ''}
-                            onChange={(e) => setSedeForm(prev => ({
-                              ...prev,
-                              capacidadDocentes: e.target.value ? Number(e.target.value) : undefined
-                            }))}
-                            placeholder="50"
-                            min={0}
-                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
-                              errors.capacidadDocentes ? 'border-red-500' : 'border-gray-300'
-                            }`}
-                          />
-                          {errors.capacidadDocentes && (
-                            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              {errors.capacidadDocentes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ==================== CONTACTO ==================== */}
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 border-b pb-2">
-                        <Phone className="w-4 h-4 text-[#003DA5]" />
-                        Contacto
-                      </h3>
-
-                      {/* Direccion */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <MapPin className="w-4 h-4 inline mr-1" />
-                          Direccion
-                        </label>
-                        <input
-                          type="text"
-                          value={sedeForm.dirSede}
-                          onChange={(e) => setSedeForm(prev => ({ ...prev, dirSede: e.target.value }))}
-                          placeholder="Calle 44 No. 53-37"
-                          maxLength={250}
+                        <select
+                          value={sedeForm.tipo}
+                          onChange={(e) => setSedeForm(prev => ({ ...prev, tipo: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
-                        />
+                        >
+                          <option value="sede_central">Sede Central</option>
+                          <option value="cetap">CETAP</option>
+                          <option value="otro">Otro</option>
+                        </select>
                       </div>
 
+                      {/* Coordenadas */}
                       <div className="grid grid-cols-2 gap-4">
-                        {/* Telefono */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            <Phone className="w-4 h-4 inline mr-1" />
-                            Telefono
+                            <MapPin className="w-4 h-4 inline mr-1" />
+                            Latitud
                           </label>
                           <input
-                            type="tel"
-                            value={sedeForm.telSede}
-                            onChange={(e) => setSedeForm(prev => ({ ...prev, telSede: e.target.value }))}
-                            placeholder="(601) 220-2790"
-                            maxLength={50}
+                            type="number"
+                            step="any"
+                            value={sedeForm.latitud ?? ''}
+                            onChange={(e) => setSedeForm(prev => ({
+                              ...prev,
+                              latitud: e.target.value ? Number(e.target.value) : undefined
+                            }))}
+                            placeholder="Ej: 4.6097"
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
                           />
                         </div>
-
-                        {/* Email */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            <Mail className="w-4 h-4 inline mr-1" />
-                            Correo Electronico *
+                            <MapPin className="w-4 h-4 inline mr-1" />
+                            Longitud
                           </label>
                           <input
-                            type="email"
-                            value={sedeForm.emailSede}
-                            onChange={(e) => setSedeForm(prev => ({ ...prev, emailSede: e.target.value }))}
-                            placeholder="sede@esap.edu.co"
-                            maxLength={100}
-                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
-                              errors.emailSede ? 'border-red-500' : 'border-gray-300'
-                            }`}
+                            type="number"
+                            step="any"
+                            value={sedeForm.longitud ?? ''}
+                            onChange={(e) => setSedeForm(prev => ({
+                              ...prev,
+                              longitud: e.target.value ? Number(e.target.value) : undefined
+                            }))}
+                            placeholder="Ej: -74.0817"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
                           />
-                          {errors.emailSede && (
-                            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              {errors.emailSede}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                    </div>
-
-                    {/* ==================== CONFIGURACION ==================== */}
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 border-b pb-2">
-                        <ClipboardList className="w-4 h-4 text-[#003DA5]" />
-                        Configuracion
-                      </h3>
-
-                      {/* Switches de configuracion */}
-                      <div className="grid grid-cols-3 gap-3">
-                        <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={sedeForm.permiteInscripciones}
-                            onChange={(e) => setSedeForm(prev => ({ ...prev, permiteInscripciones: e.target.checked }))}
-                            className="w-4 h-4 rounded text-[#003DA5] focus:ring-[#003DA5]"
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">Inscripciones</p>
-                          </div>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={sedeForm.permiteMatriculas}
-                            onChange={(e) => setSedeForm(prev => ({ ...prev, permiteMatriculas: e.target.checked }))}
-                            className="w-4 h-4 rounded text-[#003DA5] focus:ring-[#003DA5]"
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">Matriculas</p>
-                          </div>
-                        </label>
-
-                        <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={sedeForm.visiblePortal}
-                            onChange={(e) => setSedeForm(prev => ({ ...prev, visiblePortal: e.target.checked }))}
-                            className="w-4 h-4 rounded text-[#003DA5] focus:ring-[#003DA5]"
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">Visible Portal</p>
-                          </div>
-                        </label>
-                      </div>
-
-                      {/* Observaciones */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <FileText className="w-4 h-4 inline mr-1" />
-                          Observaciones
-                        </label>
-                        <textarea
-                          value={sedeForm.observaciones}
-                          onChange={(e) => setSedeForm(prev => ({ ...prev, observaciones: e.target.value }))}
-                          placeholder="Notas adicionales sobre la sede..."
-                          rows={3}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] resize-none"
-                        />
                       </div>
                     </div>
                   </>

@@ -88,7 +88,7 @@ type TabView = 'pipeline' | 'transiciones' | 'cuellos' | 'sla' | 'sankey';
 export function WorkflowVisualizerPTA() {
   const [data, setData] = useState<WorkflowData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
   const [tab, setTab] = useState<TabView>('pipeline');
   const [selectedEstado, setSelectedEstado] = useState<string | null>(null);
   const [flujoView, setFlujoView] = useState<'principal' | 'bidireccional' | 'excepcional'>('principal');

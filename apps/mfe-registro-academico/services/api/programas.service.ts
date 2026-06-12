@@ -63,9 +63,9 @@ const SERVICE_PREFIX = '/auth/api/v1';
 
 export const programasService = {
   async listar(filtros: ProgramasFiltro = {}): Promise<ProgramasResponse> {
-    return apiClient.get<ProgramasResponse>(`${SERVICE_PREFIX}/programas-academicos`, {
-      params: filtros,
-      requiresAuth: false,
+    return apiClient.get<ProgramasResponse>(`${SERVICE_PREFIX}/programas-academicos`, filtros, {
+      retries: 0,
+      skipErrorToast: true,
     });
   },
 };

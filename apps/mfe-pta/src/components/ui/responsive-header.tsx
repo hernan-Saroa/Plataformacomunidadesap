@@ -28,10 +28,9 @@ interface ResponsiveHeaderAction {
   onClick: () => void;
   variant?: 'primary' | 'secondary' | 'ghost';
   className?: string;
-  disabled?: boolean;
 }
 
-interface ResponsiveHeaderProps {
+export interface ResponsiveHeaderProps {
   /** Título principal del módulo */
   title: string;
   
@@ -81,7 +80,7 @@ export function ResponsiveHeader({
       if (headerRef.current) {
         const width = headerRef.current.offsetWidth;
         setContainerWidth(width);
-        console.log('📏 Header width:', width); // DEBUG
+
       }
     };
     
@@ -107,17 +106,7 @@ export function ResponsiveHeader({
   const shouldShowCompact = containerWidth >= 1100 && containerWidth < 1300; // Iconos
   const shouldShowFull = containerWidth >= 1300;         // Completo
   
-  // Debug
-  useEffect(() => {
-    if (containerWidth > 0) {
-      console.log('🎨 Render mode:', {
-        width: containerWidth,
-        minimal: shouldShowMinimal,
-        compact: shouldShowCompact,
-        full: shouldShowFull
-      });
-    }
-  }, [containerWidth, shouldShowMinimal, shouldShowCompact, shouldShowFull]);
+
   
   const getBadgeClassName = (variant?: string) => {
     const variants = {
@@ -133,7 +122,7 @@ export function ResponsiveHeader({
     const baseClasses = 'inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap';
     
     const variants = {
-      primary: 'bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white hover:shadow-lg hover:-translate-y-0.5',
+      primary: 'bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5',
       secondary: 'bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white',
       ghost: 'text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300'
     };
@@ -153,7 +142,7 @@ export function ResponsiveHeader({
   return (
     <div
       ref={headerRef}
-      className={className}
+      className={`rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5 ${className}`}
     >
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
         {/* Left Section: Title, Description, Icon, Badge */}
@@ -179,24 +168,23 @@ export function ResponsiveHeader({
         )}
 
         {/* Title Section */}
-        <div className="flex items-start gap-2 md:gap-3">
-          {/* Icon (opcional) */}
+        <div className="flex items-start gap-3 md:gap-4">
+          {/* Icon - White card style with light blue bg */}
           {Icon && (
             <div 
-              className="w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center flex-shrink-0"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
+                backgroundColor: '#EBF0FA'
               }}
             >
-              <Icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
+              <Icon className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
             </div>
           )}
 
           {/* Title + Description */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg md:text-xl lg:text-2xl font-extrabold text-[--esap-gray-900] tracking-tight">
+              <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
                 {title}
               </h1>
               
@@ -210,7 +198,7 @@ export function ResponsiveHeader({
 
             {/* Description - Ocultar en modo compacto */}
             {description && !shouldShowMinimal && (
-              <p className="text-[11px] md:text-xs text-[--esap-gray-600] mt-0.5 md:mt-1">
+              <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
                 {description}
               </p>
             )}
@@ -231,11 +219,10 @@ export function ResponsiveHeader({
                   <button
                     key={getActionKey('full', action, index)}
                     onClick={action.onClick}
-                    className={getActionClassName(action.variant || 'secondary', action.className)}
+                    className={getActionClassName(action.variant || 'ghost', action.className)}
                     title={action.label}
-                    disabled={action.disabled}
                   >
-                    {ActionIcon && <ActionIcon className="w-4 h-4 flex-shrink-0" />}
+                    <ActionIcon className="w-4 h-4 flex-shrink-0" />
                     <span>{action.label}</span>
                   </button>
                 );
@@ -319,15 +306,15 @@ export function ResponsiveHeader({
                   {/* Dropdown Menu */}
                   {isMenuOpen && (
                     <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setIsMenuOpen(false)}
-                        />
-                        <div
-                          className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
-                        >
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsMenuOpen(false)}
+                      />
+                      <div
+                        className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
+                      >
                           {/* Header del menú */}
-                          <div className="bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-4 py-2.5">
+                          <div className="bg-[#003DA5] px-4 py-2.5">
                             <p className="text-xs font-bold text-white">Más Opciones</p>
                           </div>
 

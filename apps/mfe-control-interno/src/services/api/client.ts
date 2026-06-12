@@ -8,7 +8,7 @@
  */
 
 import { getBaseURL, STORAGE_KEYS, API_CONFIG, APIResponse, APIError } from './config';
-import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { API_MODE, MICROSERVICE_URLS } from '../../../config/environment';
 
 /**
  * Custom error para errores de API

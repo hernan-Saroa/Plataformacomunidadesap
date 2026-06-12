@@ -198,6 +198,79 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
             </div>
           </details>
 
+          {/* ── SECCIÓN 4: Resolución de Investigación ── */}
+          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
+            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-emerald-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="font-bold text-slate-800 flex items-center gap-3">
+                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">4</span>
+                Resolución de Investigación — Documentación Soporte
+              </span>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
+            </summary>
+
+            <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-emerald-50/10">
+              <p className="text-xs text-slate-500 mb-1">
+                Define si las actividades de investigación requieren resolución y/o archivo adjunto en el PTA del docente.
+              </p>
+
+              {/* Toggle: Resolución obligatoria */}
+              <div className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-emerald-200 transition-colors shadow-sm">
+                <div className="flex-1 pr-4">
+                  <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">N° / Nombre de la Resolución</h4>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Si está activo, el docente debe ingresar el número o nombre de la resolución que respalda el proyecto de investigación.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleChange('inv_resolucion_obligatoria', !draft.inv_resolucion_obligatoria)}
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                    draft.inv_resolucion_obligatoria
+                      ? 'bg-emerald-500 border-emerald-500'
+                      : 'bg-slate-200 border-slate-200'
+                  }`}
+                  role="switch"
+                  aria-checked={draft.inv_resolucion_obligatoria}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    draft.inv_resolucion_obligatoria ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
+                <span className={`ml-3 text-xs font-bold min-w-[70px] text-right ${draft.inv_resolucion_obligatoria ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {draft.inv_resolucion_obligatoria ? 'Obligatorio' : 'Opcional'}
+                </span>
+              </div>
+
+              {/* Toggle: Adjunto obligatorio */}
+              <div className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-emerald-200 transition-colors shadow-sm">
+                <div className="flex-1 pr-4">
+                  <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">Archivo Adjunto (Resolución PDF)</h4>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Si está activo, el docente debe cargar un archivo de soporte (PDF, DOC) junto con la resolución del proyecto.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleChange('inv_adjunto_obligatorio', !draft.inv_adjunto_obligatorio)}
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                    draft.inv_adjunto_obligatorio
+                      ? 'bg-emerald-500 border-emerald-500'
+                      : 'bg-slate-200 border-slate-200'
+                  }`}
+                  role="switch"
+                  aria-checked={draft.inv_adjunto_obligatorio}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    draft.inv_adjunto_obligatorio ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
+                <span className={`ml-3 text-xs font-bold min-w-[70px] text-right ${draft.inv_adjunto_obligatorio ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {draft.inv_adjunto_obligatorio ? 'Obligatorio' : 'Opcional'}
+                </span>
+              </div>
+            </div>
+          </details>
+
         </div>
       </section>
     </div>

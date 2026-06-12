@@ -7,13 +7,18 @@ import {
   Param,
   Query,
   Body,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { EstructuraOrganizacionalService } from './estructura-organizacional.service';
 import {
   CreateSeccionalDto,
   UpdateSeccionalDto,
   CreateSedeDto,
   UpdateSedeDto,
+  AsignarUsuariosDto,
 } from './estructura-organizacional.dto';
 
 @Controller('estructura-organizacional')
@@ -40,6 +45,18 @@ export class EstructuraOrganizacionalController {
         totalSedes: stats.totalSedes,
       },
     };
+  }
+
+  @Post('importar')
+  @UseInterceptors(FileInterceptor('file'))
+  async importarEstructura(
+    @UploadedFile() file: any,
+    @Query('periodo_codigo') periodoCodigo: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Archivo no proporcionado');
+    }
+    return this.estructuraService.importarEstructura(file.buffer, periodoCodigo);
   }
 
   // ==================== ESTADÍSTICAS ====================
@@ -164,5 +181,21 @@ export class EstructuraOrganizacionalController {
   async deleteSeccional(@Param('id') id: string) {
     await this.estructuraService.deleteSeccional(Number(id));
     return { message: 'Seccional eliminada exitosamente' };
+  }
+
+  // ==================== ASIGNACIÓN DE USUARIOS ====================
+
+  @Get('usuarios/sin-asignar')
+  async getUsuariosSinAsignar() {
+    return this.estructuraService.getUsuariosSinAsignar();
+  }
+
+  @Post('usuarios/asignar')
+  async asignarSeleccionados(@Body() body: AsignarUsuariosDto) {
+    return this.estructuraService.asignarSeleccionados(
+      body.ids,
+      body.territorialId,
+      body.cetapId,
+    );
   }
 }

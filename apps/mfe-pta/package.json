@@ -12,8 +12,11 @@
     "@esap-mfe/shared-hooks": "*",
     "@esap-mfe/shared-types": "*",
     "@esap-mfe/shared-ui": "*",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.10.1"
   },
   "devDependencies": {

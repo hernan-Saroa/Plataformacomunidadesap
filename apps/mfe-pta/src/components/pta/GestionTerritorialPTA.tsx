@@ -41,7 +41,7 @@ export function GestionTerritorialPTA() {
   const [detalle, setDetalle] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
   const [selectedTerritorial, setSelectedTerritorial] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
 

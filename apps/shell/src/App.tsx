@@ -6,7 +6,7 @@
  * - Backoffice Administrativo
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './components/portal/LandingPage';
@@ -75,6 +75,11 @@ import ValidarCertificadoGraduado from './components/portal/ValidarCertificadoGr
 // import { LoginPage } from './components/portal/LoginPage';
 import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
 // import { Toaster } from './components/ui/sonner';
+
+// Lazy-load AutogestionDocenteRUND (ruta pública)
+const AutogestionDocenteRUND = React.lazy(() =>
+  import('../../mfe-pta/src/components/pta/banco-docentes/AutogestionDocenteRUND').then(m => ({ default: m.AutogestionDocenteRUND }))
+);
 
 /**
  * ============================================
@@ -325,11 +330,10 @@ const CLEAR_SESSION_STATE_STORAGE_KEYS = [
 ];
 
 function migrateAuthTokensToSessionStorage() {
-  // OTIC-001: los tokens ya no se almacenan en sessionStorage ni localStorage.
-  // Solo limpiamos residuos de versiones anteriores.
+  // Solo limpiar residuos de localStorage (los tokens en sessionStorage
+  // son necesarios para restaurar la sesión al recargar la página).
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
     localStorage.removeItem(key);
-    sessionStorage.removeItem(key);
   }
 
   const rememberedSession = localStorage.getItem('esap-remember-session');
@@ -509,9 +513,10 @@ export default function App() {
     migrateAuthTokensToSessionStorage();
     migrateSensitiveSessionDataToSessionStorage();
 
-    // Limpiar cualquier token residual de versiones anteriores (OTIC-001)
+    // NOTA: Los tokens en sessionStorage son necesarios para el header Authorization
+    // durante la restauración de sesión. No borrarlos aquí.
+    // Solo limpiar tokens residuales de localStorage (donde no deberían estar).
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
-      sessionStorage.removeItem(key);
       localStorage.removeItem(key);
     });
 
@@ -529,24 +534,15 @@ export default function App() {
 
     (async () => {
       try {
-        // Si hay señal de sesión y el timeout de inactividad ya pasó, cerrar sin llamar al backend
-        if (sesionGuardada) {
-          const sesionParsed = JSON.parse(sesionGuardada);
-          const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
-          if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
-            clearSensitiveSessionState();
-            console.log('⏰ Sesión expirada');
-            setIsRestoringSession(false);
-            return;
-          }
-        }
-        // Verificar con el backend solo si hubo sesion previa en esta pestana.
+        // Siempre verificar con el backend — el JWT tiene su propia expiración (1h).
+        // No cerrar prematuramente basándonos en timestamps del cliente.
         const user = await authService.verifyToken();
         authService.setCurrentUserCache(user as any);
         applySessionFromUser(user);
         console.log('✅ Sesión restaurada desde backend');
-      } catch {
-        // Cookie inexistente, expirada o inválida
+      } catch (err) {
+        // Token inexistente, expirado o inválido — el backend rechazó el JWT
+        console.info('[Auth] Sesión anterior expirada — redirigiendo a login.');
         if (sesionGuardada) {
           toast.error('Sesión ha expirado', {
             description: 'Por seguridad la sesión se ha cerrado',
@@ -578,6 +574,22 @@ export default function App() {
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
   }, [usuarioActual, vistaActual, isRestoringSession]);
+
+  // Actualizar el timestamp de sesión justo antes de recargar/cerrar la pestaña
+  // para que al volver el timestamp sea siempre reciente.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
+        const sesion: SesionGuardada = {
+          vista: vistaActual,
+          timestamp: Date.now(),
+        };
+        sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(sesion));
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [usuarioActual, vistaActual]);
 
   // Deep links de certificados públicos (laborales y graduados)
   useEffect(() => {
@@ -1155,6 +1167,21 @@ export default function App() {
           <Route
             path="/expediente-compartido/:token"
             element={<ExpedienteCompartidoPage />}
+          />
+          <Route
+            path="/autogestion/docentes"
+            element={
+              <Suspense fallback={
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f8fafc' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 32, height: 32, border: '3px solid #E5E7EB', borderTopColor: '#003DA5', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+                    <p style={{ fontSize: 14, color: '#6B7280' }}>Cargando formulario de autogestión...</p>
+                  </div>
+                </div>
+              }>
+                <AutogestionDocenteRUND />
+              </Suspense>
+            }
           />
           <Route path="*" element={isRestoringSession ? (
             <div className="min-h-screen flex items-center justify-center bg-white">

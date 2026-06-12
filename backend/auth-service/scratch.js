@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const client = new Client({user: 'postgres', host: 'localhost', database: 'esap_db', password: 'postgres', port: 5432}); client.connect().then(async () => { let res = await client.query('SELECT * FROM auth.\"user\" LIMIT 1'); console.log('USERS:', res.rows); client.end(); });

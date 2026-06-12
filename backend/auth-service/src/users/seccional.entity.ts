@@ -37,7 +37,7 @@ export class Seccional {
   @Column({ name: 'usu_actualizacion', length: 20, nullable: true })
   usuActualizacion: string;
 
-  @Column({ name: 'cod_seccional', length: 5, nullable: true })
+  @Column({ name: 'cod_seccional', length: 20, nullable: true })
   codSeccional: string;
 
   @Column({ name: 'id_empresa', type: 'bigint', nullable: true })

@@ -1,4 +1,41 @@
 import { IsString, IsOptional, IsNumber, IsObject } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class ProgramasFiltroDto {
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
+  nivelFormacion?: string;
+
+  @IsOptional()
+  @IsString()
+  modalidad?: string;
+
+  @IsOptional()
+  @IsString()
+  sede?: string;
+
+  @IsOptional()
+  @IsString()
+  estado?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  periodoAcademico?: string;
+}
 
 export class CreateProgramaDto {
   @IsString()
@@ -25,35 +62,15 @@ export class CreateProgramaDto {
 
   @IsOptional()
   @IsNumber()
-  duracion?: number;
+  horasBasePorCredito?: number;
 
   @IsOptional()
   @IsNumber()
-  creditos?: number;
-
-  @IsOptional()
-  @IsNumber()
-  costoMatricula?: number;
+  horasPregradoCentral?: number;
 
   @IsOptional()
   @IsString()
   requisitosDeIngreso?: string;
-
-  @IsOptional()
-  @IsString()
-  jornada?: string;
-
-  @IsOptional()
-  @IsString()
-  sede?: string;
-
-  @IsOptional()
-  @IsObject()
-  registroCalificado?: any;
-
-  @IsOptional()
-  @IsString()
-  perfilEgresado?: string;
 
   @IsOptional()
   @IsString()
@@ -87,35 +104,15 @@ export class UpdateProgramaDto {
 
   @IsOptional()
   @IsNumber()
-  duracion?: number;
+  horasBasePorCredito?: number;
 
   @IsOptional()
   @IsNumber()
-  creditos?: number;
-
-  @IsOptional()
-  @IsNumber()
-  costoMatricula?: number;
+  horasPregradoCentral?: number;
 
   @IsOptional()
   @IsString()
   requisitosDeIngreso?: string;
-
-  @IsOptional()
-  @IsString()
-  jornada?: string;
-
-  @IsOptional()
-  @IsString()
-  sede?: string;
-
-  @IsOptional()
-  @IsObject()
-  registroCalificado?: any;
-
-  @IsOptional()
-  @IsString()
-  perfilEgresado?: string;
 
   @IsOptional()
   @IsString()

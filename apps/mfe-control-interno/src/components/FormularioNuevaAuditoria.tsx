@@ -399,18 +399,18 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
     const timer = setTimeout(async () => {
       try {
         const { auditoriasApi } = await import('./services/api');
-        const resp = await auditoriasApi.searchPersonas(q);
+        const resp = await auditoriasApi.searchAuditados(q);
         if (cancelado) return;
         if (resp.success && Array.isArray(resp.data)) {
-          setResultadosResponsable(
-            resp.data.map((p: any) => ({
-              idPersona: String(p.idPersona ?? p.id ?? ''),
-              nombre: p.nombre ?? '',
-              email: p.email ?? '',
-              cargo: p.cargo,
-              numeroIdentificacion: p.numeroIdentificacion,
-            })),
-          );
+          const fetched = resp.data.map((p: any) => ({
+            idPersona: String(p.idPersona ?? p.id ?? ''),
+            nombre: p.nombre ?? '',
+            email: p.email ?? '',
+            cargo: p.cargo,
+            numeroIdentificacion: p.numeroIdentificacion,
+            isAuditorBackend: p.isAuditor ?? false,
+          }));
+          setResultadosResponsable(fetched);
         } else {
           setResultadosResponsable([]);
         }
@@ -1132,37 +1132,66 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                           )}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResponsableArea(null);
-                          setBusquedaResponsable('');
-                          setResultadosResponsable([]);
-                          setMostrarSugerencias(false);
-                        }}
-                        className="shrink-0 text-xs text-blue-700 hover:text-blue-900 underline"
-                      >
-                        Cambiar
-                      </button>
+                      <div className="flex flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResponsableArea(null);
+                            setBusquedaResponsable('');
+                            setResultadosResponsable([]);
+                            setMostrarSugerencias(false);
+                          }}
+                          className="shrink-0 text-xs flex items-center gap-1 text-red-600 hover:text-red-800 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Eliminar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResponsableArea(null);
+                            setBusquedaResponsable('');
+                            setResultadosResponsable([]);
+                            setMostrarSugerencias(true);
+                          }}
+                          className="shrink-0 text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
+                        >
+                          Cambiar
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="relative">
-                      <Input
-                        placeholder="Ej. Carlos Pérez, jose.perez@esap.edu.co o 1.234.567.890"
-                        value={busquedaResponsable}
-                        onChange={(e) => {
-                          setBusquedaResponsable(e.target.value);
-                          setMostrarSugerencias(true);
-                          setErrores((prev) => {
-                            const n = { ...prev };
-                            delete n.responsableArea;
-                            return n;
-                          });
-                        }}
-                        onFocus={() => setMostrarSugerencias(true)}
-                        onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
-                        className={errores.responsableArea ? 'border-red-500' : ''}
-                      />
+                      <div className="relative">
+                        <Input
+                          placeholder="Ej. Carlos Pérez, jose.perez@esap.edu.co o 1.234.567.890"
+                          value={busquedaResponsable}
+                          onChange={(e) => {
+                            setBusquedaResponsable(e.target.value);
+                            setMostrarSugerencias(true);
+                            setErrores((prev) => {
+                              const n = { ...prev };
+                              delete n.responsableArea;
+                              return n;
+                            });
+                          }}
+                          onFocus={() => setMostrarSugerencias(true)}
+                          onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
+                          className={`pr-8 ${errores.responsableArea ? 'border-red-500' : ''}`}
+                        />
+                        {busquedaResponsable.length > 0 && !buscandoResponsable && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBusquedaResponsable('');
+                              setMostrarSugerencias(true);
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
 
                       {mostrarSugerencias && busquedaResponsable.trim().length >= 2 && (
                         <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
@@ -1174,41 +1203,60 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                               No se encontraron personas. Verifica el nombre o correo.
                             </div>
                           )}
-                          {resultadosResponsable.map((p) => (
-                            <button
-                              key={p.idPersona}
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setResponsableArea(p);
-                                setBusquedaResponsable('');
-                                setResultadosResponsable([]);
-                                setMostrarSugerencias(false);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Avatar className="w-7 h-7 shrink-0">
-                                  <AvatarFallback className="bg-gray-200 text-gray-700 text-[10px]">
-                                    {(p.nombre || '')
-                                      .split(' ')
-                                      .filter(Boolean)
-                                      .slice(0, 2)
-                                      .map((s) => s[0])
-                                      .join('')
-                                      .toUpperCase() || 'P'}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm text-gray-900 truncate">{p.nombre}</p>
-                                  <p className="text-xs text-gray-500 truncate">
-                                    {p.email}
-                                    {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
-                                  </p>
+                          {resultadosResponsable.map((p) => {
+                            if (!p) return null;
+                            const isAuditorConfig = (usuariosAuditores || []).some(a => a && String(a.idTercero ?? a.id) === p.idPersona);
+                            const isAuditor = (p as any).isAuditorBackend || isAuditorConfig;
+
+                            return (
+                              <button
+                                key={p.idPersona}
+                                type="button"
+                                disabled={isAuditor}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  if (isAuditor) return;
+                                  setResponsableArea(p);
+                                  setBusquedaResponsable('');
+                                  setResultadosResponsable([]);
+                                  setMostrarSugerencias(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 border-b border-gray-100 last:border-0 ${
+                                  isAuditor
+                                    ? 'opacity-60 bg-gray-50 cursor-not-allowed'
+                                    : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="w-7 h-7 shrink-0">
+                                    <AvatarFallback className={isAuditor ? 'bg-gray-200 text-gray-500 text-[10px]' : 'bg-gray-200 text-gray-700 text-[10px]'}>
+                                      {(p.nombre || '')
+                                        .split(' ')
+                                        .filter(Boolean)
+                                        .slice(0, 2)
+                                        .map((s) => s[0])
+                                        .join('')
+                                        .toUpperCase() || 'P'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <p className={`text-sm truncate ${isAuditor ? 'text-gray-500' : 'text-gray-900'}`}>{p.nombre}</p>
+                                      {isAuditor && (
+                                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                                          Auditor - No seleccionable
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className={`text-xs truncate ${isAuditor ? 'text-gray-400' : 'text-gray-500'}`}>
+                                      {p.email}
+                                      {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
+                                    </p>
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
-                          ))}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

@@ -23,11 +23,14 @@ export interface ProgramaAcademicoDTO {
   duracionSemestres: number;
   creditos: number;
   facultad?: string;
+  cetapsList?: { ofertaId: string; estudiantes: number; cetap: string; dt: string }[];
   estado: string;
   descripcion?: string;
   perfilEgresado?: string;
   requisitosIngreso?: string[];
   costoMatricula?: number;
+  horasBasePorCredito?: number;
+  horasPregradoCentral?: number;
   estudiantesActivos?: number;
   graduados?: number;
   docentesAsignados?: number;
@@ -55,6 +58,7 @@ export interface ProgramasFiltro {
   modalidad?: string;
   estado?: string;
   sedeId?: number;
+  periodoAcademico?: string;
   page?: number;
   limit?: number;
 }
@@ -68,4 +72,7 @@ export const programasService = {
       requiresAuth: false,
     });
   },
+  async updateCetapEstudiantes(programaId: string | number, ofertaId: string, estudiantes: number): Promise<void> {
+    return apiClient.patch(`${SERVICE_PREFIX}/programas-academicos/${programaId}/cetaps/${ofertaId}`, { cupos: estudiantes }, { requiresAuth: true });
+  }
 };

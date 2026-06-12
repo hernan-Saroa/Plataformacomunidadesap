@@ -189,7 +189,8 @@ export function TabsDocumentosConHistorial({
               return (
                 <Card key={doc.id} className={`border-2 ${estadoConfig.border} hover:shadow-lg transition-all bg-white`}>
                   {/* Header con Badge de Estado */}
-                  <div className={`px-5 py-3 ${estadoConfig.bg} border-b-2 ${estadoConfig.border} flex items-center justify-between`}>
+                  <div className={`px-5 py-3 ${estadoConfig.bg} border-b-2 ${estadoConfig.border} flex items-center justify-between`}
+                    style={{borderTopLeftRadius: '12px', borderTopRightRadius: '12px'}}>
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg bg-white`}>
                         <EstadoIcon className={`w-4 h-4 ${estadoConfig.text}`} />

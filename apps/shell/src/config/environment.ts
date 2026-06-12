@@ -137,8 +137,7 @@ export const getApiGatewayBaseUrl = (): string => {
   return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
 };
 
-const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && !!(window as any).__ESAP_DEV__);
-export const API_MODE = VITE_API_MODE || (isDev && isLocalhost && isDevServer ? 'direct' : 'gateway');
+export const API_MODE = VITE_API_MODE || (isLocalhost && isDevServer ? 'direct' : 'gateway');
 
 export const ONLYOFFICE_URL = (() => {
   const configuredUrl = VITE_ONLYOFFICE_URL
