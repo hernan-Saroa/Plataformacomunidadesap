@@ -764,6 +764,16 @@ const graduadosService = {
     },
 
     /**
+     * Eliminar un graduado creado por solicitud o carga masiva
+     */
+    eliminar: async (id: string): Promise<{ mensaje: string }> => {
+      const response = await apiClient.delete(
+        `${SERVICE_PREFIX}/graduates/${id}`,
+      );
+      return response;
+    },
+
+    /**
      * Buscar graduado por cédula
      */
     buscarPorCedula: async (idNumber: string): Promise<GraduadoData> => {

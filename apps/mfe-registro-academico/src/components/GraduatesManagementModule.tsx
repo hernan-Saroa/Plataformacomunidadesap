@@ -43,7 +43,8 @@ import {
   AlertTriangle,
   Building2,  // ✅ NUEVO: Para filtro de sedes
   Database,
-  FileCheck2
+  FileCheck2,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -109,8 +110,7 @@ type GraduateRow = {
 };
 
 // ✅ DÍA 4: Container4K para padding adaptativo
-// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
-import { Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
+import { Container4K } from '@esap-mfe/shared-ui';
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -136,6 +136,7 @@ export function GraduatesManagementModule() {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingGraduate, setIsDeletingGraduate] = useState(false);
   const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
   const [filesModalUser, setFilesModalUser] = useState<GraduateRow | null>(null);
   const [filesModalItems, setFilesModalItems] = useState<GraduadoArchivo[]>([]);
@@ -529,6 +530,11 @@ export function GraduatesManagementModule() {
     }
     return normalizeDisplayName(createdBy) || 'Integración';
   };
+
+  const canDeleteGraduateRecord = (user?: GraduateRow | null) =>
+    !!user &&
+    canEditGraduates &&
+    (user.enrollmentMethod === 'request' || user.enrollmentMethod === 'massive');
 
   const loadGraduateFiles = async (graduateId: string) => {
     setIsLoadingFiles(true);
@@ -1539,12 +1545,19 @@ export function GraduatesManagementModule() {
   };
 
   const handleDelete = (user: GraduateRow) => {
+    if (!canDeleteGraduateRecord(user)) {
+      toast.error('No se puede eliminar este graduado', {
+        description: 'Solo los graduados creados por solicitud o carga masiva pueden eliminarse desde esta vista.',
+      });
+      return;
+    }
+
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
   };
 
   const handleViewDetails = (user: GraduateRow) => {
-    setExpandedUserId(expandedUserId === user.id ? null : user.id);
+    setExpandedUserId((current) => (current === user.id ? null : user.id));
   };
 
   const handleBlockUser = (user: GraduateRow) => {
@@ -1786,11 +1799,35 @@ export function GraduatesManagementModule() {
     }
   };
 
-  const confirmDelete = () => {
-    toast.success('Graduado Eliminado', {
-      description: `Se eliminó: ${selectedUser?.firstName} ${selectedUser?.lastName}`
-    });
-    setIsDeleteModalOpen(false);
+  const confirmDelete = async () => {
+    if (!selectedUser) return;
+    if (!canDeleteGraduateRecord(selectedUser)) {
+      toast.error('No se puede eliminar este graduado', {
+        description: 'Solo los graduados creados por solicitud o carga masiva pueden eliminarse desde esta vista.',
+      });
+      setIsDeleteModalOpen(false);
+      return;
+    }
+
+    setIsDeletingGraduate(true);
+    try {
+      await graduadosService.graduados.eliminar(selectedUser.id);
+
+      setGraduates((prev) => prev.filter((graduate) => graduate.id !== selectedUser.id));
+      setExpandedUserId((current) => (current === selectedUser.id ? null : current));
+      toast.success('Graduado eliminado', {
+        description: `Se eliminó: ${selectedUser.firstName} ${selectedUser.lastName}`,
+      });
+      setIsDeleteModalOpen(false);
+      setSelectedUser(null);
+    } catch (error: any) {
+      console.error('Error eliminando graduado:', error);
+      toast.error('No se pudo eliminar el graduado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsDeletingGraduate(false);
+    }
   };
 
   const confirmBlock = () => {
@@ -1976,7 +2013,7 @@ export function GraduatesManagementModule() {
         onClose={() => setMostrarValidador(false)} 
       />
 
-      {/* Header - DÍA 5: ResponsiveHeader */}
+      {/* Modal de Carga Masiva de Graduados */}
       <BulkGraduatesUploadModal
         open={isBulkUploadModalOpen}
         onOpenChange={setIsBulkUploadModalOpen}
@@ -1987,51 +2024,75 @@ export function GraduatesManagementModule() {
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
       />
 
-      <ResponsiveHeader
-        title="Gestión de Graduados"
-        description="Administra graduados y genera certificados de verificación de títulos"
-        icon={GraduationCap}
-        primaryAction={canVerifyGraduateCertificates ? {
-          label: "Verificar Certificado",
-          icon: BadgeCheck,
-          onClick: () => handleVerifyTitle(),
-          variant: "primary"
-        } : undefined}
-        secondaryActions={[
-          ...(canCreateGraduates ? [
-            {
-              label: "Carga Masiva",
-              icon: Upload,
-              onClick: handleOpenBulkUploadModal,
-              variant: "secondary" as const,
-              className: "border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white"
-            }
-          ] : []),
-          ...(canExportGraduates ? [
-            {
-              label: "Exportar",
-              icon: Download,
-              onClick: handleOpenExportModal,
-              variant: "secondary" as const
-            }
-          ] : [])
-        ]}
-      />
+      {/* Header propio de esta vista (responsive con wrap natural, sin colapsar a iconos/menú) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Izquierda: ícono + título + descripción */}
+        <div className="flex items-start gap-3 min-w-0">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: '#003DA5', boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)' }}
+          >
+            <GraduationCap className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-xl lg:text-2xl font-extrabold text-gray-900 tracking-tight">
+              Gestión de Graduados
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Administra graduados y genera certificados de verificación de títulos
+            </p>
+          </div>
+        </div>
+
+        {/* Derecha: acciones — mantienen su etiqueta y hacen wrap cuando falta espacio */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:justify-end lg:flex-shrink-0">
+          {canCreateGraduates && (
+            <button
+              onClick={handleOpenBulkUploadModal}
+              title="Carga Masiva"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all bg-white text-emerald-700 border-2 border-emerald-600 hover:bg-emerald-600 hover:text-white hover:shadow-md"
+            >
+              <Upload className="w-4 h-4 flex-shrink-0" />
+              <span>Carga Masiva</span>
+            </button>
+          )}
+          {canExportGraduates && (
+            <button
+              onClick={handleOpenExportModal}
+              title="Exportar"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white hover:shadow-md"
+            >
+              <Download className="w-4 h-4 flex-shrink-0" />
+              <span>Exportar</span>
+            </button>
+          )}
+          {canVerifyGraduateCertificates && (
+            <button
+              onClick={() => handleVerifyTitle()}
+              title="Verificar Certificado"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5"
+            >
+              <BadgeCheck className="w-4 h-4 flex-shrink-0" />
+              <span>Verificar Certificado</span>
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Búsqueda y Filtros */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.15 }}
-        className="bg-white rounded-xl border border-[#E5E7EB] p-4"
-        style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+        className="rounded-2xl border border-[#E5E7EB] bg-white/95 p-3 sm:p-4"
+        style={{ boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)' }}
       >
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           {/* Input búsqueda */}
-          <div className="flex-1">
+          <div className="min-w-0 lg:w-[430px] lg:flex-none xl:w-[500px]">
             <div className="relative">
               <Search 
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+                className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2"
                 style={{ color: '#9CA3AF' }}
               />
               <input
@@ -2039,12 +2100,12 @@ export function GraduatesManagementModule() {
                 placeholder="Buscar por nombre, correo o documento..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full border-2 rounded-lg transition-all"
+                className="w-full rounded-lg border bg-white shadow-sm transition-all"
                 style={{
-                  paddingLeft: '48px',
-                  paddingRight: searchQuery ? '48px' : '16px',
-                  paddingTop: '12px',
-                  paddingBottom: '12px',
+                  paddingLeft: '42px',
+                  paddingRight: searchQuery ? '42px' : '16px',
+                  paddingTop: '11px',
+                  paddingBottom: '11px',
                   fontSize: '14px',
                   lineHeight: '20px',
                   color: '#1F2937',
@@ -2066,20 +2127,21 @@ export function GraduatesManagementModule() {
                   onClick={() => setSearchQuery('')}
                   className="absolute right-4 top-1/2 -translate-y-1/2"
                   style={{ color: '#9CA3AF' }}
+                  aria-label="Limpiar búsqueda"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-4 w-4" />
                 </button>
               )}
             </div>
           </div>
 
           {/* Filtros */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {/* Filtro Estado */}
             {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
+              className="h-[42px] w-full min-w-0 rounded-xl border px-3.5 text-sm transition-all"
               style={{
                 borderColor: '#D1D5DB',
                 color: '#1F2937',
@@ -2102,117 +2164,162 @@ export function GraduatesManagementModule() {
             </select> */}
 
             {/* Filtro Programa */}
-            <select
-              value={programFilter}
-              onChange={(e) => setProgramFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '180px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todos los programas</option>
-              {programCatalogOptions.map(prog => (
-                <option key={prog} value={prog}>{prog}</option>
-              ))}
-            </select>
+            <div className="relative min-w-0">
+              <GraduationCap
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: '#64748B' }}
+              />
+              <select
+                value={programFilter}
+                onChange={(e) => setProgramFilter(e.target.value)}
+                className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-white py-0 pl-11 pr-10 text-sm font-semibold shadow-sm transition-all hover:border-[#94A3B8] hover:bg-[#FBFDFF]"
+                style={{
+                  borderColor: '#CBD5E1',
+                  color: '#1F2937',
+                  height: '44px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  backgroundImage: 'none',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#003DA5';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#CBD5E1';
+                  e.target.style.boxShadow = 'none';
+                }}
+              >
+                <option value="all">Todos los programas</option>
+                {programCatalogOptions.map(prog => (
+                  <option key={prog} value={prog}>{prog}</option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                strokeWidth={2.25}
+                style={{ color: '#475569' }}
+              />
+            </div>
 
             {/* Filtro Territorial */}
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '150px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todas las territoriales</option>
-              {territorialOptions.map((territorial) => (
-                <option key={territorial} value={territorial}>{territorial}</option>
-              ))}
-            </select>
+            <div className="relative min-w-0">
+              <Building2
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: '#64748B' }}
+              />
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-white py-0 pl-11 pr-10 text-sm font-semibold shadow-sm transition-all hover:border-[#94A3B8] hover:bg-[#FBFDFF]"
+                style={{
+                  borderColor: '#CBD5E1',
+                  color: '#1F2937',
+                  height: '44px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  backgroundImage: 'none',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#003DA5';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#CBD5E1';
+                  e.target.style.boxShadow = 'none';
+                }}
+              >
+                <option value="all">Todas las territoriales</option>
+                {territorialOptions.map((territorial) => (
+                  <option key={territorial} value={territorial}>{territorial}</option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                strokeWidth={2.25}
+                style={{ color: '#475569' }}
+              />
+            </div>
 
             {/* Filtro por Sede */}
-            <select
-              value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '150px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">
-                {locationFilter === 'all' ? 'Todas las sedes (CETAP)' : 'Todas las sedes de la territorial'}
-              </option>
-              {locationFilter === 'all' && sedeFilterGroups.groups.length > 0 ? (
-                <>
-                  {sedeFilterGroups.groups.map((group) => (
-                    <optgroup key={group.territorial} label={group.territorial}>
-                      {group.sedes.map((sede) => (
-                        <option key={`${group.territorial}-${sede}`} value={sede}>
-                          {sede}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  {sedeFilterGroups.ungrouped.length > 0 && (
-                    <optgroup label="Sedes sin territorial asociada">
-                      {sedeFilterGroups.ungrouped.map((sede) => (
-                        <option key={`ungrouped-${sede}`} value={sede}>
-                          {sede}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </>
-              ) : (
-                <>
-                  {sedeFilterOptions.map((sede) => (
-                    <option key={sede} value={sede}>{sede}</option>
-                  ))}
-                  {locationFilter !== 'all' && sedeFilterOptions.length === 0 && (
-                    <option value="" disabled>No hay sedes asociadas</option>
-                  )}
-                </>
-              )}
-            </select>
+            <div className="relative min-w-0">
+              <MapPin
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: '#64748B' }}
+              />
+              <select
+                value={sedeFilter}
+                onChange={(e) => setSedeFilter(e.target.value)}
+                className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-white py-0 pl-11 pr-10 text-sm font-semibold shadow-sm transition-all hover:border-[#94A3B8] hover:bg-[#FBFDFF]"
+                style={{
+                  borderColor: '#CBD5E1',
+                  color: '#1F2937',
+                  height: '44px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  backgroundImage: 'none',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#003DA5';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#CBD5E1';
+                  e.target.style.boxShadow = 'none';
+                }}
+              >
+                <option value="all">
+                  {locationFilter === 'all' ? 'Todas las sedes (CETAP)' : 'Todas las sedes de la territorial'}
+                </option>
+                {locationFilter === 'all' && sedeFilterGroups.groups.length > 0 ? (
+                  <>
+                    {sedeFilterGroups.groups.map((group) => (
+                      <optgroup key={group.territorial} label={group.territorial}>
+                        {group.sedes.map((sede) => (
+                          <option key={`${group.territorial}-${sede}`} value={sede}>
+                            {sede}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {sedeFilterGroups.ungrouped.length > 0 && (
+                      <optgroup label="Sedes sin territorial asociada">
+                        {sedeFilterGroups.ungrouped.map((sede) => (
+                          <option key={`ungrouped-${sede}`} value={sede}>
+                            {sede}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {sedeFilterOptions.map((sede) => (
+                      <option key={sede} value={sede}>{sede}</option>
+                    ))}
+                    {locationFilter !== 'all' && sedeFilterOptions.length === 0 && (
+                      <option value="" disabled>No hay sedes asociadas</option>
+                    )}
+                  </>
+                )}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                strokeWidth={2.25}
+                style={{ color: '#475569' }}
+              />
+            </div>
 
             {hasActiveFilters && (
               <button
                 onClick={clearAllFilters}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all sm:col-span-2 lg:col-span-3"
                 style={{
                   background: '#FEF2F2',
                   color: '#991B1B',
@@ -2231,7 +2338,7 @@ export function GraduatesManagementModule() {
             )}
           </div>
         </div>
-                    </motion.div>
+      </motion.div>
 
       {/* Lista de Graduados */}
       <motion.div
@@ -2295,6 +2402,7 @@ export function GraduatesManagementModule() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
+                onClick={() => handleViewDetails(user)}
                 className={`overflow-hidden border-r border-b border-l-4 border-r-[#E5E7EB] border-b-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
                   expandedUserId === user.id
                     ? 'relative z-[1] border-l-[#003DA5] bg-[#F8FBFF]'
@@ -2307,7 +2415,6 @@ export function GraduatesManagementModule() {
                   tabIndex={0}
                   aria-expanded={expandedUserId === user.id}
                   aria-label={`Ver detalles de ${user.firstName} ${user.lastName}`}
-                  onClick={() => handleViewDetails(user)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
@@ -2477,6 +2584,8 @@ export function GraduatesManagementModule() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
                       className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
@@ -2649,6 +2758,33 @@ export function GraduatesManagementModule() {
                             <Eye className="h-3.5 w-3.5 flex-shrink-0" />
                           </button>
                         </div>
+
+                        {canDeleteGraduateRecord(user) && (
+                          <div>
+                            <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                              Acciones
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDelete(user);
+                              }}
+                              className="inline-flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:border-red-300 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+                              style={{ borderColor: '#FECACA', color: '#B91C1C', background: '#FFFFFF' }}
+                              aria-label={`Eliminar graduado ${user.firstName} ${user.lastName}`}
+                            >
+                              <span
+                                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+                                style={{ background: '#FEF2F2', color: '#B91C1C' }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </span>
+                              <span className="truncate">Eliminar graduado</span>
+                            </button>
+                          </div>
+                        )}
+
                       </div>
                     </motion.div>
                   )}
@@ -3890,6 +4026,9 @@ export function GraduatesManagementModule() {
                   <p className="text-sm text-gray-600">
                     <strong>Documento:</strong> {selectedUser?.document}
                   </p>
+                  <p className="mt-2 text-xs font-semibold text-red-700">
+                    Origen: {selectedUser?.enrollmentMethod === 'massive' ? 'Carga masiva' : 'Solicitud'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -3930,69 +4069,110 @@ export function GraduatesManagementModule() {
       </Dialog>
 
       {/* Modal: Eliminar Graduado */}
-      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              Eliminar Graduado
-            </DialogTitle>
-            <DialogDescription>
-              Esta acción no se puede deshacer. ¿Estás completamente seguro?
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Trash2 className="w-5 h-5 mt-0.5 text-red-600" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900 mb-2">
-                    {selectedUser?.firstName} {selectedUser?.lastName}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-2">
-                    <strong>Email:</strong> {selectedUser?.email}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-2">
-                    <strong>Programa:</strong> {selectedUser?.program}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Documento:</strong> {selectedUser?.document}
-                  </p>
-                </div>
+      <Dialog
+        open={isDeleteModalOpen}
+        onOpenChange={(open) => {
+          if (!isDeletingGraduate) setIsDeleteModalOpen(open);
+        }}
+      >
+        <DialogContent
+          size="md"
+          className="top-1/2 -translate-y-1/2 p-0 sm:p-0 gap-0 overflow-hidden rounded-2xl border border-gray-100 shadow-2xl duration-300 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2"
+        >
+          {/* Encabezado */}
+          <DialogHeader className="px-5 pt-5 pb-4 text-left space-y-0 sm:text-left">
+            <div className="flex items-start gap-3 pr-6">
+              <span className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-red-100 ring-8 ring-red-50/70">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </span>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <DialogTitle className="text-base font-semibold text-gray-900">
+                  Eliminar Graduado
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm text-gray-500">
+                  ¿Estás seguro de que deseas eliminar este usuario?
+                </DialogDescription>
               </div>
             </div>
+          </DialogHeader>
 
-            <div className="bg-red-100 border border-red-300 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 text-red-700" />
-                <div className="text-xs text-red-900">
-                  <p className="font-semibold mb-1">⚠️ ADVERTENCIA: Esta acción es PERMANENTE</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    <li>Se eliminarán todos los datos del graduado</li>
-                    <li>Se borrarán todos sus certificados</li>
-                    <li>Se perderá el historial completo</li>
-                    <li>Esta acción NO puede revertirse</li>
+          {/* Cuerpo */}
+          <div className="px-5 space-y-3">
+            {/* Tarjeta del graduado */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+              <div className="flex items-center gap-2.5 pb-3 mb-3 border-b border-gray-200/80">
+                <span className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-600">
+                  <Trash2 className="w-4 h-4" />
+                </span>
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {selectedUser?.firstName} {selectedUser?.lastName}
+                </p>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0 text-gray-400">Email</dt>
+                  <dd className="flex-1 min-w-0 text-gray-700 break-words">{selectedUser?.email}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0 text-gray-400">Programa</dt>
+                  <dd className="flex-1 min-w-0 text-gray-700 break-words">{selectedUser?.program}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0 text-gray-400">Documento</dt>
+                  <dd className="flex-1 min-w-0 text-gray-700 break-words">{selectedUser?.document}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* Advertencia */}
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600" />
+                <div className="text-xs leading-relaxed text-red-900">
+                  <p className="font-semibold mb-1.5">Esta acción es permanente</p>
+                  <ul className="space-y-1">
+                    <li className="flex gap-1.5">
+                      <span className="text-red-400 leading-none">•</span>
+                      <span>Se eliminarán los datos del graduado.</span>
+                    </li>
+                    <li className="flex gap-1.5">
+                      <span className="text-red-400 leading-none">•</span>
+                      <span>Se borrarán sus certificados, validaciones y archivos asociados.</span>
+                    </li>
+                    <li className="flex gap-1.5">
+                      <span className="text-red-400 leading-none">•</span>
+                      <span>Esta acción no puede revertirse.</span>
+                    </li>
                   </ul>
                 </div>
               </div>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-5 py-4 mt-1 gap-2">
             <button
               onClick={() => setIsDeleteModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
-              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isDeletingGraduate}
+              className="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Cancelar
+              No, cancelar
             </button>
             <button
               onClick={confirmDelete}
-              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 bg-red-600 text-white hover:bg-red-700"
+              disabled={isDeletingGraduate}
+              className="px-4 py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 bg-red-600 text-white shadow-sm transition-all hover:bg-red-700 hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-red-600 disabled:active:scale-100"
             >
-              <Trash2 className="w-4 h-4" />
-              Eliminar Definitivamente
+              {isDeletingGraduate ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Sí, eliminar
+                </>
+              )}
             </button>
           </DialogFooter>
         </DialogContent>
