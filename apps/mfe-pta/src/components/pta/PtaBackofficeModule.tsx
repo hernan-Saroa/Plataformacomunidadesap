@@ -861,7 +861,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }, []);
 
   const [filtroEstado, setFiltroEstado] = useState('');
-  const [filtroPeriodo, setFiltroPeriodo] = useState('2026-1');
+  const [filtroPeriodo, setFiltroPeriodo] = useState('2025-2');
   const [filtroPrograma, setFiltroPrograma] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -921,9 +921,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [showPresets, setShowPresets] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [savedPresets, setSavedPresets] = useState<Array<{ name: string; estado: string; periodo: string; programa: string; search: string }>>([
-    { name: 'Pendientes TC 2026-1', estado: 'pendientes', periodo: '2026-1', programa: '', search: 'TC' },
-    { name: 'Aprobados este periodo', estado: 'Aprobado', periodo: '2026-1', programa: '', search: '' },
-    { name: 'En concertación', estado: 'EN_CONCERTACION', periodo: '2026-1', programa: '', search: '' },
+    { name: 'Pendientes TC 2026-1', estado: 'pendientes', periodo: '2025-2', programa: '', search: 'TC' },
+    { name: 'Aprobados este periodo', estado: 'Aprobado', periodo: '2025-2', programa: '', search: '' },
+    { name: 'En concertación', estado: 'EN_CONCERTACION', periodo: '2025-2', programa: '', search: '' },
   ]);
 
 

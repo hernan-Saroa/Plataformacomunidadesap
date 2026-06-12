@@ -15,6 +15,7 @@ import {
   AlertTriangle, Eye
 } from 'lucide-react';
 import { getRUNDDocente } from '../../../services/api/ptaApi';
+import { RundValidationPanel } from './RundValidationPanel';
 
 interface Props {
   docente: any;
@@ -88,7 +89,6 @@ const SECTIONS = [
   { id: 'personales', label: 'Datos Personales', icon: User, color: '#3B82F6', bg: '#EFF6FF' },
   { id: 'formacion', label: 'Formación Académica', icon: GraduationCap, color: '#8B5CF6', bg: '#F5F3FF' },
   { id: 'vinculacion', label: 'Vinculación', icon: Briefcase, color: '#F59E0B', bg: '#FFFBEB' },
-  { id: 'rund', label: 'Carga Masiva (RUND)', icon: FileSpreadsheet, color: '#6366F1', bg: '#EEF2FF' },
 ] as const;
 
 // ── Soporte status helpers ──
@@ -124,7 +124,7 @@ const BLOQUE_ICON_CONFIG: Record<string, { label: string; color: string; icon: a
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function BancoDocenteDetalleInline({ docente, onClose, onEdit }: Props) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['personales']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['personales', 'rund']));
   const [checklist, setChecklist] = useState<any[]>([]);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
 
@@ -225,19 +225,6 @@ export function BancoDocenteDetalleInline({ docente, onClose, onEdit }: Props) {
           </div>
         );
 
-      case 'rund':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-              <Field label="ID RUND" value={docente.id_rund || docente.idRund} badge color="#6366f1" />
-              <Field label="Periodo de Carga" value={docente.periodo_carga || docente.periodoCarga} badge color="#ec4899" />
-            </div>
-            <div style={{ padding: 14, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-              <Field label="Observaciones del Operador" value={docente.observaciones} />
-            </div>
-          </div>
-        );
-
       default:
         return null;
     }
@@ -284,58 +271,16 @@ export function BancoDocenteDetalleInline({ docente, onClose, onEdit }: Props) {
             </div>
           </div>
 
-          {/* ── Collapsible accordion sections ── */}
-          <div>
-            {SECTIONS.map(section => {
-              const isExpanded = expandedSections.has(section.id);
-              const Icon = section.icon;
-
-              return (
-                <div key={section.id} data-section-id={section.id} style={{ borderBottom: '1px solid #E5E7EB' }}>
-                  {/* Section header button */}
-                  <button
-                    onClick={() => toggleSection(section.id)}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 20px', cursor: 'pointer',
-                      background: isExpanded ? '#F9FAFB' : 'white',
-                      border: 'none', transition: 'background 0.15s',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 30, height: 30, borderRadius: 8, background: section.bg,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <Icon style={{ width: 15, height: 15, color: section.color }} />
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#1F2937' }}>{section.label}</span>
-                    </div>
-                    {isExpanded
-                      ? <ChevronDown style={{ width: 14, height: 14, color: '#9CA3AF' }} />
-                      : <ChevronRight style={{ width: 14, height: 14, color: '#9CA3AF' }} />}
-                  </button>
-
-                  {/* Section content */}
-                  {isExpanded && (
-                    <div style={{
-                      padding: '12px 20px 16px', background: '#F9FAFB',
-                      animation: 'fadeIn 0.15s ease-out',
-                    }}>
-                      {section.id === 'validacion' && loadingChecklist ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 16, justifyContent: 'center' }}>
-                          <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite', color: '#6B7280' }} />
-                          <span style={{ fontSize: 12, color: '#6B7280' }}>Cargando validación…</span>
-                        </div>
-                      ) : (
-                        renderSectionContent(section.id)
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          {/* ── Prominent RUND Validation Panel ── */}
+          <div style={{ padding: '20px 20px 0 20px', background: '#FAFBFC' }}>
+            <RundValidationPanel 
+              docenteId={docente.id} 
+              cleanPersonaId={docente.personaId || docente.persona_id}
+              docente={docente} 
+            />
           </div>
+
+          {/* Redundant accordion sections removed to unify with the World-Class Validation Panel */}
         </div>
 
         {/* Animations */}

@@ -43,7 +43,7 @@ function DeltaIndicator({ current, previous, suffix = '', invert = false }: { cu
 }
 
 export function ComparativoPeriodosPTA() {
-  const [periodoA, setPeriodoA] = useState('2026-1');
+  const [periodoA, setPeriodoA] = useState('2025-2');
   const [periodoB, setPeriodoB] = useState('2025-2');
   const [dataA, setDataA] = useState<any>(null);
   const [dataB, setDataB] = useState<any>(null);

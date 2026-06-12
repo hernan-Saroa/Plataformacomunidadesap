@@ -25,7 +25,7 @@ const COLORS_COMP = ['#003DA5','#7C3AED','#059669','#D97706'];
 export function TableroControlPTA() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
 
   const loadData = async () => {
     setLoading(true);

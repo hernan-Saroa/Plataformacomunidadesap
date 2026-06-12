@@ -621,7 +621,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                                   Plan de Trabajo Académico
                                 </h4>
                                 <span className="text-gray-400 font-bold text-[0.72rem] sm:text-[0.8rem] tracking-widest uppercase">
-                                  {pta.periodo || '2026-1'}
+                                  {pta.periodo || '2025-2'}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2 sm:gap-3 mt-1.5 flex-wrap">
@@ -709,7 +709,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 {/* Header row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div className="min-w-0">
-                    <h3 className="text-[0.95rem] sm:text-[1.05rem] font-black text-gray-900 m-0 tracking-tight">PTA — {selectedPta.periodo || '2026-1'}</h3>
+                    <h3 className="text-[0.95rem] sm:text-[1.05rem] font-black text-gray-900 m-0 tracking-tight">PTA — {selectedPta.periodo || '2025-2'}</h3>
                     <p className="text-[0.7rem] sm:text-[0.75rem] text-gray-500 mt-0.5 font-medium">{selectedPta.dedicacion} • <span className="text-gray-400">ID: {selectedPta.id?.substring(0, 14)}</span></p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { createBancoDocente, updateBancoDocente } from '../../../services/api/ptaApi';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface Props {
   docente: any | null;
@@ -160,6 +161,7 @@ export function BancoDocenteEditModal({ docente, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touchedSteps, setTouchedSteps] = useState<Set<number>>(new Set([0]));
+  const auth = useAuth();
 
   const [form, setForm] = useState({
     nombreCompleto: '',
@@ -445,7 +447,7 @@ export function BancoDocenteEditModal({ docente, onClose, onSaved }: Props) {
                     <SectionHeader title="Identificación" description="Datos de identidad del docente" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                       <FloatingField label="Documento de Identidad" required>
-                        <input className="wizard-field" style={fieldStyle} value={form.documento_identidad} onChange={set('documento_identidad')} placeholder="Ej: 12345678" disabled={!!docente?.id} />
+                        <input className="wizard-field" style={fieldStyle} value={form.documento_identidad} onChange={set('documento_identidad')} placeholder="Ej: 12345678" disabled={!!docente?.id && !auth.hasPermission('pta.backoffice.editar_docente')} />
                       </FloatingField>
                       <FloatingField label="Tipo de Documento">
                         <select className="wizard-field wizard-select" style={fieldStyle} value={form.tipo_identificacion} onChange={set('tipo_identificacion')}>

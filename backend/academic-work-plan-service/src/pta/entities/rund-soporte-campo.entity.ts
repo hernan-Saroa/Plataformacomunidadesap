@@ -36,7 +36,7 @@ export class RundSoporteCampoEntity {
    * BR-058 — Referencia al documento en Carpeta Digital (no duplicamos el archivo).
    * Puede ser el ID del tipo_documento o el ID del archivo en Carpeta Digital.
    */
-  @Column({ name: 'documento_carpeta_id', type: 'uuid', nullable: true })
+  @Column({ name: 'documento_carpeta_id', type: 'text', nullable: true })
   documentoCarpetaId: string | null;
 
   /**

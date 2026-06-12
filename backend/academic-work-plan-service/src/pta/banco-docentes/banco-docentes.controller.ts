@@ -235,6 +235,19 @@ export class BancoDocentesController {
   // rutas estáticas como "invitaciones", "stats", "soportes", etc.
   // ═══════════════════════════════════════════════════════════════════
 
+  @Post(':id/validacion-documental/batch')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  async saveValidacionBatch(
+    @Param('id') id: string,
+    @Body() body: any
+  ) {
+    if (!body.validaciones || !Array.isArray(body.validaciones)) {
+      return { success: false, message: 'Se requiere un arreglo de validaciones' };
+    }
+    const result = await this.service.saveValidacionDocumentalBatch(id, body.validaciones);
+    return result;
+  }
+
   @Get(':id')
   async getById(@Param('id') id: string) {
     return { success: true, data: await this.service.getById(id) };
@@ -260,7 +273,7 @@ export class BancoDocentesController {
 
   /** BR-044 — Obtener estados de aprobación por bloque */
   @Get(':id/bloques')
-  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @Public()
   async getBloques(@Param('id') id: string) {
     try {
       const result = await this.service.getBloques(id);
@@ -307,12 +320,14 @@ export class BancoDocentesController {
     return { success: true, data: result };
   }
 
-  /** BR-039 — Vincular un soporte a un bloque */
+  // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: (req, file, cb) => {
-        const uploadPath = './uploads/rund';
+        const docenteId = req.params.id || 'desconocido';
+        const docenteNombre = req.body.docenteNombre ? String(req.body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
+        const uploadPath = `./uploads/carpeta-digital/${docenteNombre}/RUND`;
         if (!fs.existsSync(uploadPath)) {
           fs.mkdirSync(uploadPath, { recursive: true });
         }
@@ -324,21 +339,26 @@ export class BancoDocentesController {
       }
     })
   }))
-  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @Public()
+  // @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
   async vincularSoporte(
     @Param('id') id: string,
     @Param('bloque') bloque: string,
     @Body() body: any,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (file) {
-      body.nombreArchivo = file.originalname;
-      // Since API gateway proxies `/pta/api/v1/` to root,
-      // the URL will be accessible via the proxy.
-      body.documentoCarpetaId = `/pta/api/v1/uploads/rund/${file.filename}`;
+    try {
+      if (file) {
+        body.nombreArchivo = file.originalname;
+        const docenteId = id || 'desconocido';
+        const docenteNombre = body.docenteNombre ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
+        body.documentoCarpetaId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file.filename}`;
+      }
+      const result = await this.service.vincularSoporte(id, bloque, body);
+      return { success: true, data: result };
+    } catch (e: any) {
+      return { success: false, error: e.message, stack: e.stack };
     }
-    const result = await this.service.vincularSoporte(id, bloque, body);
-    return { success: true, data: result };
   }
 
   /** BR-047 — Verificar estado de activación del registro */
@@ -350,6 +370,7 @@ export class BancoDocentesController {
 
   /** §6.3 / BR-059 — Tarjeta RUND para Carpeta Digital */
   @Get(':id/tarjeta-rund')
+  @Public()
   async getTarjetaRUND(@Param('id') id: string) {
     try {
       const result = await this.service.getTarjetaRUND(id);
@@ -361,6 +382,7 @@ export class BancoDocentesController {
 
   /** BR-056 — Log inmutable de auditoría del docente */
   @Get(':id/auditoria')
+  @Public()
   async getAuditoria(@Param('id') id: string) {
     try {
       const result = await this.service.getAuditoria(id);

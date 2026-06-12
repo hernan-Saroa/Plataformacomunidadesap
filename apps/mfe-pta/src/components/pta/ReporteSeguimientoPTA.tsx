@@ -45,7 +45,7 @@ function getStatusBadge(estado: string) {
 export function ReporteSeguimientoPTA() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
   const [territorial, setTerritorial] = useState('');
   const [estado, setEstado] = useState('');
   const [dedicacion, setDedicacion] = useState('');

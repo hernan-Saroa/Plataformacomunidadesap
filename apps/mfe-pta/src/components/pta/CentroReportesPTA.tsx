@@ -861,7 +861,7 @@ export function CentroReportesPTA() {
 
   const loadData = async () => {
     setLoading(true);
-    const res = await getAllPTAs({ periodo: '2026-1' });
+    const res = await getAllPTAs({ periodo: '2025-2' });
     // Validación robusta: asegurar que siempre sea un array
     if (res.success && Array.isArray(res.data)) {
       setPtas(res.data);

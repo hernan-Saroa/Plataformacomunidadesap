@@ -131,7 +131,7 @@ export function TableroInvitacionesRUND() {
   const fetchInvitaciones = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/pta/banco-docentes/invitaciones');
+      const res = await apiClient.get('/pta/api/v1/pta/banco-docentes/invitaciones');
       if (res.data?.success) {
         setInvitaciones(res.data.data || []);
       }
@@ -199,11 +199,12 @@ export function TableroInvitacionesRUND() {
       return;
     }
 
-    const invalidEmails = emails.filter((e) => !e.endsWith('@esap.edu.co'));
-    if (invalidEmails.length > 0) {
-      setError(`Los siguientes correos no son @esap.edu.co: ${invalidEmails.slice(0, 3).join(', ')}${invalidEmails.length > 3 ? ` y ${invalidEmails.length - 3} más` : ''}`);
-      return;
-    }
+    // Comentamos la validación estricta de dominio para permitir pruebas con otros correos
+    // const invalidEmails = emails.filter((e) => !e.endsWith('@esap.edu.co'));
+    // if (invalidEmails.length > 0) {
+    //   setError(`Los siguientes correos no son @esap.edu.co: ${invalidEmails.slice(0, 3).join(', ')}${invalidEmails.length > 3 ? ` y ${invalidEmails.length - 3} más` : ''}`);
+    //   return;
+    // }
 
     setCreating(true);
     setError(null);
@@ -239,7 +240,7 @@ export function TableroInvitacionesRUND() {
 
     for (const email of emails) {
       try {
-        const res = await apiClient.post('/pta/banco-docentes/invitaciones', { correoInstitucional: email });
+        const res = await apiClient.post('/pta/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: email });
         if (res.data?.success) success++;
         else failed++;
       } catch {
@@ -260,7 +261,7 @@ export function TableroInvitacionesRUND() {
   // ─── Resend ──────────────────────────────────────────────────
   const handleResend = async (inv: Invitacion) => {
     try {
-      await apiClient.post('/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
+      await apiClient.post('/pta/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
       setSuccessMsg(`🔄 Invitación reenviada a ${inv.correoInstitucional}`);
       setTimeout(() => setSuccessMsg(null), 4000);
       fetchInvitaciones();
@@ -280,7 +281,7 @@ export function TableroInvitacionesRUND() {
     let count = 0;
     for (const inv of pending) {
       try {
-        await apiClient.post('/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
+        await apiClient.post('/pta/api/v1/pta/banco-docentes/invitaciones', { correoInstitucional: inv.correoInstitucional });
         count++;
       } catch { /* skip */ }
     }
@@ -373,7 +374,7 @@ export function TableroInvitacionesRUND() {
           </div>
           <div>
             <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#0f172a' }}>Enviar Invitaciones</h3>
-            <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>Pega uno o múltiples correos @esap.edu.co separados por coma, punto y coma o salto de línea</p>
+            <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>Pega uno o múltiples correos separados por coma, punto y coma o salto de línea</p>
           </div>
         </div>
         <div style={{ padding: '16px 22px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>

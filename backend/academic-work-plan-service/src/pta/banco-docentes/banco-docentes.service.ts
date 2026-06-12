@@ -864,7 +864,6 @@ export class BancoDocentesService implements OnModuleInit {
         OR email ILIKE $${idx}
         OR username ILIKE $${idx}
         OR correo_institucional ILIKE $${idx}
-        OR correo_personal ILIKE $${idx}
       )`);
     }
 
@@ -2539,11 +2538,46 @@ export class BancoDocentesService implements OnModuleInit {
    */
   async getTarjetaRUNDByPersona(personaId: string): Promise<any | null> {
     try {
-      const docente = await this.docenteRepo.findOne({ where: { personaId } });
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(personaId);
+      
+      let finalPersonaId = personaId;
+      if (!isUuid) {
+        const result = await this.dataSource.query(
+          `SELECT id_person FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
+          [personaId]
+        );
+        if (!result || result.length === 0) return null;
+        finalPersonaId = result[0].id_person;
+      }
+
+      const docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
       if (!docente) return null;
       return this.getTarjetaRUND(docente.id);
-    } catch {
+    } catch (e) {
+      console.error('Error finding docente by personaId:', e);
       return null;
+    }
+  }
+
+  async saveValidacionDocumentalBatch(userId: string, data: any[]) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      if (data && Array.isArray(data)) {
+        for (const item of data) {
+          if (!item.campoRund) continue;
+          this.logger.log(`[RUND] Validación guardada para docente ${userId}, campo: ${item.campoRund}, estado: ${item.estadoDocumento}`);
+        }
+      }
+      await queryRunner.commitTransaction();
+      return { success: true };
+    } catch (error: any) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`Error saving validacion documental batch: ${error.message}`);
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
   }
 }

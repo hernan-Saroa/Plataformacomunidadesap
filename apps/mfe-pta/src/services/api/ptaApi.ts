@@ -29,10 +29,14 @@ export async function getActivePeriodoAcademico() {
       if (active) return active;
       if (normalized.data.length > 0) return normalized.data[0];
     }
-    return { codigo: '2026-1' };
+    const year = new Date().getFullYear();
+    const sem = new Date().getMonth() < 6 ? 1 : 2;
+    return { codigo: `${year}-${sem}` };
   } catch (error) {
     console.error('Error fetching active periodo:', error);
-    return { codigo: '2026-1' };
+    const year = new Date().getFullYear();
+    const sem = new Date().getMonth() < 6 ? 1 : 2;
+    return { codigo: `${year}-${sem}` };
   }
 }
 

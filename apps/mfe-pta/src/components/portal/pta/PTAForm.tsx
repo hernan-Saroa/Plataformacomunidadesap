@@ -378,7 +378,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [ptaRules, setPtaRules] = useState<any>(null);
 
   // Form data
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
   const [dedicacion, setDedicacion] = useState('Tiempo Completo');
   const [tipoVinculacion, setTipoVinculacion] = useState('CARRERA_003');
   const [semanasVinculacion, setSemanasVinculacion] = useState(20);
@@ -523,7 +523,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     getPTAById(ptaId).then(res => {
       if (res.success && res.data) {
         const d = res.data;
-        setPeriodo(d.periodo || '2026-1');
+        setPeriodo(d.periodo || '2025-2');
         setDedicacion(d.dedicacion || 'Tiempo Completo');
         setTipoVinculacion(d.tipo_vinculacion || 'CARRERA_003');
         setSemanasVinculacion(d.semanas_vinculacion || 20);
@@ -1873,7 +1873,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <ReadonlyField label="Dedicación" value={dedicacion} />
               <FormSelect label="Periodo" value={periodo} disabled={!isEditable}
                 onChange={v => setPeriodo(v)}
-                options={[{ value: '2026-1', label: '2026-1' }, { value: '2026-2', label: '2026-2' }]} />
+                options={[{ value: '2025-2', label: '2025-2' }, { value: '2026-2', label: '2026-2' }]} />
               {isAdminEdit && (
                 <div>
                   <FormInput

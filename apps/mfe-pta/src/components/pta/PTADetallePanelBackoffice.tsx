@@ -1504,7 +1504,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   <Hash style={{ width: 11, height: 11 }} /> {pta.id?.substring(0, isMobile ? 8 : 12) || 'N/A'}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <Calendar style={{ width: 11, height: 11 }} /> {pta.periodo || '2026-1'}
+                  <Calendar style={{ width: 11, height: 11 }} /> {pta.periodo || '2025-2'}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                   <Award style={{ width: 11, height: 11 }} /> {pta.dedicacion || 'TC'}

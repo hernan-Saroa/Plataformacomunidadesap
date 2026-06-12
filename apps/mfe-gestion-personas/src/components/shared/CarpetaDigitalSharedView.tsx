@@ -782,7 +782,7 @@ export function CarpetaDigitalSharedView({
     });
 
     const totalCompletados = tiposValidados + tiposPendientes;
-    const pctGeneral = Math.round((tiposValidados / totalTipos) * 100);
+    const pctGeneral = Math.round((totalCompletados / totalTipos) * 100);
 
     return {
       totalTipos, totalCompletados, pctGeneral,
@@ -931,7 +931,7 @@ export function CarpetaDigitalSharedView({
                 </h3>
                 <p className="text-[12px] text-gray-500 mt-0.5 truncate">
                   {checklistMetrics.totalTipos > 0
-                    ? `${checklistMetrics.tiposValidados}/${checklistMetrics.totalTipos} validados`
+                    ? `${checklistMetrics.totalCompletados}/${checklistMetrics.totalTipos} subidos`
                     : `${metrics.total} documentos`
                   }
                 </p>

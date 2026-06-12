@@ -93,7 +93,7 @@ const ROLES_INVESTIGACION = [
   { id: 'asistente', nombre: 'Asistente de Investigacion', max_porcentaje: 15 },
 ];
 
-export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2026-1' }: Props) {
+export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-2' }: Props) {
   const [tab, setTab] = useState<TabView>('oferta');
   const [loading, setLoading] = useState(true);
   const [programas, setProgramas] = useState<any[]>([]);

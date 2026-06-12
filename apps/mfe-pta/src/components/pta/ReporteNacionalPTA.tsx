@@ -21,7 +21,7 @@ import { ExportadorReportesPTA } from './ExportadorReportesPTA';
 export function ReporteNacionalPTA() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
   const [vistaActiva, setVistaActiva] = useState<'territorial' | 'programa'>('territorial');
   const [busqueda, setBusqueda] = useState('');
 
