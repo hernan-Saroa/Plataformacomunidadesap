@@ -13,7 +13,7 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
+import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 

@@ -137,10 +137,7 @@ export const getApiGatewayBaseUrl = (): string => {
   return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
 };
 
-const isDev = import.meta.env.DEV || (typeof window !== 'undefined' && !!(window as any).__ESAP_DEV__);
-// En desarrollo local usamos 'gateway' porque el proxy de Vite redirige las peticiones
-// a los microservicios, eliminando problemas de CORS y conflictos IPv4/IPv6.
-export const API_MODE = VITE_API_MODE || 'gateway';
+export const API_MODE = VITE_API_MODE || (isLocalhost && isDevServer ? 'direct' : 'gateway');
 
 export const ONLYOFFICE_URL = (() => {
   const configuredUrl = VITE_ONLYOFFICE_URL
