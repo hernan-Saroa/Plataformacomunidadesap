@@ -86,6 +86,11 @@ export class GraduatesController {
     return await this.service.actualizarGraduado(id, payload);
   }
 
+  @Delete(':id')
+  async eliminarGraduado(@Param('id') id: string) {
+    return await this.service.eliminarGraduado(id);
+  }
+
   @Get(':id/files')
   async listarArchivos(@Param('id') id: string) {
     return await this.service.listarArchivosGraduado(id);

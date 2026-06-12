@@ -201,6 +201,27 @@ export class GraduationCertificatesService {
     return `/uploads/graduation-request-supports/${storedName}`;
   }
 
+  private isDeletableGraduateSource(createdBy?: string | null) {
+    const normalized = this.normalizeName(createdBy || '');
+    return (
+      normalized.startsWith('bulk upload') ||
+      normalized.includes('manual review') ||
+      normalized.includes('revision')
+    );
+  }
+
+  private removeFileIfExists(filePath?: string | null) {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return;
+    }
+
+    try {
+      fs.unlinkSync(filePath);
+    } catch (error) {
+      this.logger.warn(`No se pudo eliminar el archivo fisico ${filePath}: ${error}`);
+    }
+  }
+
   private buildRequesterSupportFileFromRequest(
     request: Partial<GraduationCertificateRequest>,
   ): RequesterSupportFileResponse | null {
@@ -4006,6 +4027,138 @@ export class GraduationCertificatesService {
 
     await this.graduateFileRepository.delete({ id: fileId });
     return { mensaje: 'Archivo eliminado correctamente' };
+  }
+
+  /**
+   * Elimina graduados creados por solicitud o carga masiva.
+   */
+  async eliminarGraduado(id: string) {
+    const filePathsToRemove: string[] = [];
+
+    const result = await this.graduateRepository.manager.transaction(
+      async (manager) => {
+        const graduateRepository = manager.getRepository(Graduate);
+        const requestRepository = manager.getRepository(
+          GraduationCertificateRequest,
+        );
+        const certificateRepository = manager.getRepository(
+          GraduationCertificate,
+        );
+        const validationRepository = manager.getRepository(CertificateValidation);
+        const graduateFileRepository = manager.getRepository(GraduateFile);
+        const reviewFileRepository = manager.getRepository(
+          GraduationRequestReviewFile,
+        );
+
+        const graduate = await graduateRepository.findOne({ where: { id } });
+        if (!graduate) {
+          throw new NotFoundException('Graduado no encontrado');
+        }
+
+        if (!this.isDeletableGraduateSource(graduate.createdBy)) {
+          throw new BadRequestException(
+            'Solo se pueden eliminar graduados creados por solicitud o carga masiva.',
+          );
+        }
+
+        const requests = await requestRepository.find({
+          where: { graduateId: id },
+        });
+        const requestIds = Array.from(
+          new Set(requests.map((request) => request.id).filter(Boolean)),
+        );
+
+        const certificateWhere =
+          requestIds.length > 0
+            ? [{ graduateId: id }, { requestId: In(requestIds) }]
+            : [{ graduateId: id }];
+        const certificates = await certificateRepository.find({
+          where: certificateWhere,
+        });
+        const certificateIds = Array.from(
+          new Set(
+            certificates
+              .map((certificate) => certificate.id)
+              .filter(Boolean),
+          ),
+        );
+
+        const graduateFiles = await graduateFileRepository.find({
+          where: { graduateId: id },
+        });
+        graduateFiles.forEach((file) => {
+          if (file.storedName) {
+            filePathsToRemove.push(
+              path.join(process.cwd(), 'uploads', 'graduate-files', file.storedName),
+            );
+          }
+        });
+
+        certificates.forEach((certificate) => {
+          const pdfName =
+            certificate.pdfFilename ||
+            (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : '');
+          if (pdfName) {
+            filePathsToRemove.push(
+              path.join(process.cwd(), 'uploads', 'graduation-certificates', pdfName),
+            );
+          }
+        });
+
+        if (requestIds.length > 0) {
+          const reviewFiles = await reviewFileRepository.find({
+            where: { requestId: In(requestIds) },
+          });
+          reviewFiles.forEach((file) => {
+            if (file.storedName) {
+              filePathsToRemove.push(
+                path.join(
+                  process.cwd(),
+                  'uploads',
+                  'graduation-review-files',
+                  file.storedName,
+                ),
+              );
+            }
+          });
+
+          requests.forEach((request) => {
+            const storedName = request.requesterSupportStoredName;
+            if (!storedName) return;
+            const storageDir = storedName.startsWith('public-review-')
+              ? path.join(process.cwd(), 'uploads', 'graduation-review-files')
+              : this.requesterSupportUploadDir();
+            filePathsToRemove.push(path.join(storageDir, storedName));
+          });
+        }
+
+        if (certificateIds.length > 0) {
+          await validationRepository.delete({
+            certificateId: In(certificateIds),
+          });
+          await certificateRepository.delete({ id: In(certificateIds) });
+        }
+
+        if (requestIds.length > 0) {
+          await reviewFileRepository.delete({ requestId: In(requestIds) });
+          await requestRepository.delete({ id: In(requestIds) });
+        }
+
+        await graduateFileRepository.delete({ graduateId: id });
+        await graduateRepository.delete({ id });
+
+        return {
+          mensaje: 'Graduado eliminado correctamente',
+          certificadosEliminados: certificateIds.length,
+          solicitudesEliminadas: requestIds.length,
+          archivosEliminados: graduateFiles.length,
+        };
+      },
+    );
+
+    filePathsToRemove.forEach((filePath) => this.removeFileIfExists(filePath));
+
+    return result;
   }
 
   /**
