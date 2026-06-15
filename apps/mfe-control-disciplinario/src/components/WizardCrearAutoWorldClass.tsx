@@ -197,7 +197,6 @@ export function WizardCrearAutoWorldClass({
 
   // Estados del Paso 2
   const [fechaAuto, setFechaAuto] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [prorrogaMeses, setProrrogaMeses] = useState<number | null>(null);
 
@@ -1229,21 +1228,6 @@ export function WizardCrearAutoWorldClass({
                           />
                         </div>
 
-                        {/* Fecha de Vencimiento */}
-                        <div>
-                          <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-blue-600" />
-                            Fecha de Vencimiento
-                            <span className="text-xs text-gray-500 font-normal">(Opcional)</span>
-                          </label>
-                          <input
-                            type="date"
-                            value={fechaVencimiento}
-                            onChange={(e) => setFechaVencimiento(e.target.value)}
-                            min={fechaAuto}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 transition-all text-sm font-medium shadow-sm"
-                          />
-                        </div>
                       </div>
 
 
@@ -1569,15 +1553,6 @@ export function WizardCrearAutoWorldClass({
                             </p>
                             <p className="text-sm font-black text-gray-900">{fechaAuto}</p>
                           </div>
-                          {fechaVencimiento && (
-                            <div className="bg-gray-50 rounded-xl p-4">
-                              <p className="text-xs font-semibold text-gray-500 mb-1 flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5" />
-                                VENCIMIENTO
-                              </p>
-                              <p className="text-sm font-black text-gray-900">{fechaVencimiento}</p>
-                            </div>
-                          )}
                         </div>
 
                         {/* Observaciones */}
