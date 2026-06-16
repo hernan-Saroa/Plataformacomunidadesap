@@ -171,6 +171,7 @@ interface Persona {
 interface Proceso {
   id?: string;
   numeroProceso: string;
+  radicadoProceso?: string;
   denunciado: Persona;
   denunciante: Persona;
   profesionalAsignado: Persona;
@@ -655,7 +656,11 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       let documentSize = 0;
 
       if (archivo) {
-        const uploadResult = await disciplinaryService.uploadFile(archivo);
+        const uploadResult = await disciplinaryService.uploadFile(
+          archivo,
+          'default',
+          proceso?.radicadoProceso || proceso?.numeroProceso
+        );
         documentUrl = uploadResult.url;
         documentName = uploadResult.filename;
         documentType = archivo.type;
