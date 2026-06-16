@@ -2920,7 +2920,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             {(!activeTipoProceso?.unidadTermino || activeTipoProceso.unidadTermino === 'dias' || activeTipoProceso.unidadTermino === 'Dias Calendario' || activeTipoProceso.unidadTermino === 'Ambos') && (
                                 <SelectItem value="Dias Calendario">Días Calendario</SelectItem>
                             )}
-                            {(activeTipoProceso?.unidadTermino === 'horas' || activeTipoProceso?.unidadTermino === 'Horas' || activeTipoProceso?.unidadTermino === 'Ambos') && (
+                            {(!activeTipoProceso?.unidadTermino || activeTipoProceso?.unidadTermino === 'horas' || activeTipoProceso?.unidadTermino === 'Horas' || activeTipoProceso?.unidadTermino === 'Ambos') && (
                               <SelectItem value="Horas">Horas</SelectItem>
                             )}
                           </SelectContent>

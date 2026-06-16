@@ -66,8 +66,15 @@ function getSemaforoColor(dias: number | undefined): { color: string; label: str
   return { color: '#10B981', label: 'EN TÉRMINO' };
 }
 
+function getTipoConteoLabel(tipoConteo: string | undefined): string {
+  if (tipoConteo === 'HORAS') return 'Horas';
+  if (tipoConteo === 'CALENDARIO') return 'Días Calendario';
+  return 'Días Hábiles';
+}
+
 function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposConfig?: CampoConfig[]): string {
   const semaforo = getSemaforoColor(exp.diasRestantes);
+  const tipoConteoLabel = getTipoConteoLabel(exp.tipoConteoTermino);
 
   // Partes procesales
   const partesHTML = (() => {
@@ -255,7 +262,7 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposCo
         </tr>
         <tr style="background:#F9FAFB;">
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Tipo de Conteo</td>
-          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.tipoConteoTermino === 'CALENDARIO' ? 'Días Calendario' : 'Días Hábiles'}</td>
+          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${tipoConteoLabel}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Estado</td>
           <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.estado || 'ACTIVO'}</td>
         </tr>
