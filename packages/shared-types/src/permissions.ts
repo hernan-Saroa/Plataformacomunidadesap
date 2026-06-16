@@ -386,5 +386,29 @@ export enum Permissions {
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_DELETE = 'control-interno.configuraciones.kanban.audit.delete',
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_EDIT = 'control-interno.configuraciones.kanban.plan.edit',
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_DELETE = 'control-interno.configuraciones.kanban.plan.delete',
+  // Registro Único Nacional Docente (RUND)
+  BANCO_DOCENTES_RUND_MANAGE = 'banco-docentes.rund.manage',
+  BANCO_DOCENTES_RUND_VIEW = 'banco-docentes.rund.view',
+  BANCO_DOCENTES_RUND_EDIT = 'banco-docentes.rund.edit',
+  BANCO_DOCENTES_RUND_VALIDATE = 'banco-docentes.rund.validate',
+  BANCO_DOCENTES_RUND_IMPORT = 'banco-docentes.rund.import',
+  BANCO_DOCENTES_RUND_EXPORT = 'banco-docentes.rund.export',
+  BANCO_DOCENTES_RUND_INVITE = 'banco-docentes.rund.invite',
 
+  // Programación Académica (PTA)
+  PTA_PROGRAMACION_ACADEMICA_MANAGE = 'pta.programacion-academica.manage',
+  PTA_PROGRAMACION_ACADEMICA_OFERTA_VIEW = 'pta.programacion-academica.oferta.view',
+  PTA_PROGRAMACION_ACADEMICA_OFERTA_EDIT = 'pta.programacion-academica.oferta.edit',
+  PTA_PROGRAMACION_ACADEMICA_ASIGNACION_MANAGE = 'pta.programacion-academica.asignacion.manage',
+  PTA_PROGRAMACION_ACADEMICA_PRECARGA_MANAGE = 'pta.programacion-academica.precarga.manage',
+  PTA_PROGRAMACION_ACADEMICA_NOTIFICAR = 'pta.programacion-academica.notificar',
+
+  // Estructura Organizacional
+  ESTRUCTURA_ORGANIZACIONAL_MANAGE = 'estructura-organizacional.manage',
+  ESTRUCTURA_ORGANIZACIONAL_VIEW = 'estructura-organizacional.view',
+  ESTRUCTURA_ORGANIZACIONAL_NODE_CREATE = 'estructura-organizacional.node.create',
+  ESTRUCTURA_ORGANIZACIONAL_NODE_EDIT = 'estructura-organizacional.node.edit',
+  ESTRUCTURA_ORGANIZACIONAL_NODE_DELETE = 'estructura-organizacional.node.delete',
+  ESTRUCTURA_ORGANIZACIONAL_IMPORT = 'estructura-organizacional.import',
+  ESTRUCTURA_ORGANIZACIONAL_EXPORT = 'estructura-organizacional.export',
 }

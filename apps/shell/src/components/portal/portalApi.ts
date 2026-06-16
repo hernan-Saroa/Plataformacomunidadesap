@@ -157,3 +157,38 @@ export async function uploadDocumentoCarpetaDigital(params: {
   if (params.descripcion) formData.append('descripcion', params.descripcion);
   return apiClient.upload(`${PORTAL_PREFIX}/carpeta-digital/upload`, formData);
 }
+export async function getChecklistForPersona(personaId: string) {
+  try {
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}/checklist`, undefined, { skipErrorToast: true });
+  } catch (err) {
+    console.warn('[portalApi] getChecklistForPersona no disponible:', err);
+    return { success: true, data: { useGlobalTypes: true, tiposDocumentos: [] } };
+  }
+}
+
+export async function getTiposDocumentos() {
+  try {
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/tipos-documentos`, undefined, { skipErrorToast: true });
+  } catch (err) {
+    console.warn('[portalApi] getTiposDocumentos no disponible:', err);
+    return { success: true, data: [] };
+  }
+}
+
+export async function getDocumentosByCarpeta(personaId: string) {
+  try {
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}/documentos`, undefined, { skipErrorToast: true });
+  } catch (err) {
+    console.warn('[portalApi] getDocumentosByCarpeta no disponible:', err);
+    return { success: true, data: [] };
+  }
+}
+
+export async function reclassifyDocumento(docId: string, data: any) {
+  try {
+    return await apiClient.put(`${PORTAL_PREFIX}/carpeta-digital/documentos/${docId}/reclassify`, data);
+  } catch (err) {
+    console.warn('[portalApi] reclassifyDocumento no disponible:', err);
+    return { success: false };
+  }
+}

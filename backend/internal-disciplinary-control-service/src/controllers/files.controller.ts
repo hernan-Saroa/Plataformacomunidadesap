@@ -16,12 +16,19 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { basename, extname, join, resolve } from 'path';
+import { existsSync } from 'fs';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+import {
+  ensureUploadDirExists,
+  getProcessUploadDir,
+  getProcessYearFolderName,
+  getUploadRootDir,
+  sanitizeProcessFolderName,
+} from '../services/storage.service';
 
 @Controller('files')
 export class FilesController {
@@ -32,11 +39,13 @@ export class FilesController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const uploadPath = './uploads';
-          if (!existsSync(uploadPath)) {
-            mkdirSync(uploadPath);
+          try {
+            const uploadPath = getProcessUploadDir(req.body?.radicadoProceso as string | undefined);
+            ensureUploadDirExists(uploadPath);
+            cb(null, uploadPath);
+          } catch (error) {
+            cb(error as Error, getUploadRootDir());
           }
-          cb(null, uploadPath);
         },
         filename: (req, file, cb) => {
           const randomName = Array(32)
@@ -95,16 +104,24 @@ export class FilesController {
         new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }),
       ],
     })) file: Express.Multer.File,
-    @Body() body: { tipo?: string },
+    @Body() body: { tipo?: string; radicadoProceso?: string },
   ) {
     if (!file) {
       throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
     }
+    const processFolder = sanitizeProcessFolderName(body.radicadoProceso);
+    const yearFolder = getProcessYearFolderName(processFolder || undefined);
+    const encodedFilename = encodeURIComponent(file.filename);
+
     return {
       filename: file.filename,
       originalname: file.originalname,
       path: file.path,
-      url: `/files/${file.filename}`, // URL relativa para acceso
+      radicadoProceso: processFolder || undefined,
+      anioProceso: yearFolder || undefined,
+      url: processFolder
+        ? `/files/process/${encodeURIComponent(processFolder)}/${encodedFilename}`
+        : `/files/${encodedFilename}`, // URL relativa para acceso
     };
   }
 
@@ -217,29 +234,30 @@ export class FilesController {
 
   @Get(':filename')
   serveFile(@Param('filename') filename: string, @Res() res: Response) {
-    // First try in ./uploads (for files uploaded via /files/upload endpoint)
-    let filePath = join(process.cwd(), 'uploads', filename);
+    const safeFilename = basename(filename);
+    // First try in configured uploads root (for files uploaded via /files/upload endpoint)
+    let filePath = resolve(getUploadRootDir(), safeFilename);
     if (existsSync(filePath)) {
       res.sendFile(filePath);
       return;
     }
 
     // Then try in ./uploads/plantillas-autos/{filename} (for auto templates)
-    filePath = join(process.cwd(), 'uploads', 'plantillas-autos', filename);
+    filePath = join(process.cwd(), 'uploads', 'plantillas-autos', safeFilename);
     if (existsSync(filePath)) {
       res.sendFile(filePath);
       return;
     }
 
     // Then try in ./uploads/plantillas-oficios/{filename} (for oficio templates)
-    filePath = join(process.cwd(), 'uploads', 'plantillas-oficios', filename);
+    filePath = join(process.cwd(), 'uploads', 'plantillas-oficios', safeFilename);
     if (existsSync(filePath)) {
       res.sendFile(filePath);
       return;
     }
 
     // Then try in ./uploads/plantillas-actas/{filename} (for acta templates)
-    filePath = join(process.cwd(), 'uploads', 'plantillas-actas', filename);
+    filePath = join(process.cwd(), 'uploads', 'plantillas-actas', safeFilename);
     if (existsSync(filePath)) {
       res.sendFile(filePath);
       return;
@@ -247,15 +265,15 @@ export class FilesController {
 
     // Then try in ./uploads/expedientes/{radicado}/filename (for news attachments)
     // The filename might come as "ND-2026-001/archivo.pdf" or just "archivo.pdf"
-    if (filename.includes('/')) {
-      filePath = join(process.cwd(), 'uploads', 'expedientes', filename);
+    if (safeFilename.includes('/')) {
+      filePath = join(process.cwd(), 'uploads', 'expedientes', safeFilename);
     } else {
       // Try to find file in any expediente folder
       const expedientesDir = join(process.cwd(), 'uploads', 'expedientes');
       if (existsSync(expedientesDir)) {
         const folders = require('fs').readdirSync(expedientesDir);
         for (const folder of folders) {
-          const potentialPath = join(expedientesDir, folder, filename);
+          const potentialPath = join(expedientesDir, folder, safeFilename);
           if (existsSync(potentialPath)) {
             res.sendFile(potentialPath);
             return;
@@ -273,6 +291,22 @@ export class FilesController {
   }
 
   /**
+   * Serve files uploaded under a process folder.
+   */
+  @Get('process/:radicadoProceso/:filename')
+  serveProcessFile(
+    @Param('radicadoProceso') radicadoProceso: string,
+    @Param('filename') filename: string,
+    @Res() res: Response
+  ) {
+    const filePath = join(getProcessUploadDir(radicadoProceso), basename(filename));
+    if (!existsSync(filePath)) {
+      throw new HttpException('File not found', HttpStatus.NOT_FOUND);
+    }
+    res.sendFile(filePath);
+  }
+
+  /**
    * Serve files from expedientes with full path: /files/expediente/:radicado/:filename
    */
   @Get('expediente/:radicado/:filename')
@@ -281,7 +315,7 @@ export class FilesController {
     @Param('filename') filename: string,
     @Res() res: Response
   ) {
-    const filePath = join(process.cwd(), 'uploads', 'expedientes', radicado, filename);
+    const filePath = join(process.cwd(), 'uploads', 'expedientes', radicado, basename(filename));
     if (!existsSync(filePath)) {
       throw new HttpException('File not found', HttpStatus.NOT_FOUND);
     }

@@ -443,19 +443,29 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     if (viewportSize === 'desktop') setSidebarOpen(false);
   }, [viewportSize]);
 
-  useEffect(() => {
-    const handleSidebarCollapse = (event: Event) => {
-      const customEvent = event as CustomEvent<{ collapsed: boolean }>;
-      if (customEvent.detail && typeof customEvent.detail.collapsed === 'boolean') {
-        setSidebarCollapsed(customEvent.detail.collapsed);
-      }
-    };
+    useEffect(() => {
+      const handleSidebarCollapse = (e: Event) => {
+        const customEvent = e as CustomEvent;
+        if (customEvent.detail && typeof customEvent.detail.collapsed === 'boolean') {
+          setSidebarCollapsed(customEvent.detail.collapsed);
+        }
+      };
 
-    window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
-    return () => {
-      window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
-    };
-  }, []);
+      const handlePortalViewChange = (e: Event) => {
+        const customEvent = e as CustomEvent;
+        if (customEvent.detail && customEvent.detail.view === 'carpeta-digital') {
+          setCurrentModule('carpeta-digital');
+          setCurrentSidebarModule('carpeta-digital');
+        }
+      };
+
+      window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
+      window.addEventListener('portal-view-change', handlePortalViewChange);
+      return () => {
+        window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
+        window.removeEventListener('portal-view-change', handlePortalViewChange);
+      };
+    }, []);
 
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
@@ -685,7 +695,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               userPersonId={currentUser.personId}
               userName={currentUser.name}
               userEmail={currentUser.email}
-              userRoles={userRoles || []}
+              userRoles={userData?.roles || userRoles || []}
               userPermissions={userPermissionsList}
               embedded
             />
@@ -700,7 +710,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               userPersonId={currentUser.personId}
               userName={currentUser.name}
               userEmail={currentUser.email}
-              userRoles={userRoles || []}
+              userRoles={userData?.roles || userRoles || []}
               userPermissions={userPermissionsList}
               embedded
               initialView="banco_docentes"
@@ -787,6 +797,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               userEmail={currentUser.email}
               certificatesPendingCount={certificatesPendingCount}
               assignedModules={computedAssignedModules}
+              userPermissions={userPermissionsList}
               restrictedMode={
                 userData?.module === 'control-interno'
                   ? 'control-interno'

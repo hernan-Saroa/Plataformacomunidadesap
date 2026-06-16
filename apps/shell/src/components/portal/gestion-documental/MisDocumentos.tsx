@@ -20,9 +20,13 @@ import { colors } from '../../esap/shared/designTokens';
 import {
   getCarpetaDigitalPortal,
   uploadDocumentoCarpetaDigital,
+  getChecklistForPersona,
+  getTiposDocumentos,
+  getDocumentosByCarpeta,
+  reclassifyDocumento,
 } from '../portalApi';
 import { toast } from 'sonner';
-import { documentosService } from '../../../services/api/supabase.service';
+
 import {
   CarpetaDigitalSharedView,
   type CarpetaDocumento,
@@ -50,6 +54,8 @@ const normalizeDocumentText = (value: unknown): string =>
     .trim();
 
 export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProps) {
+  const syncedPersonaId = personaId;
+
   const [documentos, setDocumentos] = useState<CarpetaDocumento[]>([]);
   const [tiposDocumentos, setTiposDocumentos] = useState<TipoDocumentoRequerido[]>([]);
   const [persona, setPersona] = useState<PersonaInfo>({ nombre: userName || 'Carpeta Digital' });
@@ -97,8 +103,10 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
           tipo_documento_id: d.tipo_documento_id,
           url_archivo: d.url,
         }));
+        const syncedPersonaId = personaId;
+
         if (mappedDocs.length === 0) {
-          const localDocs = await documentosService.getDocumentosByCarpeta(`carpeta:${personaId}`);
+          const localDocs = await getDocumentosByCarpeta(`carpeta:${syncedPersonaId}`);
           mappedDocs = Array.isArray(localDocs.data) ? localDocs.data : [];
         }
         setDocumentos(mappedDocs);
@@ -135,8 +143,10 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
       let tiposRaw: any[] = [];
 
       // 1. Try persona-specific checklist
+      const syncedPersonaId = personaId;
+
       try {
-        const checklistResult = await documentosService.getChecklistForPersona(personaId);
+        const checklistResult = await getChecklistForPersona(syncedPersonaId);
         if (checklistResult.success && checklistResult.data && !checklistResult.data.useGlobalTypes && checklistResult.data.tiposDocumentos.length > 0) {
           tiposRaw = checklistResult.data.tiposDocumentos;
         }
@@ -144,7 +154,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
 
       // 2. Fallback: global tipos
       if (tiposRaw.length === 0) {
-        const result = await documentosService.getTiposDocumentos();
+        const result = await getTiposDocumentos();
         if (result.success && result.data) {
           tiposRaw = result.data.filter((t: any) => t.activo);
         }
@@ -189,19 +199,19 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
   const handleUpload = async () => {
     if (!uploadFile) { toast.error('Selecciona un archivo'); return; }
     setUploading(true);
+    const syncedPersonaId = personaId;
+
     try {
       let res = await uploadDocumentoCarpetaDigital({
         file: uploadFile,
-        personaId,
+        personaId: syncedPersonaId,
         categoria: uploadCategoria,
         tipoDocumento: uploadTipoDocId || uploadCarpeta,
         descripcion: uploadDescripcion
       }).catch(() => ({ success: false }));
       if (!res.success) {
-        res = await documentosService.uploadFile(uploadFile, `carpeta:${personaId}`, uploadCategoria, {
-          tipo_documento_id: uploadTipoDocId,
-          descripcion: uploadDescripcion,
-        });
+        // Supabase upload is fully deprecated, we just log the failure.
+        console.error("Direct backend upload failed, fallback removed.");
       }
       if (res.success) {
         toast.success('Documento subido a tu carpeta digital');
@@ -232,7 +242,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
     try {
       const selectedTipo = tiposDocumentos.find(t => t.id === reclassifyTipoId);
       const carpetaId = reclassifyDoc.carpeta_id || `carpeta:${personaId}`;
-      const data = await documentosService.reclassify(reclassifyDoc.id, {
+      const data = await reclassifyDocumento(reclassifyDoc.id, {
         carpetaId,
         tipo_documento_id: reclassifyTipoId,
         categoria: selectedTipo?.categoria || reclassifyDoc.categoria,
@@ -257,7 +267,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
     <div>
       {/* ═══ UNIFIED SHARED VIEW ═══ */}
       <CarpetaDigitalSharedView
-        personaId={personaId}
+        personaId={syncedPersonaId}
         persona={persona}
         documentos={documentos}
         tiposDocumentos={tiposDocumentos}
@@ -276,19 +286,18 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
           setShowUpload(true);
         }}
         onUploadDirect={async (file, tipoId, categoria) => {
+          const syncedPersonaId = personaId;
           try {
             let res = await uploadDocumentoCarpetaDigital({
               file,
-              personaId,
+              personaId: syncedPersonaId,
               categoria: mapCategoriaToUpload(categoria || 'otros'),
               tipoDocumento: tipoId,
               descripcion: 'Cargado mediante arrastrar y soltar directo'
             }).catch(() => ({ success: false }));
             if (!res.success) {
-              res = await documentosService.uploadFile(file, `carpeta:${personaId}`, mapCategoriaToUpload(categoria || 'otros'), {
-                tipo_documento_id: tipoId,
-                descripcion: 'Cargado mediante arrastrar y soltar directo',
-              });
+              // Fallback removed
+              console.error("Direct backend upload failed, fallback removed.");
             }
             if (res.success) {
               loadData();

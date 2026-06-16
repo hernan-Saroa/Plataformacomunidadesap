@@ -1091,8 +1091,11 @@ class DisciplinaryService {
     }
 
     // --- ARCHIVOS ---
-    async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
+    async uploadFile(file: File, tipo: string = 'default', radicadoProceso?: string): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
+        if (radicadoProceso) {
+            formData.append('radicadoProceso', radicadoProceso);
+        }
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
         formData.append('file', file);
