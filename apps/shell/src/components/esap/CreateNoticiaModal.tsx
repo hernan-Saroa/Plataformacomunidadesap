@@ -150,7 +150,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
               
               const seccionales = estructuraResponse.data.seccionales;
         
-        const list = seccionales.map((s: any) => s.nomSeccional).filter(Boolean);
+        const list = Array.from(new Set(seccionales.map((s: any) => s.nomSeccional).filter(Boolean)));
         setTerritoriales(list);
 
         // También agregar las seccionales a las dependencias

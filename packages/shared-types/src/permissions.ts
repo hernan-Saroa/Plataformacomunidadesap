@@ -220,6 +220,7 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION = 'control-disciplinario.procesos.reasignacion',
   CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN = 'control-disciplinario.procesos.reasignacion',
   CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_APPROVE = 'control-disciplinario.procesos.reasignacion.approve',
+  CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_INMEDIATA = 'control-disciplinario.procesos.reasignacion.inmediata',
   CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO = 'control-disciplinario.procesos.create_pliego',
   CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW = 'control-disciplinario.procesos.files.send_to_review',
   CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA = 'control-disciplinario.procesos.send_to_juridica',

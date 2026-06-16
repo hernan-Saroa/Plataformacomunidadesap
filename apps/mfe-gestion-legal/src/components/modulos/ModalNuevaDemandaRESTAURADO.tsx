@@ -1641,7 +1641,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       } else {
         // For creations, the parent component strictly expects the full NuevaDemandaData signature
         // to properly construct the complex CreateExpedienteDto payload.
-        finalPayload = { ...formData };
+        finalPayload = {
+          ...formData,
+          territorialNombre: seccionales.find(s => String(s.idSeccional) === formData.territorial)?.nomSeccional,
+          cetapNombre: sedesFiltradas.find(s => String(s.idSede) === formData.cetap)?.nomSede,
+          dependenciaNombre: dependenciasActivas.find((d: any) => d.id === formData.dependencia)?.nombre,
+        };
       }
 
       onSave(finalPayload, isEdit, idStr);
