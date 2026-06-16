@@ -24,7 +24,10 @@ export type PTAPortalModuleProps = {
 
 function deriveIsSuperUser(userRoles?: string[]) {
   if (!Array.isArray(userRoles)) return false;
-  return userRoles.some((role) => String(role).toLowerCase().includes('super'));
+  return userRoles.some((role) => {
+    const r = String(role).toLowerCase();
+    return r.includes('super') || r.includes('admin');
+  });
 }
 
 export function PTAPortalModule({
