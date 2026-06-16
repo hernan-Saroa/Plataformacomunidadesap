@@ -2398,6 +2398,39 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           )}
                         </div>
 
+                        {/* Territorial, CETAP y Dependencia (solo Demandado) */}
+                        {parte.tipo === 'Demandado' && (
+                          (expediente as any).territorial || (expediente as any).cetap || (expediente as any).dependencia
+                        ) && (
+                          <div className="mt-3 p-2.5 rounded-xl bg-blue-50/30 border border-blue-100/50 flex flex-col gap-1.5">
+                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider">Territorial / CETAP / Dependencia</p>
+                            {((expediente as any).territorial) && (
+                              <div className="flex items-center gap-1.5">
+                                <MapPin className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                                <span className="text-[10px] font-semibold text-slate-700 truncate">
+                                  {(expediente as any).territorialNombre || (expediente as any).territorial}
+                                </span>
+                              </div>
+                            )}
+                            {((expediente as any).cetap) && (
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                <span className="text-[10px] font-semibold text-slate-700 truncate">
+                                  {(expediente as any).cetapNombre || (expediente as any).cetap}
+                                </span>
+                              </div>
+                            )}
+                            {((expediente as any).dependencia) && (
+                              <div className="flex items-center gap-1.5">
+                                <Users className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                <span className="text-[10px] font-semibold text-slate-700 truncate">
+                                  {(expediente as any).dependenciaNombre || (expediente as any).dependencia}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Fila de Contacto Avanzada y Estilizada */}
                         <div className="mt-4 flex flex-col gap-2 border-t border-slate-150/60 pt-3">
                           <div className="grid grid-cols-1 gap-2">
