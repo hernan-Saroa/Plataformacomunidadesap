@@ -3584,17 +3584,16 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(null);
   }, []);
 
-  const handleSolicitarReasignacion = useCallback(async (
+  const handleReasignacionInmediata = useCallback(async (
     nuevoProfesionalId: string,
     nuevoProfesionalNombre: string,
     justificacion: string,
     prioridad: 'NORMAL' | 'URGENTE'
   ) => {
     if (!proceso?.id) return;
-
     try {
       const user = authService.getCurrentUser();
-      await disciplinaryService.createReassignmentRequest({
+      const solicitud = await disciplinaryService.createReassignmentRequest({
         processId: proceso.id,
         newProfessionalId: nuevoProfesionalId,
         justification: justificacion,
@@ -3602,14 +3601,15 @@ export function ModalDetallesProceso({
         requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
         requestedById: user?.id,
       });
-
-      toast.success('Solicitud de reasignación creada', {
-        description: `Se ha enviado la solicitud al Jefe OCID para aprobación`,
-        duration: 6000,
+      await disciplinaryService.approveReassignmentRequest(solicitud.id, { approved: true });
+      toast.success('Profesional reasignado exitosamente', {
+        description: `El proceso ha sido reasignado a ${nuevoProfesionalNombre}`,
+        duration: 4000,
       });
+      setMostrarModalReasignar(false);
     } catch (error: any) {
-      console.error('[ModalDetallesProceso] Error creando solicitud de reasignación:', error);
-      toast.error(error?.message || 'No fue posible crear la solicitud de reasignación');
+      console.error('[ModalDetallesProceso] Error en reasignación inmediata:', error);
+      toast.error(error?.message || 'No fue posible realizar la reasignación');
     }
   }, [proceso?.id]);
 
@@ -4354,7 +4354,7 @@ export function ModalDetallesProceso({
                             <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
                             <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
                           </div>
-                          {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN) && (
+                          {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_INMEDIATA) && (
                             <button
                               onClick={() => setMostrarModalReasignar(true)}
                               className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
@@ -6273,7 +6273,7 @@ export function ModalDetallesProceso({
           <ModalReasignarProfesional
             proceso={proceso}
             onClose={() => setMostrarModalReasignar(false)}
-            onSolicitarReasignacion={handleSolicitarReasignacion}
+            onSolicitarReasignacion={handleReasignacionInmediata}
           />
         )}
       </AnimatePresence>

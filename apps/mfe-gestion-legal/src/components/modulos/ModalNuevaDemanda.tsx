@@ -14,6 +14,9 @@ export interface NuevaDemandaData {
   territorial?: string;
   cetap?: string;
   dependencia?: string;
+  territorialNombre?: string;
+  cetapNombre?: string;
+  dependenciaNombre?: string;
   demandantes: Array<{
     id: string;
     nombre: string;
@@ -131,6 +134,9 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     territorial: data.territorial,
     cetap: data.cetap,
     dependencia: data.dependencia,
+    territorialNombre: (data as any).territorialNombre,
+    cetapNombre: (data as any).cetapNombre,
+    dependenciaNombre: (data as any).dependenciaNombre,
     camposAdicionales: data.camposAdicionales,
   };
 }

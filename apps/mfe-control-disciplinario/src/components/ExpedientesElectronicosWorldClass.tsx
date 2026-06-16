@@ -1157,7 +1157,6 @@ export function ExpedientesElectronicosWorldClass() {
       ['INFORMACIÓN DEL EXPEDIENTE'],
       ['Expediente:', expediente.radicado],
       ['NED:', expediente.nombreDisciplinado],
-      ['Tipo de Proceso:', expediente.tipoProceso],
       ['Responsable:', expediente.responsable],
       ['Fecha de Inicio:', expediente.fechaInicio],
       ['Total de Documentos:', docsExpediente.length.toString()],
