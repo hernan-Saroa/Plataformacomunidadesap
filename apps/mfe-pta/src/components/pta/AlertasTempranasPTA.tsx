@@ -73,8 +73,8 @@ export function AlertasTempranasPTA() {
   const loadData = async () => {
     setLoading(true);
     const [ptaRes, docRes] = await Promise.all([
-      getAllPTAs({ periodo: '2026-1' }),
-      getDocentesDisponibles('2026-1'),
+      getAllPTAs({ periodo: '2025-2' }),
+      getDocentesDisponibles('2025-2'),
     ]);
     // Validación robusta: asegurar que siempre sean arrays
     if (ptaRes.success && Array.isArray(ptaRes.data)) {

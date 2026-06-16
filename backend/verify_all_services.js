@@ -2,7 +2,7 @@ const http = require('http');
 
 const services = [
   // API Gateway
-  { name: 'api-gateway', host: '127.0.0.1', port: 3000, paths: ['/health', '/'] },
+  { name: 'api-gateway', host: '127.0.0.1', port: 4000, paths: ['/health', '/'] },
 
   // Microservicios Backend
   { name: 'auth-service', host: '127.0.0.1', port: 3001, paths: ['/health', '/'] },
@@ -18,7 +18,7 @@ const services = [
   { name: 'audit-service', host: '127.0.0.1', port: 3011, paths: ['/health', '/'] },
 
   // Frontend Host
-  { name: 'frontend-shell (Host)', host: 'localhost', port: 5173, paths: ['/'] },
+  { name: 'frontend-shell (Host)', host: 'localhost', port: 3000, paths: ['/'] },
 
   // Microfrontends (MFEs) Remotos
   { name: 'mfe-estructura-org', host: '127.0.0.1', port: 3101, paths: ['/remotes/mfe-estructura-org/'] },

@@ -11,6 +11,9 @@ export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
   tipoProceso: string;
+  territorial?: string;
+  cetap?: string;
+  dependencia?: string;
   demandantes: Array<{
     id: string;
     nombre: string;
@@ -125,6 +128,9 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     tipoConteoTermino: data.tipoPlazo === 'Horas' ? 'HORAS' : data.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
     esDelitoAdminPublica: data.esDelitoAdminPublica || false,
     esConductaPatrimonioPublico: data.esConductaPatrimonioPublico || false,
+    territorial: data.territorial,
+    cetap: data.cetap,
+    dependencia: data.dependencia,
     camposAdicionales: data.camposAdicionales,
   };
 }

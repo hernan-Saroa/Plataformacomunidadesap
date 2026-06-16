@@ -151,6 +151,12 @@ export interface CategoriaDocumento {
   orden: number;
 }
 
+export interface Dependencia {
+  id: string;
+  nombre: string;
+  activo: boolean;
+}
+
 export interface ConfiguracionModulo {
   id: string;
   nombre: string;
@@ -162,6 +168,7 @@ export interface ConfiguracionModulo {
   mediosControl?: MedioControl[];
   tiposExcepcionesProcesal?: TipoExcepcionProcesal[];
   causalesEspecificas?: CausalEspecifica[];
+  dependencias?: Dependencia[];
 }
 
 // ============ DATOS DE CASOS POR ESTADO ============
@@ -340,6 +347,9 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales', activo: true, orden: 5 },
       { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales', activo: true, orden: 6 },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros medios de control no categorizados', activo: true, orden: 7 },
+    ],
+    dependencias: [
+      { id: 'legal', nombre: 'Legal', activo: true },
     ],
   },
   {
@@ -604,6 +614,7 @@ interface ConfiguracionesSIGLContextType {
   getMediosControlActivos: (moduloId: string) => MedioControl[];
   getTiposExcepcionesActivos: (moduloId: string) => TipoExcepcionProcesal[];
   getCausalesEspecificasActivas: (moduloId: string) => CausalEspecifica[];
+  getDependenciasActivas: (moduloId: string) => Dependencia[];
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
@@ -830,6 +841,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const getCausalesEspecificasActivas = (moduloId: string): CausalEspecifica[] => {
     const modulo = getConfiguracionModulo(moduloId);
     return modulo?.causalesEspecificas?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
+  };
+
+  // ✅ Obtener dependencias activas del módulo
+  const getDependenciasActivas = (moduloId: string): Dependencia[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.dependencias?.filter(d => d.activo) || [];
   };
 
   // Obtener solo los ejes estratégicos activos
@@ -1074,6 +1091,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getMediosControlActivos,
     getTiposExcepcionesActivos,
     getCausalesEspecificasActivas,
+    getDependenciasActivas,
     getEjesEstrategicosActivos,
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
@@ -1117,7 +1135,7 @@ export function useConfiguracionesSIGL() {
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============
 
 export function useConfiguracionModulo(moduloId: string) {
-  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas } = useConfiguracionesSIGL();
+  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas, getDependenciasActivas } = useConfiguracionesSIGL();
 
   return {
     configuracion: getConfiguracionModulo(moduloId),
@@ -1129,5 +1147,6 @@ export function useConfiguracionModulo(moduloId: string) {
     mediosControlActivos: getMediosControlActivos(moduloId),
     tiposExcepcionesActivos: getTiposExcepcionesActivos(moduloId),
     causalesEspecificasActivas: getCausalesEspecificasActivas(moduloId),
+    dependenciasActivas: getDependenciasActivas(moduloId),
   };
 }

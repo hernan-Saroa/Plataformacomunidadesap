@@ -6,10 +6,10 @@ export class SedeEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'territorialId', type: 'text' })
-  territorialId: string;
+  @Column({ name: 'territorialId', type: 'text', nullable: true })
+  territorialId: string | null;
 
-  @ManyToOne(() => TerritorialEntity, (territorial) => territorial.sedes, { nullable: false })
+  @ManyToOne(() => TerritorialEntity, (territorial) => territorial.sedes, { nullable: true })
   @JoinColumn({ name: 'territorialId' })
   territorial: TerritorialEntity;
 

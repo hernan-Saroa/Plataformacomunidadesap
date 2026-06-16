@@ -194,7 +194,7 @@ export function ComiteEvaluacionPTA() {
     const newComite: Comite = {
       id: `com-${Date.now()}`,
       nombre: newComiteNombre,
-      periodo: '2026-1',
+      periodo: '2025-2',
       territorial: newComiteTerritorial,
       estado: 'en_formacion',
       fechaCreacion: new Date().toISOString().split('T')[0],

@@ -54,7 +54,7 @@ export function DashboardDirectivoPTA() {
   const [data, setData] = useState<any>(null);
   const [ptaRules, setPtaRules] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
 
   const loadData = async () => {
     setLoading(true);

@@ -1678,7 +1678,7 @@ function ColumnaKanban({
 
   return (
     <div
-      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[264px] md:max-w-[528px] overflow-hidden"
+      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[180px] md:max-w-[238px] overflow-hidden"
       style={{
         height: 'calc(100vh - 280px)',
         maxHeight: 'calc(100vh - 280px)'

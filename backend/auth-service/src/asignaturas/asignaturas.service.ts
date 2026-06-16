@@ -23,14 +23,11 @@ export class AsignaturasService {
       query.andWhere('asignatura.programaId = :programa_id', { programa_id: filtros.programa_id });
     }
 
-    if (filtros.nucleo) {
-      query.andWhere('asignatura.nucleoTematico ILIKE :nucleo', { nucleo: `%${filtros.nucleo}%` });
-    }
-
-
-
     if (filtros.semestre) {
-      query.andWhere('asignatura.semestre = :semestre', { semestre: filtros.semestre.toString() });
+      const semNum = parseInt(filtros.semestre, 10);
+      if (!isNaN(semNum)) {
+        query.andWhere('asignatura.semestreId = :semestreId', { semestreId: semNum });
+      }
     }
 
     const page = filtros.page || 1;
@@ -41,8 +38,16 @@ export class AsignaturasService {
 
     const [data, total] = await query.getManyAndCount();
 
+    const mappedData = data.map(a => ({
+      ...a,
+      semestre: String(a.semestreId || 1),
+      horas: (a.creditos || 3) * 48,
+      tipo: a.tipoExcepcion || 'obligatoria',
+      nucleoTematico: 'Núcleo Temático',
+    }));
+
     return {
-      data,
+      data: mappedData,
       total,
       pagina: page,
       porPagina: limit,

@@ -9,7 +9,7 @@
  * ÚLTIMA ACTUALIZACIÓN: Enero 2026
  */
 
-import { config, getDefaultHeaders, buildApiUrl } from '../config/environment';
+import { config, getDefaultHeaders, buildApiUrl } from '../../config/environment';
 
 // Tipos basados en el backend
 export interface AuditLog {

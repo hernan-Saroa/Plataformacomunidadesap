@@ -61,17 +61,36 @@ export class RequerimientosOCService {
 
     async syncOrganismos(organismos: Partial<OrganismoControlOC>[]): Promise<OrganismoControlOC[]> {
         const results: OrganismoControlOC[] = [];
-        for (const org of organismos) {
-            if (org.id) {
-                const existing = await this.organismoRepo.findOne({ where: { id: org.id } });
-                if (existing) {
-                    Object.assign(existing, { ...org, correos: org.correos ?? existing.correos });
-                    results.push(await this.organismoRepo.save(existing));
-                    continue;
-                }
+        for (const org of organismos as any[]) {
+            const isNumericId = org.id !== undefined && org.id !== null && !isNaN(Number(org.id));
+            let existing: OrganismoControlOC | null = null;
+
+            if (isNumericId) {
+                existing = await this.organismoRepo.findOne({ where: { id: Number(org.id) } });
             }
-            const nuevo = this.organismoRepo.create({ ...org, correos: org.correos ?? [] });
-            results.push(await this.organismoRepo.save(nuevo));
+
+            if (!existing && (org.sigla || (!isNumericId && org.id))) {
+                const searchSigla = org.sigla || org.id;
+                existing = await this.organismoRepo.findOne({ where: { sigla: searchSigla } });
+            }
+
+            if (existing) {
+                const { id, ...updateData } = org;
+                Object.assign(existing, { ...updateData, correos: org.correos ?? existing.correos });
+                if (org.sigla) existing.sigla = org.sigla;
+                results.push(await this.organismoRepo.save(existing));
+                continue;
+            }
+
+            const { id, ...orgWithoutId } = org;
+            const nuevo: OrganismoControlOC = this.organismoRepo.create({ ...orgWithoutId, correos: orgWithoutId.correos ?? [] } as Partial<OrganismoControlOC>);
+            nuevo.sigla = org.sigla || id || (org.nombre ? org.nombre.substring(0, 20).toUpperCase().replace(/\s+/g, '_') : 'ORG_' + Math.random().toString(36).substr(2, 5));
+            
+            try {
+                results.push(await this.organismoRepo.save(nuevo));
+            } catch (error) {
+                console.error(`Error saving organismo ${nuevo.sigla}:`, error);
+            }
         }
         return results;
     }

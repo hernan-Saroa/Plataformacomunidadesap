@@ -715,7 +715,7 @@ export class UsersService {
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,
-    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string } = {},
+    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; } = {},
   ): Promise<{
     users: User[];
     total: number;
@@ -756,11 +756,35 @@ export class UsersService {
       baseQuery.andWhere('roles.id = :id', { id: filters.role });
     }
 
-    const pagedQuery = baseQuery
-      .clone()
-      .orderBy('user.created_at', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+    const pagedQuery = baseQuery.clone();
+    
+    if (filters.sortBy) {
+      let sortColumn = 'user.created_at';
+      switch(filters.sortBy) {
+        case 'usuario':
+          sortColumn = 'person.first_name';
+          break;
+        case 'territorial':
+          sortColumn = 'seccional.nomSeccional';
+          break;
+        case 'cetap':
+          sortColumn = 'sede.nomSede';
+          break;
+        case 'estado':
+          sortColumn = 'user.is_active';
+          break;
+        case 'actividad':
+          sortColumn = 'user.updated_at';
+          break;
+      }
+      // Add secondary sort by ID to ensure deterministic ordering
+      pagedQuery.orderBy(sortColumn, filters.sortOrder === 'desc' ? 'DESC' : 'ASC')
+                .addOrderBy('user.id_user', 'ASC');
+    } else {
+      pagedQuery.orderBy('user.created_at', 'DESC');
+    }
+
+    pagedQuery.skip((page - 1) * limit).take(limit);
 
     const [users, total] = await pagedQuery.getManyAndCount();
 

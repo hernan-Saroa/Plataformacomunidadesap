@@ -396,6 +396,36 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/auditados/search?q=...
+   * Búsqueda libre en auth.personas excluyendo a los roles operativos de OCI.
+   * Exclusivo para el selector "Responsable del Área Auditada".
+   */
+  @Get('auditados/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async searchAuditados(@Query('q') q?: string) {
+    if (!q || q.trim().length < 2) {
+      throw new BadRequestException(
+        'El parámetro q es obligatorio y debe tener al menos 2 caracteres',
+      );
+    }
+    return this.auditoriasService.searchAuditadosByText(q);
+  }
+
+  /**
+   * GET /esap/auditorias/auditados/all
+   * Lista general de personas excluyendo a los roles operativos de OCI.
+   * Exclusivo para el selector "Responsable del Área Auditada".
+   */
+  @Get('auditados/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getAllAuditados(@Query('limit') limit?: string) {
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    return this.auditoriasService.getAllAuditados(limitNum);
+  }
+
+  /**
    * GET /esap/auditorias/codigo/:codigo
    * Busca una auditoría por código
    */

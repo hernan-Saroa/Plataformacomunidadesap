@@ -158,7 +158,7 @@ function buildResolucionesFromPTAs(ptas: any[]): Resolucion[] {
     const considerandos = template.considerandos.map(c =>
       c.replace(/\{\{DOCENTE\}\}/g, pta.docente_nombre || 'Sin nombre')
        .replace(/\{\{IDENTIFICACION\}\}/g, pta.docente_identificacion || '00.000.000')
-       .replace(/\{\{PERIODO\}\}/g, pta.periodo || '2026-1')
+       .replace(/\{\{PERIODO\}\}/g, pta.periodo || '2025-2')
        .replace(/\{\{PROGRAMA\}\}/g, pta.programa || 'Sin programa')
        .replace(/\{\{TERRITORIAL\}\}/g, territorial)
        .replace(/\{\{DEDICACION\}\}/g, pta.dedicacion || 'TC')
@@ -167,7 +167,7 @@ function buildResolucionesFromPTAs(ptas: any[]): Resolucion[] {
     const resuelve = template.resuelve.map(r =>
       r.replace(/\{\{DOCENTE\}\}/g, pta.docente_nombre || 'Sin nombre')
        .replace(/\{\{IDENTIFICACION\}\}/g, pta.docente_identificacion || '00.000.000')
-       .replace(/\{\{PERIODO\}\}/g, pta.periodo || '2026-1')
+       .replace(/\{\{PERIODO\}\}/g, pta.periodo || '2025-2')
        .replace(/\{\{PROGRAMA\}\}/g, pta.programa || 'Sin programa')
        .replace(/\{\{TERRITORIAL\}\}/g, territorial)
     );
@@ -189,7 +189,7 @@ function buildResolucionesFromPTAs(ptas: any[]): Resolucion[] {
       docenteIdentificacion: pta.docente_identificacion || '00.000.000',
       programa: pta.programa || 'Sin programa',
       territorial,
-      periodo: pta.periodo || '2026-1',
+      periodo: pta.periodo || '2025-2',
       fecha: pta.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0],
       considerandos,
       resuelve,
@@ -250,12 +250,12 @@ export function GeneradorResolucionesPTA() {
       docenteIdentificacion: nuevoIdentificacion || '00.000.000',
       programa: nuevoPrograma,
       territorial: nuevoTerritorial,
-      periodo: '2026-1',
+      periodo: '2025-2',
       fecha: new Date().toISOString().split('T')[0],
       considerandos: template.considerandos.map(c =>
         c.replace(/\{\{DOCENTE\}\}/g, nuevoDocente)
          .replace(/\{\{IDENTIFICACION\}\}/g, nuevoIdentificacion || '00.000.000')
-         .replace(/\{\{PERIODO\}\}/g, '2026-1')
+         .replace(/\{\{PERIODO\}\}/g, '2025-2')
          .replace(/\{\{PROGRAMA\}\}/g, nuevoPrograma)
          .replace(/\{\{TERRITORIAL\}\}/g, nuevoTerritorial)
          .replace(/\{\{DEDICACION\}\}/g, 'TC')
@@ -263,7 +263,7 @@ export function GeneradorResolucionesPTA() {
       resuelve: template.resuelve.map(r =>
         r.replace(/\{\{DOCENTE\}\}/g, nuevoDocente)
          .replace(/\{\{IDENTIFICACION\}\}/g, nuevoIdentificacion || '00.000.000')
-         .replace(/\{\{PERIODO\}\}/g, '2026-1')
+         .replace(/\{\{PERIODO\}\}/g, '2025-2')
          .replace(/\{\{PROGRAMA\}\}/g, nuevoPrograma)
          .replace(/\{\{TERRITORIAL\}\}/g, nuevoTerritorial)
       ),

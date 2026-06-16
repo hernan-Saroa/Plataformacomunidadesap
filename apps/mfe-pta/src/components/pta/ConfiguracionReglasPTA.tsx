@@ -81,6 +81,10 @@ export interface PTARules {
   inv_produccion_articulos: number;
   inv_produccion_libro: number;
 
+  // Resolución de investigación — obligatoriedad configurable
+  inv_resolucion_obligatoria: boolean;
+  inv_adjunto_obligatorio: boolean;
+
   // Extensión
   ext_max_horas_enlace: number;
   ext_max_pct_enlace: number;
@@ -212,7 +216,7 @@ export interface PTARules {
   inv_actividades: Array<{ id: string; nombre: string; horas_max: number }>;
 
   // Secciones de Extensión (configurables)
-  ext_secciones: Array<{ key: string; label: string; color: string; orden: number }>;
+  ext_secciones: Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number }>;
   // Actividades de Extensión por sección (configurables)
   ext_actividades: Record<string, Array<{ id: string; nombre: string; max_horas: number }>>;
 
@@ -275,6 +279,8 @@ export const defaultPTARules: PTARules = {
   inv_capacitador_cursos: 32,
   inv_produccion_articulos: 96,
   inv_produccion_libro: 144,
+  inv_resolucion_obligatoria: true,
+  inv_adjunto_obligatorio: true,
 
   ext_max_horas_enlace: 200,
   ext_max_pct_enlace: 25,
@@ -409,12 +415,12 @@ export const defaultPTARules: PTARules = {
   ],
 
   ext_secciones: [
-    { key: 'capacitacion', label: 'Capacitación (SNPI)', color: '#059669', orden: 1 },
-    { key: 'seleccion', label: 'Selección (SNPI)', color: '#0284C7', orden: 2 },
-    { key: 'fortalecimiento', label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3 },
-    { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4 },
-    { key: 'investigacion_aplicada', label: 'Investigación Aplicada', color: '#15803D', orden: 5 },
-    { key: 'alto_gobierno', label: 'Alto Gobierno (EAG)', color: '#B45309', orden: 6 },
+    { key: 'capacitacion', label: 'Capacitación (SNPI)', color: '#059669', orden: 1, multiplicador: 2 },
+    { key: 'seleccion', label: 'Selección (SNPI)', color: '#0284C7', orden: 2, multiplicador: 1 },
+    { key: 'fortalecimiento', label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3, multiplicador: 1 },
+    { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4, multiplicador: 1 },
+    { key: 'investigacion_aplicada', label: 'Investigación Aplicada', color: '#15803D', orden: 5, multiplicador: 1 },
+    { key: 'alto_gobierno', label: 'Alto Gobierno (EAG)', color: '#B45309', orden: 6, multiplicador: 1 },
   ],
   ext_actividades: {
     capacitacion: [

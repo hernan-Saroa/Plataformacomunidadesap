@@ -3485,6 +3485,50 @@ export class AuditoriasService {
   }
 
   /**
+   * Búsqueda específica para Responsable del Área Auditada.
+   * Excluye a personas que tienen roles operativos de OCI en Gestión Personas (auth.role).
+   */
+  async searchAuditadosByText(query: string): Promise<any[]> {
+    if (!query) return [];
+    const q = query.trim().toLowerCase();
+    try {
+      const rows = await this.auditoriaRepository.query(
+        `
+        SELECT p.id_person, p.nom_largo, p.nom_tercero, p.pri_apellido,
+               p.num_identificacion, p.tip_identificacion, p.dir_email,
+               EXISTS (
+                 SELECT 1 FROM auth."user" u
+                 INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                 INNER JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_person = p.id_person
+                   AND r.name IN ('Jefe OCI', 'Auditor Lider', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico')
+               ) as is_auditor
+          FROM auth.personas p
+         WHERE (p.nom_largo ILIKE $1
+            OR p.dir_email ILIKE $1
+            OR p.num_identificacion ILIKE $1)
+         ORDER BY p.nom_largo ASC
+         LIMIT 20
+        `,
+        [`%${q}%`],
+      );
+      return rows.map((p: any) => ({
+        idPersona: p.id_person,
+        id: p.id_person,
+        nombre: p.nom_largo || `${p.nom_tercero || ''} ${p.pri_apellido || ''}`.trim(),
+        email: p.dir_email || '',
+        numeroIdentificacion: p.num_identificacion || '',
+        tipoIdentificacion: p.tip_identificacion || 'CC',
+        iniciales: this.getIniciales(p.nom_largo || ''),
+        isAuditor: p.is_auditor || false,
+      }));
+    } catch (err) {
+      console.error('[searchAuditadosByText] error:', err);
+      return [];
+    }
+  }
+
+  /**
    * Obtiene todas las personas de auth.personas (máx 50) para precargar selectores.
    * Usada por el formulario de auditoría para mostrar la lista completa
    * al hacer focus en el campo "Responsable del Área Auditada" sin escribir.
@@ -3513,6 +3557,46 @@ export class AuditoriasService {
       }));
     } catch (err) {
       console.error('[getAllPersonas] error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Obtiene todas las personas para el campo Responsable del Área Auditada.
+   * Excluye a los que tienen rol de Auditor.
+   */
+  async getAllAuditados(limit = 50): Promise<any[]> {
+    try {
+      const rows = await this.auditoriaRepository.query(
+        `
+        SELECT p.id_person, p.nom_largo, p.nom_tercero, p.pri_apellido,
+               p.num_identificacion, p.tip_identificacion, p.dir_email,
+               EXISTS (
+                 SELECT 1 FROM auth."user" u
+                 INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                 INNER JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_person = p.id_person
+                   AND r.name IN ('Jefe OCI', 'Auditor Lider', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico')
+               ) as is_auditor
+          FROM auth.personas p
+         WHERE p.nom_largo IS NOT NULL AND p.nom_largo != ''
+         ORDER BY p.nom_largo ASC
+         LIMIT $1
+        `,
+        [limit],
+      );
+      return rows.map((p: any) => ({
+        idPersona: p.id_person,
+        id: p.id_person,
+        nombre: p.nom_largo || `${p.nom_tercero || ''} ${p.pri_apellido || ''}`.trim(),
+        email: p.dir_email || '',
+        numeroIdentificacion: p.num_identificacion || '',
+        tipoIdentificacion: p.tip_identificacion || 'CC',
+        iniciales: this.getIniciales(p.nom_largo || ''),
+        isAuditor: p.is_auditor || false,
+      }));
+    } catch (err) {
+      console.error('[getAllAuditados] error:', err);
       return [];
     }
   }

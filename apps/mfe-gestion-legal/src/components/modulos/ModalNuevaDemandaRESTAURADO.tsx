@@ -112,6 +112,9 @@ export interface NuevaDemandaData {
   juzgadoTribunal: string;
   departamento: string;
   ciudad: string;
+  territorial: string;
+  cetap: string;
+  dependencia: string;
   tipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas';
   termino: number;
   fechaNotificacion: string;
@@ -294,7 +297,7 @@ function calcularFechaVencimiento(
 
 export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit, tableroSeleccionado }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
-  const { mediosControlActivos, tiposProcesosActivos: allTiposProcesos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
+  const { mediosControlActivos, tiposProcesosActivos: allTiposProcesos, estadosActivos, dependenciasActivas } = useConfiguracionModulo('defensa-judicial');
 
   // Filtrar tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
   const tiposProcesosActivos = useMemo(() => {
@@ -324,6 +327,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     juzgadoTribunal: '',
     departamento: '',
     ciudad: '',
+    territorial: '',
+    cetap: '',
+    dependencia: '',
     tipoPlazo: 'Dias Habiles',
     termino: 30,
     fechaNotificacion: '',
@@ -707,6 +713,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [departamentosAPI, setDepartamentosAPI] = useState<{ id: number; nombre: string }[]>([]);
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
+  const [seccionales, setSeccionales] = useState<{ idSeccional: number; nomSeccional: string }[]>([]);
+  const [sedesFiltradas, setSedesFiltradas] = useState<{ idSede: number; nomSede: string }[]>([]);
+  const [cargandoSedes, setCargandoSedes] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
@@ -784,6 +793,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           juzgadoTribunal: expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '',
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
+          territorial: (expedienteEdit as any).territorial || '',
+          cetap: (expedienteEdit as any).cetap || '',
+          dependencia: (expedienteEdit as any).dependencia || '',
           tipoPlazo: expedienteEdit.tipoConteoTermino === 'HORAS' ? 'Horas' : expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
           termino: expedienteEdit.terminoProcesalDias || expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
           fechaNotificacion: expedienteEdit.fechaNotificacion ?
@@ -838,6 +850,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           juzgadoTribunal: '',
           departamento: '',
           ciudad: '',
+          territorial: '',
+          cetap: '',
+          dependencia: '',
           tipoPlazo: defaultTipoPlazo,
           termino: defaultTermino,
           fechaNotificacion: '',
@@ -925,6 +940,36 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         // Fallback silencioso: se queda con array vacío
       });
   }, []);
+
+  // Cargar territoriales (seccionales) desde estructura organizacional
+  useEffect(() => {
+    estructuraService.seccionales.listar()
+      .then(res => {
+        setSeccionales((res.data || []).map((s: any) => ({
+          idSeccional: s.idSeccional,
+          nomSeccional: s.nomSeccional,
+        })));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Cargar CETAPs (sedes) cuando cambia la territorial seleccionada
+  useEffect(() => {
+    if (!formData.territorial) {
+      setSedesFiltradas([]);
+      return;
+    }
+    setCargandoSedes(true);
+    estructuraService.sedes.listar({ idSeccional: Number(formData.territorial) })
+      .then(res => {
+        setSedesFiltradas((res.data || []).map((s: any) => ({
+          idSede: s.idSede,
+          nomSede: s.nomSede,
+        })));
+      })
+      .catch(() => { setSedesFiltradas([]); })
+      .finally(() => setCargandoSedes(false));
+  }, [formData.territorial]);
 
   // Cargar abogados con rol resuelve desde el servicio de auth
   useEffect(() => {
@@ -1309,6 +1354,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       }
 
       case 3: {
+        if (!formData.territorial) {
+          toast.error('⚠️ Territorial requerida', {
+            description: 'Debe seleccionar la territorial del proceso'
+          });
+          return false;
+        }
+
         if (formData.demandados.length === 0) {
           toast.error('⚠️ Demandados requeridos', {
             description: 'Debe agregar al menos un demandado'
@@ -2182,6 +2234,84 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             {/* PASO 3: DATOS DEMANDADOS */}
             {pasoActual === 3 && (
               <>
+                {/* CAMPOS DE SISTEMA: Territorial, CETAP y Dependencia */}
+                <Card className="p-4 bg-blue-50 border-blue-200 mb-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <MapPin className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-bold text-gray-900">Territorial, CETAP y Dependencia</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Territorial */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-bold text-gray-700">
+                        Territorial <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={formData.territorial}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, territorial: val, cetap: '' }))}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Seleccione territorial..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          {seccionales.map(s => (
+                            <SelectItem key={s.idSeccional} value={String(s.idSeccional)}>
+                              {s.nomSeccional}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* CETAP */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-bold text-gray-700">CETAP</Label>
+                      <Select
+                        value={formData.cetap}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, cetap: val }))}
+                        disabled={!formData.territorial || cargandoSedes}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder={
+                            !formData.territorial
+                              ? 'Seleccione territorial primero'
+                              : cargandoSedes
+                              ? 'Cargando...'
+                              : 'Seleccione CETAP...'
+                          } />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          {sedesFiltradas.map(s => (
+                            <SelectItem key={s.idSede} value={String(s.idSede)}>
+                              {s.nomSede}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Dependencia */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-bold text-gray-700">Dependencia</Label>
+                      <Select
+                        value={formData.dependencia}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, dependencia: val }))}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Seleccione dependencia..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          {dependenciasActivas.map(d => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </Card>
+
                 <Card className="p-4 bg-red-50 border-red-200">
                   <div className="flex items-start gap-3 mb-4">
                     <Building2 className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -2837,7 +2967,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     {isFieldVisible('abogadoResponsable', true) && (
                       <div className="space-y-2">
                         <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
-                          Abogado Defensor {isFieldRequired('abogadoResponsable', false) ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal ml-1">(Opcional)</span>}
+                          Abogado Responsable {isFieldRequired('abogadoResponsable', false) ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal ml-1">(Opcional)</span>}
                         </Label>
                         <Select
                           value={formData.abogadoResponsable}

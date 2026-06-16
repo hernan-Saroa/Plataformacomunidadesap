@@ -215,8 +215,8 @@ export function ProfileModal({
             <div className="relative p-2.5 md:p-3 pr-[64px] md:pr-[72px]">
               <div className="flex items-center gap-2 md:gap-2.5">
                 <div className="relative group flex-shrink-0">
-                  <Avatar className="w-12 h-12 md:w-14 md:h-14 ring-2 ring-white/40">
-                    <AvatarFallback className="bg-white text-[#1e5da8] text-base md:text-lg font-black">
+                  <Avatar className="w-12 h-12 md:w-14 md:h-14 ring-2 ring-white/40" style={{ width: '48px', height: '48px', borderRadius: '50%', flexShrink: 0 }}>
+                    <AvatarFallback className="bg-white text-[#1e5da8] text-base md:text-lg font-black" style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {userInitials}
                     </AvatarFallback>
                   </Avatar>
@@ -245,8 +245,8 @@ export function ProfileModal({
           </div>
 
           {/* Tabs - ULTRA COMPACTOS */}
-          <div className="bg-white border-b border-gray-200 flex-shrink-0">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="bg-white border-b border-gray-200 flex-1 flex flex-col overflow-hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
               <div className="px-1.5 py-0.5 overflow-x-auto">
                 <TabsList className="bg-gray-100/80 border border-gray-200/60 h-auto p-0.5 gap-0.5 rounded-md inline-flex">
                   <TabsTrigger 
@@ -279,9 +279,9 @@ export function ProfileModal({
                   </TabsTrigger>
                 </TabsList>
               </div>
-
+ 
               {/* Contenido - ULTRA DENSO */}
-              <div className="flex-1 overflow-y-auto p-1 md:p-1.5 max-h-[calc(100vh-360px)] md:max-h-[calc(100vh-240px)]" style={{ scrollbarGutter: 'stable' }}>
+              <div className="flex-1 overflow-y-auto p-1 md:p-1.5" style={{ scrollbarGutter: 'stable' }}>
                 {/* Tab: General */}
                 <TabsContent value="general" className="mt-0 space-y-1.5">
                   {/* Bio Section */}

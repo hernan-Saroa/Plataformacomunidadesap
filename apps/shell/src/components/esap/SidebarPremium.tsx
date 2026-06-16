@@ -772,20 +772,21 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             </motion.div>
           </motion.div>
           
-          {/* Botón Toggle Premium */}
+          {/* Botón Toggle Premium - SIEMPRE visible en md+ */}
           <motion.button
             onClick={onToggleCollapse}
-            className="hidden lg:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
-            style={{ top: '50%', transform: 'translateY(-50%)', color: '#1e5da8' }}
+            className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8]"
+            style={{ zIndex: 1001, color: '#1e5da8' }}
             whileHover={{ 
               scale: 1.15,
               boxShadow: '0 8px 24px rgba(30, 93, 168, 0.4)'
             }}
             whileTap={{ scale: 0.9 }}
             transition={springTransition}
+            title={isCollapsed ? 'Expandir menú (Ctrl+B)' : 'Contraer menú (Ctrl+B)'}
           >
             {/* Gradient background en hover */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-white opacity-0 hover:opacity-100 transition-opacity" />
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-50 to-white opacity-0 hover:opacity-100 transition-opacity" />
             
             <motion.div
               animate={{ rotate: isCollapsed ? 180 : 0 }}
@@ -829,7 +830,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       {renderMenuItem(
                         'banco-docentes-pta',
                         <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Banco de Docentes',
+                        'Registro Único Nacional Docente (RUND)',
                         'Gestión y carga masiva'
                       )}
                       {/* Documentos del usuario */}
@@ -1095,7 +1096,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   {renderMenuItem(
                     'banco-docentes-pta',
                     <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Banco de Docentes',
+                    'Registro Único Nacional Docente (RUND)',
                     'Gestión y carga masiva'
                   )}
                   {/* Documentos del usuario */}
@@ -1281,9 +1282,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               {/* COPYRIGHT FOOTER ESAP - SIMPLIFICADO */}
               <div className="text-center">
                 <p className="text-[10px] text-white/70 leading-relaxed">
-                  @Esap 2026 - Todos los derechos reservados
+                  © 2026 Esap - Todos los derechos reservados
                 </p>
-              </div>
+                <p className="text-[9px] text-white/70 leading-relaxed">
+                  Última actualización: {__ESAP_BUILD_DATE__}
+                </p>
+              </div> 
             </motion.div>
           ) : (
             <motion.div

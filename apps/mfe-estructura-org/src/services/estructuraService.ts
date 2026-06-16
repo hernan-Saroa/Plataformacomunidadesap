@@ -30,47 +30,35 @@ export interface SedesFilters {
 export interface CreateSeccionalData {
   codSeccional?: string;
   nomSeccional: string;
-  idUbiSeccional?: number;
+  ordenVisualizacion?: number;
+  activo?: boolean;
 }
 
 export interface UpdateSeccionalData {
   codSeccional?: string;
   nomSeccional?: string;
-  idUbiSeccional?: number;
+  ordenVisualizacion?: number;
+  activo?: boolean;
 }
 
 export interface CreateSedeData {
   codSede?: string;
   nomSede: string;
-  idGeopolitica?: number;
   idSeccional?: number;
-  dirSede?: string;
-  telSede?: string;
-  emailSede?: string;
-  capacidadEstudiantes?: number;
-  capacidadDocentes?: number;
+  tipo?: string;
+  latitud?: number;
+  longitud?: number;
   sedeAct?: string;
-  permiteInscripciones?: boolean;
-  permiteMatriculas?: boolean;
-  visiblePortal?: boolean;
-  observaciones?: string;
 }
 
 export interface UpdateSedeData {
   codSede?: string;
   nomSede?: string;
-  idGeopolitica?: number;
   idSeccional?: number;
-  dirSede?: string;
-  telSede?: string;
-  emailSede?: string;
-  capacidadEstudiantes?: number;
-  capacidadDocentes?: number;
+  tipo?: string;
+  latitud?: number;
+  longitud?: number;
   sedeAct?: string;
-  permiteInscripciones?: boolean;
-  permiteMatriculas?: boolean;
-  visiblePortal?: boolean;
-  observaciones?: string;
 }
 
 /**
@@ -308,6 +296,27 @@ export const estructuraService = {
       `${SERVICE_PREFIX}/estructura-organizacional/usuarios/asignar`,
       { ids, territorialId, cetapId }
     );
+  },
+
+  async obtenerPeriodos(): Promise<any[]> {
+    return apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+  },
+
+  async obtenerDetallePeriodo(id: string): Promise<any> {
+    return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
+  },
+
+  async importarEstructura(file: File, dryRun: boolean, skipInvalid: boolean = false, periodo?: string): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    let url = `${SERVICE_PREFIX}/estructura-import/upload-geografico?dry_run=${dryRun}&skip_invalid=${skipInvalid}`;
+    if (periodo) {
+      url += `&periodo=${encodeURIComponent(periodo)}`;
+    }
+
+    // No forzar Content-Type — el navegador lo setea automáticamente con el boundary correcto para FormData
+    return apiClient.post<any>(url, formData);
   },
 };
 

@@ -49,6 +49,16 @@ export class AuthController {
     return 'Hello from Api Auth Service';
   }
 
+  /**
+   * Verifica el token JWT y devuelve el usuario autenticado.
+   * El frontend llama a este endpoint al recargar la página para restaurar la sesión.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('verify')
+  async verify(@Req() req: any) {
+    return this.authService.getVerifiedUser(req.user);
+  }
+
   @Public()
   @Post('login')
   @HttpCode(200)
@@ -219,13 +229,6 @@ export class AuthController {
   @Get('me')
   me(@Req() req) {
     return req.user;
-  }
-
-  // ✅ Endpoint requerido por el frontend para validar sesión
-  @UseGuards(JwtAuthGuard)
-  @Get('verify')
-  verify(@Req() req) {
-    return this.authService.getVerifiedUser(req.user);
   }
 
   private extractLoginIdentifier(dto: LoginDto): string {

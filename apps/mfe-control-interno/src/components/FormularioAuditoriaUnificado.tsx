@@ -96,6 +96,7 @@ export interface ResponsableArea {
   email: string;
   cargo?: string;
   numeroIdentificacion?: string;
+  isAuditorBackend?: boolean;
 }
 
 export interface AuditoriaUnificadaFormData {
@@ -400,17 +401,17 @@ export function FormularioAuditoriaUnificado({
     const precargarPersonas = async () => {
       if (!open) return;
       try {
-        const resp = await auditoriasApi.getPersonasDisponibles();
+        const resp = await auditoriasApi.getAllAuditados();
         if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
-          setPersonasPrecargadas(
-            resp.data.map((p: any) => ({
-              idPersona: String(p.idPersona ?? p.id ?? ''),
-              nombre: p.nombre ?? '',
-              email: p.email ?? '',
-              cargo: p.cargo,
-              numeroIdentificacion: p.numeroIdentificacion,
-            }))
-          );
+          const list = resp.data.map((p: any) => ({
+            idPersona: String(p.idPersona ?? p.id ?? ''),
+            nombre: p.nombre ?? '',
+            email: p.email ?? '',
+            cargo: p.cargo,
+            numeroIdentificacion: p.numeroIdentificacion,
+            isAuditorBackend: p.isAuditor ?? false,
+          }));
+          setPersonasPrecargadas(list);
         }
       } catch (err) {
         console.warn('[FormularioAuditoriaUnificado] No se pudieron precargar personas:', err);
@@ -580,7 +581,7 @@ export function FormularioAuditoriaUnificado({
   useEffect(() => {
     const q = busquedaResponsable.trim();
 
-    // Sin búsqueda: mostrar lista precargada (sin hacer fetch)
+    // Sin búsqueda: mostrar lista precargada, omitiendo a los auditores
     if (q.length === 0) {
       setResultadosResponsable(personasPrecargadas);
       setBuscandoResponsable(false);
@@ -591,9 +592,9 @@ export function FormularioAuditoriaUnificado({
     const qLower = q.toLowerCase();
     const filtradosLocal = personasPrecargadas.filter(
       (p) =>
-        p.nombre.toLowerCase().includes(qLower) ||
+        (p.nombre.toLowerCase().includes(qLower) ||
         p.email.toLowerCase().includes(qLower) ||
-        (p.numeroIdentificacion ?? '').includes(q)
+        (p.numeroIdentificacion ?? '').includes(q))
     );
     setResultadosResponsable(filtradosLocal);
 
@@ -604,18 +605,18 @@ export function FormularioAuditoriaUnificado({
     setBuscandoResponsable(true);
     const timer = setTimeout(async () => {
       try {
-        const resp = await auditoriasApi.searchPersonas(q);
+        const resp = await auditoriasApi.searchAuditados(q);
         if (cancelado) return;
         if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
-          setResultadosResponsable(
-            resp.data.map((p: any) => ({
-              idPersona: String(p.idPersona ?? p.id ?? ''),
-              nombre: p.nombre ?? '',
-              email: p.email ?? '',
-              cargo: p.cargo,
-              numeroIdentificacion: p.numeroIdentificacion,
-            }))
-          );
+          const fetched = resp.data.map((p: any) => ({
+            idPersona: String(p.idPersona ?? p.id ?? ''),
+            nombre: p.nombre ?? '',
+            email: p.email ?? '',
+            cargo: p.cargo,
+            numeroIdentificacion: p.numeroIdentificacion,
+            isAuditorBackend: p.isAuditor ?? false,
+          }));
+          setResultadosResponsable(fetched);
         }
         // Si backend no retorna nada, quedamos con el filtrado local
       } catch (err) {
@@ -974,6 +975,7 @@ export function FormularioAuditoriaUnificado({
             buscandoResponsable={buscandoResponsable}
             mostrarSugerenciasResponsable={mostrarSugerenciasResponsable}
             setMostrarSugerenciasResponsable={setMostrarSugerenciasResponsable}
+            auditoresDisponibles={auditoresDisponibles}
           />
         );
       case 3:
@@ -1628,6 +1630,7 @@ interface Paso2Props extends PasoProps {
   buscandoResponsable: boolean;
   mostrarSugerenciasResponsable: boolean;
   setMostrarSugerenciasResponsable: (v: boolean) => void;
+  auditoresDisponibles: any[];
 }
 
 function Paso2ClasificacionAlcance({
@@ -1640,6 +1643,7 @@ function Paso2ClasificacionAlcance({
   buscandoResponsable,
   mostrarSugerenciasResponsable,
   setMostrarSugerenciasResponsable,
+  auditoresDisponibles = [],
 }: Paso2Props) {
   // Buscar la evaluación del proceso seleccionado para obtener la dependencia
   const evaluacionProceso = evaluaciones.find(
@@ -1843,7 +1847,15 @@ function Paso2ClasificacionAlcance({
           <FieldWrapper
             label="Responsable del Área Auditada"
             required
-            helpText="Persona del área auditada que recibirá el informe preliminar y accederá al portal del auditado. Búsqueda por nombre, correo o número de identificación."
+            helpText={
+              <div className="flex flex-col gap-1.5">
+                <span>Persona del área auditada que recibirá el informe preliminar y accederá al portal del auditado. Búsqueda por nombre, correo o número de identificación.</span>
+                <span className="text-red-600 font-bold flex items-center gap-1.5 p-2 bg-red-50 rounded border border-red-100">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  IMPORTANTE: El responsable NO debe ser un auditor ni personal de la Oficina de Control Interno (OCI).
+                </span>
+              </div>
+            }
           >
             {formData.responsableArea ? (
               <div className="p-4 rounded-lg border-2 border-blue-200 bg-blue-50 flex items-start justify-between gap-3">
@@ -1876,17 +1888,31 @@ function Paso2ClasificacionAlcance({
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange('responsableArea', undefined);
-                    setBusquedaResponsable('');
-                    setMostrarSugerenciasResponsable(false);
-                  }}
-                  className="shrink-0 text-xs text-blue-700 hover:text-blue-900 underline"
-                >
-                  Cambiar
-                </button>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('responsableArea', undefined);
+                      setBusquedaResponsable('');
+                      setMostrarSugerenciasResponsable(false);
+                    }}
+                    className="shrink-0 text-xs flex items-center gap-1 text-red-600 hover:text-red-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Eliminar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('responsableArea', undefined);
+                      setBusquedaResponsable('');
+                      setMostrarSugerenciasResponsable(true);
+                    }}
+                    className="shrink-0 text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    Cambiar
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="relative">
@@ -1906,15 +1932,26 @@ function Paso2ClasificacionAlcance({
                     className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     autoComplete="off"
                   />
-                  {buscandoResponsable && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  {buscandoResponsable ? (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <motion.div
                         animate={{ rotate: 360 }}
                         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                         className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"
                       />
                     </div>
-                  )}
+                  ) : busquedaResponsable.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBusquedaResponsable('');
+                        setMostrarSugerenciasResponsable(true);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  ) : null}
                 </div>
 
                 {mostrarSugerenciasResponsable && (
@@ -1939,40 +1976,63 @@ function Paso2ClasificacionAlcance({
                       </div>
                     )}
 
-                    {resultadosResponsable.map((p) => (
-                      <button
-                        key={p.idPersona}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          onChange('responsableArea', p);
-                          setBusquedaResponsable('');
-                          setMostrarSugerenciasResponsable(false);
-                        }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 shrink-0 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-bold">
-                            {(p.nombre || '')
-                              .split(' ')
-                              .filter(Boolean)
-                              .slice(0, 2)
-                              .map((s) => s[0])
-                              .join('')
-                              .toUpperCase() || 'P'}
+                    {resultadosResponsable.map((p) => {
+                      if (!p) return null;
+                      const isAuditorConfig = (auditoresDisponibles || []).some(a => a && String(a.id) === p.idPersona);
+                      const isAuditor = p.isAuditorBackend || isAuditorConfig;
+
+                      return (
+                        <button
+                          key={p.idPersona}
+                          type="button"
+                          disabled={isAuditor}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (isAuditor) return;
+                            onChange('responsableArea', p);
+                            setBusquedaResponsable('');
+                            setMostrarSugerenciasResponsable(false);
+                          }}
+                          className={`w-full text-left px-3 py-2.5 border-b border-gray-100 last:border-0 transition-colors ${
+                            isAuditor 
+                              ? 'opacity-60 bg-gray-50 cursor-not-allowed' 
+                              : 'hover:bg-blue-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                              isAuditor ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {(p.nombre || '')
+                                .split(' ')
+                                .filter(Boolean)
+                                .slice(0, 2)
+                                .map((s) => s[0])
+                                .join('')
+                                .toUpperCase() || 'P'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className={`text-sm font-medium truncate ${isAuditor ? 'text-gray-500' : 'text-gray-900'}`}>
+                                  {p.nombre}
+                                </p>
+                                {isAuditor && (
+                                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                                    Auditor - No seleccionable
+                                  </span>
+                                )}
+                              </div>
+                              <p className={`text-xs truncate ${isAuditor ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {p.email}
+                                {p.cargo ? ` · ${p.cargo}` : ''}
+                                {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
+                              </p>
+                            </div>
+                            {!isAuditor && <User className="w-4 h-4 text-gray-300 shrink-0" />}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 truncate">{p.nombre}</p>
-                            <p className="text-xs text-gray-500 truncate">
-                              {p.email}
-                              {p.cargo ? ` · ${p.cargo}` : ''}
-                              {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
-                            </p>
-                          </div>
-                          <User className="w-4 h-4 text-gray-300 shrink-0" />
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

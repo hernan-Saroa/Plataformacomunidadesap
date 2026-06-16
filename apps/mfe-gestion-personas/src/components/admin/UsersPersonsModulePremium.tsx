@@ -43,7 +43,11 @@ import {
   BarChart3,
   Cog,
   Scale,
-  QrCode
+  QrCode,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Filter
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Avatar, AvatarFallback, AvatarImage, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
@@ -115,6 +119,9 @@ export function UsersPersonsModulePremium() {
     unidadOrganizacionalFilter,
     setUnidadOrganizacionalFilter,
   ] = useState<string | undefined>(undefined); // ✅ FILTRO COHERENTE CON ESTRUCTURA
+  const [sortField, setSortField] = useState<string | undefined>('usuario');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | undefined>('asc');
+
   const [expandedUserId, setExpandedUserId] = useState<
     string | null
   >(null);
@@ -144,7 +151,17 @@ export function UsersPersonsModulePremium() {
   const [showPasswordHistoryModal, setShowPasswordHistoryModal] = useState(false);
   const [passwordHistory, setPasswordHistory] = useState<any[]>([]);
   const [isLoadingPasswordHistory, setIsLoadingPasswordHistory] = useState(false);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const saved = localStorage.getItem('usersItemsPerPage');
+    return saved ? parseInt(saved, 10) : 10;
+  });
+
+  const handleItemsPerPageChange = (newItems: number) => {
+    setItemsPerPage(newItems);
+    localStorage.setItem('usersItemsPerPage', newItems.toString());
+    setCurrentPage(1); // Resetear a la primera página
+  };
+
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
   const isMountedRef = useRef(true);
@@ -184,6 +201,8 @@ export function UsersPersonsModulePremium() {
         search: debouncedSearchQuery.trim() || undefined,
         status: statusFilter === 'all' ? undefined : (statusFilter as 'active' | 'inactive'),
         role: roleFilter === 'all' ? undefined : roleFilter,
+        sortBy: sortField,
+        sortOrder: sortOrder,
       });
 
       // Mapear usuarios de la API al formato esperado por el componente
@@ -286,7 +305,20 @@ export function UsersPersonsModulePremium() {
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter]); // Recargar cuando cambia paginación o filtros backend
+  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter, sortField, sortOrder, itemsPerPage]); // Recargar cuando cambia paginación, límite, orden o filtros backend
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortOrder === 'asc') setSortOrder('desc');
+      else if (sortOrder === 'desc') {
+        setSortField(undefined);
+        setSortOrder(undefined);
+      }
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
 
   // Usuarios actuales (de API o mock)
   const currentUsers = users;
@@ -317,7 +349,6 @@ export function UsersPersonsModulePremium() {
     ? Math.ceil(filteredUsers.length / itemsPerPage)
     : Math.ceil(totalUsers / itemsPerPage);
 
-  // Si hay filtros locales, paginar en frontend. Si no, los datos ya vienen paginados del backend
   const paginatedUsers = hasClientSideFilters
     ? filteredUsers.slice(
         (currentPage - 1) * itemsPerPage,
@@ -326,6 +357,7 @@ export function UsersPersonsModulePremium() {
     : filteredUsers;
 
   const displayUsers = paginatedUsers.map(user => {
+
     // ✅ Usar datos de seccional y sede del backend
     // Si no hay datos del backend, usar el formato anterior para compatibilidad
     const territorial = user.seccional ? {
@@ -1032,12 +1064,43 @@ export function UsersPersonsModulePremium() {
     );
   }
 
+  const renderSortableHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const isSorted = sortField === field;
+    return (
+      <th
+        className={`text-${align} font-semibold uppercase cursor-pointer hover:bg-gray-100 transition-colors group`}
+        style={{
+          padding: "12px 16px",
+          fontSize: "12px",
+          lineHeight: "16px",
+          color: isSorted ? "#003DA5" : "#6B7280",
+          letterSpacing: "0.5px",
+          whiteSpace: "nowrap",
+          userSelect: "none",
+        }}
+        onClick={() => handleSort(field)}
+        title={`Organizar por ${label.toLowerCase()}`}
+      >
+        <div className={`flex items-center gap-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+          {label}
+          <div className={`flex items-center justify-center w-4 h-4 rounded transition-colors ${isSorted ? 'bg-blue-50 text-[#003DA5]' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
+            {isSorted && sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> :
+             isSorted && sortOrder === 'desc' ? <ArrowDown className="w-3 h-3" /> :
+             <ArrowUpDown className="w-3 h-3" />}
+          </div>
+        </div>
+      </th>
+    );
+  };
+
+  // ═══════════════════════════════ RENDER ═══════════════════════════════
   return (
     <>
     <Toaster position="top-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
+        key="header"
         title="Gestión Personas"
         description="Gestión integral de personas con asignación de roles múltiples simultáneos"
         icon={Users}
@@ -1059,6 +1122,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
       <motion.div
+        key="search-and-filters"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.15 }}
@@ -1348,20 +1412,21 @@ export function UsersPersonsModulePremium() {
         )}
       </motion.div>
 
-      {/* ✅ TARJETAS DE FILTROS RÁPIDOS POR ROL */}
+      {/* 🚀 TARJETAS DE FILTROS RAPIDOS POR ROL */}
       <motion.div
+        key="quick-filters-cards"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.18 }}
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4"
       >
-        {quickFiltersData.map((filter) => {
+        {quickFiltersData.map((filter, filterIdx) => {
           const Icon = filter.icon;
           const isActive = roleFilter === filter.id;
           
           return (
             <motion.button
-              key={filter.code}
+              key={filter.code ? `${filter.code}-${filterIdx}` : `filter-${filterIdx}`}
               onClick={() => {
                 if (isActive) {
                   setRoleFilter("all");
@@ -1460,6 +1525,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Tabla Premium - Según especificaciones de Table */}
       <motion.div
+        key="premium-table-container"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
@@ -1535,109 +1601,13 @@ export function UsersPersonsModulePremium() {
                 }}
               >
                 <tr>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Usuario
-                  </th>
-                  {visibleCols.has('roles') && (
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Roles
-                  </th>
-                  )}
-                  {visibleCols.has('territorial') && (
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Territorial
-                  </th>
-                  )}
-                  {visibleCols.has('cetap') && (
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    CETAP
-                  </th>
-                  )}
-                  {visibleCols.has('carpeta') && (
-                  <th
-                    className="text-center font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Carpeta Digital
-                  </th>
-                  )}
-                  {visibleCols.has('estado') && (
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Estado
-                  </th>
-                  )}
-                  {visibleCols.has('actividad') && (
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Última Actividad
-                  </th>
-                  )}
+                  {renderSortableHeader('Usuario', 'usuario')}
+                  {visibleCols.has('roles') && renderSortableHeader('Roles', 'roles')}
+                  {visibleCols.has('territorial') && renderSortableHeader('Territorial', 'territorial')}
+                  {visibleCols.has('cetap') && renderSortableHeader('CETAP', 'cetap')}
+                  {visibleCols.has('carpeta') && renderSortableHeader('Carpeta Digital', 'carpeta', 'center')}
+                  {visibleCols.has('estado') && renderSortableHeader('Estado', 'estado')}
+                  {visibleCols.has('actividad') && renderSortableHeader('Última Actividad', 'actividad')}
                   <th
                     className="text-right font-semibold uppercase"
                     style={{
@@ -1655,10 +1625,10 @@ export function UsersPersonsModulePremium() {
               </thead>
               <tbody style={{ background: "#FFFFFF" }}>
                 <AnimatePresence mode="popLayout">
-                  {displayUsers.map((user, index) => (
-                    <React.Fragment key={user.id || `frag-${index}`}>
+                  {displayUsers.flatMap((user, index) => {
+                    const items = [
                       <motion.tr
-                        key={user.id ? `row-${user.id}` : `row-${index}`}
+                        key={user.id ? `row-${user.id}-${index}` : `row-${index}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -1721,6 +1691,16 @@ export function UsersPersonsModulePremium() {
                               >
                                 {user.email}
                               </p>
+                              <p
+                                style={{
+                                  fontSize: "11px",
+                                  lineHeight: "14px",
+                                  color: "#9CA3AF",
+                                  marginTop: "2px"
+                                }}
+                              >
+                                {user.identificationType} {user.document}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -1754,22 +1734,17 @@ export function UsersPersonsModulePremium() {
                             verticalAlign: "middle",
                           }}
                         >
-                          {user.territorial ? (
+                          {user.seccional ? (
                             <div className="flex items-center gap-2">
                               <Building2 className="w-4 h-4 text-green-600" />
                               <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {user.territorial.nombre}
+                                <p className="text-sm font-medium text-gray-900" title={user.seccional.nomSeccional}>
+                                  {user.seccional.nomSeccional.length > 25 ? `${user.seccional.nomSeccional.substring(0, 25)}...` : user.seccional.nomSeccional}
                                 </p>
-                                {user.territorial
-                                  .departamento && (
-                                  <p className="text-xs text-gray-500">
-                                    {
-                                      user.territorial
-                                        .departamento
-                                    }
-                                  </p>
-                                )}
+                                <p className="text-xs text-gray-500">
+                                  {user.seccional.codSeccional && `Cód: ${user.seccional.codSeccional}`}
+                                  {user.seccional.ubicacion && ` • ${user.seccional.ubicacion}`}
+                                </p>
                               </div>
                             </div>
                           ) : (
@@ -1789,29 +1764,16 @@ export function UsersPersonsModulePremium() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {user.cetap ? (
+                          {user.sede ? (
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-orange-600" />
                               <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {user.cetap.nombre}
-                                </p>
-                                {user.cetap.ciudad && (
-                                  <p className="text-xs text-gray-500">
-                                    {user.cetap.ciudad}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ) : user.sedeCentral ? (
-                            <div className="flex items-center gap-2">
-                              <Building2 className="w-4 h-4 text-blue-600" />
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  Sede Central
+                                <p className="text-sm font-medium text-gray-900" title={user.sede.nomSede}>
+                                  {user.sede.nomSede.length > 25 ? `${user.sede.nomSede.substring(0, 25)}...` : user.sede.nomSede}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  Bogotá D.C.
+                                  {user.sede.codSede && `Cód: ${user.sede.codSede}`}
+                                  {user.sede.ubicacion && ` • ${user.sede.ubicacion}`}
                                 </p>
                               </div>
                             </div>
@@ -2081,10 +2043,11 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
-                      {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
-                      {expandedUserId === user.id && (
+                    ];
+                    if (expandedUserId === user.id) {
+                      items.push(
                         <motion.tr
-                          key={user.id ? `${user.id}-expanded` : `expanded-${index}`}
+                          key={user.id ? `${user.id}-expanded-${index}` : `expanded-${index}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -2101,9 +2064,10 @@ export function UsersPersonsModulePremium() {
                             />
                           </td>
                         </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
+                      );
+                    }
+                    return items;
+                  })}
                 </AnimatePresence>
               </tbody>
             </table>
@@ -2117,7 +2081,7 @@ export function UsersPersonsModulePremium() {
             <AnimatePresence mode="popLayout">
               {displayUsers.map((user, index) => (
                 <motion.div
-                  key={user.id}
+                  key={user.id ? `mobile-user-${user.id}-${index}` : `mobile-user-${index}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
@@ -2402,6 +2366,7 @@ export function UsersPersonsModulePremium() {
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
                 totalItems={totalUsers}
+                onItemsPerPageChange={handleItemsPerPageChange}
               />
             </div>
           )}

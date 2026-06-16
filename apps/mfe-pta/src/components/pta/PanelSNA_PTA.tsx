@@ -335,7 +335,7 @@ export function PanelSNA_PTA({ onVerDetalle, searchQuery = '', filtroPeriodo = '
                     </span>
                   </div>
                   <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                    {selectedCaso.pta.docente_nombre} • {selectedCaso.pta.periodo || '2026-1'}
+                    {selectedCaso.pta.docente_nombre} • {selectedCaso.pta.periodo || '2025-2'}
                   </p>
                 </div>
                 <button onClick={() => setSelectedCaso(null)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: '#F3F4F6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -377,7 +377,7 @@ export function PanelSNA_PTA({ onVerDetalle, searchQuery = '', filtroPeriodo = '
                       <Shield style={{ width: 12, height: 12 }} /> Posición de Dirección
                     </div>
                     <p style={{ fontSize: '0.82rem', color: '#1E3A5F', margin: 0, lineHeight: 1.4 }}>
-                      Asignación según distribución institucional y necesidades del programa para el periodo {selectedCaso.pta.periodo || '2026-1'}.
+                      Asignación según distribución institucional y necesidades del programa para el periodo {selectedCaso.pta.periodo || '2025-2'}.
                     </p>
                   </div>
                   <div style={{ padding: 14, borderRadius: 10, border: '1px solid #DDD6FE', background: '#F3E8FF' }}>

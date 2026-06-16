@@ -195,7 +195,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         page++;
       }
       const nombre = pta.docente_nombre || pta.nombre_docente || 'PTA';
-      pdf.save(`${versionLabel}_${nombre.replace(/\s+/g, '_')}_${pta.periodo || '2026-1'}.pdf`);
+      pdf.save(`${versionLabel}_${nombre.replace(/\s+/g, '_')}_${pta.periodo || '2025-2'}.pdf`);
     } catch (err) {
       console.error('PDF export error:', err);
     } finally {
@@ -203,7 +203,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
     }
   };
 
-  const codigoPTA = `ESAP-PTA-${pta.periodo || '2026-1'}-${pta.docente_identificacion || pta.cedula || pta.docente_id?.slice(-8) || '00000000'}-001`;
+  const codigoPTA = `ESAP-PTA-${pta.periodo || '2025-2'}-${pta.docente_identificacion || pta.cedula || pta.docente_id?.slice(-8) || '00000000'}-001`;
 
   return (
     /* ═══ MODAL OVERLAY ═══ */
@@ -324,7 +324,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                 padding: '6px 14px', borderRadius: 8, background: '#003DA5',
                 color: 'white', fontSize: '0.85rem', fontWeight: 700,
               }}>
-                Periodo {pta.periodo || '2026-1'}
+                Periodo {pta.periodo || '2025-2'}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 6 }}>
                 Emision: {new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}

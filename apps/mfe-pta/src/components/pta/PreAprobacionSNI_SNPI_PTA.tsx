@@ -427,7 +427,7 @@ export default function PreAprobacionSNI_SNPI_PTA() {
                             <DetailField icon={Hash} label="PTA ID" value={sol.pta_id} />
                             <DetailField icon={Calendar} label="Fecha solicitud" value={new Date(sol.fecha_solicitud).toLocaleDateString('es-CO')} />
                             <DetailField icon={User} label="Solicitado por" value={sol.solicitado_por || 'Docente'} />
-                            <DetailField icon={Timer} label="Periodo" value={sol.periodo || '2026-1'} />
+                            <DetailField icon={Timer} label="Periodo" value={sol.periodo || '2025-2'} />
                             {sol.proyecto_codigo && <DetailField icon={FileText} label="Codigo proyecto" value={sol.proyecto_codigo} />}
                             {sol.grupo_investigacion && <DetailField icon={Award} label="Grupo investigacion" value={sol.grupo_investigacion} />}
                             {sol.horas_aprobadas !== undefined && sol.horas_aprobadas > 0 && (

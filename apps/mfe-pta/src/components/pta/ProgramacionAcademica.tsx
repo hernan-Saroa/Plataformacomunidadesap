@@ -59,7 +59,7 @@ export function ProgramacionAcademica() {
       getCatalogoAsignaturas(),
       getCatalogoTerritoriales(),
       getCatalogoRolesInvestigacion(),
-      getDocentesDisponibles('2026-1'),
+      getDocentesDisponibles('2025-2'),
       getPTAsConcertacion(),
     ]).then(([progs, asigs, terrs, roles, docs, conc]) => {
       if (progs.success) setProgramas(progs.data);
@@ -131,7 +131,7 @@ export function ProgramacionAcademica() {
       docente_nombre: selectedDocente.nombre,
       dedicacion: selectedDocente.dedicacion || 'Tiempo Completo',
       territorial_id: selectedDocente.territorial_id,
-      periodo: '2026-1',
+      periodo: '2025-2',
       asignaturas,
       investigacion_proyecto: invProyecto.nombre ? invProyecto : undefined,
       extension_actividades: extActividades,
@@ -153,7 +153,7 @@ export function ProgramacionAcademica() {
       }
       setView('lista');
       // Refresh lists
-      const [docs, conc] = await Promise.all([getDocentesDisponibles('2026-1'), getPTAsConcertacion()]);
+      const [docs, conc] = await Promise.all([getDocentesDisponibles('2025-2'), getPTAsConcertacion()]);
       if (docs.success) setDocentesDisp(docs.data);
       if (conc.success) setPtasConcertacion(conc.data);
     } else {
