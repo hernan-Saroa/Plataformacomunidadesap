@@ -2511,7 +2511,30 @@ export class BancoDocentesService implements OnModuleInit {
         finalPersonaId = result[0].id_person;
       }
 
-      const docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      let docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      
+      // Auto-provisionar docente si no existe (Necesario para sincronizaciA3n con Carpeta Digital)
+      if (!docente) {
+        const authData = await this.dataSource.query(
+          `SELECT id_person, num_identificacion, nombres, apellidos, correo_electronico FROM auth.personas WHERE id_person = $1 LIMIT 1`,
+          [finalPersonaId]
+        );
+        if (authData && authData.length > 0) {
+          const auth = authData[0];
+          await this.upsertDocente({
+            personaId: auth.id_person,
+            documentNumber: auth.num_identificacion || 'N/A',
+            documento_identidad: auth.num_identificacion || 'N/A',
+            nombre_completo: `${auth.nombres || ''} ${auth.apellidos || ''}`.trim() || 'Sin Nombre',
+            correo_institucional: auth.correo_electronico || null,
+            territorial: 'Sede Central',
+            vinculacion: 'Ocasional',
+            estado: 'Inactivo'
+          }, { rejectExisting: false });
+          docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+        }
+      }
+
       if (!docente) return null;
       return this.getTarjetaRUND(docente.id);
     } catch (e) {

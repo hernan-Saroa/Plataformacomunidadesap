@@ -21,6 +21,7 @@ import { AsignarUsuariosModal } from './AsignarUsuariosModal';
 import { ImportarEstructuraView } from './ImportarEstructuraView';
 import { useAuth } from '../../hooks';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
+import { Permissions } from '@esap-mfe/shared-types';
 
 type TipoCreacion = 'seccional' | 'sede';
 
@@ -45,8 +46,8 @@ export function EstructuraOrganizacionalModule() {
   const [showAsignarModal, setShowAsignarModal] = useState(false);
   const [sinTerritorial, setSinTerritorial] = useState(0);
   const [sinCetap, setSinCetap] = useState(0);
-  const { hasRole } = useAuth();
-  const isSuperAdmin = hasRole('SUPER_ADMIN');
+  const { hasRole, hasPermission } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN') || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE);
 
   // Cargar datos al montar el componente
   useEffect(() => {
@@ -298,13 +299,15 @@ export function EstructuraOrganizacionalModule() {
                 <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
               </button>
 
-              <button
-                onClick={handleImportar}
-                className="flex items-center gap-2 px-4 py-2 bg-[#003DA5]/5 hover:bg-[#003DA5] text-[#003DA5] hover:text-white border border-[#003DA5]/20 hover:border-transparent rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-              >
-                <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Importación Masiva</span>
-              </button>
+              {hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_IMPORT) || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE) ? (
+                <button
+                  onClick={handleImportar}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#003DA5]/5 hover:bg-[#003DA5] text-[#003DA5] hover:text-white border border-[#003DA5]/20 hover:border-transparent rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">Importación Masiva</span>
+                </button>
+              ) : null}
 
               <button
                 onClick={handleExportar}
@@ -315,12 +318,12 @@ export function EstructuraOrganizacionalModule() {
               </button>
 
               {/* Separador vertical sutil */}
-              {isSuperAdmin && (
+              {(isSuperAdmin || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_CREATE)) && (
                 <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block" />
               )}
 
               {/* Dropdown para crear */}
-              {isSuperAdmin && (
+              {(isSuperAdmin || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_CREATE)) && (
                 <div className="relative">
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
@@ -541,6 +544,10 @@ function VistaArbolSeccionalesSedes({
   onEliminarSeccional,
   onEliminarSede,
 }: VistaArbolProps) {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_EDIT) || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE);
+  const canDelete = hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_DELETE) || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE);
+  
   const [expandidosSedeCentral, setExpandidosSedeCentral] = useState(true); // ✅ CERRADO por defecto
   const [seccionalesExpandidas, setSeccionalesExpandidas] = useState<Record<number, boolean>>({});
 
@@ -729,20 +736,24 @@ function VistaArbolSeccionalesSedes({
 
                           {/* Botones de accion para Seccional */}
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => onEditarSeccional(seccional)}
-                              className="p-2 rounded-lg hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"
-                              title="Editar seccional"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => onEliminarSeccional(seccional)}
-                              className="p-2 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                              title="Eliminar seccional"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                onClick={() => onEditarSeccional(seccional)}
+                                className="p-2 rounded-lg hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"
+                                title="Editar seccional"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => onEliminarSeccional(seccional)}
+                                className="p-2 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                                title="Eliminar seccional"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
 
