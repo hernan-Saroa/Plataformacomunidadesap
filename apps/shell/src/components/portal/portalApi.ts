@@ -159,7 +159,7 @@ export async function uploadDocumentoCarpetaDigital(params: {
 }
 export async function getChecklistForPersona(personaId: string) {
   try {
-    return await apiClient.get(${PORTAL_PREFIX}/carpeta-digital//checklist, undefined, { skipErrorToast: true });
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}/checklist`, undefined, { skipErrorToast: true });
   } catch (err) {
     console.warn('[portalApi] getChecklistForPersona no disponible:', err);
     return { success: true, data: { useGlobalTypes: true, tiposDocumentos: [] } };
@@ -168,7 +168,7 @@ export async function getChecklistForPersona(personaId: string) {
 
 export async function getTiposDocumentos() {
   try {
-    return await apiClient.get(${PORTAL_PREFIX}/carpeta-digital/tipos-documentos, undefined, { skipErrorToast: true });
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/tipos-documentos`, undefined, { skipErrorToast: true });
   } catch (err) {
     console.warn('[portalApi] getTiposDocumentos no disponible:', err);
     return { success: true, data: [] };
@@ -177,7 +177,7 @@ export async function getTiposDocumentos() {
 
 export async function getDocumentosByCarpeta(personaId: string) {
   try {
-    return await apiClient.get(${PORTAL_PREFIX}/carpeta-digital//documentos, undefined, { skipErrorToast: true });
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}/documentos`, undefined, { skipErrorToast: true });
   } catch (err) {
     console.warn('[portalApi] getDocumentosByCarpeta no disponible:', err);
     return { success: true, data: [] };
@@ -186,7 +186,7 @@ export async function getDocumentosByCarpeta(personaId: string) {
 
 export async function reclassifyDocumento(docId: string, data: any) {
   try {
-    return await apiClient.put(${PORTAL_PREFIX}/carpeta-digital/documentos//reclassify, data);
+    return await apiClient.put(`${PORTAL_PREFIX}/carpeta-digital/documentos/${docId}/reclassify`, data);
   } catch (err) {
     console.warn('[portalApi] reclassifyDocumento no disponible:', err);
     return { success: false };
