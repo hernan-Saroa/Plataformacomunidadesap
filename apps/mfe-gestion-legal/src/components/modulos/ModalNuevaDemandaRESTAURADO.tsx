@@ -587,62 +587,71 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                   </div>
                 )}
 
-                {c.tipo === 'documento' && (
-                  <div className="space-y-2 w-full">
-                    {currentVal && typeof currentVal === 'object' && currentVal.nombre ? (
-                      <div className="flex items-center justify-between p-3 rounded-lg border border-blue-200 bg-blue-50/30">
-                        <div className="flex items-center gap-2 overflow-hidden mr-2">
-                          <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                          <div className="text-xs truncate">
-                            <span className="font-semibold text-gray-800 block truncate" title={currentVal.nombre}>
-                              {currentVal.nombre}
-                            </span>
-                            {currentVal.tamano && (
-                              <span className="text-gray-500 text-[10px]">
-                                {(currentVal.tamano / 1024).toFixed(1)} KB
-                              </span>
-                            )}
-                          </div>
+                {c.tipo === 'documento' && (() => {
+                  const docArray: any[] = Array.isArray(currentVal)
+                    ? currentVal
+                    : (currentVal && typeof currentVal === 'object' && currentVal.nombre ? [currentVal] : []);
+                  return (
+                    <div className="space-y-2 w-full">
+                      {docArray.length > 0 && (
+                        <div className="space-y-1.5">
+                          {docArray.map((doc: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-blue-200 bg-blue-50/30">
+                              <div className="flex items-center gap-2 overflow-hidden mr-2">
+                                <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                                <div className="text-xs truncate">
+                                  <span className="font-semibold text-gray-800 block truncate" title={doc.nombre}>
+                                    {doc.nombre}
+                                  </span>
+                                  {doc.tamano && (
+                                    <span className="text-gray-500 text-[10px]">
+                                      {(doc.tamano / 1024).toFixed(1)} KB
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {doc.base64 && (
+                                  <a
+                                    href={doc.base64}
+                                    download={doc.nombre}
+                                    className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100/50 rounded transition-colors"
+                                    title="Descargar documento"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newArr = docArray.filter((_: any, i: number) => i !== idx);
+                                    handleValueChange(newArr.length > 0 ? newArr : null);
+                                    if (erroresCampos[fieldId] && newArr.length > 0) {
+                                      setErroresCampos(prev => {
+                                        const copy = { ...prev };
+                                        delete copy[fieldId];
+                                        return copy;
+                                      });
+                                    }
+                                  }}
+                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100/50 rounded transition-colors"
+                                  title="Eliminar documento"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          {currentVal.base64 && (
-                            <a
-                              href={currentVal.base64}
-                              download={currentVal.nombre}
-                              className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100/50 rounded transition-colors"
-                              title="Descargar documento"
-                            >
-                              <Download className="w-4 h-4" />
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleValueChange(null);
-                              if (erroresCampos[fieldId]) {
-                                setErroresCampos(prev => {
-                                  const copy = { ...prev };
-                                  delete copy[fieldId];
-                                  return copy;
-                                });
-                              }
-                            }}
-                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100/50 rounded transition-colors"
-                            title="Eliminar documento"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
+                      )}
                       <div className="w-full">
-                        <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl bg-white hover:bg-blue-50/10 hover:border-blue-300 transition-all cursor-pointer group ${erroresCampos[fieldId] ? 'border-red-500 bg-red-50/10' : 'border-gray-300'}`}>
-                          <div className="flex flex-col items-center justify-center pt-5 pb-6 px-4 text-center">
-                            <Upload className={`w-8 h-8 group-hover:text-blue-500 transition-colors mb-2 ${erroresCampos[fieldId] ? 'text-red-500' : 'text-gray-400'}`} />
+                        <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-xl bg-white hover:bg-blue-50/10 hover:border-blue-300 transition-all cursor-pointer group ${erroresCampos[fieldId] ? 'border-red-500 bg-red-50/10' : 'border-gray-300'}`}>
+                          <div className="flex flex-col items-center justify-center pt-4 pb-5 px-4 text-center">
+                            <Upload className={`w-7 h-7 group-hover:text-blue-500 transition-colors mb-1.5 ${erroresCampos[fieldId] ? 'text-red-500' : 'text-gray-400'}`} />
                             <p className={`text-xs font-bold group-hover:text-blue-600 transition-colors ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>
-                              Haga clic para cargar documento
+                              {docArray.length > 0 ? 'Agregar otro documento' : 'Haga clic para cargar documento'}
                             </p>
-                            <p className="text-[10px] text-gray-400 mt-1 font-medium">
+                            <p className="text-[10px] text-gray-400 mt-0.5 font-medium">
                               {c.tiposDocumento && c.tiposDocumento.length > 0
                                 ? `Formatos permitidos: ${c.tiposDocumento.map(ext => ext.toUpperCase()).join(', ')}`
                                 : 'Cualquier formato de archivo permitido'}
@@ -669,13 +678,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                               const reader = new FileReader();
                               reader.onload = () => {
-                                handleValueChange({
+                                const newDoc = {
                                   nombre: file.name,
                                   base64: reader.result as string,
                                   tamano: file.size,
                                   tipoMime: file.type,
                                   esNuevo: true
-                                });
+                                };
+                                handleValueChange([...docArray, newDoc]);
                                 if (erroresCampos[fieldId]) {
                                   setErroresCampos(prev => {
                                     const copy = { ...prev };
@@ -688,19 +698,20 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                                 toast.error('Error al leer el archivo');
                               };
                               reader.readAsDataURL(file);
+                              e.target.value = '';
                             }}
                           />
                         </label>
                       </div>
-                    )}
-                    {erroresCampos[fieldId] && (
-                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        {erroresCampos[fieldId]}
-                      </p>
-                    )}
-                  </div>
-                )}
+                      {erroresCampos[fieldId] && (
+                        <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {erroresCampos[fieldId]}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -1142,7 +1153,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         
         // 1. Validar obligatoriedad
         if (campo.obligatorio) {
-          if (val === undefined || val === null || val === '' || val === false) {
+          if (val === undefined || val === null || val === '' || val === false || (Array.isArray(val) && val.length === 0)) {
             newCustomErrors[campo.id] = `El campo "${campo.nombre}" es obligatorio.`;
             hasCustomError = true;
           }
