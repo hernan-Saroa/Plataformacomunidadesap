@@ -61,6 +61,7 @@ interface SidebarProps {
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
   restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
   assignedModules?: string[]; // Códigos de módulos asignados al rol/usuario (puede incluir 'all')
+  userPermissions?: string[]; // Permisos del usuario
 }
 
 const STORAGE_KEY = 'esap-sidebar-collapsed';
@@ -79,7 +80,7 @@ const contentTransition = {
   ease: [0.4, 0, 0.2, 1] // easing personalizado
 };
 
-export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [] }: SidebarProps) {
+export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], userPermissions = [] }: SidebarProps) {
   const hasAllModules = assignedModules.includes('all');
   const graduates = assignedModules.includes('graduates');
   if (graduates && !assignedModules.includes('graduates-verification')) {
@@ -91,6 +92,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     // En desarrollo, si no viene la lista de módulos (por ejemplo, sesión mock),
     // mostramos el menú completo para no bloquear navegación.
     if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) return true;
+
+    // Segmentación del RUND según nuevos permisos
+    if (module === 'banco-docentes-pta') {
+      return userPermissions.some(p => p.startsWith('banco-docentes.rund.'));
+    }
+
     if (!assignedModules || assignedModules.length === 0) return false;
     return assignedModules.includes(module);
   };
