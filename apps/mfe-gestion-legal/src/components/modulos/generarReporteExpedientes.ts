@@ -26,7 +26,6 @@ interface ExpedienteReporte {
   abogadoAsignado?: string;
   demandante?: string;
   demandado?: string;
-  fechaAdmision?: string | Date;
   fechaNotificacion?: string | Date;
   fechaVencimiento?: string | Date;
   diasRestantes?: number;
@@ -247,12 +246,6 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposCo
           <td style="padding:8px 12px;font-size:12px;font-weight:700;color:#059669;border-bottom:1px solid #E5E7EB;">${formatCOP(exp.cuantia)}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Nivel de Riesgo</td>
           <td style="padding:8px 12px;font-size:12px;font-weight:700;border-bottom:1px solid #E5E7EB;color:${exp.nivelRiesgo === 'Alto' ? '#DC2626' : exp.nivelRiesgo === 'Medio' ? '#D97706' : '#059669'};">${exp.nivelRiesgo || 'No evaluado'}</td>
-        </tr>
-        <tr>
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Admisión</td>
-          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${formatFecha(exp.fechaAdmision)}</td>
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Sede Territorial</td>
-          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.ubicacionFisica || '—'}</td>
         </tr>
         <tr>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Notificación</td>
