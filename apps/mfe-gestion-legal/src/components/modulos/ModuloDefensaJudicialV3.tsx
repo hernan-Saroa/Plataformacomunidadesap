@@ -119,7 +119,7 @@ export function ModuloDefensaJudicialV3() {
   useEffect(() => {
     if (tiposProcesosActivos.length > 0) {
       const persistedBoard = getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || tableroSeleccionado;
-      const isValid = tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
+      const isValid = persistedBoard === 'TODOS' || tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
       
       if (isValid) {
         if (tableroSeleccionado !== persistedBoard) {
