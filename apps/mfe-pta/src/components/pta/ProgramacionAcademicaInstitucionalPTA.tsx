@@ -30,7 +30,7 @@ import {
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
-import { Permissions } from '@esap/shared-types';
+import { Permissions } from '@esap-mfe/shared-types';
 
 interface Props {
   onBack?: () => void;

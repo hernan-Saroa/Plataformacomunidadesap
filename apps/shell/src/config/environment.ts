@@ -6,7 +6,7 @@
  *
  * MODOS DE CONEXIÓN:
  * 1. Gateway Mode (default para Docker): Todas las requests van al API Gateway
- *    - URL: http://localhost:3000/{service}/api/v1/{path}
+ *    - URL local: http://localhost:4000/{service}/api/v1/{path}
  *
  * 2. Direct Mode (para desarrollo local sin Docker): Cada servicio en su puerto
  *    - Auth: http://localhost:3001/{path}
@@ -29,14 +29,8 @@ const VITE_PUBLIC_FRONTEND_URL = import.meta.env.VITE_PUBLIC_FRONTEND_URL as str
 const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | undefined;
 
 // Modo de API: 'gateway' (usa API Gateway) o 'direct' (conexión directa a microservicios)
-// Auto-detectar: localhost = direct, producción = gateway
+// Por defecto usamos gateway tambien en local para que el frontend no llame directo a los microservicios.
 const VITE_API_MODE = import.meta.env.VITE_API_MODE as string | undefined;
-const isLocalhost = typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const isDevServer = typeof window !== 'undefined' &&
-  window.location.port !== '' &&
-  window.location.port !== '80' &&
-  window.location.port !== '443';
 
 const isLoopbackHost = (host?: string | null) =>
   host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -88,9 +82,12 @@ const getBrowserGatewayUrl = (): string | null => {
 
   const { protocol, hostname, origin } = window.location;
 
-  // Si estamos en desarrollo local o usando un túnel de Cloudflare, usamos el origen directamente
-  // para que las peticiones vayan al proxy de Vite.
-  if (ENV === 'development' || isLoopbackHost(hostname) || hostname.endsWith('.trycloudflare.com')) {
+  // En desarrollo local, el shell corre en 3000 y el API Gateway en 4000.
+  if (ENV === 'development' || isLoopbackHost(hostname)) {
+    return `${protocol}//${hostname}:4000`;
+  }
+
+  if (hostname.endsWith('.trycloudflare.com')) {
     return origin.replace(/\/$/, '');
   }
 
@@ -137,7 +134,7 @@ export const getApiGatewayBaseUrl = (): string => {
   return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
 };
 
-export const API_MODE = VITE_API_MODE || (isLocalhost && isDevServer ? 'direct' : 'gateway');
+export const API_MODE = VITE_API_MODE || 'gateway';
 
 export const ONLYOFFICE_URL = (() => {
   const configuredUrl = VITE_ONLYOFFICE_URL
@@ -157,7 +154,7 @@ export const ONLYOFFICE_URL = (() => {
 
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
-  development: 'http://localhost:3000', // API Gateway local
+  development: 'http://localhost:4000', // API Gateway local
   dev: '/services',
   production: '/services',
 };
@@ -207,7 +204,7 @@ export const getServiceUrl = (serviceName: keyof typeof MICROSERVICE_URLS): stri
 /**
  * Construye la URL completa para un endpoint
  * En modo 'direct': http://localhost:3002/users (sin prefijo de servicio)
- * En modo 'gateway': http://localhost:3000/auth/api/v1/users (con prefijo)
+ * En modo 'gateway': http://localhost:4000/auth/api/v1/users (con prefijo)
  */
 export const buildApiUrl = (serviceName: keyof typeof MICROSERVICE_URLS, path: string): string => {
   if (API_MODE === 'direct') {
