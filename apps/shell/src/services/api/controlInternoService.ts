@@ -2605,6 +2605,13 @@ class ControlInternoService {
   async ejecutarJobNotificaciones(): Promise<any> {
     return client.post('/notificaciones/ejecutar-job-automatico', {});
   }
+
+  /**
+   * Obtiene la lista de condiciones de disparo dinámicas
+   */
+  async getCondicionesDisparo(): Promise<{ id: string; nombre: string; descripcion?: string }[]> {
+    return client.get('/notificaciones/condiciones-disparo');
+  }
 }
 
 // Singleton instance
