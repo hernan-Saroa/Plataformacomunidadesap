@@ -61,7 +61,7 @@ export class NewsController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } }))
   @ApiOperation({
     summary: 'Radicar Noticia Disciplinaria',
     description: 'Crea una nueva noticia y genera automáticamente el radicado',
@@ -100,11 +100,11 @@ export class NewsController {
     // Validaciones de archivos
     if (files && files.length > 0) {
       for (const file of files) {
-        // Validar tamaño máximo (200MB)
-        const maxSize = 200 * 1024 * 1024; // 200MB en bytes
+        // Validar tamaño máximo (5GB)
+        const maxSize = 5 * 1024 * 1024 * 1024; // 5GB en bytes
         if (file.buffer.length > maxSize) {
           throw new BadRequestException(
-            `El archivo ${file.originalname} excede el tamaño máximo permitido de 200MB`,
+            `El archivo ${file.originalname} excede el tamaño máximo permitido de 5GB`,
           );
         }
 
@@ -224,7 +224,7 @@ async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
   })
   @ApiResponse({ status: 200, description: 'Noticia actualizada', type: DisciplinaryNews })
   @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { fileSize: 5 * 1024 * 1024 * 1024 } }))
   @ApiConsumes('multipart/form-data')
   async update(
     @Param('id') id: string,

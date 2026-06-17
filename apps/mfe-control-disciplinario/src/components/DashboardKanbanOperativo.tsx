@@ -3001,8 +3001,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
       hechos: proceso.news?.hechos,
-      cargo: proceso.news?.disciplinable?.cargo || '',
-      dependencia: proceso.news?.disciplinable?.dependencia || '',
+      cargo: (() => { const d = proceso.news?.disciplinable; const first = Array.isArray(d) ? d[0] : d; return first?.cargo || ''; })(),
+      dependencia: proceso.news?.dependenciaDenunciado || '',
       territorial: proceso.news?.territorial || '',
       fechaHechos: proceso.news?.fechaHechos || '',
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
@@ -3130,7 +3130,7 @@ export function DashboardKanbanOperativo({
 
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
-  const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
+  const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(true);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
 
@@ -3739,8 +3739,8 @@ export function DashboardKanbanOperativo({
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
       hechos: proceso.news?.hechos,
-      cargo: proceso.news?.disciplinable?.cargo || '',
-      dependencia: proceso.news?.disciplinable?.dependencia || '',
+      cargo: (() => { const d = proceso.news?.disciplinable; const first = Array.isArray(d) ? d[0] : d; return first?.cargo || ''; })(),
+      dependencia: proceso.news?.dependenciaDenunciado || '',
       territorial: proceso.news?.territorial || '',
       fechaHechos: proceso.news?.fechaHechos || '',
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
@@ -5875,13 +5875,13 @@ export function DashboardKanbanOperativo({
                       type="text"
                       value={busquedaGlobal}
                       onChange={(e) => setBusquedaGlobal(e.target.value)}
-                      onBlur={() => {
-                        if (!busquedaGlobal.trim()) setShowBusquedaGlobal(false);
-                      }}
+                      // onBlur={() => {
+                      //   if (!busquedaGlobal.trim()) setShowBusquedaGlobal(false);
+                      // }}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
                           setBusquedaGlobal('');
-                          setShowBusquedaGlobal(false);
+                          // setShowBusquedaGlobal(false);
                         }
                       }}
                       placeholder="Buscar noticias, procesos..."
@@ -5920,7 +5920,7 @@ export function DashboardKanbanOperativo({
             {/* Controles — Design Standard: Filtro Tipo + ViewToggle + CTA */}
             <div className="flex items-center gap-3 flex-shrink-0">
               {/* Filtro por tipo */}
-              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-gray-100">
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
                 {([
                   { value: 'todos', label: 'Todos' },
                   { value: 'noticia', label: 'Noticias' },
@@ -5945,7 +5945,7 @@ export function DashboardKanbanOperativo({
                   { value: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
                   { value: 'archivados', icon: <Archive style={{ width: 16, height: 16 }} />, label: 'Archivados', badge: itemsArchivados.length > 0 ? itemsArchivados.length : undefined },
                 ]}
-                active={tipoVista}
+                current={tipoVista}
                 onChange={(id) => setTipoVista(id as any)}
               />
 

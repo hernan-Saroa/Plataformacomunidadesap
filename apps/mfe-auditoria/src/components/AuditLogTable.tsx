@@ -8,11 +8,25 @@ interface AuditLogTableProps {
   onEventClick: (event: AuditEvent) => void;
   searchQuery?: string;
   onExportEvent?: (event: AuditEvent, format: 'csv' | 'excel' | 'pdf') => void;
+  currentPage?: number;
+  pageSize?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export function AuditLogTable({ events, onEventClick, searchQuery = '', onExportEvent }: AuditLogTableProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+export function AuditLogTable({
+  events,
+  onEventClick,
+  searchQuery = '',
+  onExportEvent,
+  currentPage,
+  pageSize = 10,
+  totalItems,
+  onPageChange,
+}: AuditLogTableProps) {
+  const [localPage, setLocalPage] = useState(1);
+  const isServerPaginated = typeof totalItems === 'number' && !!onPageChange;
+  const activePage = currentPage ?? localPage;
   
   // Filter events based on search query
   const filteredEvents = events.filter(event => {
@@ -26,10 +40,21 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '', onExport
     );
   });
   
-  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentEvents = filteredEvents.slice(startIndex, endIndex);
+  const effectiveTotal = isServerPaginated ? totalItems ?? 0 : filteredEvents.length;
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize));
+  const safePage = Math.min(activePage, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const currentEvents = isServerPaginated ? filteredEvents : filteredEvents.slice(startIndex, startIndex + pageSize);
+  const visibleEndIndex = Math.min(startIndex + currentEvents.length, effectiveTotal);
+
+  const changePage = (page: number) => {
+    const nextPage = Math.min(Math.max(1, page), totalPages);
+    if (isServerPaginated) {
+      onPageChange?.(nextPage);
+      return;
+    }
+    setLocalPage(nextPage);
+  };
 
   const getSeverityConfig = (severity: string) => {
     switch (severity) {
@@ -71,7 +96,7 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '', onExport
               Registro de Auditoría
             </h2>
             <p className="text-xs text-[--esap-gray-600] mt-1">
-              {events.length} eventos registrados
+              {effectiveTotal} eventos registrados
             </p>
           </div>
           
@@ -152,7 +177,7 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '', onExport
                   <td className="px-4 xl:px-6 py-3 xl:py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <div className="w-7 xl:w-8 h-7 xl:h-8 rounded-lg bg-gradient-to-br from-[--esap-primary] to-[--esap-primary-light] flex items-center justify-center">
-                        <User className="w-3 xl:w-4 h-3 xl:h-4 text-white" strokeWidth={2} />
+                        <User className="w-3 xl:w-4 h-3 xl:h-4 text-[--esap-gray-400]" strokeWidth={2} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs xl:text-sm font-semibold text-[--esap-gray-900] truncate">
@@ -336,15 +361,15 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '', onExport
       <div className="px-6 py-5 border-t border-[--esap-gray-200] bg-[--esap-gray-50]">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-[--esap-gray-700]">
-            Mostrando <span className="font-bold">{startIndex + 1}</span> a{' '}
-            <span className="font-bold">{Math.min(endIndex, events.length)}</span> de{' '}
-            <span className="font-bold">{events.length}</span> eventos
+            Mostrando <span className="font-bold">{effectiveTotal > 0 ? startIndex + 1 : 0}</span> a{' '}
+            <span className="font-bold">{visibleEndIndex}</span> de{' '}
+            <span className="font-bold">{effectiveTotal}</span> eventos
           </p>
           
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              onClick={() => changePage(safePage - 1)}
+              disabled={safePage === 1}
               className="px-4 py-2.5 border-2 border-[--esap-gray-400] bg-white text-[--esap-gray-700] rounded-lg font-semibold hover:bg-[--esap-gray-50] hover:border-[--esap-gray-500] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
             >
               Anterior
@@ -355,20 +380,20 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '', onExport
                 let pageNum;
                 if (totalPages <= 5) {
                   pageNum = i + 1;
-                } else if (currentPage <= 3) {
+                } else if (safePage <= 3) {
                   pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
+                } else if (safePage >= totalPages - 2) {
                   pageNum = totalPages - 4 + i;
                 } else {
-                  pageNum = currentPage - 2 + i;
+                  pageNum = safePage - 2 + i;
                 }
 
-                const isActive = currentPage === pageNum;
+                const isActive = safePage === pageNum;
 
                 return (
                   <button
                     key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
+                    onClick={() => changePage(pageNum)}
                     className={`w-10 h-10 flex items-center justify-center rounded-lg font-bold transition-all ${
                       isActive
                         ? 'text-white shadow-md scale-105'
@@ -386,8 +411,8 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '', onExport
             </div>
             
             <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => changePage(safePage + 1)}
+              disabled={safePage === totalPages || effectiveTotal === 0}
               className="px-4 py-2.5 border-2 border-[--esap-gray-400] bg-white text-[--esap-gray-700] rounded-lg font-semibold hover:bg-[--esap-gray-50] hover:border-[--esap-gray-500] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
             >
               Siguiente

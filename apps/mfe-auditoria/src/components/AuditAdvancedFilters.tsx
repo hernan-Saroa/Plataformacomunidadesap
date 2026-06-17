@@ -34,6 +34,7 @@ export function AuditAdvancedFilters({
     { value: 'last90d', label: 'Últimos 90 días' },
     { value: 'custom', label: 'Personalizado' }
   ];
+  const label = dateRangeOptions.find(o => o.value === filters.dateRange)?.label;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
@@ -56,7 +57,11 @@ export function AuditAdvancedFilters({
               </p>
             </div>
           </button>
-          
+          <div className="mr-2">
+            <div className="px-4 py-2.5 rounded-xl font-semibold text-sm transition-all bg-gray-100 text-gray-700 hover:bg-gray-200">
+              {label}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <motion.button
               onClick={() => setIsExpanded(!isExpanded)}

@@ -51,6 +51,8 @@ SERVER_URL_ENV="http://172.16.202.222"
 ENV_FILE=".env.pre"
 ENV_NETWORK_KEY="superapp-net-pre"
 ENV_CONTAINER_SUFFIX="-pre"
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
+export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
 FRONTEND_NGINX_CONTAINERS="${FRONTEND_NGINX_CONTAINERS:-superapp-frontend-pre}"
 FRONTEND_MFE_SERVICES=(
     frontend
@@ -310,6 +312,8 @@ cmd_rebuild_changed() {
             db/migrations/*)
                 run_migrations=1
                 ;;
+            backend/*/.env.example)
+                ;;
             backend/*/*)
                 service_dir=$(echo "$changed_file" | cut -d/ -f2)
                 service_name="$service_dir"
@@ -401,7 +405,10 @@ cmd_rebuild_changed() {
 
     if [ ${#backend_services[@]} -gt 0 ]; then
         echo -e "${YELLOW}Reconstruyendo backend afectado:${NC} ${backend_services[*]}"
-        compose_env build "${backend_services[@]}"
+        for service_name in "${backend_services[@]}"; do
+            echo -e "${YELLOW}Construyendo backend: ${service_name}${NC}"
+            compose_env build "$service_name"
+        done
         compose_env up -d --no-deps "${backend_services[@]}"
     fi
 

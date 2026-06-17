@@ -47,6 +47,8 @@ fi
 COMPOSE_FILE_DEV="docker-compose.dev.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
 SERVER_URL_DEV="http://4.156.71.181"
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
+export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
 FRONTEND_NGINX_CONTAINERS="${FRONTEND_NGINX_CONTAINERS:-superapp-frontend-dev superapp-frontend}"
 FRONTEND_MFE_SERVICES=(
     frontend
@@ -306,6 +308,8 @@ cmd_rebuild_changed() {
             db/migrations/*)
                 run_migrations=1
                 ;;
+            backend/*/.env.example)
+                ;;
             backend/*/*)
                 service_dir=$(echo "$changed_file" | cut -d/ -f2)
                 service_name="$service_dir"
@@ -397,7 +401,10 @@ cmd_rebuild_changed() {
 
     if [ ${#backend_services[@]} -gt 0 ]; then
         echo -e "${YELLOW}Reconstruyendo backend afectado:${NC} ${backend_services[*]}"
-        compose_dev build "${backend_services[@]}"
+        for service_name in "${backend_services[@]}"; do
+            echo -e "${YELLOW}Construyendo backend: ${service_name}${NC}"
+            compose_dev build "$service_name"
+        done
         compose_dev up -d --no-deps "${backend_services[@]}"
     fi
 
