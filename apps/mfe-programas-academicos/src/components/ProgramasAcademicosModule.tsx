@@ -44,7 +44,22 @@ import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../se
 
 // Usar la interfaz del servicio actualizado
 type ProgramaAcademico = ProgramaAcademicoDTO;
-
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = (periods: any[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 
 export function ProgramasAcademicosModule() {
@@ -78,6 +93,7 @@ export function ProgramasAcademicosModule() {
   // ─── Periodo Académico (Selector Global) ───
   const [periodosPA, setPeriodosPA] = useState<any[]>([]);
   const [periodoSeleccionadoPA, setPeriodoSeleccionadoPA] = useState<string>('');
+  const [periodosCargadosPA, setPeriodosCargadosPA] = useState(false);
   const [showPeriodoDropdownPA, setShowPeriodoDropdownPA] = useState(false);
 
   useEffect(() => {
@@ -85,21 +101,55 @@ export function ProgramasAcademicosModule() {
       try {
         const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
         const data = Array.isArray(res) ? res : [];
-        setPeriodosPA(data);
-        const activo = data.find((p: any) => p.estado === 'en_curso');
-        if (activo) setPeriodoSeleccionadoPA(activo.codigo || `${activo.anio}-${activo.semestre}`);
-      } catch { setPeriodoSeleccionadoPA('2025-2'); }
+        const sorted = sortPeriodsByCreation(data);
+        setPeriodosPA(sorted);
+        const selected = sorted[0];
+        setPeriodoSeleccionadoPA(
+          selected ? selected.codigo || `${selected.anio}-${selected.semestre}` : '',
+        );
+      } catch {
+        setPeriodosPA([]);
+        setPeriodoSeleccionadoPA('');
+      } finally {
+        setPeriodosCargadosPA(true);
+      }
     };
     cargarPeriodos();
   }, []);
 
-  const periodoActivoPA = periodosPA.find((p: any) => p.estado === 'en_curso');
-  const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '2025-2';
-  const esPeriodoActivoPA = !periodoSeleccionadoPA || periodoSeleccionadoPA === periodoActivoCodigoPA;
+  const periodoActivoPA = periodosPA[0];
+  const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '';
+  const esPeriodoActivoPA =
+    !!periodoSeleccionadoPA && periodoSeleccionadoPA === periodoActivoCodigoPA;
+
+  useEffect(() => {
+    if (periodoSeleccionadoPA) {
+      localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoSeleccionadoPA);
+      window.dispatchEvent(
+        new CustomEvent(CATALOG_PERIOD_CHANGE_EVENT, {
+          detail: {
+            source: 'programas-academicos',
+            storageKey: PROGRAMAS_PERIOD_STORAGE_KEY,
+            periodCode: periodoSeleccionadoPA,
+          },
+        }),
+      );
+    }
+  }, [periodoSeleccionadoPA]);
 
   // Cargar datos del backend
   useEffect(() => {
     const loadProgramas = async () => {
+      if (!periodosCargadosPA) {
+        return;
+      }
+      if (!periodoSeleccionadoPA) {
+        setProgramas([]);
+        setPagination({ total: 0, pagina: 1, porPagina: itemsPerPage });
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -115,18 +165,15 @@ export function ProgramasAcademicosModule() {
           _t: Date.now()
         });
         const response = await apiClient.get('/auth/api/v1/programas-academicos', {
-          params: {
-            search: searchQuery || undefined,
-            nivelFormacion: nivelFilter !== 'all' ? nivelFilter : undefined,
-            modalidad: modalidadFilter !== 'all' ? modalidadFilter : undefined,
-            sede: sedeFilter !== 'all' ? sedeFilter : undefined,
-            estado: estadoFilter !== 'all' ? estadoFilter : undefined,
-            periodoAcademico: periodoSeleccionadoPA || undefined,
-            page: currentPage,
-            limit: itemsPerPage,
-            _t: Date.now()
-          },
-          requiresAuth: true,
+          search: searchQuery || undefined,
+          nivelFormacion: nivelFilter !== 'all' ? nivelFilter : undefined,
+          modalidad: modalidadFilter !== 'all' ? modalidadFilter : undefined,
+          sede: sedeFilter !== 'all' ? sedeFilter : undefined,
+          estado: estadoFilter !== 'all' ? estadoFilter : undefined,
+          periodoAcademico: periodoSeleccionadoPA || undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+          _t: Date.now()
         });
         console.log('[DEBUG] Raw API response keys:', Object.keys(response));
         console.log('[DEBUG] response.data count:', response.data?.length, 'response.total:', response.total);
@@ -157,7 +204,7 @@ export function ProgramasAcademicosModule() {
     };
 
     loadProgramas();
-  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, currentPage, refreshTrigger]);
+  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, periodosCargadosPA, currentPage, refreshTrigger]);
 
 
 
@@ -339,7 +386,7 @@ export function ProgramasAcademicosModule() {
                   onClick={() => setShowPeriodoDropdownPA(!showPeriodoDropdownPA)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
                 >
-                  {periodoSeleccionadoPA || '2025-2'}
+                  {periodoSeleccionadoPA || 'Sin periodo'}
                   {esPeriodoActivoPA && (
                     <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
                   )}
@@ -354,7 +401,7 @@ export function ProgramasAcademicosModule() {
                       </div>
                       {periodosPA.length > 0 ? periodosPA.map((p: any, idx: number) => {
                         const codigo = p.codigo || `${p.anio}-${p.semestre}`;
-                        const esActivo = p.estado === 'en_curso';
+                        const esActivo = idx === 0;
                         return (
                           <button
                             key={idx}
@@ -368,7 +415,7 @@ export function ProgramasAcademicosModule() {
                           </button>
                         );
                       }) : (
-                        <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
+                        <div className="px-3 py-3 text-sm text-gray-500">No hay periodos disponibles</div>
                       )}
                     </div>
                   </>

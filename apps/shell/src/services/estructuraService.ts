@@ -100,9 +100,12 @@ export const estructuraService = {
       const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
       return Array.isArray(res) ? res : [];
     } catch {
-      // Fallback: retornar periodo por defecto si el API no está disponible
-      return [{ id: 'default', codigo: '2025-2', anio: 2025, semestre: 2, estado: 'ACTIVO' }];
+      return [];
     }
+  },
+
+  async obtenerDetallePeriodo(id: string): Promise<any> {
+    return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
   },
 
   // ============================================
