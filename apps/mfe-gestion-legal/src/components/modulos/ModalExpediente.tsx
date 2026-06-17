@@ -1510,7 +1510,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // ==================== HELPERS ====================
 
-  const getSemaforoColor = (diasRestantes: number) => {
+  const getSemaforoColor = (diasRestantes: number, tipoConteo?: string) => {
+    if (tipoConteo === 'HORAS') {
+      if (diasRestantes <= 24) return { color: '#DC2626', label: 'Crítico', bg: '#FEE2E2' };
+      if (diasRestantes <= 72) return { color: '#F59E0B', label: 'Próximo', bg: '#FEF3C7' };
+      return { color: '#10B981', label: 'En término', bg: '#D1FAE5' };
+    }
     if (diasRestantes <= 5) return { color: '#DC2626', label: 'Crítico', bg: '#FEE2E2' };
     if (diasRestantes <= 15) return { color: '#F59E0B', label: 'Próximo', bg: '#FEF3C7' };
     return { color: '#10B981', label: 'En término', bg: '#D1FAE5' };
@@ -1529,7 +1534,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }).format(val);
   };
 
-  const semaforo = getSemaforoColor(expediente.diasRestantes);
+  const semaforo = getSemaforoColor(expediente.diasRestantes, expediente.tipoConteoTermino);
   const { porcentajeGlobal: porcentajeTiempo } = calcularProgreso(
     expediente.diasTotales,
     expediente.diasRestantes,
@@ -1796,7 +1801,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   }}
                 >
                   <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.diasRestantes < 0 ? `Vencido hace ${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes} días restantes`}
+                  {semaforo.label} - {expediente.diasRestantes < 0
+                    ? `Vencido hace ${Math.abs(expediente.diasRestantes)}${expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd'}`
+                    : `${expediente.diasRestantes} ${expediente.tipoConteoTermino === 'HORAS' ? 'horas' : 'días'} restantes`}
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
                   <FileText className="w-3 h-3 mr-1" />

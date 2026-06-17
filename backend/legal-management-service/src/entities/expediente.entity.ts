@@ -118,9 +118,6 @@ export class Expediente {
     @Column({ name: 'fecha_notificacion', type: 'timestamp', nullable: true })
     fechaNotificacion: Date;
 
-    @Column({ name: 'fecha_admision', type: 'timestamp', nullable: true })
-    fechaAdmision: Date;
-
     @Column({ name: 'fecha_vencimiento_termino', type: 'timestamp', nullable: true })
     fechaVencimientoTermino: Date;
 

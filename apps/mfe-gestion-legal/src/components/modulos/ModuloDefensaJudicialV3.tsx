@@ -1050,24 +1050,29 @@ export function ModuloDefensaJudicialV3() {
       const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
       if (id && demandaData.camposAdicionales) {
         for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
-          if (val && typeof val === 'object' && val.base64 && val.nombre && val.esNuevo) {
-            try {
-              const res = await fetch(val.base64);
-              const blob = await res.blob();
-              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
+          const docs: any[] = Array.isArray(val)
+            ? val
+            : (val && typeof val === 'object' && (val as any).base64 ? [val] : []);
+          for (const doc of docs) {
+            if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
+              try {
+                const res = await fetch(doc.base64);
+                const blob = await res.blob();
+                const file = new File([blob], doc.nombre, { type: doc.tipoMime || blob.type });
 
-              const formDataDoc = new FormData();
-              formDataDoc.append('archivo', file);
-              formDataDoc.append('expedienteId', id);
-              formDataDoc.append('nombre', val.nombre);
-              formDataDoc.append('tipo', 'DATO_ADICIONAL');
-              formDataDoc.append('origen', 'CARGA_DIRECTA');
-              formDataDoc.append('categoria', 'documentos');
-              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
+                const formDataDoc = new FormData();
+                formDataDoc.append('archivo', file);
+                formDataDoc.append('expedienteId', id);
+                formDataDoc.append('nombre', doc.nombre);
+                formDataDoc.append('tipo', 'DATO_ADICIONAL');
+                formDataDoc.append('origen', 'CARGA_DIRECTA');
+                formDataDoc.append('categoria', 'documentos');
+                formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
 
-              await legalService.crearDocumento(formDataDoc);
-            } catch (err) {
-              console.error('Error uploading dynamic document:', err);
+                await legalService.crearDocumento(formDataDoc);
+              } catch (err) {
+                console.error('Error uploading dynamic document:', err);
+              }
             }
           }
         }

@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+﻿import { apiClient } from './apiClient';
 import { getUserContextHeaders } from '../../config/environment';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 import { authService } from './authService';
@@ -31,7 +31,6 @@ export interface Expediente {
     pretensionDemandante?: string;
     actoAdministrativoDemandado?: string;
     fechaNotificacion?: string;
-    fechaAdmision?: string;
     fechaVencimientoTermino?: string;
     tipoIdDemandante?: string;
     numeroIdDemandante?: string;
