@@ -52,6 +52,7 @@ export interface QueryAuditLogsParams {
   statusCode?: number;
   entityName?: string;
   entityId?: string;
+  search?: string;
   limit?: number;
   offset?: number;
 }
@@ -89,4 +90,3 @@ class AuditService {
 }
 
 export const auditService = new AuditService();
-

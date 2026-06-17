@@ -436,24 +436,38 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     setRundActionLoading(`subir-${campo}`);
     try {
       const formData = new FormData();
-      // Enviar metadatos antes del archivo para que Multer pueda leerlos en req.body dentro del destination
+      // Obtener nombre del docente desde: tarjeta RUND → prop docente → fallback
       const p = tarjetaRund?.persona;
-      const nombreCompleto = p ? (p.nombre_completo || p.nom_largo || `${p.primer_nombre || ''} ${p.primer_apellido || ''}`.trim() || 'Desconocido') : 'Desconocido';
-      const docIdentidad = p ? (p.documento_identidad || p.num_identificacion || 'Desconocido') : 'Desconocido';
+      const identidadCampos: any[] = tarjetaRund?.bloques?.IDENTIDAD?.campos || [];
+      const nombreDesdeBloque = identidadCampos.find((c: any) => c.campo === 'NOMBRE_COMPLETO')?.valor;
+      const docDesdeBloque = identidadCampos.find((c: any) => c.campo === 'DOCUMENTO_IDENTIDAD')?.valor;
+      
+      const nombreCompleto = p
+        ? (p.nombre_completo || p.nom_largo || `${p.primer_nombre || ''} ${p.primer_apellido || ''}`.trim())
+        : (nombreDesdeBloque || docente?.nombre_completo || `Docente-${tarjetaRund.docenteId?.substring(0, 8) || 'Desconocido'}`);
+      const docIdentidad = p
+        ? (p.documento_identidad || p.num_identificacion || '')
+        : (docDesdeBloque || docente?.documento_identidad || '');
       
       formData.append('docenteNombre', nombreCompleto);
       formData.append('docenteDocumento', docIdentidad);
       formData.append('tipoSoporte', tipoSoporte);
       formData.append('cargadoPor', currentUserId);
-      
       formData.append('file', file);
 
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${selectedRundBloque}/soportes`, formData);
+      // CORRECTO: usar apiClient.upload (multipart/form-data) en vez de apiClient.post (JSON)
+      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${selectedRundBloque}/soportes`, formData);
 
-      if (res?.success || res?.url || res?.data?.url) {
-        toast.success(`Soporte cargado exitosamente en Storage.`);
-        const urlStr = res?.data?.url || res?.url || URL.createObjectURL(file);
+      // apiClient.upload unwraps { success: true, data: {id, bloque, tipoSoporte} } → returns {id, bloque, tipoSoporte}
+      // We verify success by checking for the returned id (UUID from RundSoporteCampo insert),
+      // or fallback to a truthy res that isn't an error object.
+      const isSuccess = !!(res?.id || (res && !res.error && res !== false));
+      if (isSuccess) {
+        toast.success(`Documento "${file.name}" cargado exitosamente en RUND.`);
+        const docenteNombreClean = nombreCompleto.replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase();
+        const urlStr = res?.url || res?.documentoCarpetaId || `/pta/api/v1/uploads/carpeta-digital/${docenteNombreClean}/RUND/${file.name}`;
         
+        // Actualizar estado local de visualización inmediata
         setMockUploadedDocs(prev => {
           const next = { ...prev };
           const bloqueCfg = CATALOGO_BR039[selectedRundBloque];
@@ -479,10 +493,28 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           }
           return next;
         });
+
+        // SINCRONIZACION TIEMPO REAL: recargar bloques desde el backend
+        // para que la Carpeta Digital refleje inmediatamente el documento subido
+        await fetchRundData();
+
+        // Emitir evento de sincronización para que la Carpeta Digital se refresque
+        // sin necesidad de recargar la página. Esto funciona para todos los docentes.
+        window.dispatchEvent(new CustomEvent('rund:soporte-uploaded', {
+          detail: {
+            docenteId: tarjetaRund.docenteId,
+            bloque: selectedRundBloque,
+            tipoSoporte,
+            documentoCarpetaId: urlStr,
+            nombreArchivo: file.name,
+          }
+        }));
+
       } else {
         toast.error('Error al subir el soporte.');
       }
     } catch (err: any) {
+      console.error('[RundValidationPanel] Error al subir soporte:', err);
       toast.error(err?.message || 'Error al subir el soporte.');
     } finally {
       setRundActionLoading(null);
@@ -493,12 +525,35 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     if (!tarjetaRund?.docenteId) return;
     setRundActionLoading(bloque);
     try {
-      // 1. Guardar Validaciones Granulares
-      const validaciones = Object.entries(docStatus).map(([campoRund, estadoDocumento]) => ({
-        campoRund,
-        estadoDocumento: estadoDocumento === 'Aprobado' ? 'Aceptado' : estadoDocumento,
-        idDocumentoCarpeta: mockUploadedDocs[campoRund]?.startsWith('/pta') ? mockUploadedDocs[campoRund] : undefined
-      }));
+      // 1. Guardar Validaciones Granulares en DB (UPSERT)
+      // Construir la lista completa de validaciones incluyendo referencias a archivos reales.
+      // Fuentes de id_documento_carpeta (en orden de prioridad):
+      //   a) soportes ya guardados en DB (vienen de rundBloques)
+      //   b) mockUploadedDocs (estado UI optimista para uploads recientes aún no recargados)
+      const bloqueActual = rundBloques.find((b: any) => b.bloque === bloque);
+      const soportesEnDB: Record<string, any> = {};
+      if (bloqueActual?.soportes) {
+        bloqueActual.soportes.forEach((s: any) => {
+          if (s.tipo_soporte && (s.documento_carpeta_id || s.nombre_archivo)) {
+            soportesEnDB[s.tipo_soporte.toUpperCase()] = s;
+          }
+        });
+      }
+
+      const validaciones = Object.entries(docStatus).map(([campoRund, estadoDocumento]) => {
+        const campoUp = campoRund.toUpperCase();
+        // Prioridad: URL de la DB > URL local (optimista)
+        const soporteDB = soportesEnDB[campoUp];
+        const idDocumentoCarpeta = soporteDB?.documento_carpeta_id
+          || (mockUploadedDocs[campoRund]?.startsWith('/pta') ? mockUploadedDocs[campoRund] : undefined);
+        return {
+          campoRund: campoUp,
+          estadoDocumento: estadoDocumento === 'Aprobado' ? 'Aceptado' : estadoDocumento,
+          idDocumentoCarpeta: idDocumentoCarpeta || null,
+          nombreArchivo: soporteDB?.nombre_archivo || null,
+          tipoDocumentoSoporte: bloque,
+        };
+      });
 
       if (validaciones.length > 0) {
         await apiClient.post(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/validacion-documental/batch`, {
@@ -575,7 +630,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Shield style={{ color: '#003DA5' }} size={20} />
             Validación Integral RUND
-            {auth.hasPermission('pta.backoffice.editar_docente') && (
+            {auth.hasPermission('banco-docentes.rund.edit') && (
               <button 
                 onClick={() => setIsEditing(true)}
                 style={{ marginLeft: 16, padding: '4px 12px', borderRadius: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
@@ -818,18 +873,22 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 12, fontSize: 11, fontWeight: 800, background: '#FEF2F2', color: '#DC2626' }}><ShieldAlert size={14}/> Rechazado</span>
                                ) : (
                                  <div style={{ display: 'flex', gap: 8 }}>
-                                   <button 
-                                     onClick={() => setDocStatus(prev => ({ ...prev, [c.campo]: 'Aprobado' }))}
-                                     style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #10B981', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
-                                   >
-                                     <CheckCircle size={14} /> Aprobar
-                                   </button>
-                                   <button 
-                                     onClick={() => setDocStatus(prev => ({ ...prev, [c.campo]: 'Rechazado' }))}
-                                     style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
-                                   >
-                                     <ShieldAlert size={14} /> Rechazar
-                                   </button>
+                                    {auth.hasPermission('banco-docentes.rund.validate') && (
+                                      <button 
+                                        onClick={() => setDocStatus(prev => ({ ...prev, [c.campo]: 'Aprobado' }))}
+                                        style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #10B981', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
+                                      >
+                                        <CheckCircle size={14} /> Aprobar
+                                      </button>
+                                    )}
+                                    {auth.hasPermission('banco-docentes.rund.validate') && (
+                                      <button 
+                                        onClick={() => setDocStatus(prev => ({ ...prev, [c.campo]: 'Rechazado' }))}
+                                        style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
+                                      >
+                                        <ShieldAlert size={14} /> Rechazar
+                                      </button>
+                                    )}
                                  </div>
                                )
                             ) : isRequired && c.tipoSoporte ? (
@@ -874,12 +933,16 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                       
                       {canApprove && (
                         <>
-                          <button onClick={() => setDevolverRundBloque(b.bloque)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-                            <ShieldAlert size={16} /> Devolver
-                          </button>
-                          <button onClick={() => handleAprobarRund(b.bloque)} disabled={rundActionLoading === b.bloque} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0, 61, 165, 0.3)' }}>
-                            <CheckCircle size={16} /> Guardar Validaciones
-                          </button>
+                          {auth.hasPermission('banco-docentes.rund.validate') && (
+                            <button onClick={() => setDevolverRundBloque(b.bloque)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
+                              <ShieldAlert size={16} /> Devolver
+                            </button>
+                          )}
+                          {auth.hasPermission('banco-docentes.rund.validate') && (
+                            <button onClick={() => handleAprobarRund(b.bloque)} disabled={rundActionLoading === b.bloque} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0, 61, 165, 0.3)' }}>
+                              <CheckCircle size={16} /> Guardar Validaciones
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -942,24 +1005,28 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                  ¿El documento cumple con los requisitos normativos para <strong style={{ color: '#0F172A' }}>{viewingDoc.campo}</strong>?
                </div>
                <div style={{ display: 'flex', gap: 12 }}>
-                 <button 
-                   onClick={() => {
-                     setDocStatus(prev => ({ ...prev, [viewingDoc.campo]: 'Rechazado' }));
-                     setViewingDoc(null);
-                   }}
-                   style={{ padding: '10px 20px', borderRadius: 8, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
-                 >
-                   <ShieldAlert size={16} /> Rechazar Documento
-                 </button>
-                 <button 
-                   onClick={() => {
-                     setDocStatus(prev => ({ ...prev, [viewingDoc.campo]: 'Aprobado' }));
-                     setViewingDoc(null);
-                   }}
-                   style={{ padding: '10px 24px', borderRadius: 8, background: '#10B981', border: 'none', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}
-                 >
-                   <CheckCircle size={16} /> Aprobar Documento
-                 </button>
+                 {auth.hasPermission('banco-docentes.rund.validate') && (
+                   <button 
+                     onClick={() => {
+                       setDocStatus(prev => ({ ...prev, [viewingDoc.campo]: 'Rechazado' }));
+                       setViewingDoc(null);
+                     }}
+                     style={{ padding: '10px 20px', borderRadius: 8, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
+                   >
+                     <ShieldAlert size={16} /> Rechazar Documento
+                   </button>
+                 )}
+                 {auth.hasPermission('banco-docentes.rund.validate') && (
+                   <button 
+                     onClick={() => {
+                       setDocStatus(prev => ({ ...prev, [viewingDoc.campo]: 'Aprobado' }));
+                       setViewingDoc(null);
+                     }}
+                     style={{ padding: '10px 24px', borderRadius: 8, background: '#10B981', border: 'none', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}
+                   >
+                     <CheckCircle size={16} /> Aprobar Documento
+                   </button>
+                 )}
                </div>
             </div>
 

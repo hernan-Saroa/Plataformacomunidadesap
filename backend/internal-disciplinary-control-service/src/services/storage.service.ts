@@ -11,12 +11,64 @@ interface FileData {
 
 export const DEFAULT_UPLOAD_DIR = './uploads';
 
-export const ensureUploadDirExists = (uploadDir: string = DEFAULT_UPLOAD_DIR): string => {
+export const getUploadRootDir = (): string =>
+  process.env.DISCIPLINARY_STORAGE_PATH ||
+  process.env.FILES_UPLOAD_BASE_PATH ||
+  process.env.UPLOAD_DIR ||
+  DEFAULT_UPLOAD_DIR;
+
+export const ensureUploadDirExists = (uploadDir: string = getUploadRootDir()): string => {
   if (!existsSync(uploadDir)) {
     mkdirSync(uploadDir, { recursive: true });
   }
 
   return uploadDir;
+};
+
+export const sanitizeProcessFolderName = (radicadoProceso?: string): string | null => {
+  const sanitized = radicadoProceso
+    ?.trim()
+    .replace(/[\\/]+/g, '_')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return sanitized || null;
+};
+
+export const getProcessYearFolderName = (radicadoProceso?: string): string | null => {
+  const processFolder = sanitizeProcessFolderName(radicadoProceso);
+  const year = processFolder?.split('-').at(-1);
+
+  return year && /^\d{4}$/.test(year) ? year : null;
+};
+
+export const getProcessUploadDir = (radicadoProceso?: string): string => {
+  const processFolder = sanitizeProcessFolderName(radicadoProceso);
+  if (!processFolder) {
+    return path.resolve(getUploadRootDir());
+  }
+
+  const yearFolder = getProcessYearFolderName(processFolder);
+  return yearFolder
+    ? path.resolve(getUploadRootDir(), yearFolder, processFolder)
+    : path.resolve(getUploadRootDir(), processFolder);
+};
+
+export const getProcessStorageRelativePath = (
+  radicadoProceso: string | undefined,
+  filename: string,
+): string => {
+  const safeFilename = path.basename(filename);
+  const processFolder = sanitizeProcessFolderName(radicadoProceso);
+  if (!processFolder) {
+    return safeFilename;
+  }
+
+  const yearFolder = getProcessYearFolderName(processFolder);
+  return yearFolder
+    ? path.join(yearFolder, processFolder, safeFilename)
+    : path.join(processFolder, safeFilename);
 };
 
 export const buildStoredFileName = (originalname: string): string => {
@@ -29,7 +81,7 @@ export class StorageService {
   private readonly uploadDir: string;
 
   constructor() {
-    this.uploadDir = path.resolve(DEFAULT_UPLOAD_DIR);
+    this.uploadDir = path.resolve(getUploadRootDir());
     ensureUploadDirExists(this.uploadDir);
   }
 
@@ -40,7 +92,9 @@ export class StorageService {
   ): Promise<string> {
     try {
       const nuevoNombre = buildStoredFileName(file.originalname);
-      const rutaCompleta = path.join(this.uploadDir, nuevoNombre);
+      const uploadDir = getProcessUploadDir(_radicado);
+      ensureUploadDirExists(uploadDir);
+      const rutaCompleta = path.join(uploadDir, nuevoNombre);
 
       await fs.writeFile(rutaCompleta, file.buffer);
 

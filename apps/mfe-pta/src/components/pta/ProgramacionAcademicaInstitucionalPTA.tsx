@@ -29,6 +29,8 @@ import {
   getSyncProgramasStatus, saveCustomAsignaturas, deleteCustomAsignatura,
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
+import { useAuth } from '../../contexts/AuthContext';
+import { Permissions } from '@esap-mfe/shared-types';
 
 interface Props {
   onBack?: () => void;
@@ -94,6 +96,7 @@ const ROLES_INVESTIGACION = [
 ];
 
 export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-2' }: Props) {
+  const { hasPermission } = useAuth();
   const [tab, setTab] = useState<TabView>('oferta');
   const [loading, setLoading] = useState(true);
   const [programas, setProgramas] = useState<any[]>([]);
@@ -141,8 +144,10 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
   // Auto-save oferta when it changes (after initial load)
   useEffect(() => {
     if (!ofertaLoaded || oferta.length === 0) return;
-    saveOfertaDebounced(oferta, periodo);
-  }, [oferta, ofertaLoaded, periodo]);
+    if (hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_OFERTA_EDIT) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE)) {
+      saveOfertaDebounced(oferta, periodo);
+    }
+  }, [oferta, ofertaLoaded, periodo, hasPermission]);
 
   // Load initial data
   useEffect(() => {
@@ -739,9 +744,9 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
               setNewOfertaPrograma={setNewOfertaPrograma}
               selectedAsignaturas={selectedAsignaturas}
               setSelectedAsignaturas={setSelectedAsignaturas}
-              onAdd={handleAddOfertaItems}
-              onRemove={handleRemoveOferta}
-              onUpdate={handleUpdateOferta}
+              onAdd={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_OFERTA_EDIT) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? handleAddOfertaItems : undefined}
+              onRemove={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_OFERTA_EDIT) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? handleRemoveOferta : undefined}
+              onUpdate={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_OFERTA_EDIT) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? handleUpdateOferta : undefined}
               onSyncProgramas={handleSyncProgramas}
               syncing={syncing}
               syncInfo={syncInfo}
@@ -768,18 +773,18 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
               setDocenteSearch={setDocenteSearch}
               selectedDocente={selectedDocente}
               setSelectedDocente={setSelectedDocente}
-              onAsignar={(dIdx, ofId) => handleAsignarDocente(
+              onAsignar={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_ASIGNACION_MANAGE) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? (dIdx, ofId) => handleAsignarDocente(
                 asignaciones.findIndex(a => a.docente_id === docentesFiltrados[dIdx].docente_id),
                 ofId
-              )}
-              onDesasignar={(dIdx, ofId) => handleDesasignarDocente(
+              ) : undefined}
+              onDesasignar={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_ASIGNACION_MANAGE) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? (dIdx, ofId) => handleDesasignarDocente(
                 asignaciones.findIndex(a => a.docente_id === docentesFiltrados[dIdx].docente_id),
                 ofId
-              )}
-              onAsignarInvestigacion={(dIdx, pry, rol, hrs) => handleAsignarInvestigacion(
+              ) : undefined}
+              onAsignarInvestigacion={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_ASIGNACION_MANAGE) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? (dIdx, pry, rol, hrs) => handleAsignarInvestigacion(
                 asignaciones.findIndex(a => a.docente_id === docentesFiltrados[dIdx].docente_id),
                 pry, rol, hrs
-              )}
+              ) : undefined}
             />
           </motion.div>
         )}
@@ -791,8 +796,8 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
               ptasGenerados={ptasGenerados}
               generando={generando}
               notificando={notificando}
-              onGenerar={handleGenerarPTAs}
-              onNotificar={handleNotificarMasivo}
+              onGenerar={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_PRECARGA_MANAGE) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? handleGenerarPTAs : undefined}
+              onNotificar={hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_NOTIFICAR) || hasPermission(Permissions.PTA_PROGRAMACION_ACADEMICA_MANAGE) ? handleNotificarMasivo : undefined}
               periodo={periodo}
             />
           </motion.div>

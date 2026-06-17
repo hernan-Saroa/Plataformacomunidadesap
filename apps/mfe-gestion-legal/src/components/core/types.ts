@@ -149,7 +149,6 @@ export interface ExpedienteJudicial {
   pretensionDemandante?: string;
 
   // Campos de fechas
-  fechaAdmision?: Date;
   fechaVencimientoTerminos?: Date;
   fechaUltimaActuacion?: Date;
 
@@ -481,7 +480,6 @@ export interface SolicitudInforme {
   fechaNotificacion?: string;
 
   // Campos de fechas
-  fechaAdmision?: Date;
   fechaVencimientoTerminos?: Date;
   fechaUltimaActuacion?: Date;
   responsable: string;

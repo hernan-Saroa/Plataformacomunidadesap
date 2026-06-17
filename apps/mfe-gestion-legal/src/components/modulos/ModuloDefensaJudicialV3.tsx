@@ -119,7 +119,7 @@ export function ModuloDefensaJudicialV3() {
   useEffect(() => {
     if (tiposProcesosActivos.length > 0) {
       const persistedBoard = getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || tableroSeleccionado;
-      const isValid = tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
+      const isValid = persistedBoard === 'TODOS' || tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
       
       if (isValid) {
         if (tableroSeleccionado !== persistedBoard) {
@@ -304,12 +304,12 @@ export function ModuloDefensaJudicialV3() {
     try {
       setLoading(true);
 
-      // Cargar expedientes, abogados y todos los usuarios activos en paralelo
-      const [data, abogadosData, todosLosUsuarios] = await Promise.all([
+      // Cargar expedientes y abogados en paralelo; usuarios se carga aparte para no bloquear si falla
+      const [data, abogadosData] = await Promise.all([
         legalService.getExpedientes(),
         legalService.getAbogadosDashboard(),
-        authService.getTodosLosUsuariosActivos() // picked up from shell
       ]);
+      const todosLosUsuarios = await authService.getTodosLosUsuariosActivos().catch(() => []);
 
       // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
       const abogadosMap = new Map();
@@ -496,6 +496,13 @@ export function ModuloDefensaJudicialV3() {
           // Clasificación Penal
           esDelitoAdminPublica: exp.esDelitoAdminPublica || false,
           esConductaPatrimonioPublico: exp.esConductaPatrimonioPublico || false,
+          // Territorial, CETAP y Dependencia
+          territorial: exp.territorial || exp.camposAdicionales?.territorial,
+          cetap: exp.cetap || exp.camposAdicionales?.cetap,
+          dependencia: exp.dependencia || exp.camposAdicionales?.dependencia,
+          territorialNombre: exp.territorialNombre || exp.camposAdicionales?.territorialNombre,
+          cetapNombre: exp.cetapNombre || exp.camposAdicionales?.cetapNombre,
+          dependenciaNombre: exp.dependenciaNombre || exp.camposAdicionales?.dependenciaNombre,
         }
       });
       // El backend ya filtra por abogadoSustanciador cuando el usuario tiene rol RESUELVE_GESTION_LEGAL
@@ -724,7 +731,8 @@ export function ModuloDefensaJudicialV3() {
     const boardNorm = normalize(tableroSeleccionado);
     const boardNombreNorm = procesoSeleccionado ? normalize(procesoSeleccionado.nombre) : '';
 
-    const matchesBoard = !tableroSeleccionado ||
+    const matchesBoard = tableroSeleccionado === 'TODOS' ||
+      !tableroSeleccionado ||
       exp.tipo === tableroSeleccionado ||
       exp.tipoAccion === tableroSeleccionado ||
       (exp as any).tipoProceso === tableroSeleccionado ||
@@ -954,16 +962,25 @@ export function ModuloDefensaJudicialV3() {
         fechaVencimientoTermino: demandaData.fechaVencimiento,
         etapaProcesal: demandaData.etapa || (columnasTablero.length > 0 ? columnasTablero[0].id : 'RADICACION'),
         ultimaActuacion: undefined, // Backend manages initial state or assumes created
-        camposAdicionales: demandaData.camposAdicionales
-          ? Object.fromEntries(
-              Object.entries(demandaData.camposAdicionales).map(([k, v]) => [
-                k,
-                (v && typeof v === 'object' && (v as any).base64 && (v as any).esNuevo)
-                  ? { nombre: (v as any).nombre, tipoMime: (v as any).tipoMime, tamano: (v as any).tamano, cargado: true }
-                  : v
-              ])
-            )
-          : undefined,
+        camposAdicionales: {
+          ...(demandaData.camposAdicionales
+            ? Object.fromEntries(
+                Object.entries(demandaData.camposAdicionales).map(([k, v]) => [
+                  k,
+                  (v && typeof v === 'object' && (v as any).base64 && (v as any).esNuevo)
+                    ? { nombre: (v as any).nombre, tipoMime: (v as any).tipoMime, tamano: (v as any).tamano, cargado: true }
+                    : v
+                ])
+              )
+            : {}),
+          // IDs y nombres de territorial/cetap/dependencia como respaldo si el backend no tiene columnas directas
+          ...(demandaData.territorial ? { territorial: demandaData.territorial } : {}),
+          ...(demandaData.cetap ? { cetap: demandaData.cetap } : {}),
+          ...(demandaData.dependencia ? { dependencia: demandaData.dependencia } : {}),
+          ...((demandaData as any).territorialNombre ? { territorialNombre: (demandaData as any).territorialNombre } : {}),
+          ...((demandaData as any).cetapNombre ? { cetapNombre: (demandaData as any).cetapNombre } : {}),
+          ...((demandaData as any).dependenciaNombre ? { dependenciaNombre: (demandaData as any).dependenciaNombre } : {}),
+        },
 
         // Mapeo unificado de actores
         actors: [
@@ -1017,6 +1034,14 @@ export function ModuloDefensaJudicialV3() {
         // Clasificación penal (Contraloría / ANDJE)
         esDelitoAdminPublica: demandaData.esDelitoAdminPublica || false,
         esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
+
+        // Territorial, CETAP y Dependencia (del paso 3)
+        territorial: demandaData.territorial,
+        cetap: demandaData.cetap,
+        dependencia: demandaData.dependencia,
+        territorialNombre: (demandaData as any).territorialNombre,
+        cetapNombre: (demandaData as any).cetapNombre,
+        dependenciaNombre: (demandaData as any).dependenciaNombre,
       };
 
       const created = await legalService.crearExpediente(expedienteData);
@@ -1025,24 +1050,29 @@ export function ModuloDefensaJudicialV3() {
       const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
       if (id && demandaData.camposAdicionales) {
         for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
-          if (val && typeof val === 'object' && val.base64 && val.nombre && val.esNuevo) {
-            try {
-              const res = await fetch(val.base64);
-              const blob = await res.blob();
-              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
+          const docs: any[] = Array.isArray(val)
+            ? val
+            : (val && typeof val === 'object' && (val as any).base64 ? [val] : []);
+          for (const doc of docs) {
+            if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
+              try {
+                const res = await fetch(doc.base64);
+                const blob = await res.blob();
+                const file = new File([blob], doc.nombre, { type: doc.tipoMime || blob.type });
 
-              const formDataDoc = new FormData();
-              formDataDoc.append('archivo', file);
-              formDataDoc.append('expedienteId', id);
-              formDataDoc.append('nombre', val.nombre);
-              formDataDoc.append('tipo', 'DATO_ADICIONAL');
-              formDataDoc.append('origen', 'CARGA_DIRECTA');
-              formDataDoc.append('categoria', 'documentos');
-              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
+                const formDataDoc = new FormData();
+                formDataDoc.append('archivo', file);
+                formDataDoc.append('expedienteId', id);
+                formDataDoc.append('nombre', doc.nombre);
+                formDataDoc.append('tipo', 'DATO_ADICIONAL');
+                formDataDoc.append('origen', 'CARGA_DIRECTA');
+                formDataDoc.append('categoria', 'documentos');
+                formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
 
-              await legalService.crearDocumento(formDataDoc);
-            } catch (err) {
-              console.error('Error uploading dynamic document:', err);
+                await legalService.crearDocumento(formDataDoc);
+              } catch (err) {
+                console.error('Error uploading dynamic document:', err);
+              }
             }
           }
         }

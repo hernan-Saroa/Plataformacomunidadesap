@@ -2511,7 +2511,30 @@ export class BancoDocentesService implements OnModuleInit {
         finalPersonaId = result[0].id_person;
       }
 
-      const docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      let docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      
+      // Auto-provisionar docente si no existe (Necesario para sincronizaciA3n con Carpeta Digital)
+      if (!docente) {
+        const authData = await this.dataSource.query(
+          `SELECT id_person, num_identificacion, nombres, apellidos, correo_electronico FROM auth.personas WHERE id_person = $1 LIMIT 1`,
+          [finalPersonaId]
+        );
+        if (authData && authData.length > 0) {
+          const auth = authData[0];
+          await this.upsertDocente({
+            personaId: auth.id_person,
+            documentNumber: auth.num_identificacion || 'N/A',
+            documento_identidad: auth.num_identificacion || 'N/A',
+            nombre_completo: `${auth.nombres || ''} ${auth.apellidos || ''}`.trim() || 'Sin Nombre',
+            correo_institucional: auth.correo_electronico || null,
+            territorial: 'Sede Central',
+            vinculacion: 'Ocasional',
+            estado: 'Inactivo'
+          }, { rejectExisting: false });
+          docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+        }
+      }
+
       if (!docente) return null;
       return this.getTarjetaRUND(docente.id);
     } catch (e) {
@@ -2540,6 +2563,195 @@ export class BancoDocentesService implements OnModuleInit {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async syncCheckDocente(docenteId: string) {
+    const docente = await this.docenteRepo.findOne({
+      where: { id: docenteId }
+    });
+
+    if (!docente) {
+      throw new NotFoundException(`Docente con ID ${docenteId} no encontrado`);
+    }
+
+    const persona = await this.personaRepo.findOne({
+      where: { id: docente.personaId }
+    });
+
+    const nameParts = [
+      persona?.primer_nombre,
+      persona?.segundo_nombre,
+      persona?.primer_apellido,
+      persona?.segundo_apellido
+    ].filter(Boolean);
+
+    const docenteNombre = nameParts.length > 0
+      ? nameParts.join(' ').replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase()
+      : docente.id;
+
+    const path = require('path');
+    const fs = require('fs');
+    const uploadPath = path.join(process.cwd(), 'uploads', 'carpeta-digital', docenteNombre, 'RUND');
+
+    let diskFiles: string[] = [];
+    if (fs.existsSync(uploadPath)) {
+      diskFiles = fs.readdirSync(uploadPath).filter((file: string) => {
+        try {
+          return fs.statSync(path.join(uploadPath, file)).isFile();
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    const dbSoportes = await this.dataSource.query(
+      `SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1`,
+      [docenteId]
+    );
+
+    const details = dbSoportes.map((soporte: any) => {
+      let fileExists = false;
+      if (soporte.documento_carpeta_id) {
+        const relativePath = soporte.documento_carpeta_id.replace(/^\/pta\/api\/v1\/uploads\//, 'uploads/');
+        const absolutePath = path.join(process.cwd(), relativePath);
+        fileExists = fs.existsSync(absolutePath);
+      }
+      return {
+        id: soporte.id,
+        bloque: soporte.bloque,
+        tipoSoporte: soporte.tipo_soporte,
+        documentoCarpetaId: soporte.documento_carpeta_id,
+        nombreArchivo: soporte.nombre_archivo,
+        estado: soporte.estado,
+        existsOnDisk: fileExists
+      };
+    });
+
+    return {
+      docenteId,
+      docenteNombre,
+      dbCount: dbSoportes.length,
+      diskCount: diskFiles.length,
+      details
+    };
+  }
+
+  async repararSoportesMasivo() {
+    const path = require('path');
+    const fs = require('fs');
+    const { randomUUID } = require('crypto');
+
+    const docentes = await this.docenteRepo.find();
+    let totalProcessed = 0;
+    let totalSynced = 0;
+    let totalCreated = 0;
+    const logs: string[] = [];
+
+    for (const docente of docentes) {
+      const persona = await this.personaRepo.findOne({
+        where: { id: docente.personaId }
+      });
+      const nameParts = [
+        persona?.primer_nombre,
+        persona?.segundo_nombre,
+        persona?.primer_apellido,
+        persona?.segundo_apellido
+      ].filter(Boolean);
+
+      const docenteNombre = nameParts.length > 0
+        ? nameParts.join(' ').replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase()
+        : docente.id;
+
+      const uploadPath = path.join(process.cwd(), 'uploads', 'carpeta-digital', docenteNombre, 'RUND');
+      if (!fs.existsSync(uploadPath)) {
+        continue;
+      }
+
+      const diskFiles = fs.readdirSync(uploadPath).filter((file: string) => {
+        try {
+          return fs.statSync(path.join(uploadPath, file)).isFile();
+        } catch {
+          return false;
+        }
+      });
+
+      if (diskFiles.length === 0) {
+        continue;
+      }
+
+      totalProcessed++;
+
+      const dbSoportes = await this.dataSource.query(
+        `SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1`,
+        [docente.id]
+      );
+
+      const unlinkedFiles = diskFiles.filter((file: string) => {
+        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        return !dbSoportes.some((s: any) => s.documento_carpeta_id === expectedDocId);
+      });
+
+      if (unlinkedFiles.length === 0) {
+        continue;
+      }
+
+      const unlinkedDbRecords = dbSoportes.filter((s: any) => !s.documento_carpeta_id);
+
+      let linkedForDocente = 0;
+      let createdForDocente = 0;
+
+      const filesToLink = [...unlinkedFiles];
+      while (filesToLink.length > 0 && unlinkedDbRecords.length > 0) {
+        const file = filesToLink.shift();
+        const record = unlinkedDbRecords.shift();
+        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+
+        await this.dataSource.query(
+          `UPDATE academic_work_plan."RundSoporteCampo" 
+           SET documento_carpeta_id = $1, nombre_archivo = COALESCE(nombre_archivo, $2), "updatedAt" = NOW()
+           WHERE id = $3`,
+          [expectedDocId, file, record.id]
+        );
+        linkedForDocente++;
+        totalSynced++;
+      }
+
+      while (filesToLink.length > 0) {
+        const file = filesToLink.shift();
+        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        const newId = randomUUID();
+
+        let bloque = 'FORMACION';
+        let tipoSoporte = 'diploma_pregrado';
+        const lowerName = file.toLowerCase();
+        if (lowerName.includes('cedula') || lowerName.includes('ident') || lowerName.includes('documento')) {
+          bloque = 'IDENTIDAD';
+          tipoSoporte = 'documento_identidad';
+        } else if (lowerName.includes('contrato') || lowerName.includes('resoluc') || lowerName.includes('acto')) {
+          bloque = 'VINCULACION';
+          tipoSoporte = 'acto_administrativo_vinculacion';
+        }
+
+        await this.dataSource.query(
+          `INSERT INTO academic_work_plan."RundSoporteCampo" 
+           (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', 'SYSTEM_SYNC', NOW())`,
+          [newId, docente.id, bloque, tipoSoporte, expectedDocId, file]
+        );
+        createdForDocente++;
+        totalCreated++;
+      }
+
+      logs.push(`Docente ${docenteNombre}: Enlazados ${linkedForDocente} registros, Creados ${createdForDocente} nuevos registros`);
+    }
+
+    return {
+      success: true,
+      totalDocentesConCarpeta: totalProcessed,
+      totalRegistrosEnlazados: totalSynced,
+      totalRegistrosCreados: totalCreated,
+      details: logs
+    };
   }
 }
 
