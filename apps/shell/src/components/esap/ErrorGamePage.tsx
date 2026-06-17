@@ -385,7 +385,7 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
         loadLocalLeaderboard();
       }
     } catch (e) {
-      console.error('Error fetching leaderboard from API, falling back to localStorage:', e);
+      // Silently fall back to localStorage — API endpoint may not exist yet
       loadLocalLeaderboard();
     }
   };

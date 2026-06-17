@@ -100,7 +100,7 @@ export function NotificacionesPTA() {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const res = await getAuditoriaPTA({ periodo: '2026-1' });
+      const res = await getAuditoriaPTA({ periodo: '2025-2' });
       if (res.success && res.data) {
         const notifs: NotifEvent[] = (res.data as any[]).slice(0, 20).map((ev: any) => ({
           id: ev.id || `ev-${ev.fecha}-${ev.pta_id}`,

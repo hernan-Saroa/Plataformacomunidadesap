@@ -86,6 +86,8 @@ export interface UserFilters {
   search?: string;
   status?: 'active' | 'inactive' | 'all';
   role?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface PaginatedUsersResponse {
@@ -115,6 +117,8 @@ export const usersService = {
     if (filters.search && filters.search.trim()) params.append('search', filters.search.trim());
     if (filters.status && filters.status !== 'all') params.append('status', filters.status);
     if (filters.role && filters.role.trim()) params.append('role', filters.role.trim());
+    if (filters.sortBy) params.append('sortBy', filters.sortBy);
+    if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
     const queryString = params.toString();
     const endpoint = queryString ? `${SERVICE_PREFIX}/users?${queryString}` : `${SERVICE_PREFIX}/users`;

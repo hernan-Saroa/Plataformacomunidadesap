@@ -196,6 +196,25 @@ export const auditoriasApi = {
   },
 
   /**
+   * Búsqueda libre EXCLUSIVA para Responsable del Área Auditada.
+   * Excluye usuarios que tengan roles operativos de OCI en la BD (Gestión Personas).
+   */
+  searchAuditados: async (q: string): Promise<ApiResponse<any[]>> => {
+    if (!q || q.trim().length < 2) {
+      return { success: true, data: [] } as ApiResponse<any[]>;
+    }
+    return apiRequest<any[]>(`/auditorias/auditados/search?q=${encodeURIComponent(q.trim())}`);
+  },
+
+  /**
+   * Obtiene todas las personas EXCLUSIVAS para Responsable del Área Auditada.
+   * Excluye usuarios que tengan roles operativos de OCI en la BD (Gestión Personas).
+   */
+  getAllAuditados: async (limit = 50): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/auditados/all?limit=${limit}`);
+  },
+
+  /**
    * Obtener notas de una auditoría
    */
   getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {

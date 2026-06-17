@@ -88,6 +88,8 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('status') status?: 'active' | 'inactive' | 'all',
     @Query('role') role?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
     const pageNum = Number(page);
     const limitNum = Number(limit);
@@ -98,6 +100,8 @@ export class UsersController {
         search,
         status,
         role,
+        sortBy,
+        sortOrder,
       });
 
     return {

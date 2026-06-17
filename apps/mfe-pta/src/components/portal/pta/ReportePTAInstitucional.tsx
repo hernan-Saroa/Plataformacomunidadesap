@@ -152,7 +152,7 @@ export function ReportePTAInstitucional({
             {/* Título PTA PERIODO */}
             <div className="bg-[#5B9BD5] text-white text-center font-bold py-1 border-b-[3px] border-[#203764] uppercase text-sm">
               PLAN DE TRABAJO ACADÉMICO - PTA <br />
-              PERIODO {pta?.periodo || '2026-1'}
+              PERIODO {pta?.periodo || '2025-2'}
             </div>
 
             {/* BOTONES 3D DE COMPONENTES */}

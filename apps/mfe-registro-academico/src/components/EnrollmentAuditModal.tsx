@@ -285,7 +285,7 @@ export function EnrollmentAuditModal({ enrollment, onClose }: EnrollmentAuditMod
                       </div>
                       <div>
                         <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                          Sede
+                          Sede (CETAP)
                         </p>
                         <p className="text-sm" style={{ color: '#1F2937' }}>
                           {enrollment.sede}

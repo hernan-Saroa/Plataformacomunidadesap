@@ -26,7 +26,12 @@ import {
   ReviewDecision,
   SubmitReviewDecisionDto,
 } from './dto/approve-request.dto';
-import { UpdateGraduateDto } from './dto/update-graduate.dto';
+import {
+  BulkCreateGraduateError,
+  BulkCreateGraduatesDto,
+  CreateGraduateDto,
+  UpdateGraduateDto,
+} from './dto/update-graduate.dto';
 import { UpdateCertificateDto } from './dto/update-certificate.dto';
 import { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
 import {
@@ -194,6 +199,27 @@ export class GraduationCertificatesService {
       return `/uploads/graduation-review-files/${storedName}`;
     }
     return `/uploads/graduation-request-supports/${storedName}`;
+  }
+
+  private isDeletableGraduateSource(createdBy?: string | null) {
+    const normalized = this.normalizeName(createdBy || '');
+    return (
+      normalized.startsWith('bulk upload') ||
+      normalized.includes('manual review') ||
+      normalized.includes('revision')
+    );
+  }
+
+  private removeFileIfExists(filePath?: string | null) {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return;
+    }
+
+    try {
+      fs.unlinkSync(filePath);
+    } catch (error) {
+      this.logger.warn(`No se pudo eliminar el archivo fisico ${filePath}: ${error}`);
+    }
   }
 
   private buildRequesterSupportFileFromRequest(
@@ -1980,6 +2006,24 @@ export class GraduationCertificatesService {
     return `DIPL-${year}-${sequence}`;
   }
 
+  private async generateGraduateDiplomaNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    let sequence = (await this.graduateRepository.count()) + 1;
+
+    for (let attempts = 0; attempts < 1000; attempts += 1) {
+      const candidate = `DIPL-${year}-${sequence}`;
+      const exists = await this.graduateRepository.findOne({
+        where: { diplomaNumber: candidate },
+      });
+      if (!exists) return candidate;
+      sequence += 1;
+    }
+
+    throw new InternalServerErrorException(
+      'No se pudo generar un numero de diploma unico.',
+    );
+  }
+
   private async generateActaNumber(): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
@@ -2005,6 +2049,282 @@ export class GraduationCertificatesService {
       NOT_FOUND: 'No se encontró el certificado',
     };
     return messages[result] || 'Estado desconocido';
+  }
+
+  private normalizeGraduateNumericControl(
+    value: string | undefined,
+    label: string,
+    maxLength: number,
+  ): string | undefined {
+    const normalized = (value || '').trim();
+    if (!normalized) return undefined;
+    if (!/^\d+$/.test(normalized)) {
+      throw new BadRequestException(
+        `${label} debe ser numérico, sin letras, guiones ni prefijos.`,
+      );
+    }
+    if (normalized.length > maxLength) {
+      throw new BadRequestException(
+        `${label} no puede superar ${maxLength} dígitos.`,
+      );
+    }
+    return normalized;
+  }
+
+  private isValidGraduateEmail(value: string): boolean {
+    const email = value.trim().toLowerCase();
+    if (!email) return true;
+    if (email.length > 254 || /\s/.test(email)) return false;
+
+    const parts = email.split('@');
+    if (parts.length !== 2) return false;
+
+    const [localPart, domain] = parts;
+    if (!localPart || !domain || localPart.length > 64) return false;
+    if (
+      localPart.startsWith('.') ||
+      localPart.endsWith('.') ||
+      localPart.includes('..')
+    ) {
+      return false;
+    }
+    if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(localPart)) {
+      return false;
+    }
+
+    if (
+      domain.startsWith('.') ||
+      domain.endsWith('.') ||
+      domain.includes('..')
+    ) {
+      return false;
+    }
+    if (!/^[a-z0-9.-]+$/i.test(domain)) return false;
+
+    const domainLabels = domain.split('.');
+    if (domainLabels.length < 2) return false;
+
+    const validDomainLabels = domainLabels.every((label) => {
+      if (!label || label.length > 63) return false;
+      return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label);
+    });
+    if (!validDomainLabels) return false;
+
+    const tld = domainLabels[domainLabels.length - 1];
+    return /^[a-z]{2,24}$/i.test(tld);
+  }
+
+  private validateGraduateTextLength(
+    value: string,
+    label: string,
+    maxLength: number,
+  ): void {
+    if (value.length > maxLength) {
+      throw new BadRequestException(
+        `${label} no puede superar ${maxLength} caracteres.`,
+      );
+    }
+    if (/[\u0000-\u001F\u007F]/.test(value)) {
+      throw new BadRequestException(`${label} contiene caracteres no permitidos.`);
+    }
+  }
+
+  private async buildGraduateCreateData(
+    payload: CreateGraduateDto,
+    options: { strictBulk?: boolean } = {},
+  ): Promise<DeepPartial<Graduate>> {
+    const firstName = (payload.firstName || '').trim();
+    const lastName = (payload.lastName || '').trim();
+    const combinedName = `${firstName} ${lastName}`.trim();
+    const fullName = (payload.fullName || combinedName).trim();
+    if (!fullName) {
+      throw new BadRequestException('El nombre del graduado es obligatorio.');
+    }
+    if (!/^[\p{L}\s.'-]+$/u.test(fullName) || /\d/.test(fullName)) {
+      throw new BadRequestException(
+        'El nombre del graduado solo debe contener letras, espacios, puntos, guiones o apostrofes.',
+      );
+    }
+    this.validateGraduateTextLength(fullName, 'El nombre del graduado', 255);
+
+    const idNumber = (payload.idNumber || '').trim();
+    if (!idNumber) {
+      throw new BadRequestException('El numero de documento es obligatorio.');
+    }
+    if (!/^\d+$/.test(idNumber)) {
+      throw new BadRequestException(
+        'El numero de documento solo debe contener digitos.',
+      );
+    }
+    if (idNumber.length < 5 || idNumber.length > 20) {
+      throw new BadRequestException(
+        'El numero de documento debe tener entre 5 y 20 digitos.',
+      );
+    }
+    if (/^0+$/.test(idNumber)) {
+      throw new BadRequestException(
+        'El numero de documento no puede estar compuesto solo por ceros.',
+      );
+    }
+
+    const programName = (
+      payload.programName ||
+      payload.degreeTitle ||
+      ''
+    ).trim();
+    if (!programName) {
+      throw new BadRequestException('El programa o titulo es obligatorio.');
+    }
+    this.validateGraduateTextLength(programName, 'El programa o titulo', 255);
+
+    const graduationDate = this.parseDate(payload.graduationDate);
+    if (!graduationDate) {
+      throw new BadRequestException('La fecha de grado es obligatoria.');
+    }
+    const graduationDateString = this.normalizeDateString(graduationDate);
+    if (
+      !graduationDateString ||
+      graduationDateString > this.getBusinessTodayDateString()
+    ) {
+      throw new BadRequestException(
+        'La fecha de grado no puede ser posterior a la fecha actual.',
+      );
+    }
+
+    const derivedName = this.splitFullName(fullName);
+    const enrollmentDate = this.parseDate(payload.enrollmentDate) || new Date();
+    enrollmentDate.setHours(12, 0, 0, 0);
+    const diplomaNumber = options.strictBulk
+      ? await this.generateGraduateDiplomaNumber()
+      : payload.diplomaNumber
+        ? this.normalizeGraduateNumericControl(
+            payload.diplomaNumber,
+            'DIPLOMA',
+            6,
+          )
+        : undefined;
+    const actaNumber = this.normalizeGraduateNumericControl(
+      payload.actaNumber || payload.numActa,
+      'ACTA',
+      2,
+    );
+    const numActa = this.normalizeGraduateNumericControl(
+      payload.numActa || payload.actaNumber,
+      'ACTA',
+      2,
+    );
+    const numFolio = this.normalizeGraduateNumericControl(
+      payload.numFolio,
+      'ACTA',
+      2,
+    );
+    const numLibro = this.normalizeGraduateNumericControl(
+      payload.numLibro,
+      'LIBRO',
+      2,
+    );
+    const numRegistro = this.normalizeGraduateNumericControl(
+      payload.numRegistro,
+      'REGISTRO',
+      3,
+    );
+    const email = (payload.email || '').trim().toLowerCase();
+    if (email && !this.isValidGraduateEmail(email)) {
+      throw new BadRequestException('El correo no tiene un formato valido.');
+    }
+    const rawPhone = (payload.phone || '').trim();
+    if (rawPhone) {
+      if (!/^\d+$/.test(rawPhone)) {
+        throw new BadRequestException(
+          'El telefono solo debe contener numeros, sin espacios, letras, guiones ni parentesis.',
+        );
+      }
+      if (rawPhone.length < 7 || rawPhone.length > 10) {
+        throw new BadRequestException(
+          'El telefono debe tener entre 7 y 10 digitos.',
+        );
+      }
+    }
+    const degreeTitle = (payload.degreeTitle || programName).trim();
+    this.validateGraduateTextLength(degreeTitle, 'El titulo', 255);
+    const campus = (payload.campus || '').trim();
+    const seccionalName = (payload.seccionalName || '').trim();
+    if (options.strictBulk && !campus) {
+      throw new BadRequestException('La sede es obligatoria en la carga masiva.');
+    }
+    if (options.strictBulk && !seccionalName) {
+      throw new BadRequestException(
+        'La territorial es obligatoria en la carga masiva.',
+      );
+    }
+    if (campus) {
+      this.validateGraduateTextLength(campus, 'La sede', 100);
+    }
+    if (seccionalName) {
+      this.validateGraduateTextLength(seccionalName, 'La territorial', 255);
+    }
+
+    return {
+      personId: randomUUID(),
+      programId: randomUUID(),
+      fullName,
+      firstName: firstName || derivedName.firstName || undefined,
+      lastName: lastName || derivedName.lastName || undefined,
+      idNumber,
+      idIssueDate: this.parseDate(payload.idIssueDate) || undefined,
+      email: email || undefined,
+      phone: rawPhone || undefined,
+      programName,
+      programType:
+        (payload.programType || '').trim() ||
+        this.inferGraduateProgramType(programName),
+      enrollmentDate,
+      graduationDate,
+      ceremonyDate: this.parseDate(payload.ceremonyDate) || undefined,
+      degreeTitle,
+      diplomaNumber,
+      actaNumber,
+      resolutionNumber:
+        (payload.resolutionNumber || '').trim() || undefined,
+      numActa,
+      numFolio,
+      numLibro,
+      numRegistro,
+      status: (payload.status || 'ACTIVE').trim().toUpperCase(),
+      isVerified: payload.isVerified ?? true,
+      campus: campus || undefined,
+      seccionalName: seccionalName || undefined,
+      createdBy: (payload.createdBy || 'manual').trim(),
+    };
+  }
+
+  private inferGraduateProgramType(value: string): string {
+    const normalized = this.normalizeName(value);
+    if (normalized.includes('maestr')) return 'Maestria';
+    if (
+      normalized.includes('especializacion') ||
+      normalized.includes('especialista')
+    ) {
+      return 'Especializacion';
+    }
+    return 'Pregrado';
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    const candidate = error as { code?: string; driverError?: { code?: string } };
+    return candidate?.code === '23505' || candidate?.driverError?.code === '23505';
+  }
+
+  private getExceptionMessage(error: unknown): string {
+    const candidate = error as {
+      message?: string;
+      response?: { message?: string | string[] };
+    };
+    const responseMessage = candidate?.response?.message;
+    if (Array.isArray(responseMessage)) {
+      return responseMessage.join(', ');
+    }
+    return responseMessage || candidate?.message || 'No se pudo crear el graduado.';
   }
 
   private normalizeName(value: string): string {
@@ -3710,6 +4030,138 @@ export class GraduationCertificatesService {
   }
 
   /**
+   * Elimina graduados creados por solicitud o carga masiva.
+   */
+  async eliminarGraduado(id: string) {
+    const filePathsToRemove: string[] = [];
+
+    const result = await this.graduateRepository.manager.transaction(
+      async (manager) => {
+        const graduateRepository = manager.getRepository(Graduate);
+        const requestRepository = manager.getRepository(
+          GraduationCertificateRequest,
+        );
+        const certificateRepository = manager.getRepository(
+          GraduationCertificate,
+        );
+        const validationRepository = manager.getRepository(CertificateValidation);
+        const graduateFileRepository = manager.getRepository(GraduateFile);
+        const reviewFileRepository = manager.getRepository(
+          GraduationRequestReviewFile,
+        );
+
+        const graduate = await graduateRepository.findOne({ where: { id } });
+        if (!graduate) {
+          throw new NotFoundException('Graduado no encontrado');
+        }
+
+        if (!this.isDeletableGraduateSource(graduate.createdBy)) {
+          throw new BadRequestException(
+            'Solo se pueden eliminar graduados creados por solicitud o carga masiva.',
+          );
+        }
+
+        const requests = await requestRepository.find({
+          where: { graduateId: id },
+        });
+        const requestIds = Array.from(
+          new Set(requests.map((request) => request.id).filter(Boolean)),
+        );
+
+        const certificateWhere =
+          requestIds.length > 0
+            ? [{ graduateId: id }, { requestId: In(requestIds) }]
+            : [{ graduateId: id }];
+        const certificates = await certificateRepository.find({
+          where: certificateWhere,
+        });
+        const certificateIds = Array.from(
+          new Set(
+            certificates
+              .map((certificate) => certificate.id)
+              .filter(Boolean),
+          ),
+        );
+
+        const graduateFiles = await graduateFileRepository.find({
+          where: { graduateId: id },
+        });
+        graduateFiles.forEach((file) => {
+          if (file.storedName) {
+            filePathsToRemove.push(
+              path.join(process.cwd(), 'uploads', 'graduate-files', file.storedName),
+            );
+          }
+        });
+
+        certificates.forEach((certificate) => {
+          const pdfName =
+            certificate.pdfFilename ||
+            (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : '');
+          if (pdfName) {
+            filePathsToRemove.push(
+              path.join(process.cwd(), 'uploads', 'graduation-certificates', pdfName),
+            );
+          }
+        });
+
+        if (requestIds.length > 0) {
+          const reviewFiles = await reviewFileRepository.find({
+            where: { requestId: In(requestIds) },
+          });
+          reviewFiles.forEach((file) => {
+            if (file.storedName) {
+              filePathsToRemove.push(
+                path.join(
+                  process.cwd(),
+                  'uploads',
+                  'graduation-review-files',
+                  file.storedName,
+                ),
+              );
+            }
+          });
+
+          requests.forEach((request) => {
+            const storedName = request.requesterSupportStoredName;
+            if (!storedName) return;
+            const storageDir = storedName.startsWith('public-review-')
+              ? path.join(process.cwd(), 'uploads', 'graduation-review-files')
+              : this.requesterSupportUploadDir();
+            filePathsToRemove.push(path.join(storageDir, storedName));
+          });
+        }
+
+        if (certificateIds.length > 0) {
+          await validationRepository.delete({
+            certificateId: In(certificateIds),
+          });
+          await certificateRepository.delete({ id: In(certificateIds) });
+        }
+
+        if (requestIds.length > 0) {
+          await reviewFileRepository.delete({ requestId: In(requestIds) });
+          await requestRepository.delete({ id: In(requestIds) });
+        }
+
+        await graduateFileRepository.delete({ graduateId: id });
+        await graduateRepository.delete({ id });
+
+        return {
+          mensaje: 'Graduado eliminado correctamente',
+          certificadosEliminados: certificateIds.length,
+          solicitudesEliminadas: requestIds.length,
+          archivosEliminados: graduateFiles.length,
+        };
+      },
+    );
+
+    filePathsToRemove.forEach((filePath) => this.removeFileIfExists(filePath));
+
+    return result;
+  }
+
+  /**
    * ADMIN: Buscar graduado por cédula
    */
   async obtenerSoporteSolicitanteRevisionParaDescarga(requestId: string) {
@@ -4015,6 +4467,129 @@ export class GraduationCertificatesService {
       graduationDate: this.normalizeDateString(graduate.graduationDate),
       status: graduate.status,
     }));
+  }
+
+  /**
+   * ADMIN: Crear graduado
+   */
+  async crearGraduado(
+    payload: CreateGraduateDto,
+    options: { strictBulk?: boolean } = {},
+  ) {
+    const graduateData = await this.buildGraduateCreateData(payload, options);
+
+    const existingGraduatesByDocument = await this.graduateRepository.find({
+      where: { idNumber: graduateData.idNumber as string },
+    });
+    const normalizedProgramName = this.normalizeName(
+      String(graduateData.programName || ''),
+    );
+    const duplicatedGraduate = existingGraduatesByDocument.find((graduate) => {
+      const existingProgramName = graduate.programName || graduate.degreeTitle || '';
+      return this.normalizeName(existingProgramName) === normalizedProgramName;
+    });
+    if (duplicatedGraduate) {
+      throw new ConflictException(
+        'Ya existe un graduado con este documento y programa.',
+      );
+    }
+
+    if (graduateData.diplomaNumber) {
+      const duplicatedDiploma = await this.graduateRepository.findOne({
+        where: { diplomaNumber: graduateData.diplomaNumber as string },
+      });
+      if (duplicatedDiploma) {
+        throw new ConflictException(
+          'Ya existe un graduado con este numero de diploma.',
+        );
+      }
+    }
+
+    try {
+      return await this.graduateRepository.save(
+        this.graduateRepository.create(graduateData),
+      );
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'El graduado ya existe o comparte un dato Ãºnico con otro registro.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * ADMIN: Crear graduados masivamente
+   */
+  async crearGraduadosMasivamente(payload: BulkCreateGraduatesDto) {
+    const graduates = Array.isArray(payload?.graduates)
+      ? payload.graduates
+      : [];
+    if (!graduates.length) {
+      throw new BadRequestException(
+        'Debes enviar al menos un graduado para la carga masiva.',
+      );
+    }
+    if (graduates.length > 1000) {
+      throw new BadRequestException(
+        'La carga masiva permite mÃ¡ximo 1000 graduados por archivo.',
+      );
+    }
+
+    const created: Graduate[] = [];
+    const errors: BulkCreateGraduateError[] = [];
+    const seenInFile = new Set<string>();
+
+    for (const [index, graduatePayload] of graduates.entries()) {
+      const rowNumber = index + 2;
+      const programName =
+        (graduatePayload?.programName || graduatePayload?.degreeTitle || '')
+          .trim();
+      const idNumber = (graduatePayload?.idNumber || '').trim();
+      const fileKey = `${idNumber}::${this.normalizeName(programName)}`;
+
+      if (idNumber && programName && seenInFile.has(fileKey)) {
+        errors.push({
+          rowNumber,
+          idNumber,
+          programName,
+          message:
+            'El archivo contiene otra fila con el mismo documento y programa.',
+        });
+        continue;
+      }
+      if (idNumber && programName) {
+        seenInFile.add(fileKey);
+      }
+
+      try {
+        const saved = await this.crearGraduado(
+          {
+            ...graduatePayload,
+            createdBy:
+              payload.createdBy || graduatePayload.createdBy || 'bulk_upload',
+          },
+          { strictBulk: true },
+        );
+        created.push(saved);
+      } catch (error) {
+        errors.push({
+          rowNumber,
+          idNumber,
+          programName,
+          message: this.getExceptionMessage(error),
+        });
+      }
+    }
+
+    return {
+      total: graduates.length,
+      createdCount: created.length,
+      failedCount: errors.length,
+      created,
+      errors,
+    };
   }
 
   /**

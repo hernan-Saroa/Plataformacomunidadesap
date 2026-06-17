@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, MaxLength, IsEmail, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsNumber, MaxLength, IsEmail, IsBoolean, IsArray, IsNotEmpty } from 'class-validator';
 
 // ==================== SECCIONAL DTOs ====================
 
@@ -14,7 +14,11 @@ export class CreateSeccionalDto {
 
   @IsOptional()
   @IsNumber()
-  idUbiSeccional?: number;
+  ordenVisualizacion?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 
 export class UpdateSeccionalDto {
@@ -30,7 +34,11 @@ export class UpdateSeccionalDto {
 
   @IsOptional()
   @IsNumber()
-  idUbiSeccional?: number;
+  ordenVisualizacion?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 
 // ==================== SEDE DTOs ====================
@@ -47,55 +55,24 @@ export class CreateSedeDto {
 
   @IsOptional()
   @IsNumber()
-  idGeopolitica?: number;
-
-  @IsOptional()
-  @IsNumber()
   idSeccional?: number;
 
   @IsOptional()
   @IsString()
-  @MaxLength(250, { message: 'La dirección no puede exceder 250 caracteres' })
-  dirSede?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(50, { message: 'El teléfono no puede exceder 50 caracteres' })
-  telSede?: string;
-
-  @IsOptional()
-  @IsEmail({}, { message: 'El email debe tener un formato válido' })
-  @MaxLength(100, { message: 'El email no puede exceder 100 caracteres' })
-  emailSede?: string;
+  tipo?: string;
 
   @IsOptional()
   @IsNumber()
-  capacidadEstudiantes?: number;
+  latitud?: number;
 
   @IsOptional()
   @IsNumber()
-  capacidadDocentes?: number;
+  longitud?: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(30, { message: 'El estado no puede exceder 30 caracteres' })
   sedeAct?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  permiteInscripciones?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  permiteMatriculas?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  visiblePortal?: boolean;
-
-  @IsOptional()
-  @IsString()
-  observaciones?: string;
 }
 
 export class UpdateSedeDto {
@@ -111,53 +88,38 @@ export class UpdateSedeDto {
 
   @IsOptional()
   @IsNumber()
-  idGeopolitica?: number;
-
-  @IsOptional()
-  @IsNumber()
   idSeccional?: number;
 
   @IsOptional()
   @IsString()
-  @MaxLength(250, { message: 'La dirección no puede exceder 250 caracteres' })
-  dirSede?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(50, { message: 'El teléfono no puede exceder 50 caracteres' })
-  telSede?: string;
-
-  @IsOptional()
-  @IsEmail({}, { message: 'El email debe tener un formato válido' })
-  @MaxLength(100, { message: 'El email no puede exceder 100 caracteres' })
-  emailSede?: string;
+  tipo?: string;
 
   @IsOptional()
   @IsNumber()
-  capacidadEstudiantes?: number;
+  latitud?: number;
 
   @IsOptional()
   @IsNumber()
-  capacidadDocentes?: number;
+  longitud?: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(30, { message: 'El estado no puede exceder 30 caracteres' })
   sedeAct?: string;
+}
 
-  @IsOptional()
-  @IsBoolean()
-  permiteInscripciones?: boolean;
+// ==================== ASIGNACIÓN DE USUARIOS DTOs ====================
 
-  @IsOptional()
-  @IsBoolean()
-  permiteMatriculas?: boolean;
+export class AsignarUsuariosDto {
+  @IsArray()
+  @IsNotEmpty({ each: true })
+  ids: string[];
 
-  @IsOptional()
-  @IsBoolean()
-  visiblePortal?: boolean;
-
-  @IsOptional()
   @IsString()
-  observaciones?: string;
+  @IsNotEmpty()
+  territorialId: string;
+
+  @IsString()
+  @IsOptional()
+  cetapId?: string;
 }

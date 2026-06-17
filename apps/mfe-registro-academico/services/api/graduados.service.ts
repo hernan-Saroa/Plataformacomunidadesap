@@ -44,6 +44,21 @@ export interface GraduadoData {
   updatedAt?: string;
 }
 
+export interface BulkCreateGraduadosError {
+  rowNumber: number;
+  idNumber?: string;
+  programName?: string;
+  message: string;
+}
+
+export interface BulkCreateGraduadosResponse {
+  total: number;
+  createdCount: number;
+  failedCount: number;
+  created: GraduadoData[];
+  errors: BulkCreateGraduadosError[];
+}
+
 /**
  * Interface: Solicitud de certificado de graduado
  */
@@ -721,6 +736,20 @@ const graduadosService = {
     },
 
     /**
+     * Crear graduados masivamente
+     */
+    crearMasivo: async (
+      graduados: Partial<GraduadoData>[],
+      createdBy = "bulk_upload",
+    ): Promise<BulkCreateGraduadosResponse> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/graduates/bulk`,
+        { graduates: graduados, createdBy },
+      );
+      return response;
+    },
+
+    /**
      * Actualizar un graduado
      */
     actualizar: async (
@@ -730,6 +759,16 @@ const graduadosService = {
       const response = await apiClient.put(
         `${SERVICE_PREFIX}/graduates/${id}`,
         graduado,
+      );
+      return response;
+    },
+
+    /**
+     * Eliminar un graduado creado por solicitud o carga masiva
+     */
+    eliminar: async (id: string): Promise<{ mensaje: string }> => {
+      const response = await apiClient.delete(
+        `${SERVICE_PREFIX}/graduates/${id}`,
       );
       return response;
     },

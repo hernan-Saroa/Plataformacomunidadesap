@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PtaModule } from './pta/pta.module';
 import { BancoDocentesModule } from './pta/banco-docentes/banco-docentes.module';
+import { EstructuraImportModule } from './estructura-import/estructura-import.module';
 import { PlanTrabajoAcademicoEntity } from './pta/entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './pta/entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './pta/entities/pta-evidencia.entity';
@@ -23,6 +24,17 @@ import { PersonaEntity } from './pta/entities/persona.entity';
 import { DocenteEntity } from './pta/entities/docente.entity';
 import { AprobacionJefaturaEntity } from './pta/entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
+import { PtaComponentApprovalEntity } from './pta/entities/pta-component-approval.entity';
+
+// New entities
+import { FacultadEntity } from './pta/entities/facultad.entity';
+import { DireccionTerritorialEntity } from './pta/entities/direccion-territorial.entity';
+import { UbicacionSemestralEntity } from './pta/entities/ubicacion-semestral.entity';
+import { PeriodoAcademicoEntity } from './pta/entities/periodo-academico.entity';
+import { NucleoTematicoEntity } from './pta/entities/nucleo-tematico.entity';
+import { CetapEntity } from './pta/entities/cetap.entity';
+import { CetapAliasEntity } from './pta/entities/cetap-alias.entity';
+import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.entity';
 
 @Module({
   imports: [
@@ -35,6 +47,7 @@ import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       schema: process.env.DB_SCHEMA || 'academic_work_plan',
+      autoLoadEntities: true,
       entities: [
         PlanTrabajoAcademicoEntity,
         HistorialEstadoPtaEntity,
@@ -51,12 +64,22 @@ import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
         DocenteEntity,
         AprobacionJefaturaEntity,
         PtaEventoEntity,
+        PtaComponentApprovalEntity,
+        FacultadEntity,
+        DireccionTerritorialEntity,
+        UbicacionSemestralEntity,
+        PeriodoAcademicoEntity,
+        NucleoTematicoEntity,
+        CetapEntity,
+        CetapAliasEntity,
+        OfertaCetapProgramaEntity,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true',
     }),
     AuthModule,
     PtaModule,
     BancoDocentesModule,
+    EstructuraImportModule,
   ],
   controllers: [AppController],
   providers: [

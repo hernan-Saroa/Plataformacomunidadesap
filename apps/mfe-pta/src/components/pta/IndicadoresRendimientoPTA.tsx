@@ -54,7 +54,7 @@ export function IndicadoresRendimientoPTA() {
   const [ptas, setPtas] = useState<any[]>([]);
   const [territoriales, setTerritoriales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState('2026-1');
+  const [periodo, setPeriodo] = useState('2025-2');
 
   useEffect(() => {
     const load = async () => {

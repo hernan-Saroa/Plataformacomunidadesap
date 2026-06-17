@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import '../styles/esap-theme.css';
-import '../styles/modo-compacto.css';
-import '../styles/responsive.css';
-import '../styles/globals.css';
-import '../styles/accessibility.css';
+// import '../styles/esap-theme.css';
+// import '../styles/modo-compacto.css';
+// import '../styles/responsive.css';
+// import '../styles/globals.css';
+// import '../styles/accessibility.css';
 import '../styles/pta-world-class.css';
 import { NotificationsProvider } from './esap/NotificationsContext';
 import { AuthProvider } from '../contexts/AuthContext';

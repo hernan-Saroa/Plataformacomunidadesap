@@ -151,6 +151,12 @@ export interface CategoriaDocumento {
   orden: number;
 }
 
+export interface Dependencia {
+  id: string;
+  nombre: string;
+  activo: boolean;
+}
+
 export interface ConfiguracionModulo {
   id: string;
   nombre: string;
@@ -162,6 +168,7 @@ export interface ConfiguracionModulo {
   mediosControl?: MedioControl[];
   tiposExcepcionesProcesal?: TipoExcepcionProcesal[];
   causalesEspecificas?: CausalEspecifica[];
+  dependencias?: Dependencia[];
 }
 
 // ============ DATOS DE CASOS POR ESTADO ============
@@ -226,7 +233,82 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas para obtener el reconocimiento y pago de indemnización de perjuicios.', plazo: 40, alertaDias: 10, activo: true },
       { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de los derechos e intereses colectivos.', plazo: 25, alertaDias: 5, activo: true },
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias surgidas de contratos estatales.', plazo: 35, alertaDias: 7, activo: true },
-      { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', plazo: 10, alertaDias: 2, activo: true },
+      { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', plazo: 10, alertaDias: 2, activo: true, camposAdicionalesConfig: [
+        {
+          id: 'derecho-fundamental-principal',
+          nombre: 'Derecho Fundamental Principal',
+          tipo: 'lista' as const,
+          obligatorio: true,
+          paso: 7,
+          opciones: [
+            'Derecho a la vida',
+            'Prohibición de desaparición forzada, torturas, tratos crueles, inhumanos o degradantes',
+            'Prohibición de la esclavitud, servidumbre y trata de seres humanos',
+            'Derecho a la igualdad y no discriminación',
+            'Reconocimiento de la personalidad jurídica',
+            'Derecho a la intimidad personal y familiar, buen nombre y habeas data',
+            'Libre desarrollo de la personalidad',
+            'Derecho a la honra',
+            'Libertad de conciencia',
+            'Libertad de cultos',
+            'Libertad de expresión, información y rectificación',
+            'Libertad de circulación y residencia',
+            'Libertad de escoger profesión u oficio',
+            'Libertad de enseñanza, aprendizaje, investigación y cátedra',
+            'Libertad personal (no ser molestado en su persona o familia)',
+            'Debido proceso y derecho de defensa',
+            'Habeas corpus',
+            'Doble instancia',
+            'No autoincriminación',
+            'Prohibición de penas de destierro, prisión perpetua y confiscación',
+            'Derecho a la paz',
+            'Derecho de petición',
+            'Derecho al trabajo',
+            'Derecho de reunión y manifestación pública',
+            'Derecho de libre asociación',
+            'Derecho de sindicalización',
+            'Derechos políticos y de participación',
+            'Otro'
+          ]
+        },
+        {
+          id: 'otros-derechos-vulnerados',
+          nombre: 'Otros Derechos que Pueden ser Vulnerados',
+          tipo: 'opciones-multiple' as const,
+          obligatorio: false,
+          paso: 7,
+          opciones: [
+            'Derecho a la vida',
+            'Prohibición de desaparición forzada, torturas, tratos crueles, inhumanos o degradantes',
+            'Prohibición de la esclavitud, servidumbre y trata de seres humanos',
+            'Derecho a la igualdad y no discriminación',
+            'Reconocimiento de la personalidad jurídica',
+            'Derecho a la intimidad personal y familiar, buen nombre y habeas data',
+            'Libre desarrollo de la personalidad',
+            'Derecho a la honra',
+            'Libertad de conciencia',
+            'Libertad de cultos',
+            'Libertad de expresión, información y rectificación',
+            'Libertad de circulación y residencia',
+            'Libertad de escoger profesión u oficio',
+            'Libertad de enseñanza, aprendizaje, investigación y cátedra',
+            'Libertad personal (no ser molestado en su persona o familia)',
+            'Debido proceso y derecho de defensa',
+            'Habeas corpus',
+            'Doble instancia',
+            'No autoincriminación',
+            'Prohibición de penas de destierro, prisión perpetua y confiscación',
+            'Derecho a la paz',
+            'Derecho de petición',
+            'Derecho al trabajo',
+            'Derecho de reunión y manifestación pública',
+            'Derecho de libre asociación',
+            'Derecho de sindicalización',
+            'Derechos políticos y de participación',
+            'Otro'
+          ]
+        }
+      ] },
       { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para el cobro de obligaciones claras, expresas y exigibles.', plazo: 20, alertaDias: 5, activo: true },
       { id: 'proceso-penal', nombre: 'Proceso Penal', descripcion: 'Proceso de naturaleza penal relacionado con la entidad, incluyendo delitos contra la administración pública y/o conductas que afecten el patrimonio público.', plazo: 30, alertaDias: 7, activo: true, camposAdicionalesConfig: [{ id: 'clasificacion-penal', nombre: 'Clasificación Penal', tipo: 'opciones-multiple' as const, obligatorio: true, paso: 1, opciones: ['Delitos contra la Administración Pública', 'Conductas que afectan el Patrimonio Público', 'Otros'] }] },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales no categorizados.', plazo: 15, alertaDias: 3, activo: true },
@@ -265,6 +347,9 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales', activo: true, orden: 5 },
       { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales', activo: true, orden: 6 },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros medios de control no categorizados', activo: true, orden: 7 },
+    ],
+    dependencias: [
+      { id: 'legal', nombre: 'Legal', activo: true },
     ],
   },
   {
@@ -529,6 +614,7 @@ interface ConfiguracionesSIGLContextType {
   getMediosControlActivos: (moduloId: string) => MedioControl[];
   getTiposExcepcionesActivos: (moduloId: string) => TipoExcepcionProcesal[];
   getCausalesEspecificasActivas: (moduloId: string) => CausalEspecifica[];
+  getDependenciasActivas: (moduloId: string) => Dependencia[];
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
@@ -755,6 +841,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const getCausalesEspecificasActivas = (moduloId: string): CausalEspecifica[] => {
     const modulo = getConfiguracionModulo(moduloId);
     return modulo?.causalesEspecificas?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
+  };
+
+  // ✅ Obtener dependencias activas del módulo
+  const getDependenciasActivas = (moduloId: string): Dependencia[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.dependencias?.filter(d => d.activo) || [];
   };
 
   // Obtener solo los ejes estratégicos activos
@@ -999,6 +1091,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getMediosControlActivos,
     getTiposExcepcionesActivos,
     getCausalesEspecificasActivas,
+    getDependenciasActivas,
     getEjesEstrategicosActivos,
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
@@ -1042,7 +1135,7 @@ export function useConfiguracionesSIGL() {
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============
 
 export function useConfiguracionModulo(moduloId: string) {
-  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas } = useConfiguracionesSIGL();
+  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas, getDependenciasActivas } = useConfiguracionesSIGL();
 
   return {
     configuracion: getConfiguracionModulo(moduloId),
@@ -1054,5 +1147,6 @@ export function useConfiguracionModulo(moduloId: string) {
     mediosControlActivos: getMediosControlActivos(moduloId),
     tiposExcepcionesActivos: getTiposExcepcionesActivos(moduloId),
     causalesEspecificasActivas: getCausalesEspecificasActivas(moduloId),
+    dependenciasActivas: getDependenciasActivas(moduloId),
   };
 }

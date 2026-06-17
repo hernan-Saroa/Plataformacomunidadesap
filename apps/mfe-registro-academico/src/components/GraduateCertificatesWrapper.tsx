@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { FileSearch, Award, AlertCircle, ShieldCheck, ClipboardCheck, ChevronRight } from 'lucide-react';
+import { ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { ReviewRequestsModule } from './ReviewRequestsModule';
 import { ApprovalRequestsModule } from './ApprovalRequestsModule';
 import { VerificationCertificatesModule } from './VerificationCertificatesModule';
@@ -128,32 +129,21 @@ export function GraduateCertificatesWrapper({
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
+      {/* Header */}
+      <ResponsiveHeader
+        key="header"
+        title="Verificación de Títulos"
+        description="Gestiona solicitudes de revisión y certificados generados"
+        icon={FileSearch}
+      />
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-xl border-2 p-6"
+        className="bg-white rounded-xl border-1"
         style={{ borderColor: '#E5E7EB' }}
       >
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-              }}
-            >
-              <FileSearch className="w-6 h-6 text-white" strokeWidth={2} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold" style={{ color: '#1F2937' }}>
-                Verificación de Títulos
-              </h1>
-              <p className="text-sm" style={{ color: '#6B7280' }}>
-                Gestiona solicitudes de revisión y certificados generados
-              </p>
-            </div>
-          </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
             {tabs.map((tab) => {
