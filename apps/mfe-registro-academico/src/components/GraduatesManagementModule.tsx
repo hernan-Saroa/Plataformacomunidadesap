@@ -77,6 +77,7 @@ import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
+import { Container4K } from '@esap-mfe/shared-ui';
 
 type GraduateRow = {
   id: string;
@@ -101,6 +102,7 @@ type GraduateRow = {
   createdBy?: string;
   asignacionesSedes?: Array<{ nombreSede: string }>;
   territorial?: string;
+  sourceTerritorial?: string;
   certificatesCount: number;
   numRegistro?: string;
   numFolio?: string;
@@ -109,8 +111,28 @@ type GraduateRow = {
   updatedAt?: string;
 };
 
-// ✅ DÍA 4: Container4K para padding adaptativo
-import { Container4K } from '@esap-mfe/shared-ui';
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = <T extends {
+  createdAt?: string | Date;
+  created_at?: string | Date;
+  fechaCreacion?: string | Date;
+  anio?: number;
+  semestre?: number;
+}>(periods: T[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,6 +149,8 @@ export function GraduatesManagementModule() {
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
   const [programasCatalog, setProgramasCatalog] = useState<string[]>([]);
+  const [estructuraPeriodoCatalogo, setEstructuraPeriodoCatalogo] = useState('');
+  const [programasPeriodoCatalogo, setProgramasPeriodoCatalogo] = useState('');
   const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
@@ -172,19 +196,6 @@ export function GraduatesManagementModule() {
   const DOCUMENT_MAX_LENGTH = 10;
   const EMAIL_MAX_LENGTH = 254;
   const REGISTRY_FIELD_MAX_LENGTH = 12;
-  const PROGRAMAS_GRADUADOS = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
   const getCurrentActorName = () => {
     const user = authService.getCurrentUser() as any;
     const fullName =
@@ -200,9 +211,6 @@ export function GraduatesManagementModule() {
 
     return normalizeDisplayName(fullName) || undefined;
   };
-  const isUnavailableProgram = (value?: string) =>
-    normalizeKey(value) === 'no disponible' || normalizeKey(value) === 'no especificado';
-
   // Estados para formularios
   const [editForm, setEditForm] = useState({
     firstName: '',
@@ -416,10 +424,6 @@ export function GraduatesManagementModule() {
     });
 
     return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, 'es'));
-  };
-  const includesNormalized = (values: string[], value?: string) => {
-    const key = normalizeKey(value);
-    return !!key && values.some((option) => normalizeKey(option) === key);
   };
   const normalizeDocumentKey = (value?: string) => {
     const digits = (value || '').replace(/\D+/g, '');
@@ -796,11 +800,15 @@ export function GraduatesManagementModule() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadProgramCatalog = async () => {
+    const loadProgramCatalog = async (periodoAcademico: string) => {
       const pageSize = 200;
 
       try {
-        const firstPage = await programasService.listar({ page: 1, limit: pageSize });
+        const firstPage = await programasService.listar({
+          page: 1,
+          limit: pageSize,
+          periodoAcademico,
+        });
         const total = Number(firstPage?.total || firstPage?.data?.length || 0);
         const totalPages = Math.max(1, Math.ceil(total / pageSize));
         const extraPages =
@@ -808,7 +816,11 @@ export function GraduatesManagementModule() {
             ? await Promise.all(
                 Array.from({ length: totalPages - 1 }, (_, index) =>
                   programasService
-                    .listar({ page: index + 2, limit: pageSize })
+                    .listar({
+                      page: index + 2,
+                      limit: pageSize,
+                      periodoAcademico,
+                    })
                     .catch((error) => {
                       console.warn('No se pudo cargar una página del catálogo de programas:', error);
                       return null;
@@ -830,28 +842,93 @@ export function GraduatesManagementModule() {
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse, programasCatalogResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse, periodosResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
-          loadProgramCatalog(),
+          estructuraService.obtenerPeriodos().catch((error) => {
+            console.warn('No se pudieron cargar los periodos académicos:', error);
+            return [];
+          }),
         ]);
 
-        const estructuraSedes = estructuraResponse?.data?.sedes ?? [];
-        const estructuraSeccionales = estructuraResponse?.data?.seccionales ?? [];
+        const estructuraSedesMaestras = estructuraResponse?.data?.sedes ?? [];
+        const estructuraSeccionalesMaestras = estructuraResponse?.data?.seccionales ?? [];
+        const periodos = Array.isArray(periodosResponse)
+          ? sortPeriodsByCreation(periodosResponse)
+          : [];
+        const latestPeriod = periodos[0] || null;
+
+        const periodoEstructura = latestPeriod;
+        const periodoProgramas = latestPeriod;
+
+        if (periodoEstructura?.codigo) {
+          localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodoEstructura.codigo);
+        }
+        if (periodoProgramas?.codigo) {
+          localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoProgramas.codigo);
+        }
+
+        const [detalleEstructura, programasCatalogResponse] = await Promise.all([
+          periodoEstructura
+            ? estructuraService.obtenerDetallePeriodo(periodoEstructura.id).catch((error) => {
+                console.warn(
+                  `No se pudo cargar la estructura del periodo ${periodoEstructura.codigo}:`,
+                  error,
+                );
+                return null;
+              })
+            : Promise.resolve(null),
+          periodoProgramas
+            ? loadProgramCatalog(periodoProgramas.codigo)
+            : Promise.resolve([]),
+        ]);
+
+        const cetapsPeriodo = detalleEstructura?.cetaps ?? [];
+        const codigosCetapPeriodo = new Set(
+          cetapsPeriodo.map((cetap) => normalizeKey(cetap.codigo)),
+        );
+        const nombresCetapPeriodo = new Set(
+          cetapsPeriodo.map((cetap) => normalizeKey(cetap.nombre)),
+        );
+        const territorialesPeriodo = new Set(
+          cetapsPeriodo.map((cetap) => normalizeKey(cetap.dtNombre)),
+        );
+
+        const estructuraSedes = periodoEstructura
+          ? estructuraSedesMaestras.filter(
+              (sede) =>
+                codigosCetapPeriodo.has(normalizeKey(sede.codSede)) ||
+                nombresCetapPeriodo.has(normalizeKey(sede.nomSede)),
+            )
+          : [];
+        const idsSeccionalesPeriodo = new Set(
+          estructuraSedes
+            .map((sede) => sede.idSeccional)
+            .filter((id): id is number => typeof id === 'number'),
+        );
+        const estructuraSeccionales = periodoEstructura
+          ? estructuraSeccionalesMaestras.filter(
+              (seccional) =>
+                idsSeccionalesPeriodo.has(seccional.idSeccional) ||
+                territorialesPeriodo.has(normalizeKey(seccional.nomSeccional)),
+            )
+          : [];
 
         if (isMounted) {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
           setProgramasCatalog(programasCatalogResponse);
+          setEstructuraPeriodoCatalogo(periodoEstructura?.codigo || '');
+          setProgramasPeriodoCatalogo(periodoProgramas?.codigo || '');
         }
 
         const seccionalById = new Map<number, Seccional>();
-        estructuraSeccionales.forEach((seccional) => {
+        estructuraSeccionalesMaestras.forEach((seccional) => {
           seccionalById.set(seccional.idSeccional, seccional);
         });
 
         const sedeByName = new Map<string, Sede>();
-        estructuraSedes.forEach((sede) => {
+        estructuraSedesMaestras.forEach((sede) => {
           if (sede?.nomSede) {
             sedeByName.set(normalizeKey(sede.nomSede), sede);
           }
@@ -890,7 +967,8 @@ export function GraduatesManagementModule() {
             ],
             location: sedeName,
             territorial: territorialName,
-            program: graduate.programName || 'No especificado',
+            sourceTerritorial: rawSeccionalName || undefined,
+            program: graduate.programName || graduate.degreeTitle || 'No especificado',
             document: graduate.idNumber,
             enrollmentMethod: resolveEnrollmentMethod(createdBy),
             enrollmentDate: graduate.enrollmentDate || '',
@@ -997,24 +1075,12 @@ export function GraduatesManagementModule() {
     };
   }, [graduatesOnly]);
 
-  const graduateProgramOptions = useMemo(
-    () => uniqueSortedText(graduatesOnly.map((user) => user.program)),
-    [graduatesOnly]
-  );
   const programCatalogOptions = useMemo(() => {
-    const basePrograms = programasCatalog.length > 0 ? programasCatalog : PROGRAMAS_GRADUADOS;
-    return uniqueSortedText([...basePrograms, ...graduateProgramOptions]);
-  }, [programasCatalog, graduateProgramOptions]);
+    return uniqueSortedText(programasCatalog);
+  }, [programasCatalog]);
   const editProgramOptions = useMemo(() => {
     const current = (editForm.program || '').trim();
-    if (
-      current &&
-      !isUnavailableProgram(current) &&
-      !includesNormalized(programCatalogOptions, current)
-    ) {
-      return uniqueSortedText([current, ...programCatalogOptions]);
-    }
-    return programCatalogOptions;
+    return uniqueSortedText([current, ...programCatalogOptions]);
   }, [editForm.program, programCatalogOptions]);
 
   const catalogTerritorialOptions = useMemo(
@@ -1046,24 +1112,12 @@ export function GraduatesManagementModule() {
   );
 
   const territorialOptions = useMemo(() => {
-    if (catalogTerritorialOptions.length > 0) {
-      return catalogTerritorialOptions;
-    }
-
-    return uniqueSortedText(
-      graduatesOnly
-        .map((user) => user.territorial)
-        .filter((territorial) => !knownSedeKeys.has(normalizeKey(territorial))),
-    );
-  }, [catalogTerritorialOptions, graduatesOnly, knownSedeKeys, normalizeKey]);
+    return catalogTerritorialOptions;
+  }, [catalogTerritorialOptions]);
 
   const sedesOptions = useMemo(() => {
-    if (catalogSedeOptions.length > 0) {
-      return catalogSedeOptions;
-    }
-
-    return graduateSedeOptions;
-  }, [catalogSedeOptions, graduateSedeOptions]);
+    return catalogSedeOptions;
+  }, [catalogSedeOptions]);
 
   const seccionalById = useMemo(() => {
     const map = new Map<number, Seccional>();
@@ -1229,34 +1283,19 @@ export function GraduatesManagementModule() {
   }, [territorialOptions, sedesByTerritorial, sedesOptions, normalizeKey]);
 
   const editTerritorialOptions = useMemo(() => {
-    const options = new Set<string>(territorialOptions);
     const mappedTerritorial = editForm.location
       ? territorialBySede.get(normalizeKey(editForm.location))
       : '';
-    const editTerritorialIsValid =
-      !!editForm.territorial &&
-      !knownSedeKeys.has(normalizeKey(editForm.territorial)) &&
-      (
-        catalogTerritorialOptions.length === 0 ||
-        includesNormalized(catalogTerritorialOptions, editForm.territorial)
-      );
-
-    if (editTerritorialIsValid) {
-      options.add(editForm.territorial);
-    }
-    if (mappedTerritorial) {
-      options.add(mappedTerritorial);
-    }
-
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+    return uniqueSortedText([
+      editForm.territorial,
+      mappedTerritorial,
+      ...territorialOptions,
+    ]);
   }, [
     editForm.location,
     editForm.territorial,
     territorialBySede,
     territorialOptions,
-    knownSedeKeys,
-    catalogTerritorialOptions,
-    normalizeKey,
   ]);
 
   const editSedesOptions = useMemo(() => {
@@ -1266,62 +1305,39 @@ export function GraduatesManagementModule() {
     const baseOptions = hasSelectedTerritorialCatalog
       ? sedesByTerritorial.get(selectedTerritorialKey) || []
       : sedesOptions;
-    const options = new Set<string>(baseOptions);
-
-    if (editForm.location) {
-      const mappedTerritorial = territorialBySede.get(normalizeKey(editForm.location));
-      if (
-        !selectedTerritorialKey ||
-        !mappedTerritorial ||
-        normalizeKey(mappedTerritorial) === selectedTerritorialKey
-      ) {
-        options.add(editForm.location);
-      }
-    }
-
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+    return uniqueSortedText([editForm.location, ...baseOptions]);
   }, [
     editForm.location,
     editForm.territorial,
     sedesByTerritorial,
     sedesOptions,
-    territorialBySede,
     normalizeKey,
   ]);
 
   useEffect(() => {
-    if (!editForm.location || !editForm.territorial) {
-      return;
+    if (
+      programFilter !== 'all' &&
+      !programCatalogOptions.some(
+        (programa) => normalizeKey(programa) === normalizeKey(programFilter),
+      )
+    ) {
+      setProgramFilter('all');
     }
-
-    const selectedTerritorialKey = normalizeKey(editForm.territorial);
-    if (!sedesByTerritorial.has(selectedTerritorialKey)) {
-      return;
-    }
-
-    const locationMatchesTerritorial =
-      sedesByTerritorial
-        .get(selectedTerritorialKey)
-        ?.some((sede) => normalizeKey(sede) === normalizeKey(editForm.location)) ?? false;
-
-    if (locationMatchesTerritorial) {
-      return;
-    }
-
-    setEditForm((prev) => {
-      if (prev.location !== editForm.location || prev.territorial !== editForm.territorial) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        location: '',
-      };
-    });
-  }, [editForm.location, editForm.territorial, sedesByTerritorial, normalizeKey]);
+  }, [programFilter, programCatalogOptions, normalizeKey]);
 
   useEffect(() => {
-    if (locationFilter === 'all' || sedeFilter === 'all') {
+    if (
+      locationFilter !== 'all' &&
+      !territorialOptions.some(
+        (territorial) => normalizeKey(territorial) === normalizeKey(locationFilter),
+      )
+    ) {
+      setLocationFilter('all');
+    }
+  }, [locationFilter, territorialOptions, normalizeKey]);
+
+  useEffect(() => {
+    if (sedeFilter === 'all') {
       return;
     }
 
@@ -1491,9 +1507,7 @@ export function GraduatesManagementModule() {
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
     const mappedTerritorial = territorialBySede.get(normalizeKey(user.location));
     const storedTerritorial =
-      user.territorial && !knownSedeKeys.has(normalizeKey(user.territorial))
-        ? user.territorial
-        : '';
+      (user.sourceTerritorial || user.territorial || '').trim();
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName || '',
@@ -1501,9 +1515,9 @@ export function GraduatesManagementModule() {
       email: (user.email || '').trim(),
       phone: sanitizedPhone,
       document: user.document || '',
-      program: isUnavailableProgram(user.program) ? '' : user.program || '',
+      program: user.program || '',
       location: user.location,
-      territorial: mappedTerritorial || storedTerritorial,
+      territorial: storedTerritorial || mappedTerritorial || '',
       numRegistro: sanitizeRegistroInput(user.numRegistro || ''),
       numFolio: sanitizeRegistroInput(user.numFolio || ''),
       numLibro: sanitizeRegistroInput(user.numLibro || ''),
@@ -1644,6 +1658,7 @@ export function GraduatesManagementModule() {
         ],
         location: campus,
         territorial,
+        sourceTerritorial: graduate.seccionalName || undefined,
         program: graduate.programName || graduate.degreeTitle || 'No especificado',
         document: graduate.idNumber,
         enrollmentMethod: resolveEnrollmentMethod(graduate.createdBy || 'bulk_upload'),
@@ -1780,6 +1795,7 @@ export function GraduatesManagementModule() {
                 program: trimmedProgram || graduate.program,
                 location: trimmedLocation || graduate.location,
                 territorial: effectiveTerritorial || graduate.territorial,
+                sourceTerritorial: effectiveTerritorial || graduate.sourceTerritorial,
               }
             : graduate
         )
@@ -2020,8 +2036,10 @@ export function GraduatesManagementModule() {
         onImported={handleBulkGraduatesImported}
         createdBy={bulkUploadCreatedBy}
         programOptions={programCatalogOptions}
-        territorialOptions={editTerritorialOptions}
+        territorialOptions={territorialOptions}
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
+        programsPeriod={programasPeriodoCatalogo}
+        structurePeriod={estructuraPeriodoCatalogo}
       />
 
       {/* Header propio de esta vista (responsive con wrap natural, sin colapsar a iconos/menú) */}

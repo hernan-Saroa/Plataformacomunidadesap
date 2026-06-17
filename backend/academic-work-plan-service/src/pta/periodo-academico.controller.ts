@@ -29,7 +29,7 @@ export class PeriodoAcademicoController {
   @Get()
   async list() {
     let periods = await this.repo.find({
-      order: { anio: 'DESC', semestre: 'DESC' },
+      order: { createdAt: 'DESC', anio: 'DESC', semestre: 'DESC' },
     });
 
     if (periods.length === 0) {
@@ -201,25 +201,45 @@ export class PeriodoAcademicoController {
     `;
 
     let programs = [];
-    let cetaps = [];
+    let cetapsOfertas = [];
+    let cetapsPeriodo = [];
 
     try {
-      [programs, cetaps] = await Promise.all([
-        this.repo.query(programsQuery, [id]),
-        this.repo.query(cetapsFromOfertas, [id])
-      ]);
+      programs = await this.repo.query(programsQuery, [id]);
+    } catch (e) {
+      console.warn('Error querying programs for period:', e.message);
+    }
+
+    try {
+      cetapsOfertas = await this.repo.query(cetapsFromOfertas, [id]);
     } catch (e) {
       console.warn('Error querying oferta_cetap_programa:', e.message);
     }
 
-    // Si no hay CETAPs desde ofertas, intentar desde periodo_cetap
-    if (cetaps.length === 0) {
-      try {
-        cetaps = await this.repo.query(cetapsFromPeriodoCetap, [id]);
-      } catch (e) {
-        console.warn('Error querying periodo_cetap:', e.message);
-      }
+    try {
+      cetapsPeriodo = await this.repo.query(cetapsFromPeriodoCetap, [id]);
+    } catch (e) {
+      console.warn('Error querying periodo_cetap:', e.message);
     }
+
+    // La estructura del periodo y la oferta académica son fuentes independientes.
+    // Se unen para no ocultar CETAPs asociados al periodo que todavía no tengan programas.
+    const cetapsById = new Map<string, any>();
+    [...cetapsPeriodo, ...cetapsOfertas].forEach((cetap: any) => {
+      const key = String(cetap.id || cetap.codigo);
+      const current = cetapsById.get(key);
+      cetapsById.set(key, {
+        ...current,
+        ...cetap,
+        activePrograms: Math.max(
+          Number(current?.activePrograms || 0),
+          Number(cetap.activePrograms || 0),
+        ),
+      });
+    });
+    const cetaps = Array.from(cetapsById.values()).sort((a: any, b: any) =>
+      String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'),
+    );
 
     return {
       success: true,

@@ -24,6 +24,28 @@ import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../.
 import { Permissions } from '@esap-mfe/shared-types';
 
 type TipoCreacion = 'seccional' | 'sede';
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const normalizeCatalogKey = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = (periods: any[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 export function EstructuraOrganizacionalModule() {
   const [busqueda, setBusqueda] = useState('');
@@ -31,7 +53,7 @@ export function EstructuraOrganizacionalModule() {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [seccionalesOriginales, setSeccionalesOriginales] = useState<Seccional[]>([]);
   const [sedesOriginales, setSedesOriginales] = useState<Sede[]>([]);
-  const [periodo, setPeriodo] = useState('2025-2');
+  const [periodo, setPeriodo] = useState('');
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,38 +82,48 @@ export function EstructuraOrganizacionalModule() {
     applyPeriodFilter();
   }, [periodo, periodos, seccionalesOriginales, sedesOriginales]);
 
-  const FALLBACK_PERIODOS = [
-    { id: 'default-2025-2', codigo: '2025-2', anio: 2025, semestre: 2, estado: 'ACTIVO' },
-    { id: 'default-2025-1', codigo: '2025-1', anio: 2025, semestre: 1, estado: 'ACTIVO' },
-  ];
-
   const loadPeriodos = async () => {
     try {
       setLoadingPeriodos(true);
       const data = await estructuraService.obtenerPeriodos();
-      const list = Array.isArray(data) && data.length > 0 ? data : FALLBACK_PERIODOS;
-      const sorted = [...list].sort((a, b) => b.codigo.localeCompare(a.codigo));
+      const list = Array.isArray(data) ? data : [];
+      const sorted = sortPeriodsByCreation(list);
       setPeriodos(sorted);
       if (sorted.length > 0) {
-        const hasCurrent = sorted.some(p => p.codigo === '2025-2');
-        setPeriodo(hasCurrent ? '2025-2' : sorted[0].codigo);
+        setPeriodo(sorted[0].codigo || '');
+      } else {
+        setPeriodo('');
       }
     } catch (e) {
-      console.error('Error cargando periodos, usando fallback:', e);
-      setPeriodos(FALLBACK_PERIODOS);
-      setPeriodo('2025-2');
+      console.error('Error cargando periodos:', e);
+      setPeriodos([]);
+      setPeriodo('');
     } finally {
       setLoadingPeriodos(false);
     }
   };
+
+  useEffect(() => {
+    if (periodo) {
+      localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodo);
+      window.dispatchEvent(
+        new CustomEvent(CATALOG_PERIOD_CHANGE_EVENT, {
+          detail: {
+            source: 'estructura-organizacional',
+            storageKey: ESTRUCTURA_PERIOD_STORAGE_KEY,
+            periodCode: periodo,
+          },
+        }),
+      );
+    }
+  }, [periodo]);
 
   const applyPeriodFilter = async () => {
     if (seccionalesOriginales.length === 0 && sedesOriginales.length === 0) return;
 
     try {
       const p = periodos.find(x => x.codigo === periodo);
-      if (!p || !p.id || String(p.id).startsWith('default-')) {
-        // Es un periodo de fallback local (no existe en BD), mostrar estructura master
+      if (!p || !p.id) {
         setSeccionales(seccionalesOriginales);
         setSedes(sedesOriginales);
         return;
@@ -111,11 +143,24 @@ export function EstructuraOrganizacionalModule() {
             });
           }
         } else {
-          const activeCodes = new Set<string>(detail.cetaps.map((c: any) => c.codigo));
+          const activeCodes = new Set<string>(
+            detail.cetaps.map((c: any) => normalizeCatalogKey(c.codigo)),
+          );
+          const activeNames = new Set<string>(
+            detail.cetaps.map((c: any) => normalizeCatalogKey(c.nombre)),
+          );
+          const activeTerritorials = new Set<string>(
+            detail.cetaps.map((c: any) => normalizeCatalogKey(c.dtNombre)),
+          );
 
-          const sedesFiltradas = sedesOriginales.filter(s => activeCodes.has(s.codSede));
+          const sedesFiltradas = sedesOriginales.filter(
+            (sede) =>
+              activeCodes.has(normalizeCatalogKey(sede.codSede)) ||
+              activeNames.has(normalizeCatalogKey(sede.nomSede)),
+          );
           const seccionalesFiltradas = seccionalesOriginales.filter(sec =>
             sedesFiltradas.some(s => s.idSeccional === sec.idSeccional) ||
+            activeTerritorials.has(normalizeCatalogKey(sec.nomSeccional)) ||
             sec.codSeccional?.toUpperCase() === 'SCENT'
           );
 

@@ -1624,7 +1624,7 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
     
     try {
-      // ✅ USAR CÓDIGO ESTÁNDAR: EVT-KANBAN-001 (Configurable desde el panel)
+      // ✅ 1. Evento estándar predefinido (si está activo)
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: saved.id,
         auditoriaCodigo: saved.codigo,
@@ -1633,6 +1633,18 @@ export class AuditoriasService {
         metadata: {
           auditoriaId: saved.id,
           nuevoEstado: nuevoEstadoKanban,
+          accion: 'movimiento_kanban'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+
+      // ✅ 2. Nuevo Motor: Disparar notificaciones personalizadas configuradas con esta condición
+      await this.notificacionesService.dispararPorCondicion('Al cambiar de estado Kanban', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        auditoriaNombre: saved.nombre,
+        metadata: {
+          etapa: nuevoEstadoKanban,
           accion: 'movimiento_kanban'
         },
         url_accion: `/control-interno/auditorias/${saved.id}`,
@@ -1728,6 +1740,35 @@ export class AuditoriasService {
 
     await this.historialRepository.save(historial);
 
+    try {
+      // ✅ 1. Evento estándar predefinido
+      await this.notificacionesService.dispararEvento('EVT-AUD-004', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        tituloCustom: `Auditoría finalizada: ${saved.codigo}`,
+        mensajeCustom: `La auditoría "${saved.nombre}" ha sido marcada como FINALIZADA con documento de cierre.`,
+        metadata: {
+          auditoriaId: saved.id,
+          accion: 'finalizacion_auditoria'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+
+      // ✅ 2. Nuevo Motor: Disparar notificaciones personalizadas configuradas con esta condición
+      await this.notificacionesService.dispararPorCondicion('Al finalizar auditoría', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        auditoriaNombre: saved.nombre,
+        metadata: {
+          etapa: 'Finalizada',
+          accion: 'finalizacion_auditoria'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+    } catch (e) {
+      console.error('Error al enviar notificaciones de finalización (con archivo):', e);
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(saved) as any;
   }
@@ -1787,7 +1828,7 @@ export class AuditoriasService {
     await this.historialRepository.save(historial);
 
     try {
-      // ✅ USAR CÓDIGO ESTÁNDAR: EVT-AUD-004
+      // ✅ 1. Evento estándar predefinido
       await this.notificacionesService.dispararEvento('EVT-AUD-004', {
         auditoriaId: saved.id,
         auditoriaCodigo: saved.codigo,
@@ -1795,6 +1836,18 @@ export class AuditoriasService {
         mensajeCustom: `La auditoría "${saved.nombre}" ha sido marcada como FINALIZADA con documento de cierre.`,
         metadata: {
           auditoriaId: saved.id,
+          accion: 'finalizacion_auditoria'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+
+      // ✅ 2. Nuevo Motor: Disparar notificaciones personalizadas configuradas con esta condición
+      await this.notificacionesService.dispararPorCondicion('Al finalizar auditoría', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        auditoriaNombre: saved.nombre,
+        metadata: {
+          etapa: 'Finalizada',
           accion: 'finalizacion_auditoria'
         },
         url_accion: `/control-interno/auditorias/${saved.id}`,
