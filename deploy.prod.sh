@@ -51,6 +51,8 @@ SERVER_URL_ENV="https://comunidadesap.esap.edu.co"
 ENV_FILE=".env.prod"
 ENV_NETWORK_KEY="superapp-net-prod"
 ENV_CONTAINER_SUFFIX="-prod"
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
+export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
 SSL_PROXY_CONTAINER="${SSL_PROXY_CONTAINER:-nginx-ss-proxy}"
 FRONTEND_MFE_SERVICES=(
     frontend
@@ -303,6 +305,8 @@ cmd_rebuild_changed() {
             db/migrations/*)
                 run_migrations=1
                 ;;
+            backend/*/.env.example)
+                ;;
             backend/*/*)
                 service_dir=$(echo "$changed_file" | cut -d/ -f2)
                 service_name="$service_dir"
@@ -394,7 +398,10 @@ cmd_rebuild_changed() {
 
     if [ ${#backend_services[@]} -gt 0 ]; then
         echo -e "${YELLOW}Reconstruyendo backend afectado:${NC} ${backend_services[*]}"
-        compose_env build "${backend_services[@]}"
+        for service_name in "${backend_services[@]}"; do
+            echo -e "${YELLOW}Construyendo backend: ${service_name}${NC}"
+            compose_env build "$service_name"
+        done
         compose_env up -d --no-deps "${backend_services[@]}"
     fi
 

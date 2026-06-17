@@ -10,11 +10,11 @@ import { Type } from 'class-transformer';
 
 export class QueryAuditLogsDto {
   @IsOptional()
-  @IsString()
+  @IsDateString()
   startDate?: string;
 
   @IsOptional()
-  @IsString()
+  @IsDateString()
   endDate?: string;
 
   @IsOptional()
@@ -48,11 +48,15 @@ export class QueryAuditLogsDto {
   entityId?: string; // Filtrar por ID del registro modificado
 
   @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({}, { message: 'limit debe ser un número' })
   @Min(1, { message: 'limit debe ser al menos 1' })
   @Max(1000, { message: 'limit no puede ser mayor a 1000' })
-  limit?: number = 100;
+  limit?: number = 10;
 
   @IsOptional()
   @Type(() => Number)

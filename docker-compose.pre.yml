@@ -284,6 +284,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
+      DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     ports:
       - "3005:3005"
     depends_on:
@@ -294,7 +295,7 @@ services:
     networks:
       - superapp-net-pre
     volumes:
-      - ./backend/internal-disciplinary-control-service/uploads:/app/uploads
+      - ${DISCIPLINARY_STORAGE_HOST_PATH:-./backend/internal-disciplinary-control-service/uploads}:${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     restart: unless-stopped
 
   # ============ INTEROPERABILITY SERVICE ============

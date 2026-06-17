@@ -115,6 +115,7 @@ const TIPOS_AUTOS_MOCK: TipoAuto[] = [
 interface ProcesoCompleto {
   id: string;
   numeroProceso: string;
+  radicadoProceso?: string;
   etapaActual: string;
   fechaVencimientoEtapa?: string;
   estado?: string;
@@ -606,7 +607,11 @@ export function WizardCrearAutoWorldClass({
       if (archivoAdjunto) {
         toast.info('Subiendo archivo...', { duration: 2000 });
         // Enviar tipo 'AUTO' para que el backend valide que solo sean PDF
-        const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto, 'AUTO');
+        const uploadResult = await disciplinaryService.uploadFile(
+          archivoAdjunto,
+          'AUTO',
+          proceso.radicadoProceso || proceso.numeroProceso
+        );
         documentUrl = uploadResult.url || uploadResult.filename;
         console.log('✅ Archivo subido, documentUrl:', documentUrl);
       }

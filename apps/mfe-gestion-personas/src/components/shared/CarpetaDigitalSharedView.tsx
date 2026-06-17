@@ -683,33 +683,60 @@ export function CarpetaDigitalSharedView({
   const mappedRundDocs = useMemo<CarpetaDocumento[]>(() => {
     if (!tarjetaRund) return [];
     const docs: CarpetaDocumento[] = [];
+    const seenIds = new Set<string>();
     const seenTipos = new Set<string>();
     
+    /**
+     * processSoporte: ONLY creates a document entry if the soporte record
+     * represents a REAL uploaded file (has nombre_archivo or documento_carpeta_id).
+     */
     const processSoporte = (sop: any) => {
+      const hasRealFile = !!(sop.nombre_archivo || sop.documento_carpeta_id || sop.url);
+      if (!hasRealFile) return;
+
       const tipoCode = (sop.tipo || sop.tipo_soporte || '').toLowerCase();
-      if (!tipoCode || seenTipos.has(tipoCode)) return;
+      if (!tipoCode) return;
+
+      const rowId = sop.id ? String(sop.id) : null;
+      if (rowId && seenIds.has(rowId)) return;
+      if (rowId) seenIds.add(rowId);
+      if (seenTipos.has(tipoCode)) return;
       seenTipos.add(tipoCode);
+
+      const fileName = sop.nombre_archivo || sop.nombre || `${tipoCode}.pdf`;
+      const fileUrl = sop.documento_carpeta_id || sop.url || '';
+      const estadoRaw = (sop.estado || '').toLowerCase();
+      const estado: 'validado' | 'rechazado' | 'pendiente' =
+        estadoRaw === 'aprobado' || estadoRaw === 'aceptado' || estadoRaw === 'ok'
+          ? 'validado'
+          : estadoRaw === 'rechazado' || estadoRaw === 'devuelto'
+            ? 'rechazado'
+            : 'pendiente';
+
       docs.push({
         id: sop.id || `rund-soporte-${tipoCode}`,
         carpeta_id: `carpeta:${cleanPersonaId}`,
-        nombre: sop.nombre || `${tipoCode}.pdf`,
+        nombre: fileName,
         categoria: 'rund',
         tipo_documento_id: `rund_${tipoCode}`,
-        tipo_archivo: sop.nombre?.split('.').pop()?.toLowerCase() || 'pdf',
-        tamano_bytes: sop.tamano || 1024 * 1024,
-        estado: (sop.estado?.toLowerCase() === 'aprobado' || sop.estado?.toLowerCase() === 'aceptado' || sop.estado?.toLowerCase() === 'ok') 
-                  ? 'validado' 
-                  : (sop.estado?.toLowerCase() === 'rechazado' || sop.estado?.toLowerCase() === 'devuelto')
-                    ? 'rechazado'
-                    : 'pendiente',
+        tipo_archivo: fileName.split('.').pop()?.toLowerCase() || 'pdf',
+        tamano_bytes: sop.tamano || sop.tamano_bytes || 0,
+        estado,
         fecha_subida: sop.createdAt || sop.fecha_carga || new Date().toISOString(),
-        url_archivo: sop.url || '',
+        url_archivo: fileUrl,
         version_actual: 1,
-        comentarios: sop.observacion || '',
+        comentarios: sop.observacion || ''
       });
     };
     
-    // Source 1: Extract soportes from rundBloques (from /bloques API)
+    // ── Source 0: resumenSoportes de la tarjeta (fuente más directa y confiable) ──
+    // El backend ahora incluye en getTarjetaRUND un array plano con todos los soportes
+    // que tienen archivo real. Esto elimina la necesidad de llamar /bloques por separado.
+    if (Array.isArray(tarjetaRund.resumenSoportes) && tarjetaRund.resumenSoportes.length > 0) {
+      tarjetaRund.resumenSoportes.forEach(processSoporte);
+    }
+
+    // ── Source 1: Real soportes from /bloques API (RundSoporteCampo table, per docente) ──
     if (rundBloques && rundBloques.length > 0) {
       rundBloques.forEach(bloque => {
         if (Array.isArray(bloque.soportes)) {
@@ -718,17 +745,43 @@ export function CarpetaDigitalSharedView({
       });
     }
     
-    // Source 2 (Fallback): Extract soportes from tarjetaRund.bloques (from /tarjeta-rund API)
-    // The tarjeta-rund response has soportes embedded in a nested object: { bloques: { IDENTIDAD: { soportes: [...] }, ... } }
-    if (docs.length === 0 && tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
+    // Source 2: soportes embedded in /tarjeta-rund response (from the IDENTIDAD/FORMACION/etc. sub-objects)
+    // Always runs (deduplication via seenTipos/seenIds prevents double-counting with Source 1).
+    if (tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
       Object.values(tarjetaRund.bloques).forEach((bloqueData: any) => {
         if (Array.isArray(bloqueData?.soportes)) {
           bloqueData.soportes.forEach(processSoporte);
         }
       });
     }
+
+    // Source 3: validacionDocumental entries with a real Carpeta Digital file link
+    // STRICT: only rows with id_documento_carpeta are real uploaded files.
+    if (Array.isArray(tarjetaRund.validacionDocumental)) {
+      tarjetaRund.validacionDocumental.forEach((val: any) => {
+        if (!val.id_documento_carpeta) return;
+        const campoRund = (val.campo_rund || '').toLowerCase();
+        if (!campoRund || seenTipos.has(campoRund)) return;
+        seenTipos.add(campoRund);
+        const estadoDoc = (val.estado_documento || '').toLowerCase();
+        docs.push({
+          id: val.id || `rund-val-${campoRund}`,
+          carpeta_id: `carpeta:${cleanPersonaId}`,
+          nombre: val.nombre_archivo || `${campoRund}.pdf`,
+          categoria: 'rund',
+          tipo_documento_id: `rund_${campoRund}`,
+          tipo_archivo: 'pdf',
+          tamano_bytes: 0,
+          estado: estadoDoc === 'aceptado' || estadoDoc === 'aprobado' ? 'validado'
+                : estadoDoc === 'rechazado' ? 'rechazado' : 'pendiente',
+          fecha_subida: val.fecha_carga || val.created_at || new Date().toISOString(),
+          url_archivo: val.id_documento_carpeta,
+          version_actual: 1,
+          comentarios: val.observacion || '',
+        });
+      });
+    }
     
-    console.log('📂 CarpetaDigital mappedRundDocs:', docs.length, 'source:', docs.length > 0 ? (seenTipos.size > 0 ? 'rundBloques/tarjeta' : 'none') : 'empty', docs.map(d => ({ id: d.id, tipo_documento_id: d.tipo_documento_id, nombre: d.nombre })));
     return docs;
   }, [tarjetaRund, rundBloques, cleanPersonaId]);
 
@@ -934,7 +987,6 @@ export function CarpetaDigitalSharedView({
         const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
         const bloquesData = bloquesRes?.data || bloquesRes;
         const bloquesArr = Array.isArray(bloquesData) ? bloquesData : [];
-        console.log('📂 CarpetaDigital fetchRundData - docenteId:', data.docenteId, 'bloques:', bloquesArr.length, 'estructura:', bloquesArr.map((b: any) => ({ bloque: b.bloque, estado: b.estado, soportesCount: b.soportes?.length ?? 'NO_SOPORTES', soportes: b.soportes?.slice(0, 2) })));
         setRundBloques(bloquesArr);
 
         const auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
@@ -956,6 +1008,21 @@ export function CarpetaDigitalSharedView({
 
   useEffect(() => {
     fetchRundData();
+  }, [fetchRundData]);
+
+  // Escuchar el evento de sincronización disparado por RundValidationPanel.
+  // Cuando cualquier panel RUND sube un documento, refrescamos automáticamente
+  // los datos RUND de la Carpeta Digital SIN necesidad de recargar la página.
+  // Esto garantiza que todos los docentes del banco queden sincronizados.
+  useEffect(() => {
+    const handleRundUpload = () => {
+      fetchRundData();
+    };
+    window.addEventListener('rund:soporte-uploaded', handleRundUpload);
+    return () => window.removeEventListener('rund:soporte-uploaded', handleRundUpload);
+  }, [fetchRundData]);
+
+  useEffect(() => {
     handleSetFolder(null);
   }, [cleanPersonaId, fetchRundData]);
 

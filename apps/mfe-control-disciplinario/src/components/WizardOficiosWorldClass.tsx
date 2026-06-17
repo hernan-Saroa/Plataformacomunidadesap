@@ -135,6 +135,7 @@ interface Persona {
 interface ProcesoCompleto {
   id?: string;
   numeroProceso: string;
+  radicadoProceso?: string;
   denunciado: Persona;
   denunciante: Persona;
   profesionalAsignado: Persona;
@@ -414,7 +415,11 @@ export function WizardOficiosWorldClass({
     try {
       // ✅ Subir archivo primero
       toast.info('Subiendo archivo...', { duration: 2000 });
-      const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto, 'OFICIO');
+      const uploadResult = await disciplinaryService.uploadFile(
+        archivoAdjunto,
+        'OFICIO',
+        proceso.radicadoProceso || proceso.numeroProceso
+      );
       const documentUrl = uploadResult.url || uploadResult.filename;
       console.log('✅ Archivo subido, documentUrl:', documentUrl);
 

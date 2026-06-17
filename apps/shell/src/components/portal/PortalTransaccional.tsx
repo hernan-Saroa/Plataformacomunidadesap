@@ -274,9 +274,17 @@ export function PortalTransaccional({
         setPtaVista(customEvent.detail.vista);
       }
     };
+    const handleGeneralViewChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.view) {
+        setCurrentView({ type: customEvent.detail.view });
+      }
+    };
     window.addEventListener('pta-view-change', handlePTAViewChange);
+    window.addEventListener('portal-view-change', handleGeneralViewChange);
     return () => {
       window.removeEventListener('pta-view-change', handlePTAViewChange);
+      window.removeEventListener('portal-view-change', handleGeneralViewChange);
     };
   }, []);
 

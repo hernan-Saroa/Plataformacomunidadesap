@@ -10,7 +10,6 @@ import { useState, useEffect } from 'react';
 import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
-import disciplinaryService from '../../../../services/api/disciplinary.service';
 import { toast } from 'sonner';
 import {
   DndContext,

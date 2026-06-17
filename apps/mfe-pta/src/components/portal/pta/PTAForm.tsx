@@ -38,6 +38,72 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
+function DocumentosPendientesAlert({ documentosPendientes }: { documentosPendientes: any[] }) {
+  const [expanded, setExpanded] = useState(false);
+  
+  if (!documentosPendientes || documentosPendientes.length === 0) return null;
+  
+  return (
+    <div className="p-4 rounded-xl bg-orange-50 border border-orange-200 shadow-sm relative overflow-hidden w-full transition-all duration-300">
+      <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-400"></div>
+      
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center shrink-0">
+            <Shield className="w-4 h-4 text-orange-600" />
+          </div>
+          <div>
+            <h3 className="text-[14px] font-bold text-orange-900 m-0 leading-tight">
+              Soportes de Carpeta Digital Incompletos
+            </h3>
+            <p className="m-0 mt-0.5 text-[12.5px] text-orange-800 font-medium">
+              Faltan {documentosPendientes.length} documentos obligatorios.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 lg:ml-auto shrink-0">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="px-3 py-2 rounded-lg bg-orange-100/50 hover:bg-orange-100 text-orange-800 text-[12px] font-bold border border-orange-200/50 transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            {expanded ? 'Ocultar detalles' : 'Ver pendientes'}
+          </button>
+          
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('portal-view-change', { detail: { view: 'carpeta-digital' } }));
+            }}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg border-none cursor-pointer transition-colors shadow-sm text-[12.5px] flex items-center gap-1.5"
+          >
+            Ir a Carpeta
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 pt-4 border-t border-orange-200/60 pl-2 lg:pl-14">
+          <p className="text-[12.5px] text-orange-800/90 font-medium mb-3">
+            Para poder enviar a revisión tu PTA, debes cargar:
+          </p>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+            {documentosPendientes.map((doc) => (
+              <div key={doc.campo_rund} className="px-3 py-1.5 bg-white border border-orange-200 rounded-lg text-[11.5px] font-semibold text-orange-900 flex items-center gap-2 shadow-sm">
+                <AlertCircle className="w-3 h-3 text-orange-500" />
+                <span className="uppercase">{doc.campo_rund.replace(/_/g, ' ')}</span>
+                <span className="text-orange-300 mx-0.5">—</span>
+                <span className="text-orange-700 font-medium">{doc.tipo_documento_soporte}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 interface PTAFormProps {
   onBack: () => void;
   userPersonId: string;
@@ -1914,35 +1980,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
             {/* ─── CONTENIDO PRINCIPAL ─── */}
             <div className="flex-1 flex flex-col gap-4 min-w-0 w-full">
-              {documentosPendientes.length > 0 && (
-                <div className="p-4 rounded-xl border bg-amber-50 border-amber-200 text-amber-900 text-xs leading-relaxed flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <span className="font-bold block mb-1">
-                      ⚠️ Bloqueo de Aprobación por Carpeta Digital
-                    </span>
-                    <p className="m-0 text-amber-800 font-medium">
-                      El plan de trabajo académico (PTA) no podrá ser Aprobado hasta que cargues y apruebes los soportes para los siguientes campos críticos en tu Carpeta Digital:
-                    </p>
-                    <ul className="mt-1.5 mb-1 pl-4 list-disc font-bold text-amber-900">
-                      {documentosPendientes.map((doc) => (
-                        <li key={doc.campo_rund}>
-                          {doc.campo_rund.replace(/_/g, ' ')} — Estado actual: <span className="underline">{doc.estado_documento}</span> (Soporte requerido: {doc.tipo_documento_soporte})
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={() => {
-                        const targetId = userPersonId || docenteIdFromPta || '';
-                        window.location.hash = `#/carpeta-digital?personaId=${targetId}`;
-                      }}
-                      className="mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg border-none cursor-pointer transition-colors shadow-sm text-[10px]"
-                    >
-                      Ir a Carpeta Digital
-                    </button>
-                  </div>
-                </div>
-              )}
+              <DocumentosPendientesAlert documentosPendientes={documentosPendientes} />
 
               {/* Status banner */}
               <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>

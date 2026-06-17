@@ -12,6 +12,7 @@
     "@esap-mfe/shared-hooks": "*",
     "@esap-mfe/shared-types": "*",
     "@esap-mfe/shared-ui": "*",
+    "@supabase/supabase-js": "^2.108.1",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
     "react": "^18.3.1",

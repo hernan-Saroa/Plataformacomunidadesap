@@ -78,7 +78,7 @@ export function ModalPliegoCargos({ proceso, onClose, onSuccess }: Props) {
 
       // Subir archivo si existe
       if (archivo) {
-        const data = await disciplinaryService.uploadFile(archivo);
+        const data = await disciplinaryService.uploadFile(archivo, 'default', proceso.radicadoProceso);
         documentUrl = data.url;
         documentName = archivo.name;
         documentType = archivo.type;
