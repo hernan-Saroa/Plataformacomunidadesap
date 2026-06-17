@@ -95,6 +95,32 @@ const CATEGORIAS_DISPONIBLES = [
   'Personalizada'
 ] as const;
 
+// Condiciones de disparo comunes
+const CONDICIONES_DISPARO = [
+  'Inmediato',
+  'Al asignar auditor',
+  'Al finalizar auditoría',
+  'Al cambiar de estado Kanban',
+  '7 días antes del vencimiento',
+  '5 días antes del vencimiento',
+  '3 días antes del vencimiento',
+  '1 día antes del vencimiento',
+  'Al solicitar aprobación de plan',
+  'Al aprobar plan de mejoramiento',
+  'Al rechazar plan de mejoramiento',
+  'Personalizado (Vía API)'
+] as const;
+
+// Utilidad para decodificar nombres de roles con caracteres especiales
+const decodeRoleName = (str: string) => {
+  if (!str) return str;
+  try {
+    return decodeURIComponent(escape(str));
+  } catch (e) {
+    return str;
+  }
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -112,6 +138,7 @@ export function NotificacionesModule() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rolesDb, setRolesDb] = useState<SystemRole[]>([]);
+  const [condicionesDb, setCondicionesDb] = useState<string[]>([]);
   const yaCargadoRef = useRef(false); // ✅ Ref para evitar múltiples cargas (no causa re-render)
 
   // ✅ Obtener el usuarioId desde el cache de autenticación en memoria
@@ -214,6 +241,16 @@ export function NotificacionesModule() {
         }
       } catch (rolesErr) {
         console.error('[NotificacionesModule] Error cargando roles:', rolesErr);
+      }
+
+      // Cargar condiciones de disparo desde base de datos
+      try {
+        const condsRes = await controlInternoService.getCondicionesDisparo();
+        if (Array.isArray(condsRes) && condsRes.length > 0) {
+          setCondicionesDb(condsRes.map(c => c.nombre));
+        }
+      } catch (condsErr) {
+        console.error('[NotificacionesModule] Error cargando condiciones de disparo:', condsErr);
       }
       
     } catch (err: any) {
@@ -354,7 +391,8 @@ export function NotificacionesModule() {
       activo: true,
       canal: 'sistema',
       destinatarios: [],
-      esPersonalizada: true
+      esPersonalizada: true,
+      plantillaEmail: 'Hola [NOMBRE],\n\nTienes una nueva notificación en el sistema de Control Interno de Gestión de la ESAP relacionada con el caso/actividad [CODIGO].\n\nDetalles de la notificación:\n- Etapa: [ETAPA]\n- Motivo: [MOTIVO]\n- Rol: [ROL]\n- Fecha límite: [FECHA]\n\nPor favor, ingresa a la plataforma para revisar y gestionar esta actividad a tiempo.\n\nAtentamente,\nOficina de Control Interno'
     };
     setEventoEditando(nuevoEvento);
     setMostrarModal(true);
@@ -561,6 +599,7 @@ export function NotificacionesModule() {
             setEventoEditando(null);
           }}
           rolesDb={rolesDb}
+          condicionesDisparo={condicionesDb.length > 0 ? condicionesDb : CONDICIONES_DISPARO}
         />
       )}
     </div>
@@ -790,7 +829,7 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar, rolesDb }: Tarj
               if (!rolObj) return null; // No mostrar roles inválidos o eliminados
               return (
                 <span key={`rol-${idx}-${rolObj.id}`} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
-                  {rolObj.name}
+                  {decodeRoleName(rolObj.name)}
                 </span>
               );
             })}
@@ -994,9 +1033,10 @@ interface ModalEditarEventoProps {
   onGuardar: (evento: EventoNotificable) => void;
   onCerrar: () => void;
   rolesDb: SystemRole[];
+  condicionesDisparo: readonly string[];
 }
 
-function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb }: ModalEditarEventoProps) {
+function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb, condicionesDisparo }: ModalEditarEventoProps) {
   // ✅ BUG 4 FIX: Asegurar que destinatarios sea siempre un array al inicializar
   // y normalizarlos a IDs reales de la base de datos
   const destinatariosIniciales = Array.isArray(evento.destinatarios)
@@ -1006,14 +1046,17 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb }: ModalEditar
   // Eliminar duplicados si los hay
   const destinatariosUnicos = Array.from(new Set(destinatariosIniciales));
 
-  const [form, setForm] = useState({
-    ...evento,
-    destinatarios: destinatariosUnicos
-  });
-
   // ✅ BUG 3 FIX: Guardar el nombre original del evento padre para el subtítulo
   // para que no cambie mientras el usuario edita el campo "Nombre"
-  const nombreEventoPadre = evento.nombre || 'Configurar notificación';
+  const nombreEventoPadre = evento.nombre || 'Nueva notificación personalizada';
+
+  const plantillaEmailDefault = 'Hola [NOMBRE],\n\nTienes una nueva notificación en el sistema de Control Interno de Gestión de la ESAP relacionada con el caso/actividad [CODIGO].\n\nDetalles de la notificación:\n- Etapa: [ETAPA]\n- Motivo: [MOTIVO]\n- Rol: [ROL]\n- Fecha límite: [FECHA]\n\nPor favor, ingresa a la plataforma para revisar y gestionar esta actividad a tiempo.\n\nAtentamente,\nOficina de Control Interno';
+
+  const [form, setForm] = useState({
+    ...evento,
+    destinatarios: destinatariosUnicos,
+    plantillaEmail: evento.plantillaEmail || plantillaEmailDefault
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1188,7 +1231,7 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb }: ModalEditar
                               <CheckCircle2 className="w-3 h-3 text-white" />
                             )}
                           </div>
-                          <span>{rol.name}</span>
+                          <span>{decodeRoleName(rol.name)}</span>
                         </div>
                       </button>
                     );
@@ -1206,13 +1249,16 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb }: ModalEditar
               <label className="block text-sm font-bold text-gray-900 mb-2">
                 Condición de Disparo
               </label>
-              <input
-                type="text"
+              <select
                 value={form.condicion || ''}
                 onChange={(e) => setForm({ ...form, condicion: e.target.value })}
-                placeholder="Ej: 5 días antes del vencimiento"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              />
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white font-semibold"
+              >
+                <option value="" disabled>Selecciona una condición</option>
+                {condicionesDisparo.map(cond => (
+                  <option key={cond} value={cond}>{cond}</option>
+                ))}
+              </select>
             </div>
 
             {/* Plantilla Email (si canal incluye email) */}
