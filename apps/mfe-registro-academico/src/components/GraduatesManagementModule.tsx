@@ -191,11 +191,16 @@ export function GraduatesManagementModule() {
   const MAX_FILES_PER_GRADUATE = 5;
   const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_UPLOAD_SIZE_LABEL = '10 MB';
-  const PERSON_NAME_MAX_LENGTH = 80;
+  const PERSON_NAME_MIN_LENGTH = 5;
+  const PERSON_NAME_MAX_LENGTH = 150;
   const DOCUMENT_MIN_LENGTH = 5;
-  const DOCUMENT_MAX_LENGTH = 10;
+  const DOCUMENT_MAX_LENGTH = 20;
+  const EMAIL_MIN_LENGTH = 5;
   const EMAIL_MAX_LENGTH = 254;
-  const REGISTRY_FIELD_MAX_LENGTH = 12;
+  const REGISTRY_NUMBER_MAX_LENGTH = 20;
+  const FOLIO_BOOK_MAX_LENGTH = 10;
+  const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
+  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
   const getCurrentActorName = () => {
     const user = authService.getCurrentUser() as any;
     const fullName =
@@ -267,32 +272,31 @@ export function GraduatesManagementModule() {
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
   const sanitizeDigits = (value: string, maxLength: number) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
+  const sanitizeAlphanumeric = (value: string, maxLength: number) =>
+    value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
   const sanitizePersonName = (value: string) =>
-    value.replace(/[^\p{L}\s.'-]+/gu, '').slice(0, PERSON_NAME_MAX_LENGTH);
+    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
   const getPersonNameValidationError = (value: string, label: string) => {
     if (!value) return `${label} es obligatorio`;
-    if (value.length < 2) return `${label} debe tener al menos 2 caracteres`;
     if (value.length > PERSON_NAME_MAX_LENGTH) {
       return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
     }
     if (/\d/.test(value)) return `${label} no puede contener números`;
-    if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
-      return `${label} solo puede contener letras, espacios, apóstrofes, puntos o guiones`;
+    if (!PERSON_NAME_ALLOWED_REGEX.test(value) || !/\p{L}/u.test(value)) {
+      return `${label} solo puede contener letras, espacios, apóstrofes o guiones`;
     }
     return '';
   };
-  const sanitizeRegistroInput = (value: string) => {
-    const digits = sanitizeDigits(value, REGISTRY_FIELD_MAX_LENGTH);
-    return /^0+$/.test(digits) ? '' : digits;
-  };
-  const formatRegistroInput = (value?: string) => {
-    const digits = sanitizeRegistroInput(value || '');
-    if (!digits || /^0+$/.test(digits)) return '';
+  const sanitizeRegistryInput = (value: string, maxLength: number) =>
+    sanitizeDigits(value, maxLength);
+  const formatRegistryInput = (value: string | undefined, maxLength: number) => {
+    const digits = sanitizeRegistryInput(value || '', maxLength);
+    if (!digits) return '';
     return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
   const formatRegistroDisplay = (value?: string) => {
-    const digits = sanitizeRegistroInput(value || '');
-    if (!digits || /^0+$/.test(digits)) return 'N/A';
+    const digits = sanitizeRegistryInput(value || '', REGISTRY_NUMBER_MAX_LENGTH);
+    if (!digits) return 'N/A';
     return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
   const formatFileCount = (count: number) => (count === 1 ? '1 archivo' : `${count} archivos`);
@@ -1299,12 +1303,8 @@ export function GraduatesManagementModule() {
     const mappedTerritorial = editForm.location
       ? territorialBySede.get(normalizeKey(editForm.location))
       : '';
-    const currentTerritorialIsValid = territorialOptions.some(
-      (territorial) =>
-        normalizeKey(territorial) === normalizeKey(editForm.territorial),
-    );
     return uniqueSortedText([
-      currentTerritorialIsValid ? editForm.territorial : '',
+      editForm.territorial,
       mappedTerritorial,
       ...territorialOptions,
     ]);
@@ -1524,23 +1524,32 @@ export function GraduatesManagementModule() {
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
     const rawStoredTerritorial =
       (user.sourceTerritorial || user.territorial || '').trim();
-    const storedTerritorial = territorialOptions.find(
+    const catalogTerritorial = territorialOptions.find(
       (territorial) =>
         normalizeKey(territorial) === normalizeKey(rawStoredTerritorial),
     );
+    const storedTerritorial =
+      catalogTerritorial ||
+      rawStoredTerritorial ||
+      (user.location
+        ? territorialBySede.get(normalizeKey(user.location)) || ''
+        : '');
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName || '',
       lastName: user.lastName || '',
       email: (user.email || '').trim(),
       phone: sanitizedPhone,
-      document: user.document || '',
+      document: sanitizeAlphanumeric(user.document || '', DOCUMENT_MAX_LENGTH),
       program: user.program || '',
       location: user.location,
-      territorial: storedTerritorial || '',
-      numRegistro: sanitizeRegistroInput(user.numRegistro || ''),
-      numFolio: sanitizeRegistroInput(user.numFolio || ''),
-      numLibro: sanitizeRegistroInput(user.numLibro || ''),
+      territorial: storedTerritorial,
+      numRegistro: sanitizeRegistryInput(
+        user.numRegistro || '',
+        REGISTRY_NUMBER_MAX_LENGTH,
+      ),
+      numFolio: sanitizeRegistryInput(user.numFolio || '', FOLIO_BOOK_MAX_LENGTH),
+      numLibro: sanitizeRegistryInput(user.numLibro || '', FOLIO_BOOK_MAX_LENGTH),
     });
     setIsEditModalOpen(true);
   };
@@ -1720,9 +1729,18 @@ export function GraduatesManagementModule() {
     const trimmedEmail = editForm.email.trim();
     const trimmedProgram = editForm.program.trim();
     const trimmedLocation = editForm.location.trim();
-    const cleanNumRegistro = sanitizeRegistroInput(editForm.numRegistro);
-    const cleanNumFolio = sanitizeRegistroInput(editForm.numFolio);
-    const cleanNumLibro = sanitizeRegistroInput(editForm.numLibro);
+    const cleanNumRegistro = sanitizeRegistryInput(
+      editForm.numRegistro,
+      REGISTRY_NUMBER_MAX_LENGTH,
+    );
+    const cleanNumFolio = sanitizeRegistryInput(
+      editForm.numFolio,
+      FOLIO_BOOK_MAX_LENGTH,
+    );
+    const cleanNumLibro = sanitizeRegistryInput(
+      editForm.numLibro,
+      FOLIO_BOOK_MAX_LENGTH,
+    );
     const effectiveTerritorial = editForm.territorial.trim();
     const firstNameError = getPersonNameValidationError(trimmedFirstName, 'El nombre');
     if (firstNameError) {
@@ -1734,27 +1752,44 @@ export function GraduatesManagementModule() {
       toast.error(lastNameError);
       return;
     }
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
+    if (
+      fullName.length < PERSON_NAME_MIN_LENGTH ||
+      fullName.length > PERSON_NAME_MAX_LENGTH
+    ) {
+      toast.error(
+        `El nombre completo debe tener entre ${PERSON_NAME_MIN_LENGTH} y ${PERSON_NAME_MAX_LENGTH} caracteres`,
+      );
+      return;
+    }
     if (!trimmedDocument) {
       toast.error('El documento es obligatorio');
       return;
     }
-    if (!/^\d+$/.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener números');
+    if (!DOCUMENT_ALLOWED_REGEX.test(trimmedDocument)) {
+      toast.error('El documento solo puede contener letras y números');
       return;
     }
     if (
       trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
       trimmedDocument.length > DOCUMENT_MAX_LENGTH
     ) {
-      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
+      toast.error(
+        `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres`,
+      );
       return;
     }
     if (!trimmedEmail) {
       toast.error('El correo electrónico es obligatorio');
       return;
     }
-    if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
-      toast.error(`El correo electrónico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
+    if (
+      trimmedEmail.length < EMAIL_MIN_LENGTH ||
+      trimmedEmail.length > EMAIL_MAX_LENGTH
+    ) {
+      toast.error(
+        `El correo electrónico debe tener entre ${EMAIL_MIN_LENGTH} y ${EMAIL_MAX_LENGTH} caracteres`,
+      );
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1774,10 +1809,27 @@ export function GraduatesManagementModule() {
       toast.error('La territorial es obligatoria');
       return;
     }
+    if (!cleanNumRegistro) {
+      toast.error(
+        `El número de registro es obligatorio y debe tener entre 1 y ${REGISTRY_NUMBER_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
+    if (!cleanNumFolio) {
+      toast.error(
+        `El número de folio es obligatorio y debe tener entre 1 y ${FOLIO_BOOK_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
+    if (!cleanNumLibro) {
+      toast.error(
+        `El número de libro es obligatorio y debe tener entre 1 y ${FOLIO_BOOK_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
 
     setIsSaving(true);
     try {
-      const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
         firstName: trimmedFirstName,
@@ -1787,9 +1839,9 @@ export function GraduatesManagementModule() {
         programName: trimmedProgram,
         campus: trimmedLocation || undefined,
         seccionalName: effectiveTerritorial,
-        numRegistro: cleanNumRegistro || undefined,
-        numFolio: cleanNumFolio || undefined,
-        numLibro: cleanNumLibro || undefined,
+        numRegistro: cleanNumRegistro,
+        numFolio: cleanNumFolio,
+        numLibro: cleanNumLibro,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -3422,6 +3474,12 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, firstName: sanitizePersonName(e.target.value) })
                 }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    firstName: normalizeSpaces(current.firstName),
+                  }))
+                }
 
                 placeholder="Nombre del graduado"
 
@@ -3452,6 +3510,12 @@ export function GraduatesManagementModule() {
 
                 onChange={(e) =>
                   setEditForm({ ...editForm, lastName: sanitizePersonName(e.target.value) })
+                }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    lastName: normalizeSpaces(current.lastName),
+                  }))
                 }
 
                 placeholder="Apellido del graduado"
@@ -3484,14 +3548,15 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({
                     ...editForm,
-                    document: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                    document: e.target.value.slice(0, DOCUMENT_MAX_LENGTH),
                   })
                 }
 
                 placeholder="Número de documento"
 
-                inputMode="numeric"
+                inputMode="text"
 
+                minLength={DOCUMENT_MIN_LENGTH}
                 maxLength={DOCUMENT_MAX_LENGTH}
 
                 required
@@ -3567,8 +3632,16 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, email: e.target.value.slice(0, EMAIL_MAX_LENGTH) })
                 }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    email: current.email.trim(),
+                  }))
+                }
 
                 placeholder="correo@ejemplo.com"
+
+                minLength={EMAIL_MIN_LENGTH}
 
                 maxLength={EMAIL_MAX_LENGTH}
 
@@ -3669,23 +3742,44 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numRegistro">Número de registro</Label>
+                  <Label htmlFor="edit-numRegistro">
+                    Número de registro
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numRegistro"
 
-                    value={formatRegistroInput(editForm.numRegistro)}
+                    value={formatRegistryInput(
+                      editForm.numRegistro,
+                      REGISTRY_NUMBER_MAX_LENGTH,
+                    )}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numRegistro: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numRegistro: sanitizeRegistryInput(
+                          e.target.value,
+                          REGISTRY_NUMBER_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      REGISTRY_NUMBER_MAX_LENGTH +
+                      Math.floor((REGISTRY_NUMBER_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -3694,23 +3788,41 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numFolio">Número de folio</Label>
+                  <Label htmlFor="edit-numFolio">
+                    Número de folio
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numFolio"
 
-                    value={formatRegistroInput(editForm.numFolio)}
+                    value={formatRegistryInput(editForm.numFolio, FOLIO_BOOK_MAX_LENGTH)}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numFolio: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numFolio: sanitizeRegistryInput(
+                          e.target.value,
+                          FOLIO_BOOK_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      FOLIO_BOOK_MAX_LENGTH +
+                      Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -3719,23 +3831,41 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numLibro">Número de libro</Label>
+                  <Label htmlFor="edit-numLibro">
+                    Número de libro
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numLibro"
 
-                    value={formatRegistroInput(editForm.numLibro)}
+                    value={formatRegistryInput(editForm.numLibro, FOLIO_BOOK_MAX_LENGTH)}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numLibro: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numLibro: sanitizeRegistryInput(
+                          e.target.value,
+                          FOLIO_BOOK_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      FOLIO_BOOK_MAX_LENGTH +
+                      Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
