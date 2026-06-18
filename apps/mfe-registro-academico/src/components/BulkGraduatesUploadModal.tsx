@@ -39,6 +39,8 @@ type BulkGraduatesUploadModalProps = {
   programOptions: string[];
   territorialOptions: string[];
   sedeTerritorialOptions: SedeTerritorialOption[];
+  programsPeriod?: string;
+  structurePeriod?: string;
 };
 
 type FieldKey =
@@ -81,7 +83,7 @@ type Catalogs = {
   programsByKey: Map<string, string>;
   territorialByKey: Map<string, string>;
   sedeByKey: Map<string, string>;
-  territorialBySedeKey: Map<string, string>;
+  territorialSedePairs: Set<string>;
 };
 
 const TEMPLATE_HEADERS = [
@@ -410,7 +412,7 @@ const buildCatalogs = (
   );
 
   const sedeByKey = new Map<string, string>();
-  const territorialBySedeKey = new Map<string, string>();
+  const territorialSedePairs = new Set<string>();
   sedeTerritorialOptions.forEach(({ territorial, sede }) => {
     const sedeKey = normalizeKey(sede);
     const territorialKey = normalizeKey(territorial);
@@ -418,7 +420,7 @@ const buildCatalogs = (
       sedeByKey.set(sedeKey, sede);
     }
     if (sedeKey && territorialKey) {
-      territorialBySedeKey.set(sedeKey, territorialKey);
+      territorialSedePairs.add(`${territorialKey}::${sedeKey}`);
     }
     if (territorialKey && !territorialByKey.has(territorialKey)) {
       territorialByKey.set(territorialKey, territorial);
@@ -429,7 +431,7 @@ const buildCatalogs = (
     programsByKey,
     territorialByKey,
     sedeByKey,
-    territorialBySedeKey,
+    territorialSedePairs,
   };
 };
 
@@ -442,15 +444,13 @@ const createExampleRows = (
   sedeTerritorialOptions: SedeTerritorialOption[],
 ) => {
   const programs = uniqueSorted(programOptions);
-  const territorialRows = sedeTerritorialOptions.length
-    ? sedeTerritorialOptions
-    : territorialOptions.map((territorial) => ({ territorial, sede: '' }));
-  const firstProgram = programs[0] || 'ADMINISTRACIÓN PÚBLICA';
+  const territorialRows = sedeTerritorialOptions;
+  if (!programs.length || !territorialRows.length) {
+    return [];
+  }
+  const firstProgram = programs[0];
   const secondProgram = programs[1] || firstProgram;
-  const firstLocation = territorialRows[0] || {
-    territorial: 'Seccional Meta',
-    sede: 'Sede Territorial Meta',
-  };
+  const firstLocation = territorialRows[0];
   const secondLocation = territorialRows[1] || firstLocation;
 
   return [
@@ -527,6 +527,8 @@ const buildParametersRows = (
   programOptions: string[],
   territorialOptions: string[],
   sedeTerritorialOptions: SedeTerritorialOption[],
+  programsPeriod?: string,
+  structurePeriod?: string,
 ) => {
   const programs = uniqueSorted(programOptions);
   const locationGroups = buildLocationGroups(territorialOptions, sedeTerritorialOptions);
@@ -548,7 +550,9 @@ const buildParametersRows = (
     [
       'Para sedes, copie siempre TERRITORIAL y SEDE desde la misma fila del bloque TERRITORIALES_Y_SEDES_DETALLE.',
     ],
-    [''],
+    [
+      `Periodos fuente: PROGRAMAS ACADEMICOS = ${programsPeriod || 'No disponible'} | ESTRUCTURA ORGANIZACIONAL = ${structurePeriod || 'No disponible'}.`,
+    ],
     ['RESUMEN DE CATALOGOS'],
     ['CATALOGO', 'CANTIDAD', 'COLUMNA EN GRADUADOS', 'COMO USARLO', 'OBSERVACION'],
     [
@@ -789,12 +793,14 @@ const buildParsedRow = (
     addError('sede', 'contiene caracteres no permitidos.');
   }
 
-  const sedeTerritorialKey = sede ? catalogs.territorialBySedeKey.get(normalizeKey(sede)) : '';
+  const territorialSedePair =
+    territorial && sede
+      ? `${normalizeKey(territorial)}::${normalizeKey(sede)}`
+      : '';
   if (
-    territorial &&
-    sede &&
-    sedeTerritorialKey &&
-    normalizeKey(territorial) !== sedeTerritorialKey
+    territorialSedePair &&
+    catalogs.territorialSedePairs.size > 0 &&
+    !catalogs.territorialSedePairs.has(territorialSedePair)
   ) {
     addError('sede', 'no pertenece a la TERRITORIAL indicada.');
   }
@@ -874,6 +880,8 @@ export function BulkGraduatesUploadModal({
   programOptions,
   territorialOptions,
   sedeTerritorialOptions,
+  programsPeriod,
+  structurePeriod,
 }: BulkGraduatesUploadModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
@@ -882,13 +890,34 @@ export function BulkGraduatesUploadModal({
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<BulkCreateGraduadosResponse | null>(null);
 
+  const validSedeTerritorialOptions = useMemo(() => {
+    const byPair = new Map<string, SedeTerritorialOption>();
+    sedeTerritorialOptions.forEach((option) => {
+      const territorial = option.territorial.trim();
+      const sede = option.sede.trim();
+      const key = `${normalizeKey(territorial)}::${normalizeKey(sede)}`;
+      if (!territorial || !sede || byPair.has(key)) return;
+      byPair.set(key, { territorial, sede });
+    });
+    return Array.from(byPair.values());
+  }, [sedeTerritorialOptions]);
+
   const catalogs = useMemo(
-    () => buildCatalogs(programOptions, territorialOptions, sedeTerritorialOptions),
-    [programOptions, territorialOptions, sedeTerritorialOptions],
+    () => buildCatalogs(programOptions, territorialOptions, validSedeTerritorialOptions),
+    [programOptions, territorialOptions, validSedeTerritorialOptions],
   );
   const validRows = useMemo(() => rows.filter((row) => row.errors.length === 0), [rows]);
   const invalidRows = rows.length - validRows.length;
   const readyToImport = validRows.length > 0 && !isParsing && !isImporting;
+  const catalogsReady =
+    programOptions.length > 0 &&
+    territorialOptions.length > 0 &&
+    validSedeTerritorialOptions.length > 0;
+  const missingCatalogs = [
+    programOptions.length === 0 ? 'títulos' : '',
+    territorialOptions.length === 0 ? 'territoriales' : '',
+    validSedeTerritorialOptions.length === 0 ? 'relaciones territorial-sede' : '',
+  ].filter(Boolean);
 
   const resetState = () => {
     setSelectedFileName('');
@@ -908,9 +937,27 @@ export function BulkGraduatesUploadModal({
   };
 
   const handleDownloadTemplate = async () => {
+    if (!catalogsReady) {
+      toast.error('No se puede generar la plantilla', {
+        description:
+          'Los periodos seleccionados deben tener títulos y relaciones territorial-sede disponibles.',
+      });
+      return;
+    }
+
     const fileBaseName = 'Plantilla_Carga_Masiva_Graduados_ESAP';
-    const exampleRows = createExampleRows(programOptions, territorialOptions, sedeTerritorialOptions);
-    const parameterRows = buildParametersRows(programOptions, territorialOptions, sedeTerritorialOptions);
+    const exampleRows = createExampleRows(
+      programOptions,
+      territorialOptions,
+      validSedeTerritorialOptions,
+    );
+    const parameterRows = buildParametersRows(
+      programOptions,
+      territorialOptions,
+      validSedeTerritorialOptions,
+      programsPeriod,
+      structurePeriod,
+    );
     const ExcelJS = (await import('exceljs')).default;
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ESAP';
@@ -968,6 +1015,55 @@ export function BulkGraduatesUploadModal({
         cell.border = thinBorder;
       });
     });
+
+    const listsSheet = workbook.addWorksheet('CATALOGOS_VALIDACION', {
+      state: 'veryHidden',
+    });
+    const programs = uniqueSorted(programOptions);
+    const territorials = uniqueSorted(territorialOptions);
+    const sedes = uniqueSorted(validSedeTerritorialOptions.map((option) => option.sede));
+    listsSheet.addRow(['TITULOS', 'TERRITORIALES', 'SEDES']);
+    const maxCatalogLength = Math.max(programs.length, territorials.length, sedes.length);
+    for (let index = 0; index < maxCatalogLength; index += 1) {
+      listsSheet.addRow([
+        programs[index] || '',
+        territorials[index] || '',
+        sedes[index] || '',
+      ]);
+    }
+    workbook.definedNames.add(
+      `CATALOGOS_VALIDACION!$A$2:$A$${programs.length + 1}`,
+      'LISTA_TITULOS_GRADUADOS',
+    );
+    workbook.definedNames.add(
+      `CATALOGOS_VALIDACION!$B$2:$B$${territorials.length + 1}`,
+      'LISTA_TERRITORIALES_GRADUADOS',
+    );
+    workbook.definedNames.add(
+      `CATALOGOS_VALIDACION!$C$2:$C$${sedes.length + 1}`,
+      'LISTA_SEDES_GRADUADOS',
+    );
+
+    const addListValidation = (
+      targetColumn: string,
+      listName: string,
+      errorTitle: string,
+    ) => {
+      for (let rowNumber = 2; rowNumber <= MAX_ROWS + 1; rowNumber += 1) {
+        graduatesSheet.getCell(`${targetColumn}${rowNumber}`).dataValidation = {
+          type: 'list',
+          allowBlank: false,
+          formulae: [listName],
+          showErrorMessage: true,
+          errorStyle: 'stop',
+          errorTitle,
+          error: 'Seleccione un valor del catálogo dinámico incluido en esta plantilla.',
+        };
+      }
+    };
+    addListValidation('C', 'LISTA_TITULOS_GRADUADOS', 'Título no válido');
+    addListValidation('K', 'LISTA_TERRITORIALES_GRADUADOS', 'Territorial no válida');
+    addListValidation('L', 'LISTA_SEDES_GRADUADOS', 'Sede no válida');
 
     const parametersSheet = workbook.addWorksheet('PARAMETROS', {
       views: [{ state: 'frozen', ySplit: 3 }],
@@ -1029,11 +1125,7 @@ export function BulkGraduatesUploadModal({
       return;
     }
 
-    if (
-      catalogs.programsByKey.size === 0 ||
-      catalogs.territorialByKey.size === 0 ||
-      catalogs.sedeByKey.size === 0
-    ) {
+    if (!catalogsReady) {
       toast.error('No se puede validar la plantilla', {
         description:
           'No se cargaron títulos, territoriales o sedes desde la plataforma. Intenta abrir nuevamente el módulo antes de importar.',
@@ -1176,16 +1268,28 @@ export function BulkGraduatesUploadModal({
                 <button
                   type="button"
                   onClick={() => void handleDownloadTemplate()}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:bg-emerald-50"
-                  style={{ borderColor: '#A7F3D0', color: '#047857', background: '#FFFFFF' }}
+                  disabled={!catalogsReady}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: catalogsReady ? '#A7F3D0' : '#D1D5DB',
+                    color: catalogsReady ? '#047857' : '#6B7280',
+                    background: catalogsReady ? '#FFFFFF' : '#F3F4F6',
+                  }}
                 >
                   <Download className="h-4 w-4" />
                   Descargar plantilla XLSX
                 </button>
               </div>
               <div className="mt-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
-                Catálogos disponibles: {programOptions.length} títulos, {territorialOptions.length} territoriales y {sedeTerritorialOptions.length} relaciones territorial-sede.
+                Catálogos disponibles: {programOptions.length} títulos, {territorialOptions.length} territoriales y {validSedeTerritorialOptions.length} relaciones territorial-sede.
+                <br />
+                Periodos: programas <strong>{programsPeriod || 'no disponible'}</strong> · estructura <strong>{structurePeriod || 'no disponible'}</strong>.
               </div>
+              {!catalogsReady && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                  No se puede descargar ni validar una carga porque faltan: <strong>{missingCatalogs.join(', ')}</strong>. Revisa los períodos seleccionados en los módulos de origen.
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border p-4" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
@@ -1211,12 +1315,12 @@ export function BulkGraduatesUploadModal({
                 accept=".xlsx"
                 className="sr-only"
                 onChange={handleFileChange}
-                disabled={isParsing || isImporting}
+                disabled={isParsing || isImporting || !catalogsReady}
               />
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                disabled={isParsing || isImporting}
+                disabled={isParsing || isImporting || !catalogsReady}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ borderColor: '#CBD5E1', color: '#1F2937', background: '#F8FAFC' }}
               >

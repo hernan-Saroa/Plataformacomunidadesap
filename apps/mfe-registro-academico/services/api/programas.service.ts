@@ -55,6 +55,7 @@ export interface ProgramasFiltro {
   modalidad?: string;
   estado?: string;
   sedeId?: number;
+  periodoAcademico?: string;
   page?: number;
   limit?: number;
 }
