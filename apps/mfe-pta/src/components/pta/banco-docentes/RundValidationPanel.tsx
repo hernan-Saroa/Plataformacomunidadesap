@@ -210,24 +210,80 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
   const [devolverRundObs, setDevolverRundObs] = useState('');
   const [docStatus, setDocStatus] = useState<Record<string, 'Aprobado' | 'Rechazado'>>({});
   const [mockUploadedDocs, setMockUploadedDocs] = useState<Record<string, string>>({});
-  const [viewingDoc, setViewingDoc] = useState<{ url: string, nombre: string, campo: string } | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<{ url: string, nombre: string, campo: string, displayUrl?: string, loading?: boolean, error?: string } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const auth = useAuth();
 
   const currentUserId = useMemo(() => {
+    if (auth.userPersonId) return auth.userPersonId;
     if (typeof window === 'undefined') return 'admin-user';
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
+    const authUser = (window as any).__esap_auth_cache;
+    return authUser?.id || authUser?.id_user || authUser?.userId || authUser?.sub || 'admin-user';
+  }, [auth.userPersonId]);
+
+  const openDocViewer = async (url: string, nombre: string, campo: string, tipoSoporte?: string) => {
+    // Si la URL es 'mock', intentar buscar el doc real desde el backend
+    if (url === 'mock' && tipoSoporte && tarjetaRund?.docenteId) {
+      console.log('[RUND-VIEWER] URL is mock, fetching real doc for', tipoSoporte);
+      setViewingDoc({ url, nombre, campo, displayUrl: '', loading: true });
       try {
-        const payloadPart = token.split('.')[1];
-        if (payloadPart) {
-          const payload = JSON.parse(atob(payloadPart));
-          return payload.id || payload.sub || payload.userId || 'admin-user';
+        const bloquesData = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques?_t=${Date.now()}`);
+        const bloques = Array.isArray(bloquesData) ? bloquesData : (bloquesData?.data || []);
+        let foundUrl = '';
+        for (const b of bloques) {
+          const soporte = (b.soportes || []).find((s: any) => s.tipo_soporte === tipoSoporte);
+          if (soporte?.documento_carpeta_id) {
+            foundUrl = soporte.documento_carpeta_id;
+            break;
+          }
         }
-      } catch (e) {}
+        if (foundUrl) {
+          console.log('[RUND-VIEWER] Found real URL:', foundUrl);
+          const blob = await apiClient.getBlob(foundUrl);
+          const extMatch = foundUrl.match(/\.([a-zA-Z0-9]+)$/);
+          const tipo = extMatch ? extMatch[1].toLowerCase() : 'pdf';
+          let mime = 'application/pdf';
+          if (['png', 'jpg', 'jpeg'].includes(tipo)) mime = `image/${tipo === 'jpg' ? 'jpeg' : tipo}`;
+          const typedBlob = blob.type ? blob : blob.slice(0, blob.size, mime);
+          const objectUrl = URL.createObjectURL(typedBlob);
+          setViewingDoc({ url: foundUrl, nombre, campo, displayUrl: objectUrl, loading: false });
+          return;
+        } else {
+          console.warn('[RUND-VIEWER] No doc found in backend for', tipoSoporte);
+          setViewingDoc({ url, nombre, campo });
+          return;
+        }
+      } catch (err: any) {
+        console.error('[RUND-VIEWER] Error fetching real doc:', err);
+        setViewingDoc({ url, nombre, campo });
+        return;
+      }
     }
-    return 'admin-user';
-  }, []);
+    
+    if (url === 'mock') {
+      setViewingDoc({ url, nombre, campo });
+      return;
+    }
+    
+    setViewingDoc({ url, nombre, campo, displayUrl: '', loading: true });
+
+    try {
+      const blob = await apiClient.getBlob(url);
+      const extMatch = url.match(/\.([a-zA-Z0-9]+)$/);
+      const tipo = extMatch ? extMatch[1].toLowerCase() : 'pdf';
+      let mime = 'application/pdf';
+      if (['png', 'jpg', 'jpeg'].includes(tipo)) mime = `image/${tipo === 'jpg' ? 'jpeg' : tipo}`;
+      
+      const typedBlob = blob.type ? blob : blob.slice(0, blob.size, mime);
+      const objectUrl = URL.createObjectURL(typedBlob);
+      
+      setViewingDoc({ url, nombre, campo, displayUrl: objectUrl, loading: false });
+    } catch (err: any) {
+      console.error('[RundValidationPanel] Error cargando documento:', err);
+      toast.error('No se pudo cargar el documento para previsualización');
+      setViewingDoc({ url, nombre, campo, displayUrl: '', loading: false, error: err.message || 'Error al cargar' });
+    }
+  };
 
   const fetchRundData = useCallback(async () => {
     if (!docenteId && !cleanPersonaId) return;
@@ -248,8 +304,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       }
       try {
         bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/bloques?_t=${Date.now()}`);
+        console.log('[RUND-DEBUG] bloquesRes raw:', bloquesRes);
+        console.log('[RUND-DEBUG] bloquesRes is array?', Array.isArray(bloquesRes), 'length:', bloquesRes?.length);
+        if (Array.isArray(bloquesRes) && bloquesRes.length > 0) {
+          bloquesRes.forEach((b: any) => console.log('[RUND-DEBUG] bloque:', b.bloque, 'soportes:', b.soportes?.length, b.soportes));
+        }
       } catch (e) {
-        console.warn('No se pudo cargar bloques:', e);
+        console.warn('[RUND-DEBUG] ERROR cargando bloques:', e);
       }
       try {
         auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/auditoria?_t=${Date.now()}`);
@@ -331,22 +392,49 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       setRundAuditLog(Array.isArray(auditRes?.data || auditRes) ? (auditRes?.data || auditRes) : []);
 
       // Inicializar el estado de validación granular
+      // Build reverse map: tipoSoporte -> campo name from CATALOGO_BR039
+      const tipoSoporteToCampo: Record<string, string> = {};
+      Object.values(CATALOGO_BR039).forEach(cfg => {
+        cfg.campos.forEach(c => {
+          if (c.tipoSoporte) tipoSoporteToCampo[c.tipoSoporte] = c.campo;
+        });
+      });
+
       if (tar?.validacionDocumental && Array.isArray(tar.validacionDocumental)) {
         const initDocStatus: Record<string, 'Aprobado' | 'Rechazado'> = {};
         const initMockUploadedDocs: Record<string, string> = {};
 
         tar.validacionDocumental.forEach((val: any) => {
+          // Map campo_rund -> CATALOGO_BR039 campo name (e.g. 'DOCUMENTO_IDENTIDAD' -> 'Tipo y número de documento')
+          const campoKey = tipoSoporteToCampo[val.campo_rund?.toLowerCase()] || val.campo_rund;
+
           if (val.estado_documento === 'Aceptado' || val.estado_documento === 'Aprobado') {
-            initDocStatus[val.campo_rund] = 'Aprobado';
+            initDocStatus[campoKey] = 'Aprobado';
           } else if (val.estado_documento === 'Rechazado') {
-            initDocStatus[val.campo_rund] = 'Rechazado';
+            initDocStatus[campoKey] = 'Rechazado';
           }
           if (val.id_documento_carpeta && val.id_documento_carpeta.startsWith('/pta')) {
-            initMockUploadedDocs[val.campo_rund] = val.id_documento_carpeta;
+            initMockUploadedDocs[campoKey] = val.id_documento_carpeta;
           }
         });
         setDocStatus(initDocStatus);
-        setMockUploadedDocs(initMockUploadedDocs);
+        setMockUploadedDocs(prev => ({ ...prev, ...initMockUploadedDocs }));
+      }
+
+      // Also populate mockUploadedDocs from bloques soportes
+      if (Array.isArray(blq)) {
+        const fromSoportes: Record<string, string> = {};
+        blq.forEach((b: any) => {
+          (b.soportes || []).forEach((s: any) => {
+            if (s.documento_carpeta_id && s.tipo_soporte) {
+              const campoKey = tipoSoporteToCampo[s.tipo_soporte] || s.tipo_soporte;
+              fromSoportes[campoKey] = s.documento_carpeta_id;
+            }
+          });
+        });
+        if (Object.keys(fromSoportes).length > 0) {
+          setMockUploadedDocs(prev => ({ ...fromSoportes, ...prev }));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -757,10 +845,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {cfg.campos.map((c, idx) => {
                       const soporte = c.tipoSoporte ? findRundSoporte(b.soportes || [], c.tipoSoporte) : null;
-                      if (c.campo === 'Tipo y número de documento') console.log('DEBUG RUND:', { field: c.campo, tipo: c.tipoSoporte, bSoportes: b.soportes, found: soporte });
                       const localDocUrl = c.tipoSoporte ? mockUploadedDocs[c.campo] : null;
                       const hasDoc = !!soporte || !!localDocUrl;
-                      const activeUrl = localDocUrl || soporte?.url || 'mock';
+                      const activeUrl = localDocUrl || soporte?.documento_carpeta_id || soporte?.documentoCarpetaId || soporte?.url || 'mock';
+                      if (c.tipoSoporte) console.log('[RUND-RENDER]', c.campo, '→ soporte:', soporte, '| localDocUrl:', localDocUrl, '| activeUrl:', activeUrl, '| b.soportes:', b.soportes);
                       const isRequired = c.obligatorio === 'Sí';
                       const isDerived = c.obligatorio === 'Derivado';
                       const datoExtraido = getDatoExtraido(b.bloque, c.campo, tarjetaRund);
@@ -796,7 +884,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                   {cfg.campos.findIndex(x => x.tipoSoporte === c.tipoSoporte) === idx && (
                                     <>
                                       <button 
-                                        onClick={() => setViewingDoc({ url: activeUrl, nombre: c.documento, campo: c.campo })}
+                                        onClick={() => openDocViewer(activeUrl, c.documento, c.campo, c.tipoSoporte)}
                                         style={{ padding: '6px 12px', borderRadius: 6, background: '#EFF6FF', border: 'none', color: '#2563EB', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
                                       >
                                         <Eye size={14}/> Ver
@@ -982,7 +1070,24 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
 
             {/* Modal Content (The Viewer) */}
             <div style={{ flex: 1, background: '#E2E8F0', padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-               {viewingDoc.url !== 'mock' ? (
+               {viewingDoc.loading ? (
+                 <div style={{ textAlign: 'center', color: '#64748B' }}>
+                   <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Cargando documento...</div>
+                   <div style={{ fontSize: 13 }}>Por favor espera</div>
+                 </div>
+               ) : viewingDoc.error ? (
+                 <div style={{ textAlign: 'center', color: '#DC2626' }}>
+                   <ShieldAlert size={48} style={{ margin: '0 auto 12px' }} />
+                   <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Error al cargar el documento</div>
+                   <div style={{ fontSize: 13 }}>{viewingDoc.error}</div>
+                 </div>
+               ) : viewingDoc.displayUrl ? (
+                 <iframe 
+                   src={viewingDoc.displayUrl} 
+                   style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12, background: 'white', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                   title="Document Viewer"
+                 />
+               ) : viewingDoc.url !== 'mock' ? (
                  <iframe 
                    src={viewingDoc.url} 
                    style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12, background: 'white', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}

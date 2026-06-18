@@ -961,13 +961,6 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Test Microsoft Graph connection
-     */
-    async testConnection(): Promise<{ success: boolean; message: string }> {
-        return this.graphService.testConnection();
-    }
-
-    /**
      * Get attachments for a specific email
      */
     async getAttachments(correoId: string): Promise<AdjuntoCorreo[]> {
@@ -1225,60 +1218,6 @@ export class CorreosJuridicosService {
         }
 
         return savedCorreo;
-    }
-
-    /**
-     * Batch Backfill: Classify unclassified emails
-     * @param limit Number of emails to process in this run
-     */
-    async batchClassifyBackfill(limit: number = 50): Promise<{ processed: number; updated: number }> {
-        this.logger.log(`Starting Batch Backfill for ${limit} emails...`);
-
-        // 1. Fetch unclassified emails (where ai_suggested_category is NULL)
-        const unclassified = await this.correoRepo.createQueryBuilder('correo')
-            .where('correo.aiSuggestedCategory IS NULL')
-            .take(limit)
-            .getMany();
-
-        this.logger.log(`Found ${unclassified.length} unclassified emails.`);
-
-        let processed = 0;
-        let updated = 0;
-
-        for (const email of unclassified) {
-            try {
-                // 2. Classify
-                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '', email.tieneAdjuntos || false);
-                const isUrgente = this.smartService.analyzeUrgency(email.asunto || '', email.cuerpoTexto || '');
-
-                // 3. Map to DB fields
-                let tipoDB = 'CORREO';
-                if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
-                if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
-                // Keep existing 'tipo' if it was manually set? 
-                // Assumption: Backfill overwrites or fills initial classification.
-                // Safest: Update tipo only if it's currently generic 'CORREO'
-                if (email.tipo === 'CORREO' && tipoDB !== 'CORREO') {
-                    email.tipo = tipoDB;
-                }
-
-                email.categoria = classification.category;
-                email.aiSuggestedCategory = classification.category;
-                email.moduloSugerido = classification.module;
-                email.confianzaClasificacion = classification.confidence;
-                email.urgente = isUrgente;
-
-                await this.correoRepo.save(email);
-                updated++;
-                processed++;
-            } catch (error) {
-                this.logger.error(`Error classifying email ${email.id} during backfill:`, error);
-                processed++; // Count as processed (attempted)
-            }
-        }
-
-        this.logger.log(`Batch Backfill complete. Updated ${updated}/${processed} emails.`);
-        return { processed, updated };
     }
 
     /**

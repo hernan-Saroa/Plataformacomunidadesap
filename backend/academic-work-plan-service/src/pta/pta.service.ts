@@ -464,8 +464,38 @@ export class PtaService {
       this.historialRepo.find({ where: { ptaId: id }, order: { createdAt: 'DESC' } }),
     ]);
 
+    const dto = this.toPtaDto(pta) as any;
+
+    if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
+      const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
+      if (asigIds.length > 0) {
+        try {
+          const subjects = await this.asignaturaRepo.query(
+            `SELECT a.id, nt.nombre AS nucleo 
+             FROM academic_work_plan.asignatura a
+             LEFT JOIN academic_work_plan.nucleo_tematico nt ON nt.id = a.id_nucleo_tematico
+             WHERE a.id::text IN (${asigIds.map((_, idx) => `$${idx + 1}`).join(', ')})`,
+            asigIds.map(id => String(id))
+          );
+          const subjectMap = new Map(subjects.map((s: any) => [String(s.id), s.nucleo]));
+          dto.asignaturas = dto.asignaturas.map((a: any) => {
+            const nucleoNombre = subjectMap.get(String(a.asignatura_id));
+            if (nucleoNombre) {
+              return {
+                ...a,
+                nucleo_tematico: nucleoNombre,
+              };
+            }
+            return a;
+          });
+        } catch (err) {
+          console.error('[getPTAById] Error resolving nucleo tematico names:', err);
+        }
+      }
+    }
+
     return {
-      ...this.toPtaDto(pta),
+      ...dto,
       evidencias: evidencias.map((e) => this.toEvidenciaDto(e)),
       historialEstados: historial,
     };
@@ -710,8 +740,9 @@ export class PtaService {
 
       if (noValidados.length > 0) {
         const nombresFaltantes = noValidados.map(v => v.campo_rund).join(', ');
-        throw new BadRequestException(
-          `No se puede aprobar el PTA. Los siguientes soportes documentales críticos del docente no están validados: ${nombresFaltantes}`
+        // Temporarily deactivated - not blocking PTA approval
+        console.warn(
+          `[RUND] Aprobación permitida de forma no bloqueante. Faltan validar soportes críticos: ${nombresFaltantes}`
         );
       }
     }
@@ -1235,7 +1266,16 @@ export class PtaService {
   // Catálogos (migración legacy)
   // ─────────────────────────────
   async getCatalogoProgramas() {
-    return await this.programaRepo.find({ order: { nombre: 'ASC' } });
+    const progs = await this.programaRepo.find({ order: { nombre: 'ASC' } });
+    const nivelFormacionMap: Record<string, string> = {
+      pregrado: 'Pregrado',
+      especializacion: 'Especialización',
+      maestria: 'Maestría',
+    };
+    return progs.map((p: any) => ({
+      ...p,
+      nivel: nivelFormacionMap[p.tipo] || p.tipo || 'Pregrado',
+    }));
   }
 
   async getCatalogoAsignaturas(query?: any) {
@@ -1261,6 +1301,7 @@ export class PtaService {
         a.creditos,
         a.horas_fijas_pta AS horas,
         a.id_nucleo_tematico AS "nucleoTematico",
+        nt.nombre AS "nucleoTematicoNombre",
         a.id_ubicacion_semestral AS semestre_id,
         us.etiqueta AS semestre_etiqueta,
         a.modalidad,
@@ -1279,6 +1320,8 @@ export class PtaService {
         ON p.id = a.id_programa
       LEFT JOIN academic_work_plan.ubicacion_semestral us
         ON us.id = a.id_ubicacion_semestral
+      LEFT JOIN academic_work_plan.nucleo_tematico nt
+        ON nt.id = a.id_nucleo_tematico
       ${where}
       ORDER BY a.nombre ASC
       LIMIT 5000
@@ -1294,8 +1337,8 @@ export class PtaService {
       codigo: a.codigo,
       creditos: a.creditos,
       horas: a.horas,
-      nucleoTematico: a.nucleoTematico,
-      nucleo: a.nucleoTematico || 'General',
+      nucleoTematico: a.nucleoTematicoNombre || a.nucleoTematico,
+      nucleo: a.nucleoTematicoNombre || 'General',
       semestre: a.semestre_etiqueta || a.semestre_id,
       modalidad: a.modalidad,
       tipo: a.tipo,

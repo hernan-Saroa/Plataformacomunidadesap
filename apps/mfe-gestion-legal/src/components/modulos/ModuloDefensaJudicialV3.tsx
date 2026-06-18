@@ -119,7 +119,7 @@ export function ModuloDefensaJudicialV3() {
   useEffect(() => {
     if (tiposProcesosActivos.length > 0) {
       const persistedBoard = getBoardCookie() || localStorage.getItem('esap_defensa_judicial_tablero_seleccionado') || tableroSeleccionado;
-      const isValid = persistedBoard === 'TODOS' || tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
+      const isValid = tiposProcesosActivos.some((tp: any) => tp.id === persistedBoard);
       
       if (isValid) {
         if (tableroSeleccionado !== persistedBoard) {
@@ -731,8 +731,7 @@ export function ModuloDefensaJudicialV3() {
     const boardNorm = normalize(tableroSeleccionado);
     const boardNombreNorm = procesoSeleccionado ? normalize(procesoSeleccionado.nombre) : '';
 
-    const matchesBoard = tableroSeleccionado === 'TODOS' ||
-      !tableroSeleccionado ||
+    const matchesBoard = !tableroSeleccionado ||
       exp.tipo === tableroSeleccionado ||
       exp.tipoAccion === tableroSeleccionado ||
       (exp as any).tipoProceso === tableroSeleccionado ||
@@ -1138,22 +1137,30 @@ export function ModuloDefensaJudicialV3() {
         color="#003DA5"
         buttons={addBtnsPermission()}
         topCustomActions={
-          <div className="relative flex items-center w-[200px] sm:w-[260px] mr-1 shrink-0">
-            <div className="absolute left-0 top-0 bottom-0 flex items-center pl-3 pointer-events-none rounded-l-lg border-r-0">
+          <div className="mr-1 shrink-0" style={{ display: 'inline-grid', position: 'relative' }}>
+            {/* Span invisible que determina el ancho según el texto seleccionado */}
+            <span
+              aria-hidden="true"
+              className="invisible pointer-events-none whitespace-nowrap pl-10 pr-9 py-1.5 text-[13px] font-black"
+              style={{ gridArea: '1/1' }}
+            >
+              {procesoSeleccionado?.nombre || tiposProcesosActivos[0]?.nombre || ''}
+            </span>
+            <div className="absolute left-0 top-0 bottom-0 flex items-center pl-3 pointer-events-none" style={{ zIndex: 1 }}>
               <Gavel className="w-4 h-4 text-[#003DA5]" />
             </div>
             <select
               value={tableroSeleccionado}
               onChange={(e) => handleCambiarTablero(e.target.value)}
-              className="w-full pl-10 pr-9 py-1.5 bg-white border border-slate-300 hover:border-[#003DA5] text-[#003DA5] font-black rounded-lg text-[13px] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm appearance-none cursor-pointer truncate"
-              style={{ 
+              className="w-full pl-10 pr-9 py-1.5 bg-white border border-slate-300 hover:border-[#003DA5] text-[#003DA5] font-black rounded-lg text-[13px] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm appearance-none cursor-pointer"
+              style={{
+                gridArea: '1/1',
                 backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23003da5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
                 backgroundPosition: 'right 0.5rem center',
                 backgroundSize: '1.25rem',
                 backgroundRepeat: 'no-repeat'
               }}
             >
-              <option value="TODOS">Todos los procesos</option>
               {tiposProcesosActivos.map((tp: any) => (
                 <option key={tp.id} value={tp.id}>
                   {tp.nombre}

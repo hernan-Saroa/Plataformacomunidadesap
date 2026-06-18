@@ -1772,8 +1772,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent 
           hideCloseButton 
-          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
-          style={{ width: '80vw', maxWidth: '80vw' }}
+          className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
+          style={{ width: '60vw', maxWidth: '60vw' }}
         >
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">

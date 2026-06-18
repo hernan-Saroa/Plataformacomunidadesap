@@ -45,10 +45,28 @@ import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
+import { programasService } from '../../services/api/programas.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import type { Seccional, Sede } from '../../services/api/types';
-import { GRADUATE_PROGRAM_OPTIONS } from '../../constants/academicPrograms';
+
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = (periods: any[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 type ApprovalForm = {
   fullName: string;
@@ -107,6 +125,9 @@ export function ReviewRequestsModule({
     numLibro: '',
   });
   const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
+  const [programasOptions, setProgramasOptions] = useState<string[]>([]);
+  const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
+  const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [isApprovalFileDragActive, setIsApprovalFileDragActive] = useState(false);
   const [existingApprovalFiles, setExistingApprovalFiles] = useState<
@@ -121,7 +142,6 @@ export function ReviewRequestsModule({
   });
   const [reviewSupportPreview, setReviewSupportPreview] =
     useState<ReviewSupportPreview | null>(null);
-  const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
   const [sedesBySeccional, setSedesBySeccional] = useState<Record<string, string[]>>({});
@@ -219,19 +239,23 @@ export function ReviewRequestsModule({
     (request.approvalStatus !== 'HEAD_OBSERVATION' ||
       canManageApprovalConcepts);
   const isMyReviewsScope = scope === 'mine';
-  const PROGRAMAS_ESAP: readonly string[] = GRADUATE_PROGRAM_OPTIONS;
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
-  const PERSON_NAME_MAX_LENGTH = 100;
+  const REVIEW_NOTES_MIN_LENGTH = 10;
+  const REVIEW_NOTES_MAX_LENGTH = 4000;
+  const PERSON_NAME_MIN_LENGTH = 5;
+  const PERSON_NAME_MAX_LENGTH = 150;
   const DOCUMENT_MIN_LENGTH = 5;
-  const DOCUMENT_MAX_LENGTH = 10;
+  const DOCUMENT_MAX_LENGTH = 20;
+  const EMAIL_MIN_LENGTH = 5;
   const EMAIL_MAX_LENGTH = 254;
-  const REGISTRY_FIELD_MAX_LENGTH = 10;
-  const REVIEW_NOTES_MAX_LENGTH = 1000;
+  const REGISTRY_NUMBER_MAX_LENGTH = 20;
+  const FOLIO_BOOK_MAX_LENGTH = 10;
   const MIN_GRADUATION_YEAR = 1900;
   const MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS = 15;
-  const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
+  const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
+  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
 
   const normalizeKey = (value?: string) =>
     (value || '')
@@ -268,16 +292,26 @@ export function ReviewRequestsModule({
     return normalized || '';
   };
 
+  const isUnavailableCatalogValue = (value?: string | null) => {
+    const normalized = normalizeKey(value || '');
+    return (
+      !normalized ||
+      normalized === 'no disponible' ||
+      normalized === 'no especificado' ||
+      normalized === 'sin programa'
+    );
+  };
+
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
 
   const sanitizeDigits = (value: string, maxLength: number) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
 
+  const sanitizeAlphanumeric = (value: string, maxLength: number) =>
+    value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
+
   const sanitizePersonName = (value: string) =>
-    value
-      .replace(/[0-9]/g, '')
-      .replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]/g, '')
-      .slice(0, PERSON_NAME_MAX_LENGTH);
+    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
 
   const getPersonNameValidationError = (value: string, fieldLabel: string) => {
     const normalized = normalizeSpaces(value);
@@ -286,8 +320,8 @@ export function ReviewRequestsModule({
       return `${fieldLabel} es obligatorio`;
     }
 
-    if (normalized.length < 2) {
-      return `${fieldLabel} debe tener al menos 2 caracteres`;
+    if (normalized.length < PERSON_NAME_MIN_LENGTH) {
+      return `${fieldLabel} debe tener al menos ${PERSON_NAME_MIN_LENGTH} caracteres`;
     }
 
     if (normalized.length > PERSON_NAME_MAX_LENGTH) {
@@ -1007,30 +1041,115 @@ export function ReviewRequestsModule({
     let isMounted = true;
 
     const loadCatalogs = async () => {
+      setIsLoadingCatalogs(true);
+      setProgramasOptions([]);
+      setSeccionalesOptions([]);
+      setSeccionalBySede({});
+      setSedesBySeccional({});
       try {
-        const estructuraResponse = await estructuraService.obtenerEstructura().catch(() => null);
+        const [estructuraResponse, periodosResponse] = await Promise.all([
+          estructuraService.obtenerEstructura().catch(() => null),
+          estructuraService.obtenerPeriodosAcademicos().catch(() => []),
+        ]);
 
         if (!isMounted) return;
 
-        let { sedes, seccionales } = parseEstructuraCatalog(estructuraResponse);
+        const { sedes: sedesMaestras, seccionales: seccionalesMaestras } =
+          parseEstructuraCatalog(estructuraResponse);
+        const periodos = Array.isArray(periodosResponse)
+          ? sortPeriodsByCreation(periodosResponse)
+          : [];
+        const latestPeriod = periodos[0] || null;
+        const periodoEstructura = latestPeriod;
+        const periodoProgramas = latestPeriod;
 
-        if (!sedes.length || !seccionales.length) {
-          const [sedesResponse, seccionalesResponse] = await Promise.all([
-            estructuraService.listarSedes().catch(() => null),
-            estructuraService.listarSeccionales().catch(() => null),
-          ]);
-
-          if (!sedes.length) {
-            sedes = getArrayFromUnknown<Sede>(sedesResponse);
-          }
-          if (!seccionales.length) {
-            seccionales = getArrayFromUnknown<Seccional>(seccionalesResponse);
-          }
+        if (periodoEstructura?.codigo) {
+          localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodoEstructura.codigo);
+        }
+        if (periodoProgramas?.codigo) {
+          localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoProgramas.codigo);
         }
 
-        const sedesList = sedes
-          .map((sede) => normalizeName(sede?.nomSede))
-          .filter(Boolean);
+        const loadProgramCatalog = async () => {
+          if (!periodoProgramas?.codigo) return [];
+          const pageSize = 200;
+          const firstPage = await programasService.listar({
+            page: 1,
+            limit: pageSize,
+            periodoAcademico: periodoProgramas.codigo,
+          });
+          const totalPages = Math.max(
+            1,
+            Math.ceil(Number(firstPage?.total || firstPage?.data?.length || 0) / pageSize),
+          );
+          const extraPages =
+            totalPages > 1
+              ? await Promise.all(
+                  Array.from({ length: totalPages - 1 }, (_, index) =>
+                    programasService
+                      .listar({
+                        page: index + 2,
+                        limit: pageSize,
+                        periodoAcademico: periodoProgramas.codigo,
+                      })
+                      .catch((error) => {
+                        console.warn(
+                          'No se pudo cargar una página del catálogo de programas:',
+                          error,
+                        );
+                        return null;
+                      }),
+                  ),
+                )
+              : [];
+          return [firstPage, ...extraPages]
+            .flatMap((page) => page?.data || [])
+            .map((programa) => normalizeName(programa?.nombre))
+            .filter(Boolean);
+        };
+
+        const [detalleEstructura, programasCatalog] = await Promise.all([
+          periodoEstructura?.id
+            ? estructuraService.obtenerDetallePeriodo(periodoEstructura.id).catch(() => null)
+            : Promise.resolve(null),
+          loadProgramCatalog().catch((error) => {
+            console.error('Error cargando programas del periodo:', error);
+            return [];
+          }),
+        ]);
+
+        const cetapsPeriodo = Array.isArray(detalleEstructura?.cetaps)
+          ? detalleEstructura.cetaps
+          : [];
+        const codigosCetap = new Set(
+          cetapsPeriodo.map((cetap: any) => normalizeKey(cetap?.codigo)),
+        );
+        const nombresCetap = new Set(
+          cetapsPeriodo.map((cetap: any) => normalizeKey(cetap?.nombre)),
+        );
+        const nombresTerritorial = new Set(
+          cetapsPeriodo.map((cetap: any) => normalizeKey(cetap?.dtNombre)),
+        );
+        const sedes = periodoEstructura
+          ? sedesMaestras.filter(
+              (sede) =>
+                codigosCetap.has(normalizeKey(sede?.codSede)) ||
+                nombresCetap.has(normalizeKey(sede?.nomSede)),
+            )
+          : [];
+        const idsSeccionales = new Set(
+          sedes
+            .map((sede) => sede.idSeccional)
+            .filter((id): id is number => typeof id === 'number'),
+        );
+        const seccionales = periodoEstructura
+          ? seccionalesMaestras.filter(
+              (seccional) =>
+                idsSeccionales.has(seccional.idSeccional) ||
+                nombresTerritorial.has(normalizeKey(seccional.nomSeccional)),
+            )
+          : [];
+
         const seccionalesList = seccionales
           .map((seccional) => normalizeName(seccional?.nomSeccional))
           .filter(Boolean);
@@ -1076,13 +1195,21 @@ export function ReviewRequestsModule({
           );
         });
 
-        setSedesOptions(Array.from(new Set(sedesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        if (!isMounted) return;
+
         setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
         setSeccionalBySede(territorialMap);
         setSedesBySeccional(sedesBySeccionalCatalog);
+        setProgramasOptions(
+          Array.from(new Set(programasCatalog)).sort((a, b) => a.localeCompare(b, 'es')),
+        );
 
       } catch (error) {
         console.error('Error cargando catálogos de aprobación:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoadingCatalogs(false);
+        }
       }
     };
 
@@ -1091,9 +1218,55 @@ export function ReviewRequestsModule({
     return () => {
       isMounted = false;
     };
+  }, [catalogRefreshToken]);
+
+  useEffect(() => {
+    const refreshCatalogs = () => {
+      setCatalogRefreshToken((current) => current + 1);
+    };
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === ESTRUCTURA_PERIOD_STORAGE_KEY ||
+        event.key === PROGRAMAS_PERIOD_STORAGE_KEY
+      ) {
+        refreshCatalogs();
+      }
+    };
+
+    window.addEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
-  const programNameOptions = useMemo(() => PROGRAMAS_ESAP, []);
+  const programNameOptions = useMemo(
+    () => {
+      const currentProgram = isUnavailableCatalogValue(approvalForm.programName)
+        ? ''
+        : normalizeName(approvalForm.programName);
+
+      return Array.from(
+        new Set(
+          [currentProgram, ...programasOptions]
+            .map((programa) => normalizeName(programa))
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b, 'es'));
+    },
+    [approvalForm.programName, programasOptions],
+  );
+  const selectedProgramIsInCurrentCatalog = useMemo(() => {
+    if (!approvalForm.programName || programasOptions.length === 0) {
+      return false;
+    }
+
+    return programasOptions.some(
+      (programa) => normalizeKey(programa) === normalizeKey(approvalForm.programName),
+    );
+  }, [approvalForm.programName, programasOptions]);
   const selectedProgramAlreadyExists = useMemo(
     () => programAlreadyExistsForGraduate(approvalForm.programName),
     [approvalForm.programName, existingGraduatePrograms],
@@ -1107,26 +1280,14 @@ export function ReviewRequestsModule({
       !!selectedSeccionalKey && hasCatalogKey(sedesBySeccional, selectedSeccionalKey);
     const baseOptions = hasSelectedSeccionalCatalog
       ? sedesBySeccional[selectedSeccionalKey]
-      : sedesOptions;
-    const options = new Set<string>(baseOptions);
-
-    if (approvalForm.campus) {
-      const mappedSeccional = seccionalBySede[normalizeKey(approvalForm.campus)];
-      if (
-        !selectedSeccionalKey ||
-        !mappedSeccional ||
-        normalizeKey(mappedSeccional) === selectedSeccionalKey
-      ) {
-        options.add(approvalForm.campus);
-      }
-    }
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+      : [];
+    return Array.from(
+      new Set([approvalForm.campus, ...baseOptions].map(normalizeName).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b, 'es'));
   }, [
     approvalForm.campus,
     approvalForm.seccionalName,
-    seccionalBySede,
     sedesBySeccional,
-    sedesOptions,
   ]);
 
   const seccionalSelectOptions = useMemo(() => {
@@ -1174,38 +1335,6 @@ export function ReviewRequestsModule({
       };
     });
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede]);
-
-  useEffect(() => {
-    if (!approvalForm.campus || !approvalForm.seccionalName) {
-      return;
-    }
-
-    const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
-    if (!hasCatalogKey(sedesBySeccional, selectedSeccionalKey)) {
-      return;
-    }
-
-    const campusMatchesSeccional = sedesBySeccional[selectedSeccionalKey].some(
-      (sede) => normalizeKey(sede) === normalizeKey(approvalForm.campus),
-    );
-    if (campusMatchesSeccional) {
-      return;
-    }
-
-    setApprovalForm((prev) => {
-      if (
-        prev.campus !== approvalForm.campus ||
-        prev.seccionalName !== approvalForm.seccionalName
-      ) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        campus: '',
-      };
-    });
-  }, [approvalForm.campus, approvalForm.seccionalName, sedesBySeccional]);
 
   const getRequestSortTime = (request: ReviewRequest) => {
     const createdAt = parseDateSafe(request.createdAt)?.getTime() ?? 0;
@@ -1421,38 +1550,46 @@ export function ReviewRequestsModule({
   const mergeSavedReviewPayload = (
     baseForm: ApprovalForm,
     payload: Record<string, unknown>,
-  ): ApprovalForm => ({
-    fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
-    idNumber:
-      sanitizeDigits(
-        getPayloadText(payload, 'idNumber') || baseForm.idNumber,
-        DOCUMENT_MAX_LENGTH,
-      ) || baseForm.idNumber,
-    email: getPayloadText(payload, 'email') || baseForm.email,
-    programName:
-      getPayloadText(payload, 'programName') || baseForm.programName,
-    graduationDate:
-      toDateInputValue(getPayloadText(payload, 'graduationDate')) ||
-      baseForm.graduationDate,
-    campus: getPayloadText(payload, 'campus') || baseForm.campus,
-    seccionalName:
-      getPayloadText(payload, 'seccionalName') || baseForm.seccionalName,
-    numRegistro:
-      sanitizeDigits(
-        getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
-        REGISTRY_FIELD_MAX_LENGTH,
-      ) || baseForm.numRegistro,
-    numFolio:
-      sanitizeDigits(
-        getPayloadText(payload, 'numFolio') || baseForm.numFolio,
-        REGISTRY_FIELD_MAX_LENGTH,
-      ) || baseForm.numFolio,
-    numLibro:
-      sanitizeDigits(
-        getPayloadText(payload, 'numLibro') || baseForm.numLibro,
-        REGISTRY_FIELD_MAX_LENGTH,
-      ) || baseForm.numLibro,
-  });
+  ): ApprovalForm => {
+    const savedProgram = getPayloadText(payload, 'programName');
+    const baseProgram = isUnavailableCatalogValue(baseForm.programName)
+      ? ''
+      : baseForm.programName;
+
+    return {
+      fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
+      idNumber:
+        sanitizeAlphanumeric(
+          getPayloadText(payload, 'idNumber') || baseForm.idNumber,
+          DOCUMENT_MAX_LENGTH,
+        ) || baseForm.idNumber,
+      email: getPayloadText(payload, 'email') || baseForm.email,
+      programName: isUnavailableCatalogValue(savedProgram)
+        ? baseProgram
+        : savedProgram,
+      graduationDate:
+        toDateInputValue(getPayloadText(payload, 'graduationDate')) ||
+        baseForm.graduationDate,
+      campus: getPayloadText(payload, 'campus') || baseForm.campus,
+      seccionalName:
+        getPayloadText(payload, 'seccionalName') || baseForm.seccionalName,
+      numRegistro:
+        sanitizeDigits(
+          getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
+          REGISTRY_NUMBER_MAX_LENGTH,
+        ) || baseForm.numRegistro,
+      numFolio:
+        sanitizeDigits(
+          getPayloadText(payload, 'numFolio') || baseForm.numFolio,
+          FOLIO_BOOK_MAX_LENGTH,
+        ) || baseForm.numFolio,
+      numLibro:
+        sanitizeDigits(
+          getPayloadText(payload, 'numLibro') || baseForm.numLibro,
+          FOLIO_BOOK_MAX_LENGTH,
+        ) || baseForm.numLibro,
+    };
+  };
 
   const handleOpenReviewModal = async (
     request: ReviewRequest,
@@ -1474,6 +1611,31 @@ export function ReviewRequestsModule({
     if (action !== 'approve') {
       return;
     }
+
+    const initialForm: ApprovalForm = {
+      fullName:
+        (request.graduateLastName || '').trim() ||
+        (request.requester.type === 'graduado' ? request.requester.name.trim() : ''),
+      idNumber: sanitizeAlphanumeric(
+        request.graduateDocumentNumber,
+        DOCUMENT_MAX_LENGTH,
+      ),
+      email:
+        (request.graduateEmail || '').trim() ||
+        (request.requester.type === 'graduado' ? request.requester.email.trim() : ''),
+      programName: '',
+      graduationDate: toDateInputValue(request.graduationDate),
+      campus: '',
+      seccionalName: '',
+      numRegistro: '',
+      numFolio: '',
+      numLibro: '',
+    };
+    const initialSavedPayload =
+      request.reviewPayload && typeof request.reviewPayload === 'object'
+        ? (request.reviewPayload as Record<string, unknown>)
+        : {};
+    setApprovalForm(mergeSavedReviewPayload(initialForm, initialSavedPayload));
 
     setIsLoadingApprovalData(true);
     try {
@@ -1525,7 +1687,7 @@ export function ReviewRequestsModule({
           .find((value) => value.length > 0) || '';
 
       try {
-        const documentForExistingPrograms = sanitizeDigits(
+        const documentForExistingPrograms = sanitizeAlphanumeric(
           detail.idNumber || request.graduateDocumentNumber,
           DOCUMENT_MAX_LENGTH,
         );
@@ -1545,14 +1707,14 @@ export function ReviewRequestsModule({
 
       let nextForm: ApprovalForm = {
         fullName: resolvedFullName,
-        idNumber: sanitizeDigits(
+        idNumber: sanitizeAlphanumeric(
           detail.idNumber || request.graduateDocumentNumber,
           DOCUMENT_MAX_LENGTH,
         ),
         email: resolvedEmail,
-        programName: PROGRAMAS_ESAP.includes((detail.programName || '').trim())
-          ? (detail.programName || '').trim()
-          : '',
+        programName: isUnavailableCatalogValue(detail.programName)
+          ? ''
+          : (detail.programName || '').trim(),
         graduationDate,
         campus: detailData.campus || detailData.graduate?.campus || '',
         seccionalName: detailData.seccionalName || detailData.graduate?.seccionalName || '',
@@ -1569,16 +1731,18 @@ export function ReviewRequestsModule({
           nextForm = {
             ...nextForm,
             fullName: graduate.fullName || nextForm.fullName,
-            idNumber: sanitizeDigits(
+            idNumber: sanitizeAlphanumeric(
               graduate.idNumber || nextForm.idNumber,
               DOCUMENT_MAX_LENGTH,
             ),
             email: isCompanyRequester
               ? graduate.email || nextForm.email
               : nextForm.email || graduate.email,
-            programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
-              ? (graduate.programName || '').trim()
-              : nextForm.programName,
+            programName: isUnavailableCatalogValue(
+              graduate.programName || graduate.degreeTitle,
+            )
+              ? nextForm.programName
+              : (graduate.programName || graduate.degreeTitle || '').trim(),
             graduationDate:
               toDateInputValue(graduate.graduationDate) || nextForm.graduationDate,
             campus: graduate.campus || nextForm.campus,
@@ -1628,6 +1792,12 @@ export function ReviewRequestsModule({
       );
       return;
     }
+    if (trimmedReviewNotes.length < REVIEW_NOTES_MIN_LENGTH) {
+      toast.error(
+        `Las notas de revisión deben tener al menos ${REVIEW_NOTES_MIN_LENGTH} caracteres`,
+      );
+      return;
+    }
     if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
       toast.error(`Las notas de revisión no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
       return;
@@ -1636,15 +1806,29 @@ export function ReviewRequestsModule({
     let approvalDetails: ApprovalForm | undefined;
     if (reviewAction === 'approve') {
       const trimmedFullName = normalizeSpaces(approvalForm.fullName);
-      const trimmedIdNumber = sanitizeDigits(
+      const trimmedIdNumber = sanitizeAlphanumeric(
         approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || '',
         DOCUMENT_MAX_LENGTH,
       );
       const trimmedEmail = approvalForm.email.trim();
-      const trimmedRegistro = sanitizeDigits(approvalForm.numRegistro, REGISTRY_FIELD_MAX_LENGTH);
-      const trimmedFolio = sanitizeDigits(approvalForm.numFolio, REGISTRY_FIELD_MAX_LENGTH);
-      const trimmedLibro = sanitizeDigits(approvalForm.numLibro, REGISTRY_FIELD_MAX_LENGTH);
-      const digitsOnly = new RegExp(`^\\d{1,${REGISTRY_FIELD_MAX_LENGTH}}$`);
+      const trimmedRegistro = sanitizeDigits(
+        approvalForm.numRegistro,
+        REGISTRY_NUMBER_MAX_LENGTH,
+      );
+      const trimmedFolio = sanitizeDigits(
+        approvalForm.numFolio,
+        FOLIO_BOOK_MAX_LENGTH,
+      );
+      const trimmedLibro = sanitizeDigits(
+        approvalForm.numLibro,
+        FOLIO_BOOK_MAX_LENGTH,
+      );
+      const registryDigitsOnly = new RegExp(
+        `^\\d{1,${REGISTRY_NUMBER_MAX_LENGTH}}$`,
+      );
+      const folioBookDigitsOnly = new RegExp(
+        `^\\d{1,${FOLIO_BOOK_MAX_LENGTH}}$`,
+      );
       const nameValidationError = getPersonNameValidationError(
         approvalForm.fullName,
         'El nombre del graduado',
@@ -1660,9 +1844,12 @@ export function ReviewRequestsModule({
       if (
         !trimmedIdNumber ||
         trimmedIdNumber.length < DOCUMENT_MIN_LENGTH ||
-        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH
+        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH ||
+        !DOCUMENT_ALLOWED_REGEX.test(trimmedIdNumber)
       ) {
-        toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
+        toast.error(
+          `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres, solo letras y números`,
+        );
         return;
       }
       if (!trimmedEmail) {
@@ -1670,12 +1857,24 @@ export function ReviewRequestsModule({
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (trimmedEmail.length > EMAIL_MAX_LENGTH || !emailRegex.test(trimmedEmail)) {
+      if (
+        trimmedEmail.length < EMAIL_MIN_LENGTH ||
+        trimmedEmail.length > EMAIL_MAX_LENGTH ||
+        !emailRegex.test(trimmedEmail)
+      ) {
         toast.error('El email no tiene un formato válido');
+        return;
+      }
+      if (programasOptions.length === 0) {
+        toast.error('No hay programas disponibles para el periodo académico actual');
         return;
       }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
+        return;
+      }
+      if (programasOptions.length > 0 && !selectedProgramIsInCurrentCatalog) {
+        toast.error('Selecciona un programa disponible en el periodo académico actual');
         return;
       }
       if (selectedProgramAlreadyExists) {
@@ -1706,16 +1905,42 @@ export function ReviewRequestsModule({
         toast.error('Selecciona la territorial');
         return;
       }
-      if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
-        toast.error('El número de registro es obligatorio y debe tener máximo 10 dígitos');
+      const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+      if (!hasCatalogKey(sedesBySeccional, selectedSeccionalKey)) {
+        toast.error('La territorial no está disponible en el periodo de estructura actual');
         return;
       }
-      if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
-        toast.error('El número de folio es obligatorio y debe tener máximo 10 dígitos');
+      const sedesForSelectedSeccional = hasCatalogKey(
+        sedesBySeccional,
+        selectedSeccionalKey,
+      )
+        ? sedesBySeccional[selectedSeccionalKey]
+        : [];
+      if (
+        sedesForSelectedSeccional.length > 0 &&
+        !sedesForSelectedSeccional.some(
+          (sede) => normalizeKey(sede) === normalizeKey(approvalForm.campus),
+        )
+      ) {
+        toast.error('La sede seleccionada no pertenece a la territorial indicada');
         return;
       }
-      if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
-        toast.error('El número de libro es obligatorio y debe tener máximo 10 dígitos');
+      if (!trimmedRegistro || !registryDigitsOnly.test(trimmedRegistro)) {
+        toast.error(
+          `El número de registro es obligatorio y debe tener máximo ${REGISTRY_NUMBER_MAX_LENGTH} dígitos`,
+        );
+        return;
+      }
+      if (!trimmedFolio || !folioBookDigitsOnly.test(trimmedFolio)) {
+        toast.error(
+          `El número de folio es obligatorio y debe tener máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos`,
+        );
+        return;
+      }
+      if (!trimmedLibro || !folioBookDigitsOnly.test(trimmedLibro)) {
+        toast.error(
+          `El número de libro es obligatorio y debe tener máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos`,
+        );
         return;
       }
 
@@ -3102,6 +3327,7 @@ export function ReviewRequestsModule({
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
+                onBlur={() => setReviewNotes((value) => value.trim())}
                 placeholder={
                   reviewAction === 'approve'
                     ? 'Describe la información revisada y los soportes cargados...'
@@ -3109,8 +3335,18 @@ export function ReviewRequestsModule({
                 }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
+                minLength={REVIEW_NOTES_MIN_LENGTH}
                 maxLength={REVIEW_NOTES_MAX_LENGTH}
               />
+              <div className="mt-1 flex items-start justify-between gap-3 text-xs text-gray-500">
+                <span>
+                  Texto libre, incluidos signos de puntuación, caracteres especiales y saltos de línea.
+                  Mínimo {REVIEW_NOTES_MIN_LENGTH} caracteres.
+                </span>
+                <span className="whitespace-nowrap">
+                  {reviewNotes.length}/{REVIEW_NOTES_MAX_LENGTH}
+                </span>
+              </div>
             </div>
 
             {reviewAction === 'approve' && (
@@ -3135,8 +3371,13 @@ export function ReviewRequestsModule({
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="Nombre completo"
                       disabled={isLoadingApprovalData}
+                      minLength={PERSON_NAME_MIN_LENGTH}
                       maxLength={PERSON_NAME_MAX_LENGTH}
                     />
+                    <p className="text-xs text-gray-500">
+                      Entre {PERSON_NAME_MIN_LENGTH} y {PERSON_NAME_MAX_LENGTH} caracteres.
+                      Solo letras, espacios, apóstrofes y guiones.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3147,14 +3388,19 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          idNumber: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                          idNumber: sanitizeAlphanumeric(e.target.value, DOCUMENT_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      inputMode="numeric"
+                      inputMode="text"
+                      minLength={DOCUMENT_MIN_LENGTH}
                       maxLength={DOCUMENT_MAX_LENGTH}
                       disabled
                     />
+                    <p className="text-xs text-gray-500">
+                      Entre {DOCUMENT_MIN_LENGTH} y {DOCUMENT_MAX_LENGTH} caracteres,
+                      únicamente letras y números.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3169,9 +3415,16 @@ export function ReviewRequestsModule({
                           email: e.target.value.slice(0, EMAIL_MAX_LENGTH),
                         })
                       }
+                      onBlur={() =>
+                        setApprovalForm((current) => ({
+                          ...current,
+                          email: current.email.trim(),
+                        }))
+                      }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
+                      minLength={EMAIL_MIN_LENGTH}
                       maxLength={EMAIL_MAX_LENGTH}
                       required
                     />
@@ -3186,7 +3439,10 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numRegistro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numRegistro: sanitizeDigits(
+                            e.target.value,
+                            REGISTRY_NUMBER_MAX_LENGTH,
+                          ),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3194,9 +3450,13 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={REGISTRY_NUMBER_MAX_LENGTH}
                       required
                     />
+                    <p className="text-xs text-gray-500">
+                      Solo números, máximo {REGISTRY_NUMBER_MAX_LENGTH} dígitos.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3208,7 +3468,7 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numFolio: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numFolio: sanitizeDigits(e.target.value, FOLIO_BOOK_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3216,7 +3476,8 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={FOLIO_BOOK_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -3230,7 +3491,7 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numLibro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numLibro: sanitizeDigits(e.target.value, FOLIO_BOOK_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3238,7 +3499,8 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={FOLIO_BOOK_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -3250,19 +3512,32 @@ export function ReviewRequestsModule({
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
                       className={`review-approval-input w-full rounded-lg border-2 px-3 py-2 text-sm ${
-                        selectedProgramAlreadyExists
+                        selectedProgramAlreadyExists ||
+                        (!!approvalForm.programName &&
+                          programasOptions.length > 0 &&
+                          !selectedProgramIsInCurrentCatalog)
                           ? 'border-red-300 bg-red-50 focus:border-red-500'
                           : 'border-gray-300'
                       }`}
-                      disabled={isLoadingApprovalData}
+                      disabled={isLoadingApprovalData || isLoadingCatalogs}
                     >
-                      <option value="">Seleccionar programa</option>
+                      <option value="">
+                        {isLoadingCatalogs ? 'Cargando programas...' : 'Seleccionar programa'}
+                      </option>
                       {programNameOptions.map((programa) => {
                         const alreadyExists = programAlreadyExistsForGraduate(programa);
+                        const belongsToCurrentCatalog = programasOptions.some(
+                          (option) => normalizeKey(option) === normalizeKey(programa),
+                        );
                         return (
-                        <option key={programa} value={programa} disabled={alreadyExists}>
+                        <option
+                          key={programa}
+                          value={programa}
+                          disabled={alreadyExists || !belongsToCurrentCatalog}
+                        >
                           {programa}
                           {alreadyExists ? ' (ya existe)' : ''}
+                          {!belongsToCurrentCatalog ? ' (fuera del periodo actual)' : ''}
                         </option>
                         );
                       })}
@@ -3272,6 +3547,13 @@ export function ReviewRequestsModule({
                         {duplicateProgramMessage}
                       </p>
                     )}
+                    {!!approvalForm.programName &&
+                      programasOptions.length > 0 &&
+                      !selectedProgramIsInCurrentCatalog && (
+                        <p className="text-xs font-semibold leading-5 text-red-600">
+                          El programa guardado no está disponible en el periodo actual. Selecciona otro.
+                        </p>
+                      )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3318,9 +3600,11 @@ export function ReviewRequestsModule({
                         });
                       }}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
+                      disabled={isLoadingApprovalData || isLoadingCatalogs}
                     >
-                      <option value="">Seleccionar territorial</option>
+                      <option value="">
+                        {isLoadingCatalogs ? 'Cargando territoriales...' : 'Seleccionar territorial'}
+                      </option>
                       {seccionalSelectOptions.map((seccional) => (
                         <option key={seccional} value={seccional}>
                           {seccional}
@@ -3349,9 +3633,19 @@ export function ReviewRequestsModule({
                         }));
                       }}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
+                      disabled={
+                        isLoadingApprovalData ||
+                        isLoadingCatalogs ||
+                        !approvalForm.seccionalName
+                      }
                     >
-                      <option value="">Seleccionar sede</option>
+                      <option value="">
+                        {isLoadingCatalogs
+                          ? 'Cargando sedes...'
+                          : approvalForm.seccionalName
+                            ? 'Seleccionar sede'
+                            : 'Selecciona primero una territorial'}
+                      </option>
                       {campusOptions.map((sede) => (
                         <option key={sede} value={sede}>
                           {sede}

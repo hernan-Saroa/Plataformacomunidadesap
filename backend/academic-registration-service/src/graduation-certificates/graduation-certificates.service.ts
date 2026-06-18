@@ -27,6 +27,11 @@ import {
   SubmitReviewDecisionDto,
 } from './dto/approve-request.dto';
 import {
+  normalizeAndValidateGraduateManagementUpdate,
+  normalizeAndValidateGraduateReviewPayload,
+  normalizeReviewNotes,
+} from './graduation-review-validation';
+import {
   BulkCreateGraduateError,
   BulkCreateGraduatesDto,
   CreateGraduateDto,
@@ -819,7 +824,7 @@ export class GraduationCertificatesService {
     graduationDate?: string,
     lastName?: string,
   ) {
-    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const normalizedIdNumber = this.normalizeDocumentNumber(idNumber);
     const issueDate = idIssueDate
       ? this.normalizeDateString(idIssueDate)
       : null;
@@ -851,7 +856,7 @@ export class GraduationCertificatesService {
     if (normalizedIdNumber) {
       where.idNumber = Raw(
         (alias) =>
-          `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+          `UPPER(REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '')) = :idNumber`,
         { idNumber: normalizedIdNumber },
       );
     } else {
@@ -2338,6 +2343,13 @@ export class GraduationCertificatesService {
       .trim();
   }
 
+  private normalizeDocumentNumber(value?: string | null): string {
+    return (value || '')
+      .trim()
+      .replace(/[^A-Za-z0-9]+/g, '')
+      .toUpperCase();
+  }
+
   private tokenizeName(value: string): string[] {
     return this.normalizeName(value)
       .split(' ')
@@ -2348,7 +2360,7 @@ export class GraduationCertificatesService {
   private async findActiveGraduatesByIdNumber(
     idNumber: string,
   ): Promise<Graduate[]> {
-    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const normalizedIdNumber = this.normalizeDocumentNumber(idNumber);
     const trimmedIdNumber = (idNumber || '').trim();
 
     if (!normalizedIdNumber && !trimmedIdNumber) {
@@ -2362,7 +2374,7 @@ export class GraduationCertificatesService {
     if (normalizedIdNumber) {
       where.idNumber = Raw(
         (alias) =>
-          `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+          `UPPER(REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '')) = :idNumber`,
         { idNumber: normalizedIdNumber },
       );
     } else {
@@ -2377,7 +2389,7 @@ export class GraduationCertificatesService {
   ): Promise<GraduationCertificateRequest | null> {
     await this.expireOverdueManualReviewRequests();
 
-    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const normalizedIdNumber = this.normalizeDocumentNumber(idNumber);
     const trimmedIdNumber = (idNumber || '').trim();
 
     if (!normalizedIdNumber && !trimmedIdNumber) {
@@ -2393,7 +2405,7 @@ export class GraduationCertificatesService {
 
     if (normalizedIdNumber) {
       query.andWhere(
-        `REPLACE(REPLACE(REPLACE(request.idNumber, '.', ''), '-', ''), ' ', '') = :idNumber`,
+        `UPPER(REPLACE(REPLACE(REPLACE(request.idNumber, '.', ''), '-', ''), ' ', '')) = :idNumber`,
         { idNumber: normalizedIdNumber },
       );
     } else {
@@ -4447,7 +4459,7 @@ export class GraduationCertificatesService {
   }
 
   async listarTitulosGraduadoPorCedula(idNumber: string) {
-    const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
+    const normalizedIdNumber = this.normalizeDocumentNumber(idNumber);
     if (!normalizedIdNumber) {
       throw new BadRequestException('El número de documento es obligatorio');
     }
@@ -4600,6 +4612,17 @@ export class GraduationCertificatesService {
     if (!graduate) {
       throw new NotFoundException('Graduado no encontrado');
     }
+
+    payload = normalizeAndValidateGraduateManagementUpdate(payload, {
+      fullName: graduate.fullName,
+      firstName: graduate.firstName,
+      lastName: graduate.lastName,
+      idNumber: graduate.idNumber,
+      email: graduate.email,
+      numRegistro: graduate.numRegistro,
+      numFolio: graduate.numFolio,
+      numLibro: graduate.numLibro,
+    });
 
     const update: Partial<Graduate> = {};
     const hasNameParts =
@@ -5364,25 +5387,34 @@ export class GraduationCertificatesService {
       throw new BadRequestException('Decision de revision invalida');
     }
 
-    const reason = (
-      payload.reason ||
-      payload.reviewNotes ||
-      (decision === 'APPROVED'
-        ? 'Concepto favorable del revisor'
-        : 'Concepto registrado por el revisor')
-    ).trim();
-    if (!reason) {
-      throw new BadRequestException('Las notas de revision son obligatorias');
-    }
+    const reason = normalizeReviewNotes(payload.reason || payload.reviewNotes);
+    const normalizedPayload: SubmitReviewDecisionDto =
+      decision === 'APPROVED'
+        ? {
+            ...payload,
+            ...normalizeAndValidateGraduateReviewPayload({
+              ...payload,
+              reviewNotes: reason,
+            }),
+            reason,
+          }
+        : {
+            ...payload,
+            reason,
+            reviewNotes: reason,
+            reviewerName: payload.reviewerName?.trim(),
+            reviewerId: payload.reviewerId?.trim(),
+            reviewerEmail: payload.reviewerEmail?.trim(),
+          };
 
     if (decision === 'APPROVED' && request.manualReview) {
       await this.ensureManualReviewProgramDoesNotAlreadyExist(
-        payload.idNumber || request.idNumber,
-        payload.programName || request.programName,
+        normalizedPayload.idNumber || request.idNumber,
+        normalizedPayload.programName || request.programName,
       );
     }
 
-    const reviewPayload = this.buildReviewPayload(payload);
+    const reviewPayload = this.buildReviewPayload(normalizedPayload);
     const now = new Date();
 
     request.status = 'PROCESSING';
@@ -5391,12 +5423,14 @@ export class GraduationCertificatesService {
     request.reviewRecommendationReason = reason;
     request.reviewPayload = reviewPayload;
     request.reviewSubmittedAt = now;
-    request.reviewSubmittedBy = payload.reviewerId || request.reviewedBy;
+    request.reviewSubmittedBy =
+      normalizedPayload.reviewerId || request.reviewedBy;
     request.reviewSubmittedByName =
-      payload.reviewerName || request.reviewerName;
+      normalizedPayload.reviewerName || request.reviewerName;
     request.reviewedAt = now;
-    request.reviewedBy = payload.reviewerId || request.reviewedBy;
-    request.reviewerName = payload.reviewerName || request.reviewerName;
+    request.reviewedBy = normalizedPayload.reviewerId || request.reviewedBy;
+    request.reviewerName =
+      normalizedPayload.reviewerName || request.reviewerName;
     request.reviewNotes = reason;
     request.reviewResolution =
       decision === 'APPROVED'
@@ -5417,9 +5451,9 @@ export class GraduationCertificatesService {
       type: 'review_decision_submitted',
       label: this.getReviewDecisionLabel(decision),
       notes: reason,
-      actorId: payload.reviewerId,
-      actorName: payload.reviewerName,
-      actorEmail: payload.reviewerEmail,
+      actorId: normalizedPayload.reviewerId,
+      actorName: normalizedPayload.reviewerName,
+      actorEmail: normalizedPayload.reviewerEmail,
       createdAt: now,
     });
 
@@ -5671,9 +5705,16 @@ export class GraduationCertificatesService {
     await this.expireManualReviewRequestIfNeeded(request);
     this.ensureManualReviewRequestIsActionable(request);
 
-    const reviewNotes = (
-      payload?.reviewNotes || 'Aprobado por revisión manual'
-    ).trim();
+    if (request.manualReview) {
+      payload = normalizeAndValidateGraduateReviewPayload({
+        ...payload,
+        reviewNotes: normalizeReviewNotes(payload?.reviewNotes),
+      });
+    }
+
+    const reviewNotes = request.manualReview
+      ? payload.reviewNotes!
+      : (payload?.reviewNotes || 'Aprobado por revisión manual').trim();
 
     const publicNotificationNotes =
       payload?.publicNotificationNotes !== undefined
@@ -5720,14 +5761,14 @@ export class GraduationCertificatesService {
         payload.seccionalName.trim();
     }
 
-    const normalizedIdNumber = (request.idNumber || '').replace(/\D+/g, '');
+    const normalizedIdNumber = this.normalizeDocumentNumber(request.idNumber);
     const programName = (request.programName || '').trim();
     const normalizedProgramName = programName.toLowerCase();
     const graduateWhere = normalizedIdNumber
       ? {
           idNumber: Raw(
             (alias) =>
-              `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+              `UPPER(REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '')) = :idNumber`,
             { idNumber: normalizedIdNumber },
           ),
         }

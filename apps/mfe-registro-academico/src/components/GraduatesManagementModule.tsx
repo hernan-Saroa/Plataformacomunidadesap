@@ -77,6 +77,7 @@ import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
+import { Container4K } from '@esap-mfe/shared-ui';
 
 type GraduateRow = {
   id: string;
@@ -101,6 +102,7 @@ type GraduateRow = {
   createdBy?: string;
   asignacionesSedes?: Array<{ nombreSede: string }>;
   territorial?: string;
+  sourceTerritorial?: string;
   certificatesCount: number;
   numRegistro?: string;
   numFolio?: string;
@@ -109,8 +111,28 @@ type GraduateRow = {
   updatedAt?: string;
 };
 
-// ✅ DÍA 4: Container4K para padding adaptativo
-import { Container4K } from '@esap-mfe/shared-ui';
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = <T extends {
+  createdAt?: string | Date;
+  created_at?: string | Date;
+  fechaCreacion?: string | Date;
+  anio?: number;
+  semestre?: number;
+}>(periods: T[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,6 +149,8 @@ export function GraduatesManagementModule() {
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
   const [programasCatalog, setProgramasCatalog] = useState<string[]>([]);
+  const [estructuraPeriodoCatalogo, setEstructuraPeriodoCatalogo] = useState('');
+  const [programasPeriodoCatalogo, setProgramasPeriodoCatalogo] = useState('');
   const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
@@ -167,24 +191,16 @@ export function GraduatesManagementModule() {
   const MAX_FILES_PER_GRADUATE = 5;
   const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_UPLOAD_SIZE_LABEL = '10 MB';
-  const PERSON_NAME_MAX_LENGTH = 80;
+  const PERSON_NAME_MIN_LENGTH = 5;
+  const PERSON_NAME_MAX_LENGTH = 150;
   const DOCUMENT_MIN_LENGTH = 5;
-  const DOCUMENT_MAX_LENGTH = 10;
+  const DOCUMENT_MAX_LENGTH = 20;
+  const EMAIL_MIN_LENGTH = 5;
   const EMAIL_MAX_LENGTH = 254;
-  const REGISTRY_FIELD_MAX_LENGTH = 12;
-  const PROGRAMAS_GRADUADOS = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
+  const REGISTRY_NUMBER_MAX_LENGTH = 20;
+  const FOLIO_BOOK_MAX_LENGTH = 10;
+  const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
+  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
   const getCurrentActorName = () => {
     const user = authService.getCurrentUser() as any;
     const fullName =
@@ -200,9 +216,6 @@ export function GraduatesManagementModule() {
 
     return normalizeDisplayName(fullName) || undefined;
   };
-  const isUnavailableProgram = (value?: string) =>
-    normalizeKey(value) === 'no disponible' || normalizeKey(value) === 'no especificado';
-
   // Estados para formularios
   const [editForm, setEditForm] = useState({
     firstName: '',
@@ -259,32 +272,31 @@ export function GraduatesManagementModule() {
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
   const sanitizeDigits = (value: string, maxLength: number) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
+  const sanitizeAlphanumeric = (value: string, maxLength: number) =>
+    value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
   const sanitizePersonName = (value: string) =>
-    value.replace(/[^\p{L}\s.'-]+/gu, '').slice(0, PERSON_NAME_MAX_LENGTH);
+    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
   const getPersonNameValidationError = (value: string, label: string) => {
     if (!value) return `${label} es obligatorio`;
-    if (value.length < 2) return `${label} debe tener al menos 2 caracteres`;
     if (value.length > PERSON_NAME_MAX_LENGTH) {
       return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
     }
     if (/\d/.test(value)) return `${label} no puede contener números`;
-    if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
-      return `${label} solo puede contener letras, espacios, apóstrofes, puntos o guiones`;
+    if (!PERSON_NAME_ALLOWED_REGEX.test(value) || !/\p{L}/u.test(value)) {
+      return `${label} solo puede contener letras, espacios, apóstrofes o guiones`;
     }
     return '';
   };
-  const sanitizeRegistroInput = (value: string) => {
-    const digits = sanitizeDigits(value, REGISTRY_FIELD_MAX_LENGTH);
-    return /^0+$/.test(digits) ? '' : digits;
-  };
-  const formatRegistroInput = (value?: string) => {
-    const digits = sanitizeRegistroInput(value || '');
-    if (!digits || /^0+$/.test(digits)) return '';
+  const sanitizeRegistryInput = (value: string, maxLength: number) =>
+    sanitizeDigits(value, maxLength);
+  const formatRegistryInput = (value: string | undefined, maxLength: number) => {
+    const digits = sanitizeRegistryInput(value || '', maxLength);
+    if (!digits) return '';
     return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
   const formatRegistroDisplay = (value?: string) => {
-    const digits = sanitizeRegistroInput(value || '');
-    if (!digits || /^0+$/.test(digits)) return 'N/A';
+    const digits = sanitizeRegistryInput(value || '', REGISTRY_NUMBER_MAX_LENGTH);
+    if (!digits) return 'N/A';
     return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
   const formatFileCount = (count: number) => (count === 1 ? '1 archivo' : `${count} archivos`);
@@ -416,10 +428,6 @@ export function GraduatesManagementModule() {
     });
 
     return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, 'es'));
-  };
-  const includesNormalized = (values: string[], value?: string) => {
-    const key = normalizeKey(value);
-    return !!key && values.some((option) => normalizeKey(option) === key);
   };
   const normalizeDocumentKey = (value?: string) => {
     const digits = (value || '').replace(/\D+/g, '');
@@ -796,11 +804,15 @@ export function GraduatesManagementModule() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadProgramCatalog = async () => {
+    const loadProgramCatalog = async (periodoAcademico: string) => {
       const pageSize = 200;
 
       try {
-        const firstPage = await programasService.listar({ page: 1, limit: pageSize });
+        const firstPage = await programasService.listar({
+          page: 1,
+          limit: pageSize,
+          periodoAcademico,
+        });
         const total = Number(firstPage?.total || firstPage?.data?.length || 0);
         const totalPages = Math.max(1, Math.ceil(total / pageSize));
         const extraPages =
@@ -808,7 +820,11 @@ export function GraduatesManagementModule() {
             ? await Promise.all(
                 Array.from({ length: totalPages - 1 }, (_, index) =>
                   programasService
-                    .listar({ page: index + 2, limit: pageSize })
+                    .listar({
+                      page: index + 2,
+                      limit: pageSize,
+                      periodoAcademico,
+                    })
                     .catch((error) => {
                       console.warn('No se pudo cargar una página del catálogo de programas:', error);
                       return null;
@@ -830,28 +846,95 @@ export function GraduatesManagementModule() {
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse, programasCatalogResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse, periodosResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
-          loadProgramCatalog(),
+          estructuraService.obtenerPeriodos().catch((error) => {
+            console.warn('No se pudieron cargar los periodos académicos:', error);
+            return [];
+          }),
         ]);
 
-        const estructuraSedes = estructuraResponse?.data?.sedes ?? [];
-        const estructuraSeccionales = estructuraResponse?.data?.seccionales ?? [];
+        const estructuraSedesMaestras = estructuraResponse?.data?.sedes ?? [];
+        const estructuraSeccionalesMaestras = estructuraResponse?.data?.seccionales ?? [];
+        const periodos = Array.isArray(periodosResponse)
+          ? sortPeriodsByCreation(periodosResponse)
+          : [];
+        const latestPeriod = periodos[0] || null;
+
+        const periodoEstructura = latestPeriod;
+        const periodoProgramas = latestPeriod;
+
+        if (periodoEstructura?.codigo) {
+          localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodoEstructura.codigo);
+        }
+        if (periodoProgramas?.codigo) {
+          localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoProgramas.codigo);
+        }
+
+        const [detalleEstructura, programasCatalogResponse] = await Promise.all([
+          periodoEstructura
+            ? estructuraService.obtenerDetallePeriodo(periodoEstructura.id).catch((error) => {
+                console.warn(
+                  `No se pudo cargar la estructura del periodo ${periodoEstructura.codigo}:`,
+                  error,
+                );
+                return null;
+              })
+            : Promise.resolve(null),
+          periodoProgramas
+            ? loadProgramCatalog(periodoProgramas.codigo)
+            : Promise.resolve([]),
+        ]);
+
+        const cetapsPeriodo = detalleEstructura?.cetaps ?? [];
+        const codigosCetapPeriodo = new Set(
+          cetapsPeriodo.map((cetap) => normalizeKey(cetap.codigo)),
+        );
+        const nombresCetapPeriodo = new Set(
+          cetapsPeriodo.map((cetap) => normalizeKey(cetap.nombre)),
+        );
+        const territorialesPeriodo = new Set(
+          cetapsPeriodo.map((cetap) => normalizeKey(cetap.dtNombre)),
+        );
+
+        const estructuraSedes = periodoEstructura
+          ? estructuraSedesMaestras.filter(
+              (sede) =>
+                codigosCetapPeriodo.has(normalizeKey(sede.codSede)) ||
+                nombresCetapPeriodo.has(normalizeKey(sede.nomSede)),
+            )
+          : [];
+        const idsSeccionalesPeriodo = new Set(
+          estructuraSedes
+            .map((sede) => sede.idSeccional)
+            .filter((id): id is number => typeof id === 'number'),
+        );
+        const estructuraSeccionales = periodoEstructura
+          ? estructuraSeccionalesMaestras.filter(
+              (seccional) =>
+                idsSeccionalesPeriodo.has(seccional.idSeccional) ||
+                territorialesPeriodo.has(normalizeKey(seccional.nomSeccional)),
+            )
+          : [];
 
         if (isMounted) {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
           setProgramasCatalog(programasCatalogResponse);
+          setEstructuraPeriodoCatalogo(periodoEstructura?.codigo || '');
+          setProgramasPeriodoCatalogo(periodoProgramas?.codigo || '');
         }
 
-        const seccionalById = new Map<number, Seccional>();
-        estructuraSeccionales.forEach((seccional) => {
-          seccionalById.set(seccional.idSeccional, seccional);
+        const seccionalByName = new Map<string, Seccional>();
+        estructuraSeccionalesMaestras.forEach((seccional) => {
+          if (seccional?.nomSeccional) {
+            seccionalByName.set(normalizeKey(seccional.nomSeccional), seccional);
+          }
         });
 
         const sedeByName = new Map<string, Sede>();
-        estructuraSedes.forEach((sede) => {
+        estructuraSedesMaestras.forEach((sede) => {
           if (sede?.nomSede) {
             sedeByName.set(normalizeKey(sede.nomSede), sede);
           }
@@ -867,11 +950,9 @@ export function GraduatesManagementModule() {
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
           const rawSeccionalName = (graduate.seccionalName || '').trim();
-          const rawSeccionalLooksLikeSede = !!sedeByName.get(normalizeKey(rawSeccionalName));
-          const territorialName =
-            sedeMatch?.seccional?.nomSeccional ||
-            (sedeMatch?.idSeccional ? seccionalById.get(sedeMatch.idSeccional)?.nomSeccional : undefined) ||
-            (rawSeccionalLooksLikeSede ? undefined : rawSeccionalName || undefined);
+          const territorialName = rawSeccionalName
+            ? seccionalByName.get(normalizeKey(rawSeccionalName))?.nomSeccional
+            : undefined;
           const createdBy = graduate.createdBy;
           return {
             id: graduate.id,
@@ -890,7 +971,10 @@ export function GraduatesManagementModule() {
             ],
             location: sedeName,
             territorial: territorialName,
-            program: graduate.programName || 'No especificado',
+            sourceTerritorial: rawSeccionalName || undefined,
+            program:
+              (graduate.programName || graduate.degreeTitle || '').trim() ||
+              'No especificado',
             document: graduate.idNumber,
             enrollmentMethod: resolveEnrollmentMethod(createdBy),
             enrollmentDate: graduate.enrollmentDate || '',
@@ -997,25 +1081,24 @@ export function GraduatesManagementModule() {
     };
   }, [graduatesOnly]);
 
-  const graduateProgramOptions = useMemo(
-    () => uniqueSortedText(graduatesOnly.map((user) => user.program)),
-    [graduatesOnly]
-  );
   const programCatalogOptions = useMemo(() => {
-    const basePrograms = programasCatalog.length > 0 ? programasCatalog : PROGRAMAS_GRADUADOS;
-    return uniqueSortedText([...basePrograms, ...graduateProgramOptions]);
-  }, [programasCatalog, graduateProgramOptions]);
-  const editProgramOptions = useMemo(() => {
-    const current = (editForm.program || '').trim();
-    if (
-      current &&
-      !isUnavailableProgram(current) &&
-      !includesNormalized(programCatalogOptions, current)
-    ) {
-      return uniqueSortedText([current, ...programCatalogOptions]);
-    }
-    return programCatalogOptions;
-  }, [editForm.program, programCatalogOptions]);
+    return uniqueSortedText(programasCatalog);
+  }, [programasCatalog]);
+  const selectedCatalogProgram = useMemo(
+    () =>
+      programCatalogOptions.find(
+        (programa) => normalizeKey(programa) === normalizeKey(editForm.program),
+      ),
+    [editForm.program, programCatalogOptions, normalizeKey],
+  );
+  const externalEditProgram =
+    editForm.program.trim() && !selectedCatalogProgram
+      ? editForm.program
+      : '';
+  const editProgramOptions = useMemo(
+    () => uniqueSortedText([externalEditProgram, ...programCatalogOptions]),
+    [externalEditProgram, programCatalogOptions],
+  );
 
   const catalogTerritorialOptions = useMemo(
     () =>
@@ -1046,24 +1129,12 @@ export function GraduatesManagementModule() {
   );
 
   const territorialOptions = useMemo(() => {
-    if (catalogTerritorialOptions.length > 0) {
-      return catalogTerritorialOptions;
-    }
-
-    return uniqueSortedText(
-      graduatesOnly
-        .map((user) => user.territorial)
-        .filter((territorial) => !knownSedeKeys.has(normalizeKey(territorial))),
-    );
-  }, [catalogTerritorialOptions, graduatesOnly, knownSedeKeys, normalizeKey]);
+    return catalogTerritorialOptions;
+  }, [catalogTerritorialOptions]);
 
   const sedesOptions = useMemo(() => {
-    if (catalogSedeOptions.length > 0) {
-      return catalogSedeOptions;
-    }
-
-    return graduateSedeOptions;
-  }, [catalogSedeOptions, graduateSedeOptions]);
+    return catalogSedeOptions;
+  }, [catalogSedeOptions]);
 
   const seccionalById = useMemo(() => {
     const map = new Map<number, Seccional>();
@@ -1229,34 +1300,19 @@ export function GraduatesManagementModule() {
   }, [territorialOptions, sedesByTerritorial, sedesOptions, normalizeKey]);
 
   const editTerritorialOptions = useMemo(() => {
-    const options = new Set<string>(territorialOptions);
     const mappedTerritorial = editForm.location
       ? territorialBySede.get(normalizeKey(editForm.location))
       : '';
-    const editTerritorialIsValid =
-      !!editForm.territorial &&
-      !knownSedeKeys.has(normalizeKey(editForm.territorial)) &&
-      (
-        catalogTerritorialOptions.length === 0 ||
-        includesNormalized(catalogTerritorialOptions, editForm.territorial)
-      );
-
-    if (editTerritorialIsValid) {
-      options.add(editForm.territorial);
-    }
-    if (mappedTerritorial) {
-      options.add(mappedTerritorial);
-    }
-
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+    return uniqueSortedText([
+      editForm.territorial,
+      mappedTerritorial,
+      ...territorialOptions,
+    ]);
   }, [
     editForm.location,
     editForm.territorial,
     territorialBySede,
     territorialOptions,
-    knownSedeKeys,
-    catalogTerritorialOptions,
-    normalizeKey,
   ]);
 
   const editSedesOptions = useMemo(() => {
@@ -1266,62 +1322,39 @@ export function GraduatesManagementModule() {
     const baseOptions = hasSelectedTerritorialCatalog
       ? sedesByTerritorial.get(selectedTerritorialKey) || []
       : sedesOptions;
-    const options = new Set<string>(baseOptions);
-
-    if (editForm.location) {
-      const mappedTerritorial = territorialBySede.get(normalizeKey(editForm.location));
-      if (
-        !selectedTerritorialKey ||
-        !mappedTerritorial ||
-        normalizeKey(mappedTerritorial) === selectedTerritorialKey
-      ) {
-        options.add(editForm.location);
-      }
-    }
-
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
+    return uniqueSortedText([editForm.location, ...baseOptions]);
   }, [
     editForm.location,
     editForm.territorial,
     sedesByTerritorial,
     sedesOptions,
-    territorialBySede,
     normalizeKey,
   ]);
 
   useEffect(() => {
-    if (!editForm.location || !editForm.territorial) {
-      return;
+    if (
+      programFilter !== 'all' &&
+      !programCatalogOptions.some(
+        (programa) => normalizeKey(programa) === normalizeKey(programFilter),
+      )
+    ) {
+      setProgramFilter('all');
     }
-
-    const selectedTerritorialKey = normalizeKey(editForm.territorial);
-    if (!sedesByTerritorial.has(selectedTerritorialKey)) {
-      return;
-    }
-
-    const locationMatchesTerritorial =
-      sedesByTerritorial
-        .get(selectedTerritorialKey)
-        ?.some((sede) => normalizeKey(sede) === normalizeKey(editForm.location)) ?? false;
-
-    if (locationMatchesTerritorial) {
-      return;
-    }
-
-    setEditForm((prev) => {
-      if (prev.location !== editForm.location || prev.territorial !== editForm.territorial) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        location: '',
-      };
-    });
-  }, [editForm.location, editForm.territorial, sedesByTerritorial, normalizeKey]);
+  }, [programFilter, programCatalogOptions, normalizeKey]);
 
   useEffect(() => {
-    if (locationFilter === 'all' || sedeFilter === 'all') {
+    if (
+      locationFilter !== 'all' &&
+      !territorialOptions.some(
+        (territorial) => normalizeKey(territorial) === normalizeKey(locationFilter),
+      )
+    ) {
+      setLocationFilter('all');
+    }
+  }, [locationFilter, territorialOptions, normalizeKey]);
+
+  useEffect(() => {
+    if (sedeFilter === 'all') {
       return;
     }
 
@@ -1489,34 +1522,42 @@ export function GraduatesManagementModule() {
     }
 
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
-    const mappedTerritorial = territorialBySede.get(normalizeKey(user.location));
+    const rawStoredTerritorial =
+      (user.sourceTerritorial || user.territorial || '').trim();
+    const catalogTerritorial = territorialOptions.find(
+      (territorial) =>
+        normalizeKey(territorial) === normalizeKey(rawStoredTerritorial),
+    );
     const storedTerritorial =
-      user.territorial && !knownSedeKeys.has(normalizeKey(user.territorial))
-        ? user.territorial
-        : '';
+      catalogTerritorial ||
+      rawStoredTerritorial ||
+      (user.location
+        ? territorialBySede.get(normalizeKey(user.location)) || ''
+        : '');
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName || '',
       lastName: user.lastName || '',
       email: (user.email || '').trim(),
       phone: sanitizedPhone,
-      document: user.document || '',
-      program: isUnavailableProgram(user.program) ? '' : user.program || '',
+      document: sanitizeAlphanumeric(user.document || '', DOCUMENT_MAX_LENGTH),
+      program: user.program || '',
       location: user.location,
-      territorial: mappedTerritorial || storedTerritorial,
-      numRegistro: sanitizeRegistroInput(user.numRegistro || ''),
-      numFolio: sanitizeRegistroInput(user.numFolio || ''),
-      numLibro: sanitizeRegistroInput(user.numLibro || ''),
+      territorial: storedTerritorial,
+      numRegistro: sanitizeRegistryInput(
+        user.numRegistro || '',
+        REGISTRY_NUMBER_MAX_LENGTH,
+      ),
+      numFolio: sanitizeRegistryInput(user.numFolio || '', FOLIO_BOOK_MAX_LENGTH),
+      numLibro: sanitizeRegistryInput(user.numLibro || '', FOLIO_BOOK_MAX_LENGTH),
     });
     setIsEditModalOpen(true);
   };
 
   const handleLocationChange = (value: string) => {
-    const mappedTerritorial = territorialBySede.get(normalizeKey(value));
     setEditForm((prev) => ({
       ...prev,
       location: value,
-      territorial: mappedTerritorial || prev.territorial || '',
     }));
   };
 
@@ -1644,7 +1685,10 @@ export function GraduatesManagementModule() {
         ],
         location: campus,
         territorial,
-        program: graduate.programName || graduate.degreeTitle || 'No especificado',
+        sourceTerritorial: graduate.seccionalName || undefined,
+        program:
+          (graduate.programName || graduate.degreeTitle || '').trim() ||
+          'No especificado',
         document: graduate.idNumber,
         enrollmentMethod: resolveEnrollmentMethod(graduate.createdBy || 'bulk_upload'),
         enrollmentDate: graduate.enrollmentDate || graduate.createdAt || '',
@@ -1685,16 +1729,19 @@ export function GraduatesManagementModule() {
     const trimmedEmail = editForm.email.trim();
     const trimmedProgram = editForm.program.trim();
     const trimmedLocation = editForm.location.trim();
-    const cleanNumRegistro = sanitizeRegistroInput(editForm.numRegistro);
-    const cleanNumFolio = sanitizeRegistroInput(editForm.numFolio);
-    const cleanNumLibro = sanitizeRegistroInput(editForm.numLibro);
-    const effectiveTerritorial =
-      (
-        editForm.territorial ||
-        (editForm.location
-          ? territorialBySede.get(normalizeKey(editForm.location))
-          : '')
-      ).trim();
+    const cleanNumRegistro = sanitizeRegistryInput(
+      editForm.numRegistro,
+      REGISTRY_NUMBER_MAX_LENGTH,
+    );
+    const cleanNumFolio = sanitizeRegistryInput(
+      editForm.numFolio,
+      FOLIO_BOOK_MAX_LENGTH,
+    );
+    const cleanNumLibro = sanitizeRegistryInput(
+      editForm.numLibro,
+      FOLIO_BOOK_MAX_LENGTH,
+    );
+    const effectiveTerritorial = editForm.territorial.trim();
     const firstNameError = getPersonNameValidationError(trimmedFirstName, 'El nombre');
     if (firstNameError) {
       toast.error(firstNameError);
@@ -1705,27 +1752,44 @@ export function GraduatesManagementModule() {
       toast.error(lastNameError);
       return;
     }
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
+    if (
+      fullName.length < PERSON_NAME_MIN_LENGTH ||
+      fullName.length > PERSON_NAME_MAX_LENGTH
+    ) {
+      toast.error(
+        `El nombre completo debe tener entre ${PERSON_NAME_MIN_LENGTH} y ${PERSON_NAME_MAX_LENGTH} caracteres`,
+      );
+      return;
+    }
     if (!trimmedDocument) {
       toast.error('El documento es obligatorio');
       return;
     }
-    if (!/^\d+$/.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener números');
+    if (!DOCUMENT_ALLOWED_REGEX.test(trimmedDocument)) {
+      toast.error('El documento solo puede contener letras y números');
       return;
     }
     if (
       trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
       trimmedDocument.length > DOCUMENT_MAX_LENGTH
     ) {
-      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
+      toast.error(
+        `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres`,
+      );
       return;
     }
     if (!trimmedEmail) {
       toast.error('El correo electrónico es obligatorio');
       return;
     }
-    if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
-      toast.error(`El correo electrónico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
+    if (
+      trimmedEmail.length < EMAIL_MIN_LENGTH ||
+      trimmedEmail.length > EMAIL_MAX_LENGTH
+    ) {
+      toast.error(
+        `El correo electrónico debe tener entre ${EMAIL_MIN_LENGTH} y ${EMAIL_MAX_LENGTH} caracteres`,
+      );
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1745,22 +1809,39 @@ export function GraduatesManagementModule() {
       toast.error('La territorial es obligatoria');
       return;
     }
+    if (!cleanNumRegistro) {
+      toast.error(
+        `El número de registro es obligatorio y debe tener entre 1 y ${REGISTRY_NUMBER_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
+    if (!cleanNumFolio) {
+      toast.error(
+        `El número de folio es obligatorio y debe tener entre 1 y ${FOLIO_BOOK_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
+    if (!cleanNumLibro) {
+      toast.error(
+        `El número de libro es obligatorio y debe tener entre 1 y ${FOLIO_BOOK_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
 
     setIsSaving(true);
     try {
-      const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
         email: trimmedEmail,
         idNumber: trimmedDocument,
-        programName: trimmedProgram || selectedUser.program || '',
+        programName: trimmedProgram,
         campus: trimmedLocation || undefined,
-        seccionalName: effectiveTerritorial || undefined,
-        numRegistro: cleanNumRegistro || undefined,
-        numFolio: cleanNumFolio || undefined,
-        numLibro: cleanNumLibro || undefined,
+        seccionalName: effectiveTerritorial,
+        numRegistro: cleanNumRegistro,
+        numFolio: cleanNumFolio,
+        numLibro: cleanNumLibro,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -1777,9 +1858,10 @@ export function GraduatesManagementModule() {
                 numRegistro: cleanNumRegistro,
                 numFolio: cleanNumFolio,
                 numLibro: cleanNumLibro,
-                program: trimmedProgram || graduate.program,
+                program: trimmedProgram,
                 location: trimmedLocation || graduate.location,
-                territorial: effectiveTerritorial || graduate.territorial,
+                territorial: effectiveTerritorial,
+                sourceTerritorial: effectiveTerritorial,
               }
             : graduate
         )
@@ -1995,9 +2077,6 @@ export function GraduatesManagementModule() {
   };
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all' || sedeFilter !== 'all';
-  const selectedTerritorial = editForm.location
-    ? territorialBySede.get(normalizeKey(editForm.location))
-    : undefined;
   const currentActorName = getCurrentActorName();
   const bulkUploadCreatedBy = currentActorName
     ? `bulk_upload:${currentActorName}`
@@ -2020,8 +2099,10 @@ export function GraduatesManagementModule() {
         onImported={handleBulkGraduatesImported}
         createdBy={bulkUploadCreatedBy}
         programOptions={programCatalogOptions}
-        territorialOptions={editTerritorialOptions}
+        territorialOptions={territorialOptions}
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
+        programsPeriod={programasPeriodoCatalogo}
+        structurePeriod={estructuraPeriodoCatalogo}
       />
 
       {/* Header propio de esta vista (responsive con wrap natural, sin colapsar a iconos/menú) */}
@@ -3393,6 +3474,12 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, firstName: sanitizePersonName(e.target.value) })
                 }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    firstName: normalizeSpaces(current.firstName),
+                  }))
+                }
 
                 placeholder="Nombre del graduado"
 
@@ -3423,6 +3510,12 @@ export function GraduatesManagementModule() {
 
                 onChange={(e) =>
                   setEditForm({ ...editForm, lastName: sanitizePersonName(e.target.value) })
+                }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    lastName: normalizeSpaces(current.lastName),
+                  }))
                 }
 
                 placeholder="Apellido del graduado"
@@ -3455,14 +3548,15 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({
                     ...editForm,
-                    document: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                    document: e.target.value.slice(0, DOCUMENT_MAX_LENGTH),
                   })
                 }
 
                 placeholder="Número de documento"
 
-                inputMode="numeric"
+                inputMode="text"
 
+                minLength={DOCUMENT_MIN_LENGTH}
                 maxLength={DOCUMENT_MAX_LENGTH}
 
                 required
@@ -3486,7 +3580,7 @@ export function GraduatesManagementModule() {
 
                 id="edit-program"
 
-                value={editForm.program}
+                value={selectedCatalogProgram || editForm.program}
 
                 onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
 
@@ -3498,7 +3592,7 @@ export function GraduatesManagementModule() {
 
               >
 
-                <option value="">Seleccionar programa</option>
+                <option value="" hidden>Seleccionar programa académico</option>
 
                 {editProgramOptions.map((prog) => (
 
@@ -3507,6 +3601,12 @@ export function GraduatesManagementModule() {
                 ))}
 
               </select>
+
+              {externalEditProgram && externalEditProgram !== 'No especificado' && (
+                <p className="text-xs text-gray-500">
+                  Este programa proviene de la integración y no coincide con el catálogo actual.
+                </p>
+              )}
 
             </div>
 
@@ -3532,8 +3632,16 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, email: e.target.value.slice(0, EMAIL_MAX_LENGTH) })
                 }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    email: current.email.trim(),
+                  }))
+                }
 
                 placeholder="correo@ejemplo.com"
+
+                minLength={EMAIL_MIN_LENGTH}
 
                 maxLength={EMAIL_MAX_LENGTH}
 
@@ -3558,7 +3666,7 @@ export function GraduatesManagementModule() {
 
                 id="edit-territorial"
 
-                value={editForm.territorial || selectedTerritorial || ''}
+                value={editForm.territorial}
 
                 onChange={(e) => handleTerritorialChange(e.target.value)}
 
@@ -3570,7 +3678,7 @@ export function GraduatesManagementModule() {
 
               >
 
-                <option value="">Seleccionar territorial</option>
+                <option value="">Sin territorial - seleccione una opción</option>
 
                 {editTerritorialOptions.map((territorial) => (
 
@@ -3579,6 +3687,12 @@ export function GraduatesManagementModule() {
                 ))}
 
               </select>
+
+              {!editForm.territorial && (
+                <p className="text-xs text-gray-500">
+                  Debe seleccionar una territorial válida para guardar cambios.
+                </p>
+              )}
 
             </div>
 
@@ -3628,23 +3742,44 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numRegistro">Número de registro</Label>
+                  <Label htmlFor="edit-numRegistro">
+                    Número de registro
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numRegistro"
 
-                    value={formatRegistroInput(editForm.numRegistro)}
+                    value={formatRegistryInput(
+                      editForm.numRegistro,
+                      REGISTRY_NUMBER_MAX_LENGTH,
+                    )}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numRegistro: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numRegistro: sanitizeRegistryInput(
+                          e.target.value,
+                          REGISTRY_NUMBER_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      REGISTRY_NUMBER_MAX_LENGTH +
+                      Math.floor((REGISTRY_NUMBER_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -3653,23 +3788,41 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numFolio">Número de folio</Label>
+                  <Label htmlFor="edit-numFolio">
+                    Número de folio
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numFolio"
 
-                    value={formatRegistroInput(editForm.numFolio)}
+                    value={formatRegistryInput(editForm.numFolio, FOLIO_BOOK_MAX_LENGTH)}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numFolio: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numFolio: sanitizeRegistryInput(
+                          e.target.value,
+                          FOLIO_BOOK_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      FOLIO_BOOK_MAX_LENGTH +
+                      Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -3678,23 +3831,41 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numLibro">Número de libro</Label>
+                  <Label htmlFor="edit-numLibro">
+                    Número de libro
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numLibro"
 
-                    value={formatRegistroInput(editForm.numLibro)}
+                    value={formatRegistryInput(editForm.numLibro, FOLIO_BOOK_MAX_LENGTH)}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numLibro: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numLibro: sanitizeRegistryInput(
+                          e.target.value,
+                          FOLIO_BOOK_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      FOLIO_BOOK_MAX_LENGTH +
+                      Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 

@@ -101,7 +101,28 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
 type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones';
 
 export function BancoDocentesPTA() {
-  const { hasPermission } = useAuth();
+  const auth = useAuth();
+  
+  // Robust super user detection: check both MFE AuthContext AND shell's stored user
+  const isSuperUserFallback = (() => {
+    if (auth.isSuperUser) return true;
+    // Fallback: check shell's stored user from localStorage/sessionStorage
+    try {
+      const raw = localStorage.getItem('esap_user') || sessionStorage.getItem('esap_user');
+      if (raw) {
+        const shellUser = JSON.parse(raw);
+        const email = String(shellUser?.email || '').toLowerCase();
+        if (email === 'superuser@esap.edu.co') return true;
+        const roles = shellUser?.roles || [];
+        if (roles.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'SUPER_ADMIN')) return true;
+      }
+    } catch { /* ignore */ }
+    return false;
+  })();
+
+  const hasPermission = (perm: string) => isSuperUserFallback || auth.hasPermission(perm);
+  
+  console.log('[BancoDocentesPTA] AUTH:', { isSuperUser: auth.isSuperUser, isSuperUserFallback, email: auth.userEmail, role: auth.userRole, invite: hasPermission('banco-docentes.rund.invite'), import: hasPermission('banco-docentes.rund.import'), manage: hasPermission('banco-docentes.rund.manage') });
   const [tab, setTab] = useState<Tab>('listado');
   const [docentes, setDocentes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);

@@ -978,17 +978,9 @@ export function CarpetaDigitalSharedView({
 
   const currentUserId = useMemo(() => {
     if (typeof window === 'undefined') return 'admin-user';
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      try {
-        const payloadPart = token.split('.')[1];
-        if (payloadPart) {
-          const payload = JSON.parse(atob(payloadPart));
-          return payload.id || payload.sub || payload.userId || 'admin-user';
-        }
-      } catch (e) {
-        // ignore
-      }
+    const authUser = (window as any).__esap_auth_cache;
+    if (authUser) {
+      return authUser.id || authUser.id_user || authUser.userId || authUser.sub || 'admin-user';
     }
     return 'admin-user';
   }, []);
