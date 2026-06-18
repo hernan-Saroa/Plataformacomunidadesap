@@ -922,9 +922,11 @@ export function GraduatesManagementModule() {
           setProgramasPeriodoCatalogo(periodoProgramas?.codigo || '');
         }
 
-        const seccionalById = new Map<number, Seccional>();
+        const seccionalByName = new Map<string, Seccional>();
         estructuraSeccionalesMaestras.forEach((seccional) => {
-          seccionalById.set(seccional.idSeccional, seccional);
+          if (seccional?.nomSeccional) {
+            seccionalByName.set(normalizeKey(seccional.nomSeccional), seccional);
+          }
         });
 
         const sedeByName = new Map<string, Sede>();
@@ -944,11 +946,9 @@ export function GraduatesManagementModule() {
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
           const rawSeccionalName = (graduate.seccionalName || '').trim();
-          const rawSeccionalLooksLikeSede = !!sedeByName.get(normalizeKey(rawSeccionalName));
-          const territorialName =
-            sedeMatch?.seccional?.nomSeccional ||
-            (sedeMatch?.idSeccional ? seccionalById.get(sedeMatch.idSeccional)?.nomSeccional : undefined) ||
-            (rawSeccionalLooksLikeSede ? undefined : rawSeccionalName || undefined);
+          const territorialName = rawSeccionalName
+            ? seccionalByName.get(normalizeKey(rawSeccionalName))?.nomSeccional
+            : undefined;
           const createdBy = graduate.createdBy;
           return {
             id: graduate.id,
@@ -1286,8 +1286,12 @@ export function GraduatesManagementModule() {
     const mappedTerritorial = editForm.location
       ? territorialBySede.get(normalizeKey(editForm.location))
       : '';
+    const currentTerritorialIsValid = territorialOptions.some(
+      (territorial) =>
+        normalizeKey(territorial) === normalizeKey(editForm.territorial),
+    );
     return uniqueSortedText([
-      editForm.territorial,
+      currentTerritorialIsValid ? editForm.territorial : '',
       mappedTerritorial,
       ...territorialOptions,
     ]);
@@ -1505,9 +1509,12 @@ export function GraduatesManagementModule() {
     }
 
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
-    const mappedTerritorial = territorialBySede.get(normalizeKey(user.location));
-    const storedTerritorial =
+    const rawStoredTerritorial =
       (user.sourceTerritorial || user.territorial || '').trim();
+    const storedTerritorial = territorialOptions.find(
+      (territorial) =>
+        normalizeKey(territorial) === normalizeKey(rawStoredTerritorial),
+    );
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName || '',
@@ -1517,7 +1524,7 @@ export function GraduatesManagementModule() {
       document: user.document || '',
       program: user.program || '',
       location: user.location,
-      territorial: storedTerritorial || mappedTerritorial || '',
+      territorial: storedTerritorial || '',
       numRegistro: sanitizeRegistroInput(user.numRegistro || ''),
       numFolio: sanitizeRegistroInput(user.numFolio || ''),
       numLibro: sanitizeRegistroInput(user.numLibro || ''),
@@ -1526,11 +1533,9 @@ export function GraduatesManagementModule() {
   };
 
   const handleLocationChange = (value: string) => {
-    const mappedTerritorial = territorialBySede.get(normalizeKey(value));
     setEditForm((prev) => ({
       ...prev,
       location: value,
-      territorial: mappedTerritorial || prev.territorial || '',
     }));
   };
 
@@ -1703,13 +1708,7 @@ export function GraduatesManagementModule() {
     const cleanNumRegistro = sanitizeRegistroInput(editForm.numRegistro);
     const cleanNumFolio = sanitizeRegistroInput(editForm.numFolio);
     const cleanNumLibro = sanitizeRegistroInput(editForm.numLibro);
-    const effectiveTerritorial =
-      (
-        editForm.territorial ||
-        (editForm.location
-          ? territorialBySede.get(normalizeKey(editForm.location))
-          : '')
-      ).trim();
+    const effectiveTerritorial = editForm.territorial.trim();
     const firstNameError = getPersonNameValidationError(trimmedFirstName, 'El nombre');
     if (firstNameError) {
       toast.error(firstNameError);
@@ -1772,7 +1771,7 @@ export function GraduatesManagementModule() {
         idNumber: trimmedDocument,
         programName: trimmedProgram || selectedUser.program || '',
         campus: trimmedLocation || undefined,
-        seccionalName: effectiveTerritorial || undefined,
+        seccionalName: effectiveTerritorial,
         numRegistro: cleanNumRegistro || undefined,
         numFolio: cleanNumFolio || undefined,
         numLibro: cleanNumLibro || undefined,
@@ -1794,8 +1793,8 @@ export function GraduatesManagementModule() {
                 numLibro: cleanNumLibro,
                 program: trimmedProgram || graduate.program,
                 location: trimmedLocation || graduate.location,
-                territorial: effectiveTerritorial || graduate.territorial,
-                sourceTerritorial: effectiveTerritorial || graduate.sourceTerritorial,
+                territorial: effectiveTerritorial,
+                sourceTerritorial: effectiveTerritorial,
               }
             : graduate
         )
@@ -2011,9 +2010,6 @@ export function GraduatesManagementModule() {
   };
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all' || sedeFilter !== 'all';
-  const selectedTerritorial = editForm.location
-    ? territorialBySede.get(normalizeKey(editForm.location))
-    : undefined;
   const currentActorName = getCurrentActorName();
   const bulkUploadCreatedBy = currentActorName
     ? `bulk_upload:${currentActorName}`
@@ -3576,7 +3572,7 @@ export function GraduatesManagementModule() {
 
                 id="edit-territorial"
 
-                value={editForm.territorial || selectedTerritorial || ''}
+                value={editForm.territorial}
 
                 onChange={(e) => handleTerritorialChange(e.target.value)}
 
@@ -3588,7 +3584,7 @@ export function GraduatesManagementModule() {
 
               >
 
-                <option value="">Seleccionar territorial</option>
+                <option value="">Sin territorial - seleccione una opción</option>
 
                 {editTerritorialOptions.map((territorial) => (
 
@@ -3597,6 +3593,12 @@ export function GraduatesManagementModule() {
                 ))}
 
               </select>
+
+              {!editForm.territorial && (
+                <p className="text-xs text-gray-500">
+                  Debe seleccionar una territorial válida para guardar cambios.
+                </p>
+              )}
 
             </div>
 
