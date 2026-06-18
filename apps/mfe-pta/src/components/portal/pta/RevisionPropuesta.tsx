@@ -120,7 +120,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
   const canRespond = ['NOTIFICADO_DOCENTE', 'PROPUESTO_POR_DIRECCION'].includes(pta.estado);
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto">
       {/* Header */}
       <button onClick={onBack} className="flex items-center gap-1 text-sm text-gray-500 font-medium mb-2 bg-transparent border-none cursor-pointer p-0 hover:text-gray-700">
         <ChevronLeft className="w-4 h-4" /> Volver a mis PTAs

@@ -792,7 +792,7 @@ export function PortalTransaccional({
             ) : (
               !isPTAFullWidth && renderLeftPanelMobile(contactItems)
             )}
-            <div className={isPTAFullWidth ? "w-full min-w-0" : isDesktop ? "flex-1 min-w-0" : "min-w-0"}>
+            <div className={isPTAFullWidth ? "w-full min-w-0 ml-4" : isDesktop ? "flex-1 min-w-0 ml-4" : "min-w-0 ml-4"}>
               {ptaContent}
             </div>
           </div>
@@ -1058,7 +1058,7 @@ export function PortalTransaccional({
       return (
         <div className="flex items-stretch gap-8" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
           {renderLeftPanelDesktop(contactItems, renderQuickApps())}
-          <div className="flex-1 min-w-0 flex flex-col gap-5">
+          <div className="flex-1 min-w-0 flex flex-col gap-5 ml-4">
             {renderGreeting()}
             {renderServices()}
             {/* Stats cards */}
@@ -1153,7 +1153,7 @@ export function PortalTransaccional({
     return (
       <div className="flex items-stretch gap-8" style={{ minHeight: 'calc(100vh - 64px - 4rem)' }}>
         {renderLeftPanelDesktop(contactItems, renderQuickApps())}
-        <div className="flex-1 min-w-0 flex flex-col gap-5">
+        <div className="flex-1 min-w-0 flex flex-col gap-5 ml-4">
           {renderGreeting()}
           {renderServices()}
           {/* Stats cards */}
