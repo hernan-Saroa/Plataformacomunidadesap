@@ -106,7 +106,7 @@ export class AuthController {
       this.loginProtectionService.clearIpRateLimit(ipAddress);
       this.applyRateLimitHeaders(res, rateLimitState);
       this.setAuthCookie(res, response.accessToken, req);
-      return response;
+      return this.stripAuthTokens(response);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         const failedState =
@@ -150,7 +150,7 @@ export class AuthController {
   ) {
     const response = await this.authService.loginWithMicrosoft(dto);
     this.setAuthCookie(res, response.accessToken, req);
-    return response;
+    return this.stripAuthTokens(response);
   }
 
   @Public()
@@ -211,7 +211,7 @@ export class AuthController {
     const rawCookie = req.headers.cookie || '';
     const response = await this.authService.refreshUserToken(rawCookie);
     this.setAuthCookie(res, response.accessToken, req);
-    return response;
+    return this.stripAuthTokens(response);
   }
 
   @Public()
@@ -267,6 +267,15 @@ export class AuthController {
       maxAge: 3600 * 1000, // 1 hora en ms (mismo que el JWT)
       path: '/',
     });
+  }
+
+  private stripAuthTokens<T extends { accessToken?: string; refreshToken?: string }>(
+    response: T,
+  ): Omit<T, 'accessToken' | 'refreshToken'> {
+    const safeResponse = { ...response };
+    delete safeResponse.accessToken;
+    delete safeResponse.refreshToken;
+    return safeResponse;
   }
 
   private clearAuthCookie(res: Response, req?: Request): void {

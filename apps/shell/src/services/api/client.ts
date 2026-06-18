@@ -9,7 +9,7 @@
 
 import { getBaseURL, STORAGE_KEYS, API_CONFIG, APIResponse, APIError } from './config';
 import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
-import { clearAuthTokens, getAccessToken, getRefreshToken, setAuthTokens } from './authTokenStore';
+import { clearAuthTokens } from './authTokenStore';
 
 /**
  * Custom error para errores de API
@@ -50,24 +50,10 @@ class APIClient {
   }
 
   /**
-   * Obtener token de acceso del localStorage
+   * No persistir JWT en el navegador. La cookie HttpOnly la emite el backend.
    */
-  private getAccessToken(): string | null {
-    return getAccessToken();
-  }
-
-  /**
-   * Obtener refresh token del localStorage
-   */
-  private getRefreshToken(): string | null {
-    return getRefreshToken();
-  }
-
-  /**
-   * Guardar tokens en localStorage
-   */
-  private setTokens(accessToken?: string, refreshToken?: string): void {
-    setAuthTokens(accessToken, refreshToken);
+  private setTokens(_accessToken?: string, _refreshToken?: string): void {
+    clearAuthTokens();
   }
 
   /**
@@ -155,13 +141,7 @@ class APIClient {
    * Agregar token de autorización al header
    */
   private addAuthHeader(headers: HeadersInit = {}): HeadersInit {
-    const token = this.getAccessToken();
-    if (!token) return headers;
-
-    return {
-      ...headers,
-      Authorization: `Bearer ${token}`,
-    };
+    return headers;
   }
 
   /**
@@ -179,14 +159,7 @@ class APIClient {
       throw new Error(`Token refresh failed with status ${response.status}`);
     }
 
-    const data = await response.json().catch(() => null);
-    const accessToken = data?.data?.accessToken || data?.accessToken;
-    const refreshToken = data?.data?.refreshToken || data?.refreshToken;
-    if (accessToken) {
-      this.setTokens(accessToken, refreshToken || accessToken);
-    }
-
-    return accessToken || 'cookie-refreshed';
+    return 'cookie-refreshed';
   }
   /**
    * Agregar suscriptor para esperar refresh token
