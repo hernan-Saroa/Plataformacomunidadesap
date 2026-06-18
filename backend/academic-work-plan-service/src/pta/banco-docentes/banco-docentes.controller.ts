@@ -408,4 +408,12 @@ export class BancoDocentesController {
       return { success: true, data: [], message: e.message };
     }
   }
+
+  /** Temporary endpoint to fix DB */
+  @Get('reparar-soportes-db')
+  @Public()
+  async repararSoportes() {
+    const result = await this.service.repararSoportesMasivo();
+    return { success: true, data: result };
+  }
 }

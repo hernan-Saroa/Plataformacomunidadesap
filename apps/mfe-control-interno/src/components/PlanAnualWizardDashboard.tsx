@@ -4612,11 +4612,9 @@ function Paso2({
                                                                   <input
                                                                     type="date"
                                                                     value={tarea.fechaEntrega || ''}
-                                                                    min={pc.fechaProgramada}
-                                                                    max={pc.fechaSeguimiento || undefined}
                                                                     onChange={(e) => updateTareaCorte({ fechaEntrega: e.target.value })}
                                                                     className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
-                                                                    title="Fecha de entrega (dentro del período del corte)"
+                                                                    title="Fecha de entrega"
                                                                   />
                                                                 </div>
                                                               </div>
@@ -4624,35 +4622,62 @@ function Paso2({
                                                           );
                                                         })}
                                                         {/* Agregar tarea al corte */}
-                                                        <div className="flex gap-1.5 mt-1">
-                                                          <input
-                                                            type="text"
-                                                            data-tarea-corte={`${idActividadEnEstado}-${pc.id}`}
-                                                            placeholder="✏️ Nueva tarea…"
-                                                            className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                                            onClick={e => e.stopPropagation()}
-                                                            onKeyDown={(e) => {
-                                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                                                const desc = (e.target as HTMLInputElement).value.trim();
-                                                                const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }));
-                                                                onRolesChange(nuevaConfig);
-                                                                (e.target as HTMLInputElement).value = '';
-                                                              }
-                                                            }}
-                                                          />
-                                                          <button
-                                                            onClick={() => {
-                                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
-                                                              if (input && input.value.trim()) {
-                                                                const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }));
-                                                                onRolesChange(nuevaConfig);
-                                                                input.value = '';
-                                                              }
-                                                            }}
-                                                            className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
-                                                          >
-                                                            <Plus className="w-3 h-3" /> Agregar
-                                                          </button>
+                                                        <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5">
+                                                          <div className="flex items-center gap-3 px-1">
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren observaciones">
+                                                              <input type="checkbox" data-nueva-obs={`${idActividadEnEstado}-${pc.id}`}
+                                                                defaultChecked={actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                              <span className="text-[10px] text-gray-500">📝 Observaciones</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren adjuntos">
+                                                              <input type="checkbox" data-nueva-adj={`${idActividadEnEstado}-${pc.id}`}
+                                                                defaultChecked={actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                                                              <span className="text-[10px] text-gray-500">📎 Adjuntos</span>
+                                                            </label>
+                                                            <div className="ml-auto">
+                                                              <input type="date" data-nueva-fecha={`${idActividadEnEstado}-${pc.id}`}
+                                                                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
+                                                                title="Fecha de entrega" />
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex gap-1.5">
+                                                            <input
+                                                              type="text"
+                                                              data-tarea-corte={`${idActividadEnEstado}-${pc.id}`}
+                                                              placeholder="✏️ Nueva tarea…"
+                                                              className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                              onClick={e => e.stopPropagation()}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                  const desc = (e.target as HTMLInputElement).value.trim();
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }));
+                                                                  onRolesChange(nuevaConfig);
+                                                                  (e.target as HTMLInputElement).value = '';
+                                                                }
+                                                              }}
+                                                            />
+                                                            <button
+                                                              onClick={() => {
+                                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
+                                                                if (input && input.value.trim()) {
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }));
+                                                                  onRolesChange(nuevaConfig);
+                                                                  input.value = '';
+                                                                }
+                                                              }}
+                                                              className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                            >
+                                                              <Plus className="w-3 h-3" /> Agregar
+                                                            </button>
+                                                          </div>
                                                         </div>
                                                       </div>
                                                     </div>
@@ -5038,11 +5063,9 @@ function Paso2({
                                                                   <input
                                                                     type="date"
                                                                     value={tarea.fechaEntrega || ''}
-                                                                    min={pc.fechaProgramada}
-                                                                    max={pc.fechaSeguimiento || undefined}
                                                                     onChange={(e) => updateTareaCorteCustom({ fechaEntrega: e.target.value })}
                                                                     className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
-                                                                    title="Fecha de entrega (dentro del período del corte)"
+                                                                    title="Fecha de entrega"
                                                                   />
                                                                 </div>
                                                               </div>
@@ -5050,35 +5073,62 @@ function Paso2({
                                                           );
                                                         })}
                                                         {/* Agregar tarea al corte (custom) */}
-                                                        <div className="flex gap-1.5 mt-1">
-                                                          <input
-                                                            type="text"
-                                                            data-tarea-corte-custom={`${rol.numero}-${index}-${pc.id}`}
-                                                            placeholder="✏️ Nueva tarea…"
-                                                            className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                                            onClick={e => e.stopPropagation()}
-                                                            onKeyDown={(e) => {
-                                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                                                const desc = (e.target as HTMLInputElement).value.trim();
-                                                                const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
-                                                                onRolesChange(nuevaConfig);
-                                                                (e.target as HTMLInputElement).value = '';
-                                                              }
-                                                            }}
-                                                          />
-                                                          <button
-                                                            onClick={() => {
-                                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
-                                                              if (input && input.value.trim()) {
-                                                                const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
-                                                                onRolesChange(nuevaConfig);
-                                                                input.value = '';
-                                                              }
-                                                            }}
-                                                            className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
-                                                          >
-                                                            <Plus className="w-3 h-3" /> Agregar
-                                                          </button>
+                                                        <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5">
+                                                          <div className="flex items-center gap-3 px-1">
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren observaciones">
+                                                              <input type="checkbox" data-nueva-obs-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                defaultChecked={actividad?.tipoEvidencia === 'OBSERVACIONES' || actividad?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                              <span className="text-[10px] text-gray-500">📝 Observaciones</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren adjuntos">
+                                                              <input type="checkbox" data-nueva-adj-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                defaultChecked={actividad?.tipoEvidencia === 'ADJUNTOS' || actividad?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                                                              <span className="text-[10px] text-gray-500">📎 Adjuntos</span>
+                                                            </label>
+                                                            <div className="ml-auto">
+                                                              <input type="date" data-nueva-fecha-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
+                                                                title="Fecha de entrega" />
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex gap-1.5">
+                                                            <input
+                                                              type="text"
+                                                              data-tarea-corte-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                              placeholder="✏️ Nueva tarea…"
+                                                              className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                              onClick={e => e.stopPropagation()}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                  const desc = (e.target as HTMLInputElement).value.trim();
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }; });
+                                                                  onRolesChange(nuevaConfig);
+                                                                  (e.target as HTMLInputElement).value = '';
+                                                                }
+                                                              }}
+                                                            />
+                                                            <button
+                                                              onClick={() => {
+                                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                if (input && input.value.trim()) {
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }; });
+                                                                  onRolesChange(nuevaConfig);
+                                                                  input.value = '';
+                                                                }
+                                                              }}
+                                                              className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                            >
+                                                              <Plus className="w-3 h-3" /> Agregar
+                                                            </button>
+                                                          </div>
                                                         </div>
                                                       </div>
                                                     </div>

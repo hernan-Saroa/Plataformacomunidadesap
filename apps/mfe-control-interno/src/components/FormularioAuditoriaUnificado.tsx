@@ -44,7 +44,7 @@ import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/ap
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
-import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -170,7 +170,7 @@ export interface AuditoriaUnificadaFormData {
 interface FormularioAuditoriaUnificadoProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: AuditoriaUnificadaFormData) => void;
+  onSubmit: (data: AuditoriaUnificadaFormData) => void | boolean | Promise<void | boolean>;
   initialData?: Partial<AuditoriaUnificadaFormData>;
   mode: 'create' | 'edit';
 }
@@ -254,7 +254,7 @@ interface FieldWrapperProps {
   error?: string | null;
   required?: boolean;
   children: React.ReactNode;
-  helpText?: string;
+  helpText?: React.ReactNode;
 }
 
 function FieldWrapper({ label, error, required, children, helpText }: FieldWrapperProps) {
@@ -279,10 +279,10 @@ function FieldWrapper({ label, error, required, children, helpText }: FieldWrapp
         )}
       </AnimatePresence>
       {!error && helpText && (
-        <p className="text-xs text-gray-500 flex items-center gap-1">
-          <Info className="w-3 h-3" />
-          {helpText}
-        </p>
+        <div className="text-xs text-gray-500 flex items-start gap-1 mt-1">
+          <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">{helpText}</div>
+        </div>
       )}
     </div>
   );
@@ -433,6 +433,11 @@ export function FormularioAuditoriaUnificado({
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
             .filter((config: any) => config.activo)
+            .filter((config: any) => {
+              // Excluir profesionales huérfanos cuyo usuario ya no existe en auth.personas
+              const nombre = config.nombre || '';
+              return nombre && nombre !== 'Usuario Sin Nombre' && nombre !== 'Sin Nombre';
+            })
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
@@ -510,10 +515,10 @@ export function FormularioAuditoriaUnificado({
             setProcesosAuditables(procesosArray);
             console.log(`[FormularioAuditoria] ✅ ${procesosArray.length} procesos auditables cargados desde el universo`);
           } else {
-            console.warn('[FormularioAuditoria] No se encontraron procesos en las evaluaciones, usando fallback');
+            console.log('[FormularioAuditoria] No se encontraron procesos en las evaluaciones, usando fallback');
           }
         } else {
-          console.warn('[FormularioAuditoria] No hay evaluaciones registradas, usando procesos fallback');
+          console.log('[FormularioAuditoria] No hay evaluaciones registradas, usando procesos fallback');
         }
       } catch (error) {
         console.error('[FormularioAuditoria] Error al cargar procesos auditables:', error);
@@ -886,9 +891,21 @@ export function FormularioAuditoriaUnificado({
       console.log('   fechaFinEjecucion:', formData.fechaFinEjecucion);
       console.log('   fechaInicioComunicacion:', formData.fechaInicioComunicacion);
       console.log('   fechaFinComunicacion:', formData.fechaFinComunicacion);
+      console.log('   auditorLider:', formData.auditorLider);
+      console.log('   supervisorAsignado:', formData.supervisorAsignado);
+      console.log('   equipoAuditores:', formData.equipoAuditores);
+      console.log('   titulo:', formData.titulo);
+      console.log('   tipoAuditoria:', formData.tipoAuditoria);
       console.log('═══════════════════════════════════════════════════════════════');
       
-      await onSubmit(formData);
+      const resultado = await onSubmit(formData);
+      
+      // ✅ Verificar si onSubmit retornó false (error en backend)
+      if (resultado === false) {
+        console.error('❌ FormularioAuditoriaUnificado - onSubmit retornó false, auditoría NO creada');
+        toast.error('No se pudo crear la auditoría. Revisa los datos e intenta de nuevo.');
+        return;
+      }
       
       // Log detallado en consola si incluye hallazgos preliminares
       if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
@@ -926,8 +943,9 @@ export function FormularioAuditoriaUnificado({
       
       onClose();
     } catch (error) {
-      toast.error('Error al guardar la auditoría');
-      console.error(error);
+      const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error al guardar la auditoría: ${errorMsg}`);
+      console.error('❌ FormularioAuditoriaUnificado - Error:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -1059,13 +1077,17 @@ export function FormularioAuditoriaUnificado({
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <Shield className="w-6 h-6" style={{ color: '#003DA5' }} />
-                    <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                      {mode === 'create' ? 'Nueva Auditoría OCI' : 'Editar Auditoría OCI'}
-                    </h2>
+                    <DialogTitle asChild>
+                      <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
+                        {mode === 'create' ? 'Nueva Auditoría OCI' : 'Editar Auditoría OCI'}
+                      </h2>
+                    </DialogTitle>
                   </div>
-                  <p className="text-sm text-gray-600">
-                    Formulario Unificado de Control Interno de Gestión - ESAP
-                  </p>
+                  <DialogDescription asChild>
+                    <p className="text-sm text-gray-600">
+                      Formulario Unificado de Control Interno de Gestión - ESAP
+                    </p>
+                  </DialogDescription>
                 </div>
               </div>
 

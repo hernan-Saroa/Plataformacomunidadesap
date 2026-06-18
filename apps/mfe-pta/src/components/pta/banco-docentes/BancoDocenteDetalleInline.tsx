@@ -274,7 +274,7 @@ export function BancoDocenteDetalleInline({ docente, onClose, onEdit }: Props) {
           {/* ── Prominent RUND Validation Panel ── */}
           <div style={{ padding: '20px 20px 0 20px', background: '#FAFBFC' }}>
             <RundValidationPanel 
-              docenteId={docente.id} 
+              docenteId={docente.docente_id || docente.id} 
               cleanPersonaId={docente.personaId || docente.persona_id}
               docente={docente} 
             />

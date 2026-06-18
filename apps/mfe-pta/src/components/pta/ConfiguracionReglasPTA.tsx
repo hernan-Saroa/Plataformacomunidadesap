@@ -53,12 +53,13 @@ export interface PTARules {
   criterio_multiplicador_docencia: number;
   min_pct_docencia_no_vinculados: number;
 
-  // Horas base por programa para docencia (Tablas 1 y 2)
-  docencia_base_pregrado_sc: number;
-  docencia_base_seminario_sc: number;
-  docencia_base_apt: number;
-  docencia_base_especializacion: number;
-  docencia_base_maestria: number;
+  // Configuración dinámica de docencia por programa académico (Base h/Cr, Multiplicador, etc.)
+  docencia_por_programa: Record<string, {
+    esVariable: boolean;
+    base: number;
+    multiplicador: number;
+  }>;
+
 
   // Investigación
   max_horas_inv_lider: number;
@@ -254,11 +255,7 @@ export const defaultPTARules: PTARules = {
   criterio_multiplicador_docencia: 3,
   min_pct_docencia_no_vinculados: 50,
 
-  docencia_base_pregrado_sc: 64,
-  docencia_base_seminario_sc: 128,
-  docencia_base_apt: 16,
-  docencia_base_especializacion: 16,
-  docencia_base_maestria: 12,
+  docencia_por_programa: {},
 
   max_horas_inv_lider: 400,
   max_pct_inv_lider: 50,
@@ -733,26 +730,30 @@ export default function ConfiguracionReglasPTA({
 
       <div className="max-w-screen-2xl mx-auto flex flex-col lg:flex-row p-6 lg:p-10 w-full gap-8 md:gap-12 items-start relative">
         {/* Floating Sidebar Nav */}
-        <div className={`w-full flex-shrink-0 bg-white border-r border-[#E5E7EB] py-6 px-4 sticky top-24 z-20 h-[calc(100vh-100px)] overflow-y-auto hidden lg:block transition-all duration-300 ${
-          sidebarCollapsed ? 'lg:w-[4.5rem]' : 'lg:w-[15rem]'
-        }`}>
-          <div className={`mb-6 flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-2'}`}>
+        <div
+          style={{ width: sidebarCollapsed ? '80px' : '260px' }}
+          className="flex-shrink-0 bg-white/60 backdrop-blur-md rounded-3xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] py-6 px-3.5 sticky top-24 z-20 max-h-[calc(100vh-120px)] overflow-y-auto hidden lg:flex lg:flex-col transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+        >
+          <div className={`mb-6 flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-2'} transition-all duration-300`}>
             {!sidebarCollapsed && (
-              <div className="flex flex-col">
-                <h3 className="text-[0.88rem] font-bold text-[#111827] m-0 tracking-tight">Módulos</h3>
-                <p className="text-[0.68rem] text-[#9CA3AF] m-0 mt-1">{TABS.length} vistas disponibles</p>
+              <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
+                <h3 className="text-[0.95rem] font-extrabold text-slate-800 m-0 tracking-tight flex items-center gap-2">
+                  <div className="w-1.5 h-4 bg-blue-600 rounded-full"></div>
+                  Módulos
+                </h3>
+                <p className="text-[0.65rem] font-bold uppercase tracking-widest text-slate-400 m-0 mt-1.5 ml-3.5">{TABS.length} vistas disponibles</p>
               </div>
             )}
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="w-7 h-7 flex items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F3F4F6] transition-colors cursor-pointer flex-shrink-0"
+              className="w-8 h-8 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-200 hover:shadow-sm active:scale-95 transition-all cursor-pointer flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               title={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
             >
-              {sidebarCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
           
-          <div className="space-y-1">
+          <div className="flex flex-col gap-1.5 relative">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -761,37 +762,45 @@ export default function ConfiguracionReglasPTA({
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   title={sidebarCollapsed ? tab.label : undefined}
-                  className={`group relative w-full flex items-center px-3 py-[9px] rounded-[10px] border-none cursor-pointer transition-all ${
-                    sidebarCollapsed ? 'justify-center' : 'justify-start gap-2.5'
+                  className={`group relative w-full flex items-center py-2.5 rounded-2xl border-none cursor-pointer transition-all duration-300 overflow-hidden ${
+                    sidebarCollapsed ? 'justify-center px-0' : 'justify-start px-3 gap-3 hover:pl-4'
                   } ${
                     isActive
-                      ? "bg-[#003DA5]/10"
-                      : "bg-transparent hover:bg-[#F3F4F6]"
+                      ? "bg-gradient-to-r from-blue-50 to-blue-50/20 shadow-[inset_0_1px_2px_rgba(255,255,255,0.5)]"
+                      : "bg-transparent hover:bg-slate-50/80"
                   }`}
                 >
-                  {/* Indicador activo */}
+                  {/* Background highlight for active state */}
                   {isActive && (
-                    <div className={`absolute rounded-sm bg-[#003DA5] ${
-                      sidebarCollapsed 
-                        ? 'left-1/2 bottom-[1px] top-auto -translate-x-1/2 w-4 h-[3px]' 
-                        : 'left-0 top-1/2 -translate-y-1/2 w-[3px] h-5'
-                    }`} />
+                    <div className="absolute inset-0 border border-blue-100 rounded-2xl pointer-events-none" />
                   )}
+                  
+                  {/* Indicador activo - Píldora lateral */}
+                  {isActive && !sidebarCollapsed && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-600 rounded-r-full shadow-[0_0_10px_rgba(37,99,235,0.4)]" />
+                  )}
+                  {isActive && sidebarCollapsed && (
+                    <div className="absolute left-1/2 bottom-[2px] top-auto -translate-x-1/2 w-4 h-[3px] bg-blue-600 rounded-full" />
+                  )}
+
                   {/* Contenedor del Icono */}
-                  <div className={`w-[30px] h-[30px] flex-shrink-0 rounded-lg flex items-center justify-center transition-colors ${
-                    isActive ? "bg-[#003DA5]/18" : (sidebarCollapsed ? "bg-transparent" : "bg-[#F9FAFB] border border-[#F3F4F6]")
+                  <div className={`w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                    isActive 
+                      ? "bg-blue-600 shadow-md shadow-blue-600/20 scale-100" 
+                      : (sidebarCollapsed ? "bg-transparent text-slate-400 group-hover:text-blue-500" : "bg-white border border-slate-100 text-slate-400 shadow-sm group-hover:border-slate-200 group-hover:shadow-md group-hover:text-blue-500 scale-95")
                   }`}>
                     <Icon
-                      className={`w-4 h-4 transition-colors ${isActive ? "text-[#003DA5]" : "text-[#9CA3AF]"}`}
+                      className={`w-[18px] h-[18px] transition-colors duration-300 ${isActive ? "text-white" : ""}`}
                     />
                   </div>
+                  
                   {/* Texto principal */}
                   {!sidebarCollapsed && (
-                    <div className="flex flex-col items-start overflow-hidden text-left transition-all">
-                      <span className={`text-[0.82rem] truncate w-full transition-colors ${isActive ? "font-bold text-[#003DA5]" : "font-semibold text-[#4B5563]"}`}>
+                    <div className="flex flex-col items-start overflow-hidden text-left w-full transition-all duration-300">
+                      <span className={`text-[0.85rem] truncate w-full transition-colors duration-300 ${isActive ? "font-extrabold text-blue-900" : "font-semibold text-slate-600 group-hover:text-slate-800"}`}>
                         {tab.label}
                       </span>
-                      <span className={`text-[0.6rem] truncate w-full transition-colors ${isActive ? "text-[#003DA5]/70" : "text-[#9CA3AF]"}`}>
+                      <span className={`text-[0.62rem] truncate w-full transition-colors duration-300 ${isActive ? "text-blue-600/80 font-semibold" : "text-slate-400 group-hover:text-slate-500"}`}>
                         {tab.desc}
                       </span>
                     </div>

@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
@@ -185,6 +186,12 @@ function TrackingBar({ estado }: { estado: string }) {
 
 export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocentePTAProps) {
   const [vista, setVista] = useState<VistaPortal>('v01_dashboard');
+
+  const [slotNode, setSlotNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = document.getElementById('portal-left-sidebar-slot');
+    if (el) setSlotNode(el);
+  }, [vista]);
 
   // Dispatch global custom event for the shell container to adjust layout
   useEffect(() => {
@@ -755,7 +762,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               </div>
 
               {/* Distribución por Componente */}
-              {(() => {
+              {selectedPta && (() => {
                 const asigs = selectedPta.asignaturas || [];
                 const horasDoc = selectedPta.horas_docencia ?? asigs.reduce((s: number, a: any) => s + (a.total_horas || a.horas || 0), 0);
                 const horasInv = selectedPta.horas_investigacion ?? 0;
@@ -784,18 +791,77 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   cumulativeOffset += dashLength;
                   return { ...c, pct, dashLength, dashOffset };
                 });
-                // Unused portion
-                const usedPct = horasMax > 0 ? Math.min(horasTotal / horasMax, 1) : 0;
 
+                const chartContent = (
+                  <div className="bg-white rounded-3xl border border-gray-200/80 p-4 shadow-sm mb-4">
+                    <h4 className="text-[11px] font-black tracking-widest text-gray-400 mb-3 flex items-center gap-1.5 uppercase">
+                      <Target className="w-3.5 h-3.5 text-[#003DA5]" /> Distribución por Componente
+                    </h4>
+
+                    <div className="flex flex-col items-center gap-4">
+                      {/* Donut Chart */}
+                      <div className="relative w-[110px] h-[110px] shrink-0">
+                        <svg className="w-full h-full" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
+                          <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="16" />
+                          {donutSegments.map((seg, i) => (
+                            <circle
+                              key={seg.label}
+                              cx="80" cy="80" r={radius}
+                              fill="none"
+                              stroke={seg.color}
+                              strokeWidth="16"
+                              strokeDasharray={`${seg.dashLength} ${circumference - seg.dashLength}`}
+                              strokeDashoffset={seg.dashOffset}
+                              strokeLinecap="butt"
+                              className="transition-all duration-600 ease-out"
+                              style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.04))' }}
+                            />
+                          ))}
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-[1.1rem] font-black text-gray-900 leading-none">{horasTotal}</span>
+                          <span className="text-[0.5rem] font-bold text-gray-400 uppercase tracking-wider mt-0.5">horas</span>
+                          <span className="text-[0.45rem] text-gray-450 mt-0.5">de {horasMax}h</span>
+                        </div>
+                      </div>
+
+                      {/* Stacked legend */}
+                      <div className="w-full space-y-2">
+                        {comps.map(c => {
+                          const pct = horasTotal > 0 ? Math.round((c.value / horasTotal) * 100) : 0;
+                          return (
+                            <div key={c.label} className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                                <span className="text-gray-600 font-semibold truncate text-[11px]">{c.label}</span>
+                              </div>
+                              <span className="text-gray-900 font-bold shrink-0 text-[11px]">
+                                {c.value}h <span className="text-gray-400 font-normal">({pct}%)</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-gray-100 text-[9.5px] text-gray-400 leading-normal">
+                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
+                    </div>
+                  </div>
+                );
+
+                if (slotNode) {
+                  return createPortal(chartContent, slotNode);
+                }
+
+                // Fallback inline for mobile or if slot is not found
                 return (
-                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm animate-in fade-in duration-300">
                     <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
                       <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#003DA5]" /> Distribución por Componente
                     </h4>
 
-                    {/* Responsive layout: stack on mobile, side-by-side on md+ */}
                     <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-center">
-                      {/* Donut Chart — hidden on very small, visible from sm */}
                       <div className="relative w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] shrink-0">
                         <svg className="w-full h-full" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
                           <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="16" />
@@ -821,7 +887,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                         </div>
                       </div>
 
-                      {/* Bar chart — fills remaining space */}
                       <div className="flex-1 min-w-0 w-full">
                         {comps.map(c => {
                           const maxH = Math.round(horasMax * 0.5);

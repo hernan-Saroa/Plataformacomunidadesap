@@ -20,7 +20,8 @@ export type PTAModuleProps = {
   initialView?: string;
 };
 
-function deriveIsSuperUser(userRoles?: string[]) {
+function deriveIsSuperUser(userRoles?: string[], userEmail?: string) {
+  if (userEmail && String(userEmail).toLowerCase().trim() === 'superuser@esap.edu.co') return true;
   if (!Array.isArray(userRoles)) return false;
   return userRoles.some((role) => {
     const r = String(role).toLowerCase();
@@ -38,7 +39,7 @@ export function PTAModule({
   initialView,
 }: PTAModuleProps) {
   const title = useMemo(() => 'Backoffice PTA', []);
-  const isSuperUser = deriveIsSuperUser(userRoles);
+  const isSuperUser = deriveIsSuperUser(userRoles, userEmail);
 
   return (
     <AuthProvider

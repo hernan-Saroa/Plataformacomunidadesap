@@ -2716,6 +2716,13 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA AL ARRASTRAR) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      if (!item.auditorAsignado || item.auditorAsignado.nombre === 'Por asignar' || !item.auditorAsignado.nombre) {
+        toast.error('Acción Requerida: Asignar Auditor', {
+          description: 'No es posible pasar de Planeación a Ejecución sin antes asignar un auditor a la auditoría.',
+          duration: 6000
+        });
+        return;
+      }
       if (!(await validarDocumentosEtapa(item.id, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
     if (estadoAnterior === 'Ejecución' && nuevoEstado === 'Comunicación') {
@@ -2844,6 +2851,13 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      if (!auditoriaActual.auditorAsignado || auditoriaActual.auditorAsignado.nombre === 'Por asignar' || !auditoriaActual.auditorAsignado.nombre) {
+        toast.error('Acción Requerida: Asignar Auditor', {
+          description: 'No es posible pasar de Planeación a Ejecución sin antes asignar un auditor a la auditoría.',
+          duration: 6000
+        });
+        return;
+      }
       if (!(await validarDocumentosEtapa(auditoriaId, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
     if (estadoAnterior === 'Ejecución' && nuevoEstado === 'Comunicación') {
@@ -3571,9 +3585,23 @@ export function GestionAuditoriasKanbanSimple() {
                 >
                   {/* 🚀 MODO AJUSTADO: Todas las columnas visibles sin scroll | MODO CONFORTABLE: Scroll horizontal */}
                   {columnasKanban.map((columna) => {
-                    const auditoriasColumna = auditoriasFiltradas.filter(
-                      (aud) => aud.estado === columna.id
-                    );
+                    const auditoriasColumna = auditoriasFiltradas.filter((aud) => {
+                      const audEstado = (aud.estado || '').toLowerCase().trim();
+                      const colId = (columna.id || '').toLowerCase().trim();
+                      
+                      // Si la columna es Planificación (o Planeación), agrupar también 'programa anual' / 'plan anual' y variaciones
+                      if (colId === 'planificación' || colId === 'planeación' || colId === 'planeacion') {
+                        return (
+                          audEstado === 'planificación' ||
+                          audEstado === 'planeación' ||
+                          audEstado === 'planeacion' ||
+                          audEstado === 'programa anual' ||
+                          audEstado === 'plan anual'
+                        );
+                      }
+                      
+                      return audEstado === colId;
+                    });
 
                     return (
                       <ColumnaKanban
