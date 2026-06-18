@@ -39,6 +39,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
 function DocumentosPendientesAlert({ documentosPendientes }: { documentosPendientes: any[] }) {
+  return null; // Temporarily deactivated - not blocking UI
   const [expanded, setExpanded] = useState(false);
   
   if (!documentosPendientes || documentosPendientes.length === 0) return null;
@@ -2190,158 +2191,232 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const territorialNombre = territoriales.find(t => t.id === asig.territorial_id)?.nombre
                           || (asig.territorial_id === defaultTerritorial ? defaultTerritorialNombre : asig.territorial_id || '—');
 
+                        const catAsig = asignaturasCat.find(ac => String(ac.id) === String(asig.asignatura_id));
+                        const displayNucleo = catAsig?.nucleo || asig.nucleo_tematico || '—';
+                        const displaySemestre = catAsig?.semestre || asig.semestre || '—';
+                        const displayCreditos = catAsig?.creditos != null ? catAsig.creditos : asig.creditos != null ? asig.creditos : 0;
+                        const displayModalidad = catAsig?.modalidad || asig.modalidad || 'PRESENCIAL';
+
                         return (
                           <div key={asig.id}
-                            className={`p-4 rounded-xl border relative transition-all duration-300 ${
+                            className={`p-4 md:p-5 rounded-2xl border relative transition-all duration-300 group ${
                               tieneConflicto
-                                ? 'border-red-400 bg-red-50/60 shadow-[0_0_0_3px_rgba(239,68,68,0.12)] border-l-4 border-l-red-500'
+                                ? 'border-red-200 bg-red-50/30 shadow-sm border-l-4 border-l-red-500 hover:shadow-md'
                                 : bloqueadaPorTerritorial
-                                  ? 'border-gray-200 bg-gray-50 opacity-70'
+                                  ? 'border-gray-200 bg-gray-50/80 opacity-75'
                                   : isComplete
-                                    ? 'border-gray-200 bg-white shadow-sm border-l-4 border-l-green-500'
-                                    : 'border-blue-300 bg-blue-50/50 shadow-[0_0_0_3px_rgba(59,130,246,0.1)]'
+                                    ? 'border-slate-200 bg-white shadow-sm border-l-4 border-l-emerald-500 hover:shadow-md hover:border-slate-300'
+                                    : 'border-blue-200 bg-blue-50/30 shadow-[0_0_0_3px_rgba(59,130,246,0.08)]'
                             }`}>
 
-                            <div className="flex items-center gap-2 mb-4">
-                              {isEditable && !bloqueadaPorTerritorial && (
-                                <button onClick={() => handleRemoveAsig(asig.id)} title="Eliminar Asignatura"
-                                  className="absolute top-3 right-3 min-w-[36px] min-h-[36px] p-2 rounded-lg border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-600 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/50">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              <div className={`text-sm font-black tracking-tight flex items-center gap-2.5 flex-1 ${tieneConflicto ? 'text-red-700' : isComplete ? 'text-gray-900' : 'text-blue-700'}`}>
+                            {/* Card Header */}
+                            <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100/80">
+                              <div className="flex items-center gap-2.5 flex-wrap">
                                 {tieneConflicto ? (
-                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600">
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 shadow-sm">
                                     <AlertTriangle className="w-3.5 h-3.5" />
                                   </div>
                                 ) : isComplete ? (
-                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-600">
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 shadow-sm">
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                   </div>
                                 ) : (
-                                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shadow-[0_0_0_4px_rgba(59,130,246,0.2)]" />
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 shadow-sm">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                                  </div>
                                 )}
-                                Asignatura {idx + 1}
+                                <span className={`text-[15px] font-extrabold tracking-tight ${tieneConflicto ? 'text-red-700' : isComplete ? 'text-slate-800' : 'text-blue-700'}`}>
+                                  Asignatura {idx + 1}
+                                </span>
                                 {tieneConflicto && (
-                                  <span className="text-[0.6rem] uppercase tracking-widest font-black px-2.5 py-1 bg-red-500/10 text-red-600 border border-red-500/30 rounded-full ml-1 flex items-center gap-1">
-                                    ⚠ Cruce de fechas — no suma horas
+                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-red-100 text-red-700 rounded-md ml-1 flex items-center gap-1 shadow-sm">
+                                    ⚠ Cruce de fechas
                                   </span>
                                 )}
                                 {!isComplete && !bloqueadaPorTerritorial && !tieneConflicto && (
-                                  <span className="text-[0.55rem] uppercase tracking-widest font-black px-2.5 py-1 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-full ml-1">
-                                    Por completar
+                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md ml-1 shadow-sm">
+                                    En progreso
                                   </span>
                                 )}
                                 {bloqueadaPorTerritorial && (
-                                  <span className="text-[0.6rem] font-semibold px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full border border-gray-200 flex items-center gap-1">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200 text-slate-600 rounded-md flex items-center gap-1 shadow-sm">
                                     🔒 {territorialNombre}
                                   </span>
                                 )}
                               </div>
+
+                              {isEditable && !bloqueadaPorTerritorial && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveAsig(asig.id)}
+                                  title="Eliminar Asignatura"
+                                  className="w-8 h-8 rounded-lg border border-transparent bg-slate-50 text-slate-400 cursor-pointer flex items-center justify-center hover:text-red-600 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all outline-none group-hover:border-slate-200 focus:ring-2 focus:ring-red-500/50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
 
-                            {/* Row 1: Territorial editable + cascada CETAP → Programa → Asignatura */}
-                            <div className={`grid grid-cols-1 md:grid-cols-2 ${hasCetapsAsig ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-4 mb-4 pr-10`}>
-                              {/* TERRITORIAL — ahora editable */}
+                            {/* Main Selects Grid: 4 columns on desktop to save vertical space */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                               <FormSelect
-                                label="Estructura Organizacional (Territorial) *"
+                                label="Territorial *"
                                 value={asig.territorial_id}
                                 disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'territorial_id', v)}
                                 options={territoriales.map(t => ({ value: t.id, label: t.nombre }))}
-                                placeholder="Seleccionar estructura organizacional (territorial)..."
+                                placeholder="Seleccionar..."
                               />
-                              {/* CETAP — dinámico según territorial de la asignatura */}
                               {hasCetapsAsig ? (
                                 <FormSelect label="CETAP" value={asig.cetap_id} disabled={!rowEditable}
                                   onChange={v => handleAsigChange(asig.id, 'cetap_id', v)}
                                   options={listaCetapsAsig.map((c: any) => ({ value: c.id, label: c.nombre }))}
-                                  placeholder="Seleccionar CETAP..." />
+                                  placeholder="Seleccionar..." />
                               ) : cetapsCargadosAsig ? (
                                 <div className="flex flex-col">
-                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
-                                  <div className="px-3 py-2 rounded-xl bg-gray-50/40 border border-dashed border-gray-200 text-[12px] text-gray-400 italic min-h-[36px] flex items-center">Sin CETAPs</div>
+                                  <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] text-slate-400 italic min-h-[36px] flex items-center">Sin CETAPs</div>
                                 </div>
                               ) : tIdAsig ? (
                                 <div className="flex flex-col">
-                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
-                                  <div className="px-3 py-2 rounded-xl bg-gray-50/40 border border-dashed border-gray-200 text-[12px] text-gray-400 italic min-h-[36px] flex items-center">Cargando...</div>
+                                  <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] text-slate-400 italic min-h-[36px] flex items-center">Cargando...</div>
                                 </div>
-                              ) : null}
+                              ) : (
+                                <div className="flex flex-col hidden md:flex">
+                                  {/* Empty placeholder to maintain grid layout when no territorial selected */}
+                                </div>
+                              )}
+
                               <FormSelect label="Programa" value={asig.programa_id} disabled={!rowEditable || !programaHabilitado}
                                 onChange={v => handleAsigChange(asig.id, 'programa_id', v)}
                                 options={programas.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }))}
-                                placeholder={programaHabilitado ? 'Seleccionar...' : hasCetapsAsig ? 'Seleccione CETAP' : 'Seleccione estructura organizacional'} />
+                                placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />
                               <FormSelect label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || !asig.programa_id}
                                 onChange={v => handleAsigChange(asig.id, 'asignatura_id', v)}
                                 options={getAsignaturasFiltradas(asig.programa_id).map(a => ({ value: a.id, label: a.nombre }))}
-                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Seleccione programa'} />
+                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
                             </div>
 
-                            {/* Row 2: Campos calculados + modalidad + fechas */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3 mb-3">
-                              <ReadonlyField label="Núcleo" value={asig.nucleo_tematico || '—'} />
-                              <ReadonlyField label="Semestre" value={asig.semestre ? `${asig.semestre}` : '—'} />
-                              <ReadonlyField label="Créditos" value={`${asig.creditos}`} />
-                              <FormInput label="Estudiantes" type="number" value={asig.total_estudiantes} disabled={!rowEditable}
-                                onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
-                              <ReadonlyField label="Horas Base" value={`${asig.horas_base}h`} />
-                              <div>
-                                <label className="block text-[0.68rem] font-semibold text-gray-500 mb-0.5">Total Horas</label>
-                                <div className={`px-2 py-1.5 rounded-md text-sm font-bold text-center ${tieneConflicto ? 'bg-red-50 border border-red-300 text-red-600 line-through' : 'bg-blue-50 border border-blue-200 text-[#003DA5]'}`}>
-                                  {asig.total_horas}h{tieneConflicto ? ' (excluido)' : ''}
+                            {/* Read-only Metrics Panel */}
+                            {asig.asignatura_id && (
+                              <div className="rounded-xl bg-slate-50 border border-slate-200/60 p-3 mb-4 transition-all duration-300">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                  {/* Núcleo Temático - Takes more space */}
+                                  <div className="flex flex-col col-span-2 sm:col-span-3 lg:col-span-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                                      Núcleo Temático
+                                    </span>
+                                    <span className="text-[12px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 min-h-[34px] flex items-center shadow-sm truncate" title={displayNucleo}>
+                                      {displayNucleo}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Smaller metric blocks */}
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">Semestre</span>
+                                    <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center shadow-sm">
+                                      {displaySemestre}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">Créditos</span>
+                                    <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center shadow-sm">
+                                      {displayCreditos}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">Horas Base</span>
+                                    <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center shadow-sm">
+                                      {asig.horas_base}h
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Total Horas Highlight */}
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">
+                                      Total Horas
+                                    </span>
+                                    <span className={`text-[13px] font-extrabold rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center border shadow-sm ${
+                                      tieneConflicto 
+                                        ? 'bg-red-50 border-red-200 text-red-600 line-through' 
+                                        : 'bg-blue-50/80 border-blue-200 text-blue-700'
+                                    }`}>
+                                      {asig.total_horas}h{tieneConflicto ? '*' : ''}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                              {/* Modalidad — solo lectura, proviene del catálogo de programas académicos */}
-                              <ReadonlyField label="Modalidad" value={
-                                asig.modalidad === 'PRESENCIAL' ? 'Presencial'
-                                : asig.modalidad === 'VIRTUAL' ? 'Virtual'
-                                : asig.modalidad === 'MIXTA' ? 'Mixta'
-                                : asig.modalidad || 'Presencial'
-                              } />
-                            </div>
+                            )}
 
-                            {/* Row 3: Fechas de la actividad */}
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                            {/* Additional Info: Dates & Students */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-1">
                               <FormInput label="Fecha inicio" type="date" value={asig.fecha_inicio || ''} disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_inicio', v)} />
                               <FormInput label="Fecha fin" type="date" value={asig.fecha_fin || ''} disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_fin', v)} />
+                              <FormInput label="Estudiantes" type="number" value={asig.total_estudiantes} disabled={!rowEditable}
+                                onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
+                              
+                              {/* Modalidad moved here to save space */}
+                              {asig.asignatura_id && (
+                                <div className="flex flex-col">
+                                  <span className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">Modalidad</span>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] font-semibold text-slate-600 min-h-[36px] flex items-center shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)]">
+                                    {displayModalidad === 'PRESENCIAL' ? 'Presencial'
+                                     : displayModalidad === 'VIRTUAL' ? 'Virtual'
+                                     : displayModalidad === 'MIXTA' ? 'Mixta'
+                                     : displayModalidad || 'Presencial'}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
-                            {/* Row 4: Observaciones toggle */}
+                            {/* Observaciones */}
                             {rowEditable && (
-                              <div className="mt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAsigChange(asig.id, '_showObs', !asig._showObs)}
-                                  className={`text-[0.7rem] font-semibold px-3 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
-                                    asig.observaciones
-                                      ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                      : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
-                                  }`}
-                                >
-                                  <MessageSquare className="w-3 h-3" />
-                                  {asig.observaciones ? `Obs: ${asig.observaciones.length}/50` : '+ Observación'}
-                                </button>
-                                {asig._showObs && (
-                                  <div className="mt-2">
-                                    <FormInput
-                                      label={`Observación (${(asig.observaciones || '').length}/50 caracteres)`}
+                              <div className="mt-3 pt-3 border-t border-slate-100/80">
+                                {!asig._showObs ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAsigChange(asig.id, '_showObs', true)}
+                                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                      asig.observaciones
+                                        ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm'
+                                        : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 shadow-sm'
+                                    }`}
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                    {asig.observaciones ? `Observación: ${asig.observaciones.length}/50` : '+ Agregar Observación'}
+                                  </button>
+                                ) : (
+                                  <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase ml-1">
+                                        Observación ({ (asig.observaciones || '').length }/50)
+                                      </label>
+                                      <button onClick={() => handleAsigChange(asig.id, '_showObs', false)} className="text-slate-400 hover:text-slate-600">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <input
+                                      type="text"
                                       value={asig.observaciones || ''}
                                       disabled={!rowEditable}
-                                      onChange={v => handleAsigChange(asig.id, 'observaciones', v.slice(0, 50))}
+                                      onChange={e => handleAsigChange(asig.id, 'observaciones', e.target.value.slice(0, 50))}
                                       placeholder="Ej: Grupo nocturno, requiere sala específica..."
+                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-[12px] font-medium text-slate-700 outline-none transition-all shadow-sm placeholder:text-slate-400"
                                     />
                                   </div>
                                 )}
                               </div>
                             )}
-                            {/* Mostrar observaciones en modo no editable si existen */}
                             {!rowEditable && asig.observaciones && (
-                              <div className="mt-2 text-xs text-gray-500 italic flex items-start gap-1">
-                                <MessageSquare className="w-3 h-3 mt-0.5 shrink-0" />
-                                {asig.observaciones}
+                              <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600 flex items-start gap-2 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                                <div>
+                                  <span className="font-bold text-slate-700 block uppercase text-[9px] tracking-widest mb-0.5">Observación</span>
+                                  {asig.observaciones}
+                                </div>
                               </div>
                             )}
                           </div>

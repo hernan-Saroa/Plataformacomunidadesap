@@ -11,23 +11,64 @@ export function TabDocencia({ draft, handleChange }: { draft: PTARules; handleCh
   const [simCrEsp, setSimCrEsp] = useState<number>(2);
   const [simCrMst, setSimCrMst] = useState<number>(4);
 
+  const [programas, setProgramas] = useState<any[]>([]);
+  const [loadingProgs, setLoadingProgs] = useState(true);
+
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const { apiClient } = await import('../../../../shell/src/services/api');
+        // Usamos el endpoint real de Programas Académicos
+        const response = await apiClient.get<any>('/auth/api/v1/programas-academicos', { limit: 100 });
+        if (response && response.data) {
+          setProgramas(response.data);
+        } else if (Array.isArray(response)) {
+          setProgramas(response);
+        }
+      } catch (e) {
+        console.error('Error loading programas for docencia config', e);
+      } finally {
+        setLoadingProgs(false);
+      }
+    }
+    load();
+  }, []);
+
+  const handleProgChange = (idProg: string, campo: 'base' | 'multiplicador' | 'esVariable', valor: any) => {
+    const configActual = draft.docencia_por_programa?.[idProg] || { base: 0, multiplicador: draft.criterio_multiplicador_docencia || 3, esVariable: true };
+    const nuevoMap = {
+      ...draft.docencia_por_programa,
+      [idProg]: { ...configActual, [campo]: valor }
+    };
+    handleChange('docencia_por_programa', nuevoMap);
+  };
+
   const renderSimulador = (
+    idProg: string,
     titulo: string,
     desc: string,
     esVariable: boolean,
     valorBase: number,
     cambioBase: (v: number) => void,
+    cambioVariable?: (v: boolean) => void,
     valorCreditos?: number,
     cambioCreditos?: (v: number) => void
   ) => {
     const total = esVariable ? (valorCreditos! * valorBase * mult) : (valorBase * mult);
     return (
-      <details className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors shadow-sm [&::-webkit-details-marker]:hidden" open={!esVariable}>
+      <details key={idProg} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors shadow-sm [&::-webkit-details-marker]:hidden" open={!esVariable}>
         <summary className="flex items-center justify-between p-4 cursor-pointer select-none bg-slate-50 group-open:bg-blue-50/20">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <h4 className="text-[13px] font-bold text-slate-800 leading-tight">{titulo}</h4>
-              {esVariable && <span className="text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200">Variable por Crédito</span>}
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={(e) => { e.preventDefault(); if (cambioVariable) cambioVariable(!esVariable); }}
+                  className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border transition-colors ${esVariable ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
+                >
+                  {esVariable ? 'Variable por Crédito' : 'Base Fija (Bloque)'}
+                </button>
+              </div>
             </div>
             <p className="text-[11px] text-slate-500 leading-tight">{desc}</p>
           </div>
@@ -183,46 +224,27 @@ export function TabDocencia({ draft, handleChange }: { draft: PTARules; handleCh
             </summary>
             
             <div className="p-6 border-t border-slate-100 flex flex-col gap-4 bg-slate-50/30">
-              {renderSimulador(
-                "Pregrados Sede Central (AP / EP)", 
-                "Asignación referencial sin escalamiento predefinido por el sistema, base plana.", 
-                false, 
-                draft.docencia_base_pregrado_sc || 0,
-                (v) => handleChange("docencia_base_pregrado_sc", v)
-              )}
-              {renderSimulador(
-                "Seminario Sede Central", 
-                "Asignación referencial sin escalamiento predefinido por el sistema, base plana.", 
-                false, 
-                draft.docencia_base_seminario_sc || 0,
-                (v) => handleChange("docencia_base_seminario_sc", v)
-              )}
-              {renderSimulador(
-                "Pregrado Territorial (APT Nacional)", 
-                "Fórmula escalada por cada crédito otorgado en la malla curricular institucional.", 
-                true, 
-                draft.docencia_base_apt || 0,
-                (v) => handleChange("docencia_base_apt", v),
-                simCrAPT,
-                setSimCrAPT
-              )}
-              {renderSimulador(
-                "Posgrados: Especializaciones", 
-                "Fórmula escalada por cada crédito otorgado en la malla curricular institucional.", 
-                true, 
-                draft.docencia_base_especializacion || 0,
-                (v) => handleChange("docencia_base_especializacion", v),
-                simCrEsp,
-                setSimCrEsp
-              )}
-              {renderSimulador(
-                "Posgrados: Maestrías", 
-                "Fórmula escalada por cada crédito otorgado en la malla curricular institucional.", 
-                true, 
-                draft.docencia_base_maestria || 0,
-                (v) => handleChange("docencia_base_maestria", v),
-                simCrMst,
-                setSimCrMst
+              {loadingProgs ? (
+                <div className="text-center py-6 text-sm text-slate-500">Cargando programas académicos...</div>
+              ) : programas.length === 0 ? (
+                <div className="text-center py-6 text-sm text-slate-500">No se encontraron programas académicos.</div>
+              ) : (
+                programas.map((p) => {
+                  const idProg = String(p.id);
+                  const configActual = draft.docencia_por_programa?.[idProg] || { base: 64, multiplicador: draft.criterio_multiplicador_docencia || 3, esVariable: true };
+                  
+                  return renderSimulador(
+                    idProg,
+                    p.nombre, 
+                    p.sede === 'Sede Central' ? "Asignación referencial (Sede Central)" : "Fórmula escalada por cada crédito (Territorial)", 
+                    configActual.esVariable, 
+                    configActual.base,
+                    (v) => handleProgChange(idProg, 'base', v),
+                    (v) => handleProgChange(idProg, 'esVariable', v),
+                    simCrAPT, // Usamos uno por defecto para el simulador o podríamos aislarlo
+                    setSimCrAPT
+                  );
+                })
               )}
             </div>
           </details>
