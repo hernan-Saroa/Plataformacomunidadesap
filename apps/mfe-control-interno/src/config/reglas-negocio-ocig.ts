@@ -51,28 +51,24 @@ export const REGLAS_NEGOCIO_OCIG = {
 
     /**
      * Valida si es Auditor Líder
-     * Requerimiento: Auditor Líder, Auditor Senior o superior.
+     * Requerimiento: Solo profesionales con rol "Auditor Líder" en Configuraciones > Profesionales OCI.
      */
     esAuditorLider: (cargo: string | undefined | null): boolean => {
       if (!cargo) return false;
       const cargoMin = cargo.toLowerCase();
-      const esLiderOSenior = cargoMin.includes('auditor') && (
+      return cargoMin.includes('auditor') && (
         cargoMin.includes('lider') || 
         cargoMin.includes('líder') || 
-        cargoMin.includes('lìder') || 
-        cargoMin.includes('senior') ||
-        cargoMin.includes('sénior')
+        cargoMin.includes('lìder')
       );
-      const esSuperior = cargoMin.includes('jefe');
-      return esLiderOSenior || esSuperior;
     },
 
     /**
-     * Valida si es parte del equipo auditor (Cualquiera)
-     * Requerimiento: Auditores o cualquiera.
+     * Valida si es parte del equipo auditor adicional.
+     * Todos los profesionales configurados en OCI pueden participar como equipo auditor.
+     * Los que ya están asignados como Jefe OCI o Auditor Líder se excluyen por ID en el componente.
      */
-    esEquipoAuditor: (cargo: string | undefined | null): boolean => {
-      // El requerimiento especifica que puede ser "auditores o cualquiera"
+    esEquipoAuditor: (_cargo: string | undefined | null): boolean => {
       return true;
     }
   },
