@@ -6,6 +6,14 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 import { useIsMobile } from '../ui/use-mobile';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@esap-mfe/shared-ui/dialog';
 import loginHeroImage from '../../assets/photo-1623156167557-281309073eef.png';
 
 interface MicrosoftCallbackResponse {
@@ -16,11 +24,13 @@ interface MicrosoftCallbackResponse {
 }
 
 interface LoginPageProps {
-  onLogin: (user: any, accessToken: string, rememberMe?: boolean) => void;
+  onLogin: (user: any, accessToken?: string, rememberMe?: boolean) => void;
   onBackToHome?: () => void;
+  onExistingSessionCheck?: () => Promise<any | null>;
+  onExistingSessionLogout?: () => Promise<void>;
 }
 
-export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
+export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExistingSessionLogout }: LoginPageProps) {
   const isMobile = useIsMobile();
   const loginOptions =
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
@@ -39,6 +49,9 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [showRecuperarModal, setShowRecuperarModal] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+  const [isCheckingExistingSession, setIsCheckingExistingSession] = useState(false);
+  const [isClosingExistingSession, setIsClosingExistingSession] = useState(false);
+  const [existingSessionUser, setExistingSessionUser] = useState<any | null>(null);
   const [microsoftLoginError, setMicrosoftLoginError] = useState<string | null>(null);
   const [bgLoaded, setBgLoaded] = useState(false);
 
@@ -144,6 +157,58 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     void processMicrosoftCallback();
   }, [onLogin, rememberMe]);
 
+  useEffect(() => {
+    const search = window.location.search;
+    const isMicrosoftCallback = search.includes('code=') || search.includes('error=');
+    if (isMicrosoftCallback || !onExistingSessionCheck) return;
+
+    let cancelled = false;
+
+    const validateExistingSession = async () => {
+      setIsCheckingExistingSession(true);
+      try {
+        const user = await onExistingSessionCheck();
+        if (cancelled) return;
+
+        if (user) {
+          setExistingSessionUser(user);
+        } else {
+          setIsCheckingExistingSession(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setIsCheckingExistingSession(false);
+        }
+      }
+    };
+
+    void validateExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onExistingSessionCheck]);
+
+  const handleContinueExistingSession = () => {
+    if (!existingSessionUser) return;
+    setExistingSessionUser(null);
+    setIsCheckingExistingSession(false);
+    onLogin(existingSessionUser);
+  };
+
+  const handleCloseExistingSession = async () => {
+    if (!onExistingSessionLogout || isClosingExistingSession) return;
+
+    setIsClosingExistingSession(true);
+    try {
+      await onExistingSessionLogout();
+      setExistingSessionUser(null);
+      setIsCheckingExistingSession(false);
+    } finally {
+      setIsClosingExistingSession(false);
+    }
+  };
+
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
     
@@ -167,6 +232,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isCheckingExistingSession) {
+      return;
+    }
     
     if (!validateForm()) {
       toast.error('Por favor corrija los errores en el formulario');
@@ -421,12 +490,12 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
 
             <div style={{ marginBottom: '32px' }}>
-              <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
-                Iniciar Sesión
-              </h1>
-              <p style={{ fontSize: '16px', lineHeight: '1.5' }} className="text-gray-400">
-                Accede a tu cuenta ESAP
-              </p>
+	              <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
+	                {isCheckingExistingSession ? 'Validando sesión' : 'Iniciar Sesión'}
+	              </h1>
+	              <p style={{ fontSize: '16px', lineHeight: '1.5' }} className="text-gray-400">
+	                {isCheckingExistingSession ? 'Confirmando si ya tienes una sesión activa' : 'Accede a tu cuenta ESAP'}
+	              </p>
             </div>
 
             {showMicrosoftLogin && (
@@ -439,13 +508,17 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={() => handleSocialLogin('Microsoft')}
-                  disabled={isLoading || isMicrosoftLoading}
+	                  disabled={isLoading || isMicrosoftLoading || isCheckingExistingSession}
                   style={{ height: '52px', fontSize: '15px', borderRadius: '12px' }}
                   className="w-full flex items-center justify-center gap-2.5 border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Building2 className="w-5 h-5" />
                   <span className="font-semibold">
-                    {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
+	                    {isCheckingExistingSession
+	                      ? 'Validando sesión...'
+	                      : isMicrosoftLoading
+	                        ? 'Conectando con Microsoft...'
+	                        : 'Iniciar sesión con Microsoft'}
                   </span>
                 </button>
               </div>
@@ -489,7 +562,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                           setRemainingAttempts(null);
                         }}
                         placeholder="correo@esap.edu.co"
-                        disabled={isLoading}
+	                        disabled={isLoading || isCheckingExistingSession}
                         style={{ fontSize: '15px', border: 'none', outline: 'none', background: 'transparent', padding: '0 16px 0 0', width: '100%', height: '100%' }}
                       />
                     </div>
@@ -521,7 +594,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                           setErrors({ ...errors, password: undefined });
                         }}
                         placeholder="••••••••"
-                        disabled={isLoading}
+	                        disabled={isLoading || isCheckingExistingSession}
                         style={{ fontSize: '15px', border: 'none', outline: 'none', background: 'transparent', padding: '0', width: '100%', height: '100%', flex: '1' }}
                       />
                       <button
@@ -582,15 +655,15 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
                   <button
                     type="submit"
-                    disabled={isLoading}
+	                    disabled={isLoading || isCheckingExistingSession}
                     style={{ height: '52px', fontSize: '16px', borderRadius: '12px' }}
                     className="w-full font-semibold bg-[#1e5da8] hover:bg-[#164078] active:bg-[#0f3562] text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-lg shadow-[#1e5da8]/25 hover:shadow-xl hover:shadow-[#1e5da8]/35 active:scale-[0.98]"
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Ingresando...</span>
-                      </>
+	                    {isLoading || isCheckingExistingSession ? (
+	                      <>
+	                        <Loader2 className="w-5 h-5 animate-spin" />
+	                        <span>{isCheckingExistingSession ? 'Validando...' : 'Ingresando...'}</span>
+	                      </>
                     ) : (
                       <>
                         <LogIn className="w-5 h-5" />
@@ -860,13 +933,71 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         </div>
       </motion.div>
 
-      <ModalRecuperarContrasena
-        isOpen={showRecuperarModal}
-        onClose={() => setShowRecuperarModal(false)}
-      />
-    </div>
-  );
-}
+	      <ModalRecuperarContrasena
+	        isOpen={showRecuperarModal}
+	        onClose={() => setShowRecuperarModal(false)}
+	      />
+
+	      <Dialog
+	        open={Boolean(existingSessionUser)}
+	        onOpenChange={(open) => {
+	          if (!open) {
+	            setExistingSessionUser(null);
+	            setIsCheckingExistingSession(false);
+	          }
+	        }}
+	      >
+	        <DialogContent hideCloseButton className="w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:w-[50vw] sm:max-w-[50vw] lg:w-[42rem] lg:max-w-[42rem] max-h-[50vh] overflow-y-auto">
+	          <div className="p-6">
+	            <DialogHeader className="items-center text-center">
+	              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-[#1e5da8]">
+	                <Shield className="h-7 w-7" />
+	              </div>
+	              <DialogTitle className="text-xl font-bold text-gray-900">
+	                Ya tienes una sesión activa
+	              </DialogTitle>
+	              <DialogDescription className="text-sm leading-6 text-gray-500">
+	                Encontramos una sesión vigente para esta plataforma. Puedes continuar sin iniciar sesión nuevamente.
+	              </DialogDescription>
+	            </DialogHeader>
+
+	            {existingSessionUser && (
+	              <div className="mt-5 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-center">
+	                <p className="text-sm font-semibold text-gray-800">
+	                  {existingSessionUser?.person?.first_name
+	                    ? `${existingSessionUser.person.first_name} ${existingSessionUser.person.last_name || ''}`.trim()
+	                    : existingSessionUser?.fullName || existingSessionUser?.name || existingSessionUser?.username || 'Usuario ESAP'}
+	                </p>
+	                <p className="mt-1 text-xs text-gray-500">
+	                  {existingSessionUser?.person?.email || existingSessionUser?.email || 'Sesión autenticada'}
+	                </p>
+	              </div>
+	            )}
+
+	            <DialogFooter className="mt-6 sm:justify-between">
+	              <button
+	                type="button"
+	                onClick={handleCloseExistingSession}
+	                disabled={isClosingExistingSession}
+	                className="flex h-11 w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:flex-1"
+	              >
+	                {isClosingExistingSession ? 'Cerrando sesión...' : 'Cerrar sesión'}
+	              </button>
+	              <button
+	                type="button"
+	                onClick={handleContinueExistingSession}
+	                disabled={isClosingExistingSession}
+	                className="flex h-11 w-full items-center justify-center rounded-lg bg-[#1e5da8] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#164078] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:flex-1"
+	              >
+	                Continuar
+	              </button>
+	            </DialogFooter>
+	          </div>
+	        </DialogContent>
+	      </Dialog>
+	    </div>
+	  );
+	}
 
 function parseMicrosoftCallback(search: string): MicrosoftCallbackResponse {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);

@@ -78,7 +78,9 @@ export class ProgramasService {
       qb.andWhere(`EXISTS (
         SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
         JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
-        WHERE ocp.id_programa = p.id AND pa.codigo = :periodo
+        WHERE ocp.id_programa = p.id
+          AND ocp.activa = TRUE
+          AND pa.codigo = :periodo
       )`, { periodo: filtros.periodoAcademico });
     }
 

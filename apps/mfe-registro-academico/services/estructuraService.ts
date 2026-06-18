@@ -26,6 +26,38 @@ export interface SedesFilters {
   search?: string;
 }
 
+export interface PeriodoAcademico {
+  id: string;
+  codigo: string;
+  anio: number;
+  semestre: number;
+  estado: string;
+  createdAt?: string | Date;
+  created_at?: string | Date;
+  fechaCreacion?: string | Date;
+}
+
+export interface PeriodoCetap {
+  id: string;
+  codigo: string;
+  nombre: string;
+  dtNombre?: string;
+  activePrograms?: number;
+}
+
+export interface DetallePeriodoAcademico {
+  success: boolean;
+  periodo: PeriodoAcademico;
+  programs: Array<{
+    id: string;
+    codigo: string;
+    nombre: string;
+    activeCetaps?: number;
+    subjectsCount?: number;
+  }>;
+  cetaps: PeriodoCetap[];
+}
+
 // DTOs para crear/actualizar
 export interface CreateSeccionalData {
   codSeccional?: string;
@@ -86,6 +118,14 @@ export const estructuraService = {
    */
   async obtenerEstructura(): Promise<EstructuraOrganizacionalResponse> {
     return apiClient.get<EstructuraOrganizacionalResponse>(`${SERVICE_PREFIX}/estructura-organizacional`);
+  },
+
+  async obtenerPeriodos(): Promise<PeriodoAcademico[]> {
+    return apiClient.get<PeriodoAcademico[]>('/pta/api/v1/periodos-academicos');
+  },
+
+  async obtenerDetallePeriodo(id: string): Promise<DetallePeriodoAcademico> {
+    return apiClient.get<DetallePeriodoAcademico>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
   },
 
   // ============================================

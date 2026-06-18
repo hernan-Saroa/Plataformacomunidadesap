@@ -19,7 +19,6 @@ import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
 import { syncEngine } from './syncEngine';
 import { getAppOnlineStatus } from '../../utils/connectivity';
-import { getAccessToken, setAuthTokens } from './authTokenStore';
 
 // ============================================================================
 // TIPOS INTERNOS
@@ -699,13 +698,6 @@ export class ApiClient {
         return null;
       }
 
-      const data = await response.json().catch(() => null);
-      const accessToken = data?.data?.accessToken || data?.accessToken;
-      const refreshToken = data?.data?.refreshToken || data?.refreshToken;
-      if (accessToken) {
-        setAuthTokens(accessToken, refreshToken || accessToken);
-      }
-
       this.resolveRefreshSubscribers('cookie-refreshed');
       return 'cookie-refreshed';
     } catch (error) {
@@ -726,13 +718,7 @@ export class ApiClient {
   }
 
   public addAuthHeader(headers: HeadersInit = {}): HeadersInit {
-    const accessToken = getAccessToken();
-    if (!accessToken) return headers;
-
-    return {
-      ...headers,
-      Authorization: `Bearer ${accessToken}`,
-    };
+    return headers;
   }
   /**
    * Muestra toast de error según el código HTTP

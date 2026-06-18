@@ -215,19 +215,11 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
   const auth = useAuth();
 
   const currentUserId = useMemo(() => {
+    if (auth.userPersonId) return auth.userPersonId;
     if (typeof window === 'undefined') return 'admin-user';
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      try {
-        const payloadPart = token.split('.')[1];
-        if (payloadPart) {
-          const payload = JSON.parse(atob(payloadPart));
-          return payload.id || payload.sub || payload.userId || 'admin-user';
-        }
-      } catch (e) {}
-    }
-    return 'admin-user';
-  }, []);
+    const authUser = (window as any).__esap_auth_cache;
+    return authUser?.id || authUser?.id_user || authUser?.userId || authUser?.sub || 'admin-user';
+  }, [auth.userPersonId]);
 
   const fetchRundData = useCallback(async () => {
     if (!docenteId && !cleanPersonaId) return;

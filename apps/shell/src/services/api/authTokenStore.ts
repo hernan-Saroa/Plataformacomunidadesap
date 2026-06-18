@@ -1,37 +1,39 @@
 const ACCESS_TOKEN_KEY = 'esap_auth_token';
 const REFRESH_TOKEN_KEY = 'esap_refresh_token';
 
-let accessTokenMemory: string | null = null;
-let refreshTokenMemory: string | null = null;
-
-function readSessionValue(key: string): string | null {
-  if (typeof sessionStorage === 'undefined') return null;
-  return sessionStorage.getItem(key);
+function removeStorageValue(storage: Storage | undefined, key: string): void {
+  try {
+    storage?.removeItem(key);
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
+  }
 }
 
 export function getAccessToken(): string | null {
-  return accessTokenMemory || readSessionValue(ACCESS_TOKEN_KEY);
+  return null;
 }
 
 export function getRefreshToken(): string | null {
-  return refreshTokenMemory || readSessionValue(REFRESH_TOKEN_KEY);
+  return null;
 }
 
-export function setAuthTokens(accessToken?: string, refreshToken?: string): void {
-  if (accessToken) {
-    accessTokenMemory = accessToken;
-    sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  }
-
-  if (refreshToken) {
-    refreshTokenMemory = refreshToken;
-    sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-  }
+export function setAuthTokens(_accessToken?: string, _refreshToken?: string): void {
+  clearAuthTokens();
 }
 
 export function clearAuthTokens(): void {
-  accessTokenMemory = null;
-  refreshTokenMemory = null;
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  if (typeof window === 'undefined') return;
+
+  const legacyKeys = [
+    ACCESS_TOKEN_KEY,
+    REFRESH_TOKEN_KEY,
+    'esap_access_token',
+    'esap-auth-token',
+    'token',
+  ];
+
+  for (const key of legacyKeys) {
+    removeStorageValue(window.sessionStorage, key);
+    removeStorageValue(window.localStorage, key);
+  }
 }

@@ -307,6 +307,7 @@ const AUTH_TOKEN_STORAGE_KEYS = [
 ];
 const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
 const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
+const LEGACY_REMEMBER_SESSION_KEY = 'esap-remember-session';
 /** Persiste la elección manual del usuario (portal ↔ backoffice) entre recargas */
 const SYSTEM_OVERRIDE_KEY = 'esap-system-override';
 
@@ -329,27 +330,16 @@ const CLEAR_SESSION_STATE_STORAGE_KEYS = [
   SYSTEM_OVERRIDE_KEY,
 ];
 
-function migrateAuthTokensToSessionStorage() {
-  // Solo limpiar residuos de localStorage (los tokens en sessionStorage
-  // son necesarios para restaurar la sesión al recargar la página).
+function clearAuthSensitiveBrowserStorage() {
+  // OTIC-001/002/006: los JWT y datos identificables del usuario no deben
+  // quedar persistidos en storage accesible por JavaScript.
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
+    sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   }
 
-  const rememberedSession = localStorage.getItem('esap-remember-session');
-  if (!rememberedSession) return;
-
-  try {
-    const parsed = JSON.parse(rememberedSession);
-    if (parsed?.token || parsed?.accessToken || parsed?.refreshToken) {
-      delete parsed.token;
-      delete parsed.accessToken;
-      delete parsed.refreshToken;
-      localStorage.setItem('esap-remember-session', JSON.stringify(parsed));
-    }
-  } catch {
-    localStorage.removeItem('esap-remember-session');
-  }
+  localStorage.removeItem(LEGACY_REMEMBER_SESSION_KEY);
+  sessionStorage.removeItem(LEGACY_REMEMBER_SESSION_KEY);
 }
 
 function migrateSensitiveSessionDataToSessionStorage() {
@@ -359,6 +349,8 @@ function migrateSensitiveSessionDataToSessionStorage() {
     sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   }
+  sessionStorage.removeItem(LEGACY_REMEMBER_SESSION_KEY);
+  localStorage.removeItem(LEGACY_REMEMBER_SESSION_KEY);
 }
 
 function clearSensitiveSessionState() {
@@ -438,6 +430,56 @@ export default function App() {
   // PERSISTENCIA DE SESIÓN
   // ============================================
 
+  const applySessionFromUser = useCallback((user: any) => {
+    const userEmail = user?.person?.email || user?.email || '';
+    const userName = user?.person?.first_name
+      ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
+      : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+
+    const { destino, hasBoth, roleCodes, permissions, module } = resolveDestino(user);
+
+    const portalRoleCodes = filterPortalRoleCodes(roleCodes);
+    const portalRoles = portalRoleCodes.length > 0
+      ? portalRoleCodes
+      : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
+
+    const effectiveDestino = resolveEffectiveDestino(destino, hasBoth);
+    const goToBackoffice = effectiveDestino === 'backoffice';
+    const nextView: Vista = goToBackoffice ? 'backoffice' : 'portal';
+    const nextCurrentView: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
+
+    setIsAuthenticated(true);
+    setUserType(goToBackoffice ? 'administrativo' : 'portal');
+    setUserRoles(portalRoles);
+    setCurrentView(nextCurrentView);
+    setVistaActual(nextView);
+    setUserData({
+      name: userName,
+      email: userEmail,
+      personId: user?.person?.id || user?.id || user?.userId,
+      modules: user?.modules || [],
+      roles: roleCodes,
+      permissions,
+      module,
+      hasBothSystemsAccess: hasBoth,
+    });
+    setUsuarioActual({
+      id: user?.id || user?.person?.id || user?.userId || 'unknown',
+      nombre: userName,
+      email: userEmail,
+      tipo: goToBackoffice ? 'interno' : 'externo'
+    });
+
+    const now = Date.now();
+    ultimaActividadGuardadaRef.current = now;
+    ultimoRefreshSesionRef.current = now;
+    sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
+      vista: nextView,
+      timestamp: now,
+    }));
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+  }, []);
+
   // Detector de conexión a internet
   useEffect(() => {
     const refreshOnlineStatus = () => setIsOnline(getAppOnlineStatus());
@@ -469,64 +511,14 @@ export default function App() {
       return;
     }
 
-    const applySessionFromUser = (user: any) => {
-      const userEmail = user?.person?.email || user?.email || '';
-      const userName = user?.person?.first_name
-        ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
-
-      const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
-
-      const portalRoleCodes = filterPortalRoleCodes(roleCodes);
-      const portalRoles = portalRoleCodes.length > 0
-        ? portalRoleCodes
-        : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
-
-      const effectiveDestino = resolveEffectiveDestino(destino, hasBoth);
-      const goToBackoffice = effectiveDestino === 'backoffice';
-      const nextView: Vista = goToBackoffice ? 'backoffice' : 'portal';
-      const nextCurrentView: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
-
-      setIsAuthenticated(true);
-      setUserType(goToBackoffice ? 'administrativo' : 'portal');
-      setUserRoles(portalRoles);
-      setCurrentView(nextCurrentView);
-      setVistaActual(nextView);
-      setUserData({
-        name: userName,
-        email: userEmail,
-        personId: user?.person?.id || user?.id || user?.userId,
-        modules: user?.modules || [],
-        roles: roleCodes,
-        permissions,
-        module,
-        hasBothSystemsAccess: hasBoth,
-      });
-      setUsuarioActual({
-        id: user?.id || user?.person?.id || user?.userId || 'unknown',
-        nombre: userName,
-        email: userEmail,
-        tipo: goToBackoffice ? 'interno' : 'externo'
-      });
-    };
-
-    migrateAuthTokensToSessionStorage();
+    clearAuthSensitiveBrowserStorage();
     migrateSensitiveSessionDataToSessionStorage();
 
-    // NOTA: Los tokens en sessionStorage son necesarios para el header Authorization
-    // durante la restauración de sesión. No borrarlos aquí.
-    // Solo limpiar tokens residuales de localStorage (donde no deberían estar).
-    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
-      localStorage.removeItem(key);
-    });
-
-    // OTIC-002: los datos de usuario ya no se guardan en sessionStorage.
-    // Usamos ACTIVE_SESSION_STORAGE_KEY solo como señal de que hubo sesión,
-    // y verificamos con el backend para restaurar los datos de usuario.
+    // OTIC-001/002: los datos de usuario y JWT no se guardan en storage.
+    // Solo restauramos en carga si esta pestaña ya tenía señal de sesión.
+    // La sesión compartida por cookie entre pestañas se valida al entrar al LoginPage.
     const sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
 
-    // Si esta pestana no tiene senal de sesion, no consultar /verify.
-    // Evita un 401 esperado antes del login sin exponer ni guardar tokens en JS.
     if (!sesionGuardada) {
       setIsRestoringSession(false);
       return;
@@ -554,7 +546,7 @@ export default function App() {
         setIsRestoringSession(false);
       }
     })();
-  }, []);
+  }, [applySessionFromUser, hasMicrosoftOAuthCallback]);
 
   // Guardar sesión cuando cambie el usuario o vista
   useEffect(() => {
@@ -739,12 +731,43 @@ export default function App() {
     navigate('/');
   };
 
+  const handleExistingSessionFromLogin = useCallback(async () => {
+    try {
+      const user = await authService.verifyToken();
+      return user;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleLogoutExistingSessionFromLogin = useCallback(async () => {
+    await authService.logout().catch(() => {/* la cookie expira sola si el backend no responde */});
+    delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
+    clearSensitiveSessionState();
+    setIsAuthenticated(false);
+    setUserType('portal');
+    setUserRoles([]);
+    setUserData(null);
+    setUsuarioActual(null);
+    setCurrentView('login');
+    setVistaActual('login');
+    setMostrarAlertaInactividad(false);
+    if (timerInactividadRef.current) clearTimeout(timerInactividadRef.current);
+    if (timerAlertaRef.current) clearTimeout(timerAlertaRef.current);
+    navigate('/');
+    toast.success('Sesión cerrada exitosamente', {
+      description: 'Puedes iniciar sesión con otra cuenta.',
+    });
+  }, [navigate]);
+
   // ============================================
   // HANDLERS DE NAVEGACIÓN
   // ============================================
 
   const handleIrALogin = () => {
-    setVistaActual('login');
+    handleLoginClick();
   };
 
   const handleVolverALanding = () => {
@@ -755,7 +778,7 @@ export default function App() {
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, _accessToken?: string, _rememberMe?: boolean) => {
     try {
       authService.setCurrentUserCache(user as any);
 
@@ -807,9 +830,8 @@ export default function App() {
         description: `Hola ${userName}`,
       });
 
-      if (rememberMe) {
-        localStorage.setItem('esap-remember-session', JSON.stringify({ email: userEmail }));
-      }
+      localStorage.removeItem(LEGACY_REMEMBER_SESSION_KEY);
+      sessionStorage.removeItem(LEGACY_REMEMBER_SESSION_KEY);
       const now = Date.now();
       ultimaActividadGuardadaRef.current = now;
       ultimoRefreshSesionRef.current = now;
@@ -980,9 +1002,11 @@ export default function App() {
       case 'login':
         return (
           <LoginPage
-            onLogin={handleLogin}
-            onBackToHome={handleBackToHome}
-          />
+	            onLogin={handleLogin}
+	            onBackToHome={handleBackToHome}
+	            onExistingSessionCheck={handleExistingSessionFromLogin}
+	            onExistingSessionLogout={handleLogoutExistingSessionFromLogin}
+	          />
         );
 
 
