@@ -968,7 +968,9 @@ export function GraduatesManagementModule() {
             location: sedeName,
             territorial: territorialName,
             sourceTerritorial: rawSeccionalName || undefined,
-            program: graduate.programName || graduate.degreeTitle || 'No especificado',
+            program:
+              (graduate.programName || graduate.degreeTitle || '').trim() ||
+              'No especificado',
             document: graduate.idNumber,
             enrollmentMethod: resolveEnrollmentMethod(createdBy),
             enrollmentDate: graduate.enrollmentDate || '',
@@ -1078,10 +1080,21 @@ export function GraduatesManagementModule() {
   const programCatalogOptions = useMemo(() => {
     return uniqueSortedText(programasCatalog);
   }, [programasCatalog]);
-  const editProgramOptions = useMemo(() => {
-    const current = (editForm.program || '').trim();
-    return uniqueSortedText([current, ...programCatalogOptions]);
-  }, [editForm.program, programCatalogOptions]);
+  const selectedCatalogProgram = useMemo(
+    () =>
+      programCatalogOptions.find(
+        (programa) => normalizeKey(programa) === normalizeKey(editForm.program),
+      ),
+    [editForm.program, programCatalogOptions, normalizeKey],
+  );
+  const externalEditProgram =
+    editForm.program.trim() && !selectedCatalogProgram
+      ? editForm.program
+      : '';
+  const editProgramOptions = useMemo(
+    () => uniqueSortedText([externalEditProgram, ...programCatalogOptions]),
+    [externalEditProgram, programCatalogOptions],
+  );
 
   const catalogTerritorialOptions = useMemo(
     () =>
@@ -1664,7 +1677,9 @@ export function GraduatesManagementModule() {
         location: campus,
         territorial,
         sourceTerritorial: graduate.seccionalName || undefined,
-        program: graduate.programName || graduate.degreeTitle || 'No especificado',
+        program:
+          (graduate.programName || graduate.degreeTitle || '').trim() ||
+          'No especificado',
         document: graduate.idNumber,
         enrollmentMethod: resolveEnrollmentMethod(graduate.createdBy || 'bulk_upload'),
         enrollmentDate: graduate.enrollmentDate || graduate.createdAt || '',
@@ -1769,7 +1784,7 @@ export function GraduatesManagementModule() {
         lastName: trimmedLastName,
         email: trimmedEmail,
         idNumber: trimmedDocument,
-        programName: trimmedProgram || selectedUser.program || '',
+        programName: trimmedProgram,
         campus: trimmedLocation || undefined,
         seccionalName: effectiveTerritorial,
         numRegistro: cleanNumRegistro || undefined,
@@ -1791,7 +1806,7 @@ export function GraduatesManagementModule() {
                 numRegistro: cleanNumRegistro,
                 numFolio: cleanNumFolio,
                 numLibro: cleanNumLibro,
-                program: trimmedProgram || graduate.program,
+                program: trimmedProgram,
                 location: trimmedLocation || graduate.location,
                 territorial: effectiveTerritorial,
                 sourceTerritorial: effectiveTerritorial,
@@ -3500,7 +3515,7 @@ export function GraduatesManagementModule() {
 
                 id="edit-program"
 
-                value={editForm.program}
+                value={selectedCatalogProgram || editForm.program}
 
                 onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
 
@@ -3512,7 +3527,7 @@ export function GraduatesManagementModule() {
 
               >
 
-                <option value="">Seleccionar programa</option>
+                <option value="" hidden>Seleccionar programa académico</option>
 
                 {editProgramOptions.map((prog) => (
 
@@ -3521,6 +3536,12 @@ export function GraduatesManagementModule() {
                 ))}
 
               </select>
+
+              {externalEditProgram && externalEditProgram !== 'No especificado' && (
+                <p className="text-xs text-gray-500">
+                  Este programa proviene de la integración y no coincide con el catálogo actual.
+                </p>
+              )}
 
             </div>
 
