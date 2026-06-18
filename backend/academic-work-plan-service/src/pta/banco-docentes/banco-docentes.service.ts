@@ -1860,9 +1860,46 @@ export class BancoDocentesService implements OnModuleInit {
   //   db/migrations/333_create_rund_tables_and_sequence.sql
 
   /**
-   * BR-044 â€” Obtener estados de aprobaciÃ³n por bloque para un docente.
+   * Resuelve cualquier ID (docente_id, persona_id, usuario_id) al docente_id real de la tabla Docente.
+   */
+  async resolveDocenteId(anyId: string): Promise<string> {
+    if (!anyId) {
+      throw new BadRequestException('ID no proporcionado');
+    }
+
+    // 1. Verificar si ya es el docente_id directo
+    const exists = await this.docenteRepo.findOne({ where: { id: anyId } });
+    if (exists) {
+      return exists.id;
+    }
+
+    // 2. Buscar por personaId
+    const byPersona = await this.docenteRepo.findOne({ where: { personaId: anyId } });
+    if (byPersona) {
+      return byPersona.id;
+    }
+
+    // 3. Buscar por usuario_id
+    const userRows = await this.dataSource.query(
+      `SELECT id_person FROM auth."user" WHERE id_user::text = $1 LIMIT 1`,
+      [anyId],
+    );
+    if (userRows[0]?.id_person) {
+      const byUserPersona = await this.docenteRepo.findOne({ where: { personaId: userRows[0].id_person } });
+      if (byUserPersona) {
+        return byUserPersona.id;
+      }
+    }
+
+    // Fallback: retornar el ID original
+    return anyId;
+  }
+
+  /**
+   * BR-044 — Obtener estados de aprobación por bloque para un docente.
    */
   async getBloques(docenteId: string) {
+    docenteId = await this.resolveDocenteId(docenteId);
 
     const bloques = await this.dataSource.query(
       `SELECT * FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1 ORDER BY bloque ASC`,
@@ -1924,6 +1961,7 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-038 â€” Verifica que exista al menos un soporte para bloques crÃ­ticos.
    */
   async aprobarBloque(docenteId: string, bloque: string, aprobadorId: string) {
+    docenteId = await this.resolveDocenteId(docenteId);
     const bloqueUpper = bloque.toUpperCase();
     if (!BancoDocentesService.BLOQUES.includes(bloqueUpper as any)) {
       throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}. VÃ¡lidos: ${BancoDocentesService.BLOQUES.join(', ')}`);
@@ -1987,6 +2025,7 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-045 â€” Devolver un bloque con observaciÃ³n obligatoria.
    */
   async devolverBloque(docenteId: string, bloque: string, aprobadorId: string, observacion: string) {
+    docenteId = await this.resolveDocenteId(docenteId);
     const bloqueUpper = bloque.toUpperCase();
     if (!BancoDocentesService.BLOQUES.includes(bloqueUpper as any)) {
       throw new BadRequestException(`Bloque invÃ¡lido: ${bloque}`);
@@ -2081,6 +2120,7 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-047 â€” Activar registro solo si todos los bloques obligatorios estÃ¡n Aprobados.
    */
   async verificarActivacion(docenteId: string): Promise<{ activable: boolean; completitud: Record<string, string> }> {
+    docenteId = await this.resolveDocenteId(docenteId);
     const bloques = await this.dataSource.query(
       `SELECT bloque, estado FROM academic_work_plan."RundCampoEstado" WHERE docente_id = $1`,
       [docenteId],
@@ -2115,6 +2155,7 @@ export class BancoDocentesService implements OnModuleInit {
     fechaVencimiento?: string;
     cargadoPor?: string;
   }) {
+    docenteId = await this.resolveDocenteId(docenteId);
     const bloqueUpper = bloque.toUpperCase();
     const catalogoValido = BancoDocentesService.CATALOGO_SOPORTE[bloqueUpper];
     if (!catalogoValido) {
@@ -2130,13 +2171,40 @@ export class BancoDocentesService implements OnModuleInit {
       });
     }
 
-    const id = randomUUID();
-    await this.dataSource.query(
-      `INSERT INTO academic_work_plan."RundSoporteCampo" 
-       (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
-       VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', $7, NOW())`,
-      [id, docenteId, bloqueUpper, data.tipoSoporte, data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || null],
+    const { randomUUID } = require('crypto');
+    const newId = randomUUID();
+
+    const existing = await this.dataSource.query(
+      `SELECT id FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1 AND tipo_soporte = $2 ORDER BY "createdAt" ASC`,
+      [docenteId, data.tipoSoporte]
     );
+
+    let id = newId;
+    if (existing.length > 0) {
+      id = existing[0].id;
+      await this.dataSource.query(
+        `UPDATE academic_work_plan."RundSoporteCampo" 
+         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', "updatedAt" = NOW()
+         WHERE id = $4`,
+        [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
+      );
+      
+      // Clean up duplicate rows if they exist
+      if (existing.length > 1) {
+        const duplicateIds = existing.slice(1).map((r: any) => r.id);
+        await this.dataSource.query(
+          `DELETE FROM academic_work_plan."RundSoporteCampo" WHERE id = ANY($1)`,
+          [duplicateIds]
+        );
+      }
+    } else {
+      await this.dataSource.query(
+        `INSERT INTO academic_work_plan."RundSoporteCampo" 
+         (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
+         VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', $7, NOW())`,
+        [id, docenteId, bloqueUpper, data.tipoSoporte, data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM']
+      );
+    }
 
     // Actualizar estado del bloque de 'Soporte faltante' a 'Pendiente'
     await this.dataSource.query(
@@ -2146,7 +2214,7 @@ export class BancoDocentesService implements OnModuleInit {
       [docenteId, bloqueUpper],
     );
 
-    return { success: true, id, bloque: bloqueUpper, tipoSoporte: data.tipoSoporte };
+    return { success: true, id, bloque: bloqueUpper, tipoSoporte: data.tipoSoporte, documentoCarpetaId: data.documentoCarpetaId };
   }
 
   /**
@@ -2366,6 +2434,7 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-056 â€” Obtener historial de auditorÃ­a de un docente.
    */
   async getAuditoria(docenteId: string, limit = 50): Promise<any[]> {
+    docenteId = await this.resolveDocenteId(docenteId);
     return this.auditLogRepo.find({
       where: { docenteId },
       order: { createdAt: 'DESC' },
@@ -2378,6 +2447,7 @@ export class BancoDocentesService implements OnModuleInit {
    * Retorna datos del docente organizados por bloque + estados + soportes + semÃ¡foro.
    */
   async getTarjetaRUND(docenteId: string) {
+    docenteId = await this.resolveDocenteId(docenteId);
     const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
     if (!docente) throw new NotFoundException('Docente no encontrado.');
 
@@ -2511,7 +2581,30 @@ export class BancoDocentesService implements OnModuleInit {
         finalPersonaId = result[0].id_person;
       }
 
-      const docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      let docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      
+      // Auto-provisionar docente si no existe (Necesario para sincronizaciA3n con Carpeta Digital)
+      if (!docente) {
+        const authData = await this.dataSource.query(
+          `SELECT id_person, num_identificacion, nombres, apellidos, correo_electronico FROM auth.personas WHERE id_person = $1 LIMIT 1`,
+          [finalPersonaId]
+        );
+        if (authData && authData.length > 0) {
+          const auth = authData[0];
+          await this.upsertDocente({
+            personaId: auth.id_person,
+            documentNumber: auth.num_identificacion || 'N/A',
+            documento_identidad: auth.num_identificacion || 'N/A',
+            nombre_completo: `${auth.nombres || ''} ${auth.apellidos || ''}`.trim() || 'Sin Nombre',
+            correo_institucional: auth.correo_electronico || null,
+            territorial: 'Sede Central',
+            vinculacion: 'Ocasional',
+            estado: 'Inactivo'
+          }, { rejectExisting: false });
+          docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+        }
+      }
+
       if (!docente) return null;
       return this.getTarjetaRUND(docente.id);
     } catch (e) {
@@ -2540,6 +2633,201 @@ export class BancoDocentesService implements OnModuleInit {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async syncCheckDocente(docenteId: string) {
+    docenteId = await this.resolveDocenteId(docenteId);
+    const docente = await this.docenteRepo.findOne({
+      where: { id: docenteId }
+    });
+
+    if (!docente) {
+      throw new NotFoundException(`Docente con ID ${docenteId} no encontrado`);
+    }
+
+    const persona = await this.personaRepo.findOne({
+      where: { id: docente.personaId }
+    });
+
+    const nameParts = [
+      persona?.primer_nombre,
+      persona?.segundo_nombre,
+      persona?.primer_apellido,
+      persona?.segundo_apellido
+    ].filter(Boolean);
+
+    const docenteNombre = nameParts.length > 0
+      ? nameParts.join(' ').replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase()
+      : docente.id;
+
+    const path = require('path');
+    const fs = require('fs');
+    const uploadPath = path.join(process.cwd(), 'uploads', 'carpeta-digital', docenteNombre, 'RUND');
+
+    let diskFiles: string[] = [];
+    if (fs.existsSync(uploadPath)) {
+      diskFiles = fs.readdirSync(uploadPath).filter((file: string) => {
+        try {
+          return fs.statSync(path.join(uploadPath, file)).isFile();
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    const dbSoportes = await this.dataSource.query(
+      `SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1`,
+      [docenteId]
+    );
+
+    const details = dbSoportes.map((soporte: any) => {
+      let fileExists = false;
+      if (soporte.documento_carpeta_id) {
+        const relativePath = soporte.documento_carpeta_id.replace(/^\/pta\/api\/v1\/uploads\//, 'uploads/');
+        const absolutePath = path.join(process.cwd(), relativePath);
+        fileExists = fs.existsSync(absolutePath);
+      }
+      return {
+        id: soporte.id,
+        bloque: soporte.bloque,
+        tipoSoporte: soporte.tipo_soporte,
+        documentoCarpetaId: soporte.documento_carpeta_id,
+        nombreArchivo: soporte.nombre_archivo,
+        estado: soporte.estado,
+        existsOnDisk: fileExists
+      };
+    });
+
+    return {
+      docenteId,
+      docenteNombre,
+      dbCount: dbSoportes.length,
+      diskCount: diskFiles.length,
+      details
+    };
+  }
+
+
+  async repararSoportesMasivo() {
+    const path = require('path');
+    const fs = require('fs');
+    const { randomUUID } = require('crypto');
+
+    const docentes = await this.docenteRepo.find();
+    let totalProcessed = 0;
+    let totalSynced = 0;
+    let totalCreated = 0;
+    const logs: string[] = [];
+    console.log(`Checking ${docentes.length} docentes for uploaded folders...`);
+
+    for (const docente of docentes) {
+      let docenteNombre = docente.id;
+      try {
+        const persona = await this.dataSource.query(
+          `SELECT nom_largo FROM auth.personas WHERE id_person = $1 LIMIT 1`,
+          [docente.personaId]
+        );
+        if (persona && persona.length > 0) {
+          const p = persona[0];
+          if (p.nom_largo) {
+            docenteNombre = p.nom_largo.replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase();
+          }
+        }
+      } catch (e) {
+        console.error('Error resolving persona', e);
+      }
+
+      const uploadPath = path.join(process.cwd(), 'uploads', 'carpeta-digital', docenteNombre, 'RUND');
+      console.log(`Checking path for ${docenteNombre}: ${uploadPath}`);
+      if (!fs.existsSync(uploadPath)) {
+        continue;
+      }
+
+      const diskFiles = fs.readdirSync(uploadPath).filter((file: string) => {
+        try {
+          return fs.statSync(path.join(uploadPath, file)).isFile();
+        } catch {
+          return false;
+        }
+      });
+
+      if (diskFiles.length === 0) {
+        continue;
+      }
+
+      totalProcessed++;
+
+      const dbSoportes = await this.dataSource.query(
+        `SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id = $1`,
+        [docente.id]
+      );
+
+      const unlinkedFiles = diskFiles.filter((file: string) => {
+        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        return !dbSoportes.some((s: any) => s.documento_carpeta_id === expectedDocId);
+      });
+
+      if (unlinkedFiles.length === 0) {
+        continue;
+      }
+
+      const unlinkedDbRecords = dbSoportes.filter((s: any) => !s.documento_carpeta_id);
+
+      let linkedForDocente = 0;
+      let createdForDocente = 0;
+
+      const filesToLink = [...unlinkedFiles];
+      while (filesToLink.length > 0 && unlinkedDbRecords.length > 0) {
+        const file = filesToLink.shift();
+        const record = unlinkedDbRecords.shift();
+        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+
+        await this.dataSource.query(
+          `UPDATE academic_work_plan."RundSoporteCampo" 
+           SET documento_carpeta_id = $1, nombre_archivo = COALESCE(nombre_archivo, $2), "updatedAt" = NOW()
+           WHERE id = $3`,
+          [expectedDocId, file, record.id]
+        );
+        linkedForDocente++;
+        totalSynced++;
+      }
+
+      while (filesToLink.length > 0) {
+        const file = filesToLink.shift();
+        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        const newId = randomUUID();
+
+        let bloque = 'FORMACION';
+        let tipoSoporte = 'diploma_pregrado';
+        const lowerName = file.toLowerCase();
+        if (lowerName.includes('cedula') || lowerName.includes('ident') || lowerName.includes('documento')) {
+          bloque = 'IDENTIDAD';
+          tipoSoporte = 'documento_identidad';
+        } else if (lowerName.includes('contrato') || lowerName.includes('resoluc') || lowerName.includes('acto')) {
+          bloque = 'VINCULACION';
+          tipoSoporte = 'acto_administrativo_vinculacion';
+        }
+
+        await this.dataSource.query(
+          `INSERT INTO academic_work_plan."RundSoporteCampo" 
+           (id, docente_id, bloque, tipo_soporte, documento_carpeta_id, nombre_archivo, estado, cargado_por, "createdAt")
+           VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', 'SYSTEM_SYNC', NOW())`,
+          [newId, docente.id, bloque, tipoSoporte, expectedDocId, file]
+        );
+        createdForDocente++;
+        totalCreated++;
+      }
+
+      logs.push(`Docente ${docenteNombre}: Enlazados ${linkedForDocente} registros, Creados ${createdForDocente} nuevos registros`);
+    }
+
+    return {
+      success: true,
+      totalDocentesConCarpeta: totalProcessed,
+      totalRegistrosEnlazados: totalSynced,
+      totalRegistrosCreados: totalCreated,
+      details: logs
+    };
   }
 }
 

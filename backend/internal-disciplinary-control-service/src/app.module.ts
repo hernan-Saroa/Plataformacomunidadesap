@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+import { resolve } from 'path';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpModule } from '@nestjs/axios';
 
@@ -50,7 +50,7 @@ import { NewsService } from './services/news.service';
 import { ProcessService } from './services/process.service';
 import { AutoService } from './services/auto.service';
 import { SequenceService } from './services/sequence.service';
-import { StorageService } from './services/storage.service';
+import { StorageService, getUploadRootDir } from './services/storage.service';
 import { TerminosCalculatorService } from './services/terminos-calculator.service';
 import { TerminosProcesalesService } from './services/terminos-procesales.service';
 import { DiasFestivosService } from './services/dias-festivos.service';
@@ -108,7 +108,7 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
 @Module({
   imports: [
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: resolve(getUploadRootDir()),
       serveRoot: '/uploads',
       serveStaticOptions: {
         index: false,

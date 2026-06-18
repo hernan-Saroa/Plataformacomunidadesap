@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
 import { Notificacion, EstadoNotificacion, TipoNotificacion, CanalNotificacion, PrioridadNotificacion } from './entities/notificacion.entity';
@@ -7,7 +7,7 @@ import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class NotificacionesService {
+export class NotificacionesService implements OnModuleInit {
   constructor(
     @InjectRepository(Notificacion)
     private readonly notificacionRepository: Repository<Notificacion>,
@@ -16,6 +16,61 @@ export class NotificacionesService {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
   ) {}
+
+  private readonly logger = new Logger(NotificacionesService.name);
+
+  async onModuleInit() {
+    this.logger.log('Inicializando módulo de notificaciones y verificando tabla de condiciones de disparo...');
+    try {
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS control_interno.condicion_disparo_notificacion (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          nombre VARCHAR(255) NOT NULL UNIQUE,
+          descripcion VARCHAR(255),
+          activo BOOLEAN DEFAULT true,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      await this.dataSource.query(`
+        INSERT INTO control_interno.condicion_disparo_notificacion (nombre) VALUES
+        ('Inmediato'),
+        ('Al asignar auditor'),
+        ('Al finalizar auditoría'),
+        ('Al cambiar de estado Kanban'),
+        ('7 días antes del vencimiento'),
+        ('5 días antes del vencimiento'),
+        ('3 días antes del vencimiento'),
+        ('1 día antes del vencimiento'),
+        ('Al solicitar aprobación de plan'),
+        ('Al aprobar plan de mejoramiento'),
+        ('Al rechazar plan de mejoramiento'),
+        ('Personalizado (Vía API)')
+        ON CONFLICT (nombre) DO NOTHING;
+      `);
+      this.logger.log('Tabla de condiciones de disparo verificada/poblada correctamente.');
+    } catch (e) {
+      this.logger.error('Error al inicializar la tabla de condiciones de disparo', e);
+    }
+  }
+
+  /**
+   * Obtiene las condiciones de disparo activas desde la base de datos
+   */
+  async getCondicionesDisparo(): Promise<any[]> {
+    try {
+      return await this.dataSource.query(`
+        SELECT id, nombre, descripcion 
+        FROM control_interno.condicion_disparo_notificacion 
+        WHERE activo = true 
+        ORDER BY id ASC;
+      `);
+    } catch (e) {
+      this.logger.error('Error obteniendo condiciones de disparo', e);
+      return [];
+    }
+  }
 
   /**
    * Obtiene el identificador del usuario (UUID)
@@ -150,6 +205,55 @@ export class NotificacionesService {
   }
 
   /**
+   * MOTOR DE CONDICIONES: Busca y dispara todas las notificaciones personalizadas
+   * que tengan configurada la condición dada.
+   */
+  async dispararPorCondicion(condicion: string, context: {
+    auditoriaId?: string;
+    auditoriaCodigo?: string;
+    auditoriaNombre?: string;
+    planId?: string;
+    usuarioId?: string;
+    responsableAreaEmail?: string;
+    tituloCustom?: string;
+    mensajeCustom?: string;
+    metadata?: any;
+    url_accion?: string;
+  }): Promise<{ total: number; exitosos: number }> {
+    console.log(`[Notificaciones] 🔍 Buscando notificaciones para la condición: "${condicion}"`);
+    let totalExitosos = 0;
+    let totalDisparos = 0;
+    
+    try {
+      const configGlobal = await this.getGlobalConfig();
+      if (!configGlobal || !configGlobal.tiposNotificacion) return { total: 0, exitosos: 0 };
+      
+      const tipos = configGlobal.tiposNotificacion as Record<string, any>;
+      
+      // Buscar todos los eventos que coincidan con la condición y estén activos
+      for (const [eventoCode, config] of Object.entries(tipos)) {
+        // Ignorar los inactivos
+        if (config.activo === false || config.activo === 'false') continue;
+        
+        // Disparar si la condición coincide
+        const condDB = (config.condicion || '').trim().toLowerCase();
+        const condReq = condicion.trim().toLowerCase();
+        
+        if (condDB === condReq) {
+          console.log(`[Notificaciones] 🎯 Condición "${condicion}" cumplida. Disparando evento personalizado: ${eventoCode}`);
+          const resultado = await this.dispararEvento(eventoCode, context);
+          totalDisparos += resultado.total;
+          totalExitosos += resultado.exitosos;
+        }
+      }
+    } catch (e) {
+      console.error(`[Notificaciones] Error al procesar disparos por condición:`, e.message);
+    }
+    
+    return { total: totalDisparos, exitosos: totalExitosos };
+  }
+
+  /**
    * Obtiene la configuración global de notificaciones
    */
   async getGlobalConfig(): Promise<PreferenciaNotificacion | null> {
@@ -181,7 +285,7 @@ export class NotificacionesService {
       const configGlobal = await this.getGlobalConfig();
       const configEvento = configGlobal?.tiposNotificacion ? configGlobal.tiposNotificacion[eventoCode] : null;
 
-      if (configEvento && (configEvento as any).activo === false) {
+      if (configEvento && ((configEvento as any).activo === false || (configEvento as any).activo === 'false')) {
         console.warn(`[Notificaciones] Evento ${eventoCode} desactivado en configuración global.`);
         return { total: 0, exitosos: 0 };
       }
@@ -305,8 +409,8 @@ export class NotificacionesService {
           [context.auditoriaId]
         );
         if (aud[0]?.id_user) ids.push(aud[0].id_user);
+        return ids;
       }
-      return ids;
     }
 
     if (roleCode === 'EQUIPO_AUDITOR' || roleCode === 'AUDITOR_EQUIPO') {
@@ -322,8 +426,8 @@ export class NotificacionesService {
           [context.auditoriaId]
         );
         miembros.forEach((m: any) => ids.push(m.id_user));
+        return ids;
       }
-      return ids;
     }
 
     if (roleCode === 'AUDITADO' || roleCode === 'JEFE_DEPENDENCIA' || roleCode === 'RESPONSABLE_AREA_AUDITADA') {
@@ -352,6 +456,7 @@ export class NotificacionesService {
             if (userResult[0]?.id_user) ids.push(userResult[0].id_user);
           }
         } catch (err) {}
+        return ids;
       } else if (context.responsableAreaEmail) {
         try {
           const userResult = await this.dataSource.query(
@@ -368,8 +473,8 @@ export class NotificacionesService {
           );
           if (userResult[0]?.id_user) ids.push(userResult[0].id_user);
         } catch (err) {}
+        return ids;
       }
-      return ids;
     }
 
     if (roleCode === 'RESPONSABLE_PLAN_MEJORAMIENTO') {
@@ -388,8 +493,8 @@ export class NotificacionesService {
         `, [context.planId]);
         
         if (res.length > 0) ids.push(res[0].id_user);
+        return ids;
       }
-      return ids;
     }
 
     // Para todos los demás roles (Jefe OCI, Administrador Sistema, etc.),

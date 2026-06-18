@@ -119,7 +119,7 @@ function ComboboxPersonas({
     : textoBoton || placeholder;
 
   return (
-    <div className="relative w-full z-[1]" ref={containerRef}>
+    <div className={`relative w-full ${isOpen ? 'z-[500]' : 'z-[1]'}`} ref={containerRef}>
       <button
         type="button"
         disabled={disabled || cargando}
@@ -299,7 +299,7 @@ function SelectorParticipantes({
   };
 
   return (
-    <div className="relative z-[120] overflow-visible">
+    <div className="relative overflow-visible">
       <label className="block text-xs font-medium text-gray-700 mb-0.5">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
@@ -359,7 +359,7 @@ function SelectorPersonaUnica({
   const valorEnLista = Boolean(seleccionada);
 
   return (
-    <div className="relative z-[120] overflow-visible">
+    <div className="relative overflow-visible">
       <label className="block text-xs font-medium text-gray-700 mb-0.5">{label}</label>
       <ComboboxPersonas
         opciones={personas}

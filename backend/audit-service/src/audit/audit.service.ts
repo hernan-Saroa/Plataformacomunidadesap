@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { RequestLog } from './entities/request-log.entity';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
@@ -8,11 +8,66 @@ import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
+  private readonly ensuredPartitions = new Set<string>();
 
   constructor(
     @InjectRepository(RequestLog)
     private readonly requestLogRepository: Repository<RequestLog>,
   ) {}
+
+  private getMonthlyPartitionRange(timestamp: Date): {
+    partitionName: string;
+    startDate: string;
+    endDate: string;
+  } {
+    const year = timestamp.getFullYear();
+    const monthIndex = timestamp.getMonth();
+    const month = String(monthIndex + 1).padStart(2, '0');
+    const nextMonth = new Date(year, monthIndex + 1, 1);
+
+    return {
+      partitionName: `request_logs_${year}_${month}`,
+      startDate: `${year}-${month}-01`,
+      endDate: `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`,
+    };
+  }
+
+  private async ensurePartitionForTimestamp(timestamp: Date): Promise<void> {
+    const { partitionName, startDate, endDate } = this.getMonthlyPartitionRange(timestamp);
+
+    if (this.ensuredPartitions.has(partitionName)) {
+      return;
+    }
+
+    try {
+      await this.requestLogRepository.query(
+        `
+        DO $$
+        BEGIN
+          PERFORM pg_advisory_xact_lock(hashtext('audit.request_logs.${partitionName}'));
+
+          IF to_regclass('audit.${partitionName}') IS NULL THEN
+            EXECUTE format(
+              'CREATE TABLE IF NOT EXISTS audit.%I PARTITION OF audit.request_logs FOR VALUES FROM (%L) TO (%L)',
+              '${partitionName}',
+              '${startDate}',
+              '${endDate}'
+            );
+          END IF;
+        EXCEPTION
+          WHEN duplicate_table OR invalid_object_definition THEN
+            NULL;
+        END;
+        $$;
+        `,
+      );
+      this.ensuredPartitions.add(partitionName);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo asegurar la particion mensual de auditoria ${partitionName}: ${error?.message || error}`,
+      );
+    }
+  }
 
   /**
    * Calcula las diferencias entre dos objetos y retorna un array de cambios
@@ -96,10 +151,13 @@ export class AuditService {
         }));
       }
 
+      const timestamp = new Date();
+      await this.ensurePartitionForTimestamp(timestamp);
+
       const log = this.requestLogRepository.create({
         ...createAuditLogDto,
         changes: changes || [],
-        timestamp: new Date(),
+        timestamp,
         hasLargeBody: (createAuditLogDto.requestBodySize || 0) >= 10240,
         hasLargeResponse: (createAuditLogDto.responseBodySize || 0) >= 10240,
       });
@@ -179,17 +237,40 @@ export class AuditService {
       });
     }
 
-    // Contar total
-    const total = await queryBuilder.getCount();
+    const search = queryDto.search?.trim();
+    if (search) {
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('log.user_email ILIKE :search', { search: `%${search}%` })
+            .orWhere('CAST(log.user_id AS TEXT) ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.user_role ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.action ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.module ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.submodule ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.method ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.path ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.ip_address ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.entity_name ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.entity_id ILIKE :search', { search: `%${search}%` })
+            .orWhere('log.error_message ILIKE :search', { search: `%${search}%` })
+            .orWhere('CAST(log.status_code AS TEXT) ILIKE :search', { search: `%${search}%` });
+        }),
+      );
+    }
 
     // Aplicar paginación
-    const limit = queryDto.limit || 100;
-    const offset = queryDto.offset || 0;
+    const limit = Math.min(queryDto.limit ?? 10, 1000);
+    const offset = queryDto.offset ?? 0;
+
+    // Contar total antes de paginar. Los filtros de fecha permiten pruning
+    // sobre las particiones request_logs_YYYY_MM.
+    const total = await queryBuilder.getCount();
 
     queryBuilder
       .orderBy('log.timestamp', 'DESC')
-      .limit(limit)
-      .offset(offset);
+      .addOrderBy('log.id', 'DESC')
+      .take(limit)
+      .skip(offset);
 
     const logs = await queryBuilder.getMany();
 
@@ -256,4 +337,3 @@ export class AuditService {
     };
   }
 }
-

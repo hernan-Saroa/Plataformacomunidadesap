@@ -165,7 +165,7 @@ export function PortalDashboard({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3 }}
-          className="min-h-screen bg-[#F0F2F5] pb-24 lg:pb-0 font-sans"
+          className="min-h-screen bg-[#F0F2F5] pb-24 lg:pb-0 font-sans px-10"
         >
           <PortalTransaccional
             userName={userName}

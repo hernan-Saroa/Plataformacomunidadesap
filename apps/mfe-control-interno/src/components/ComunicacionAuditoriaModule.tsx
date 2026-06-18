@@ -34,6 +34,8 @@ import { toast } from 'sonner';
 import controlInternoService from '../../../services/api/controlInternoService';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 import { exportarPDFInformeCierre } from './services/exportarPDFInformeCierreEjecutivo';
+import { configuracionesProfesionalesOCIApi } from './services/api';
+
 
 // ====================================
 // TIPOS Y DATOS

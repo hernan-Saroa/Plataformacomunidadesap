@@ -533,14 +533,10 @@ class DisciplinaryService {
             }
             // Envío directo con fetch para garantizar que los archivos multipart lleguen (el apiClient wrapper a veces tiene problemas con PUT + FormData)
             const fullUrl = buildApiUrl('control-disciplinario', `/disciplinary-news/${id}`);
-            const token = (window as any).__esap_access_token__ 
-              || localStorage.getItem('accessToken') 
-              || localStorage.getItem('token') 
-              || '';
             return fetch(fullUrl, {
               method: 'PUT',
               body: formData,
-              headers: token ? { Authorization: `Bearer ${token}` } : {},
+              credentials: 'include',
             }).then(async (res) => {
               if (!res.ok) {
                 const text = await res.text().catch(() => 'Error en actualización con archivos');
@@ -755,18 +751,10 @@ class DisciplinaryService {
         }
         formData.append('file', file);
 
-        // Obtener el token manualmente para evitar modificar el cliente API general
-        const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('esap_auth_token') : null;
-        const customConfig = token ? {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        } : {};
-
         return apiClient.post<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
-            customConfig
+            {}
         );
     }
 
@@ -1091,21 +1079,16 @@ class DisciplinaryService {
     }
 
     // --- ARCHIVOS ---
-    async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
+    async uploadFile(file: File, tipo: string = 'default', radicadoProceso?: string): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
+        if (radicadoProceso) {
+            formData.append('radicadoProceso', radicadoProceso);
+        }
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
         formData.append('file', file);
 
-        // Obtener el token manualmente para evitar modificar el cliente API general
-        const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('esap_auth_token') : null;
-        const customConfig = token ? {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        } : {};
-
-        return apiClient.post<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData, customConfig);
+        return apiClient.post<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData, {});
     }
 
     // ==================== CONFIGURACION ====================

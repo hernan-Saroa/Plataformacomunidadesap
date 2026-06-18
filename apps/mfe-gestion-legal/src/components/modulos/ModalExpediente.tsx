@@ -1510,7 +1510,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // ==================== HELPERS ====================
 
-  const getSemaforoColor = (diasRestantes: number) => {
+  const getSemaforoColor = (diasRestantes: number, tipoConteo?: string) => {
+    if (tipoConteo === 'HORAS') {
+      if (diasRestantes <= 24) return { color: '#DC2626', label: 'Crítico', bg: '#FEE2E2' };
+      if (diasRestantes <= 72) return { color: '#F59E0B', label: 'Próximo', bg: '#FEF3C7' };
+      return { color: '#10B981', label: 'En término', bg: '#D1FAE5' };
+    }
     if (diasRestantes <= 5) return { color: '#DC2626', label: 'Crítico', bg: '#FEE2E2' };
     if (diasRestantes <= 15) return { color: '#F59E0B', label: 'Próximo', bg: '#FEF3C7' };
     return { color: '#10B981', label: 'En término', bg: '#D1FAE5' };
@@ -1529,7 +1534,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }).format(val);
   };
 
-  const semaforo = getSemaforoColor(expediente.diasRestantes);
+  const semaforo = getSemaforoColor(expediente.diasRestantes, expediente.tipoConteoTermino);
   const { porcentajeGlobal: porcentajeTiempo } = calcularProgreso(
     expediente.diasTotales,
     expediente.diasRestantes,
@@ -1767,8 +1772,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent 
           hideCloseButton 
-          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
-          style={{ width: '80vw', maxWidth: '80vw' }}
+          className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
+          style={{ width: '60vw', maxWidth: '60vw' }}
         >
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">
@@ -1796,7 +1801,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   }}
                 >
                   <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.diasRestantes < 0 ? `Vencido hace ${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes} días restantes`}
+                  {semaforo.label} - {expediente.diasRestantes < 0
+                    ? `Vencido hace ${Math.abs(expediente.diasRestantes)}${expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd'}`
+                    : `${expediente.diasRestantes} ${expediente.tipoConteoTermino === 'HORAS' ? 'horas' : 'días'} restantes`}
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
                   <FileText className="w-3 h-3 mr-1" />
@@ -2397,6 +2404,39 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             </div>
                           )}
                         </div>
+
+                        {/* Territorial, CETAP y Dependencia (solo Demandado) */}
+                        {parte.tipo === 'Demandado' && (
+                          (expediente as any).territorial || (expediente as any).cetap || (expediente as any).dependencia
+                        ) && (
+                          <div className="mt-3 p-2.5 rounded-xl bg-blue-50/30 border border-blue-100/50 flex flex-col gap-1.5">
+                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider">Territorial / CETAP / Dependencia</p>
+                            {((expediente as any).territorial) && (
+                              <div className="flex items-center gap-1.5">
+                                <MapPin className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                                <span className="text-[10px] font-semibold text-slate-700 truncate">
+                                  {(expediente as any).territorialNombre || (expediente as any).territorial}
+                                </span>
+                              </div>
+                            )}
+                            {((expediente as any).cetap) && (
+                              <div className="flex items-center gap-1.5">
+                                <Building2 className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                <span className="text-[10px] font-semibold text-slate-700 truncate">
+                                  {(expediente as any).cetapNombre || (expediente as any).cetap}
+                                </span>
+                              </div>
+                            )}
+                            {((expediente as any).dependencia) && (
+                              <div className="flex items-center gap-1.5">
+                                <Users className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                <span className="text-[10px] font-semibold text-slate-700 truncate">
+                                  {(expediente as any).dependenciaNombre || (expediente as any).dependencia}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Fila de Contacto Avanzada y Estilizada */}
                         <div className="mt-4 flex flex-col gap-2 border-t border-slate-150/60 pt-3">

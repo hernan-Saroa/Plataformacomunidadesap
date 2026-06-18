@@ -245,5 +245,15 @@ export class NotificacionesController {
   }) {
     return this.notificacionesService.dispararEvento(body.eventoCode, body.context);
   }
+
+  /**
+   * GET /notificaciones/condiciones-disparo
+   * Obtiene la lista de condiciones de disparo desde la base de datos
+   */
+  @Get('condiciones-disparo')
+  @UseGuards(JwtAuthGuard)
+  async getCondicionesDisparo() {
+    return this.notificacionesService.getCondicionesDisparo();
+  }
 }
 

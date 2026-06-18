@@ -336,6 +336,11 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
             .filter((config: any) => config.activo)
+            .filter((config: any) => {
+              // Excluir profesionales huérfanos cuyo usuario ya no existe en auth.personas
+              const nombre = config.nombre || '';
+              return nombre && nombre !== 'Usuario Sin Nombre' && nombre !== 'Sin Nombre';
+            })
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,

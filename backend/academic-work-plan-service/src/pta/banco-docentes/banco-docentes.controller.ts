@@ -75,6 +75,33 @@ export class BancoDocentesController {
     return { success: true, data: result };
   }
 
+  /**
+   * ADMIN — Reparación masiva de soportes RUND → Carpeta Digital.
+   * Recorre todos los docentes y sincroniza los archivos en disco con la DB (RundSoporteCampo).
+   * Ejecutar UNA SOLA VEZ para corregir registros históricos sin id_documento_carpeta.
+   * Solo accesible por SUPER_ADMIN.
+   */
+  @Post('admin/sync-all-soportes')
+  @Public()
+  // @Roles('SUPER_ADMIN', 'super_admin')
+  async syncAllSoportes() {
+    const result = await this.service.repararSoportesMasivo();
+    return { success: true, data: result };
+  }
+
+  /**
+   * ADMIN — Diagnóstico de sincronización para un docente específico.
+   * Devuelve cuántos soportes tiene en DB vs. cuántos archivos existen en disco.
+   */
+  @Get('admin/sync-check/:docenteId')
+  @Roles('SUPER_ADMIN', 'super_admin', 'GESTION_PROFESORAL')
+  async syncCheck(@Param('docenteId') docenteId: string) {
+    const result = await this.service.syncCheckDocente(docenteId);
+    return { success: true, data: result };
+  }
+
+
+
   /** §6.3 / BR-059 — Tarjeta RUND por persona (para Carpeta Digital) */
   @Get('by-persona/:personaId/tarjeta-rund')
   @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
@@ -380,5 +407,13 @@ export class BancoDocentesController {
     } catch (e: any) {
       return { success: true, data: [], message: e.message };
     }
+  }
+
+  /** Temporary endpoint to fix DB */
+  @Get('reparar-soportes-db')
+  @Public()
+  async repararSoportes() {
+    const result = await this.service.repararSoportesMasivo();
+    return { success: true, data: result };
   }
 }

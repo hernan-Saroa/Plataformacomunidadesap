@@ -21,8 +21,31 @@ import { AsignarUsuariosModal } from './AsignarUsuariosModal';
 import { ImportarEstructuraView } from './ImportarEstructuraView';
 import { useAuth } from '../../hooks';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
+import { Permissions } from '@esap-mfe/shared-types';
 
 type TipoCreacion = 'seccional' | 'sede';
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const normalizeCatalogKey = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = (periods: any[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 export function EstructuraOrganizacionalModule() {
   const [busqueda, setBusqueda] = useState('');
@@ -30,7 +53,7 @@ export function EstructuraOrganizacionalModule() {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [seccionalesOriginales, setSeccionalesOriginales] = useState<Seccional[]>([]);
   const [sedesOriginales, setSedesOriginales] = useState<Sede[]>([]);
-  const [periodo, setPeriodo] = useState('2025-2');
+  const [periodo, setPeriodo] = useState('');
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,8 +68,8 @@ export function EstructuraOrganizacionalModule() {
   const [showAsignarModal, setShowAsignarModal] = useState(false);
   const [sinTerritorial, setSinTerritorial] = useState(0);
   const [sinCetap, setSinCetap] = useState(0);
-  const { hasRole } = useAuth();
-  const isSuperAdmin = hasRole('SUPER_ADMIN');
+  const { hasRole, hasPermission } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN') || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE);
 
   // Cargar datos al montar el componente
   useEffect(() => {
@@ -59,38 +82,49 @@ export function EstructuraOrganizacionalModule() {
     applyPeriodFilter();
   }, [periodo, periodos, seccionalesOriginales, sedesOriginales]);
 
-  const FALLBACK_PERIODOS = [
-    { id: 'default-2025-2', codigo: '2025-2', anio: 2025, semestre: 2, estado: 'ACTIVO' },
-    { id: 'default-2025-1', codigo: '2025-1', anio: 2025, semestre: 1, estado: 'ACTIVO' },
-  ];
-
   const loadPeriodos = async () => {
     try {
       setLoadingPeriodos(true);
       const data = await estructuraService.obtenerPeriodos();
-      const list = Array.isArray(data) && data.length > 0 ? data : FALLBACK_PERIODOS;
-      const sorted = [...list].sort((a, b) => b.codigo.localeCompare(a.codigo));
+      const list = Array.isArray(data) ? data : [];
+      const sorted = sortPeriodsByCreation(list);
       setPeriodos(sorted);
       if (sorted.length > 0) {
-        const hasCurrent = sorted.some(p => p.codigo === '2025-2');
-        setPeriodo(hasCurrent ? '2025-2' : sorted[0].codigo);
+        const actual = sorted.find(p => p.estado === 'en_curso');
+        setPeriodo(actual?.codigo || '');
+      } else {
+        setPeriodo('');
       }
     } catch (e) {
-      console.error('Error cargando periodos, usando fallback:', e);
-      setPeriodos(FALLBACK_PERIODOS);
-      setPeriodo('2025-2');
+      console.error('Error cargando periodos:', e);
+      setPeriodos([]);
+      setPeriodo('');
     } finally {
       setLoadingPeriodos(false);
     }
   };
+
+  useEffect(() => {
+    if (periodo) {
+      localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodo);
+      window.dispatchEvent(
+        new CustomEvent(CATALOG_PERIOD_CHANGE_EVENT, {
+          detail: {
+            source: 'estructura-organizacional',
+            storageKey: ESTRUCTURA_PERIOD_STORAGE_KEY,
+            periodCode: periodo,
+          },
+        }),
+      );
+    }
+  }, [periodo]);
 
   const applyPeriodFilter = async () => {
     if (seccionalesOriginales.length === 0 && sedesOriginales.length === 0) return;
 
     try {
       const p = periodos.find(x => x.codigo === periodo);
-      if (!p || !p.id || String(p.id).startsWith('default-')) {
-        // Es un periodo de fallback local (no existe en BD), mostrar estructura master
+      if (!p || !p.id) {
         setSeccionales(seccionalesOriginales);
         setSedes(sedesOriginales);
         return;
@@ -110,11 +144,24 @@ export function EstructuraOrganizacionalModule() {
             });
           }
         } else {
-          const activeCodes = new Set<string>(detail.cetaps.map((c: any) => c.codigo));
+          const activeCodes = new Set<string>(
+            detail.cetaps.map((c: any) => normalizeCatalogKey(c.codigo)),
+          );
+          const activeNames = new Set<string>(
+            detail.cetaps.map((c: any) => normalizeCatalogKey(c.nombre)),
+          );
+          const activeTerritorials = new Set<string>(
+            detail.cetaps.map((c: any) => normalizeCatalogKey(c.dtNombre)),
+          );
 
-          const sedesFiltradas = sedesOriginales.filter(s => activeCodes.has(s.codSede));
+          const sedesFiltradas = sedesOriginales.filter(
+            (sede) =>
+              activeCodes.has(normalizeCatalogKey(sede.codSede)) ||
+              activeNames.has(normalizeCatalogKey(sede.nomSede)),
+          );
           const seccionalesFiltradas = seccionalesOriginales.filter(sec =>
             sedesFiltradas.some(s => s.idSeccional === sec.idSeccional) ||
+            activeTerritorials.has(normalizeCatalogKey(sec.nomSeccional)) ||
             sec.codSeccional?.toUpperCase() === 'SCENT'
           );
 
@@ -283,7 +330,9 @@ export function EstructuraOrganizacionalModule() {
                   className="text-sm font-bold text-[#003DA5] bg-transparent border-0 focus:ring-0 focus:outline-none cursor-pointer pr-6 appearance-auto"
                 >
                   {periodos.map((p) => (
-                    <option key={p.codigo} value={p.codigo}>{p.codigo}</option>
+                    <option key={p.codigo} value={p.codigo}>
+                      {p.codigo}{p.estado === 'en_curso' && ' - Actual'}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -298,13 +347,15 @@ export function EstructuraOrganizacionalModule() {
                 <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
               </button>
 
-              <button
-                onClick={handleImportar}
-                className="flex items-center gap-2 px-4 py-2 bg-[#003DA5]/5 hover:bg-[#003DA5] text-[#003DA5] hover:text-white border border-[#003DA5]/20 hover:border-transparent rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
-              >
-                <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Importación Masiva</span>
-              </button>
+              {hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_IMPORT) || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE) ? (
+                <button
+                  onClick={handleImportar}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#003DA5]/5 hover:bg-[#003DA5] text-[#003DA5] hover:text-white border border-[#003DA5]/20 hover:border-transparent rounded-xl font-bold text-sm transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">Importación Masiva</span>
+                </button>
+              ) : null}
 
               <button
                 onClick={handleExportar}
@@ -315,12 +366,12 @@ export function EstructuraOrganizacionalModule() {
               </button>
 
               {/* Separador vertical sutil */}
-              {isSuperAdmin && (
+              {(isSuperAdmin || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_CREATE)) && (
                 <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block" />
               )}
 
               {/* Dropdown para crear */}
-              {isSuperAdmin && (
+              {(isSuperAdmin || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_CREATE)) && (
                 <div className="relative">
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
@@ -541,6 +592,10 @@ function VistaArbolSeccionalesSedes({
   onEliminarSeccional,
   onEliminarSede,
 }: VistaArbolProps) {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_EDIT) || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE);
+  const canDelete = hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_NODE_DELETE) || hasPermission(Permissions.ESTRUCTURA_ORGANIZACIONAL_MANAGE);
+  
   const [expandidosSedeCentral, setExpandidosSedeCentral] = useState(true); // ✅ CERRADO por defecto
   const [seccionalesExpandidas, setSeccionalesExpandidas] = useState<Record<number, boolean>>({});
 
@@ -729,20 +784,24 @@ function VistaArbolSeccionalesSedes({
 
                           {/* Botones de accion para Seccional */}
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => onEditarSeccional(seccional)}
-                              className="p-2 rounded-lg hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"
-                              title="Editar seccional"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => onEliminarSeccional(seccional)}
-                              className="p-2 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                              title="Eliminar seccional"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                onClick={() => onEditarSeccional(seccional)}
+                                className="p-2 rounded-lg hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"
+                                title="Editar seccional"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => onEliminarSeccional(seccional)}
+                                className="p-2 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                                title="Eliminar seccional"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
 

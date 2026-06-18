@@ -232,6 +232,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const [hasChanges, setHasChanges] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [dragState, setDragState] = useState<DragState>({ draggingId: null, overSemestre: null });
+  const [ptaConfig, setPtaConfig] = useState<any>(null);
   const exportRef = useRef<HTMLDivElement>(null);
 
   // Close export menu on outside click
@@ -245,6 +246,32 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Load PTA config
+  useEffect(() => {
+    async function fetchPtaConfig() {
+      try {
+        const res = await apiClient.get('/pta/api/v1/configuracion');
+        if (res && (res as any).data?.rules?.docencia_por_programa) {
+          setPtaConfig((res as any).data.rules.docencia_por_programa);
+        } else if (res && (res as any).rules?.docencia_por_programa) {
+          setPtaConfig((res as any).rules.docencia_por_programa);
+        }
+      } catch (err) {
+        console.warn('Could not load PTA config for dynamic Hrs PTA', err);
+      }
+    }
+    fetchPtaConfig();
+  }, []);
+
+  const calculateHrsPta = useCallback((creditos: number) => {
+    if (!ptaConfig || !ptaConfig[programaId]) return null;
+    const config = ptaConfig[programaId];
+    if (config.esVariable) {
+      return (creditos || 0) * (config.base || 0) * (config.multiplicador || 1);
+    }
+    return (config.base || 0) * (config.multiplicador || 1);
+  }, [ptaConfig, programaId]);
+
   // Load
   const loadAsignaturas = useCallback(async () => {
     if (!programaId) {
@@ -254,13 +281,21 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     setLoading(true);
     try {
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas?_cb=${Date.now()}`);
-      const asignaturasData = (response || []).map(a => ({ ...a, nucleoTematico: a.nucleoTematico || a.nucleo || 'General' }));
+      const asignaturasData = (response || []).map((a: any) => {
+        const asig = { ...a, nucleoTematico: a.nucleoTematico || a.nucleo || 'General' };
+        // Override with dynamic calculated hrs if config exists
+        const calculated = calculateHrsPta(asig.creditos);
+        if (calculated !== null) {
+          asig.horasFijasPta = calculated;
+        }
+        return asig;
+      });
       setAsignaturas(asignaturasData);
     } catch (err: any) {
       toast.error('Error al cargar asignaturas', { description: 'No se pudieron cargar las asignaturas del programa' });
     }
     setLoading(false);
-  }, [programaId]);
+  }, [programaId, calculateHrsPta]);
 
   useEffect(() => { loadAsignaturas(); }, [loadAsignaturas]);
 
@@ -295,6 +330,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       programa_id: programaId,
       horas: newAsig.horas || newAsig.creditos * 48,
     };
+    
+    const calculated = calculateHrsPta(asig.creditos);
+    if (calculated !== null) {
+      asig.horasFijasPta = calculated;
+    }
+
     setAsignaturas(prev => [...prev, asig]);
     setNewAsig(EMPTY_ASIGNATURA);
     setShowAddForm(false);
@@ -325,6 +366,10 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       const updated = { ...a, [field]: value };
       if (field === 'creditos') {
         updated.horas = Number(value) * 48;
+        const calculated = calculateHrsPta(Number(value));
+        if (calculated !== null) {
+          updated.horasFijasPta = calculated;
+        }
       }
       return updated;
     }));
@@ -962,13 +1007,13 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                         </td>
                         <td className="px-3 py-1.5 text-center">
                           {isEditing ? (
-                            <input type="number" value={asig.horasFijasPta || ''}
+                            <input type="number" value={asig.horasFijasPta ?? ''}
                               onChange={e => handleUpdate(asig.id, 'horasFijasPta', Number(e.target.value))}
                               min={0}
                               className="w-12 h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50 text-center"
                             />
                           ) : (
-                            <span className="text-[10px] font-bold text-orange-600">{asig.horasFijasPta || '-'}</span>
+                            <span className="text-[10px] font-bold text-orange-600">{asig.horasFijasPta ?? '-'}</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5">

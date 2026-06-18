@@ -4612,11 +4612,9 @@ function Paso2({
                                                                   <input
                                                                     type="date"
                                                                     value={tarea.fechaEntrega || ''}
-                                                                    min={pc.fechaProgramada}
-                                                                    max={pc.fechaSeguimiento || undefined}
                                                                     onChange={(e) => updateTareaCorte({ fechaEntrega: e.target.value })}
                                                                     className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
-                                                                    title="Fecha de entrega (dentro del período del corte)"
+                                                                    title="Fecha de entrega"
                                                                   />
                                                                 </div>
                                                               </div>
@@ -4624,35 +4622,62 @@ function Paso2({
                                                           );
                                                         })}
                                                         {/* Agregar tarea al corte */}
-                                                        <div className="flex gap-1.5 mt-1">
-                                                          <input
-                                                            type="text"
-                                                            data-tarea-corte={`${idActividadEnEstado}-${pc.id}`}
-                                                            placeholder="✏️ Nueva tarea…"
-                                                            className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                                            onClick={e => e.stopPropagation()}
-                                                            onKeyDown={(e) => {
-                                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                                                const desc = (e.target as HTMLInputElement).value.trim();
-                                                                const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }));
-                                                                onRolesChange(nuevaConfig);
-                                                                (e.target as HTMLInputElement).value = '';
-                                                              }
-                                                            }}
-                                                          />
-                                                          <button
-                                                            onClick={() => {
-                                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
-                                                              if (input && input.value.trim()) {
-                                                                const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }));
-                                                                onRolesChange(nuevaConfig);
-                                                                input.value = '';
-                                                              }
-                                                            }}
-                                                            className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
-                                                          >
-                                                            <Plus className="w-3 h-3" /> Agregar
-                                                          </button>
+                                                        <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5">
+                                                          <div className="flex items-center gap-3 px-1">
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren observaciones">
+                                                              <input type="checkbox" data-nueva-obs={`${idActividadEnEstado}-${pc.id}`}
+                                                                defaultChecked={actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                              <span className="text-[10px] text-gray-500">📝 Observaciones</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren adjuntos">
+                                                              <input type="checkbox" data-nueva-adj={`${idActividadEnEstado}-${pc.id}`}
+                                                                defaultChecked={actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                                                              <span className="text-[10px] text-gray-500">📎 Adjuntos</span>
+                                                            </label>
+                                                            <div className="ml-auto">
+                                                              <input type="date" data-nueva-fecha={`${idActividadEnEstado}-${pc.id}`}
+                                                                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
+                                                                title="Fecha de entrega" />
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex gap-1.5">
+                                                            <input
+                                                              type="text"
+                                                              data-tarea-corte={`${idActividadEnEstado}-${pc.id}`}
+                                                              placeholder="✏️ Nueva tarea…"
+                                                              className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                              onClick={e => e.stopPropagation()}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                  const desc = (e.target as HTMLInputElement).value.trim();
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }));
+                                                                  onRolesChange(nuevaConfig);
+                                                                  (e.target as HTMLInputElement).value = '';
+                                                                }
+                                                              }}
+                                                            />
+                                                            <button
+                                                              onClick={() => {
+                                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
+                                                                if (input && input.value.trim()) {
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha="${idActividadEnEstado}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }));
+                                                                  onRolesChange(nuevaConfig);
+                                                                  input.value = '';
+                                                                }
+                                                              }}
+                                                              className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                            >
+                                                              <Plus className="w-3 h-3" /> Agregar
+                                                            </button>
+                                                          </div>
                                                         </div>
                                                       </div>
                                                     </div>
@@ -5038,11 +5063,9 @@ function Paso2({
                                                                   <input
                                                                     type="date"
                                                                     value={tarea.fechaEntrega || ''}
-                                                                    min={pc.fechaProgramada}
-                                                                    max={pc.fechaSeguimiento || undefined}
                                                                     onChange={(e) => updateTareaCorteCustom({ fechaEntrega: e.target.value })}
                                                                     className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
-                                                                    title="Fecha de entrega (dentro del período del corte)"
+                                                                    title="Fecha de entrega"
                                                                   />
                                                                 </div>
                                                               </div>
@@ -5050,35 +5073,62 @@ function Paso2({
                                                           );
                                                         })}
                                                         {/* Agregar tarea al corte (custom) */}
-                                                        <div className="flex gap-1.5 mt-1">
-                                                          <input
-                                                            type="text"
-                                                            data-tarea-corte-custom={`${rol.numero}-${index}-${pc.id}`}
-                                                            placeholder="✏️ Nueva tarea…"
-                                                            className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                                            onClick={e => e.stopPropagation()}
-                                                            onKeyDown={(e) => {
-                                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                                                const desc = (e.target as HTMLInputElement).value.trim();
-                                                                const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
-                                                                onRolesChange(nuevaConfig);
-                                                                (e.target as HTMLInputElement).value = '';
-                                                              }
-                                                            }}
-                                                          />
-                                                          <button
-                                                            onClick={() => {
-                                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
-                                                              if (input && input.value.trim()) {
-                                                                const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
-                                                                onRolesChange(nuevaConfig);
-                                                                input.value = '';
-                                                              }
-                                                            }}
-                                                            className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
-                                                          >
-                                                            <Plus className="w-3 h-3" /> Agregar
-                                                          </button>
+                                                        <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5">
+                                                          <div className="flex items-center gap-3 px-1">
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren observaciones">
+                                                              <input type="checkbox" data-nueva-obs-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                defaultChecked={actividad?.tipoEvidencia === 'OBSERVACIONES' || actividad?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                              <span className="text-[10px] text-gray-500">📝 Observaciones</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Nuevas tareas requieren adjuntos">
+                                                              <input type="checkbox" data-nueva-adj-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                defaultChecked={actividad?.tipoEvidencia === 'ADJUNTOS' || actividad?.tipoEvidencia === 'COMPLETO'}
+                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                                                              <span className="text-[10px] text-gray-500">📎 Adjuntos</span>
+                                                            </label>
+                                                            <div className="ml-auto">
+                                                              <input type="date" data-nueva-fecha-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[110px]"
+                                                                title="Fecha de entrega" />
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex gap-1.5">
+                                                            <input
+                                                              type="text"
+                                                              data-tarea-corte-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                              placeholder="✏️ Nueva tarea…"
+                                                              className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                              onClick={e => e.stopPropagation()}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                  const desc = (e.target as HTMLInputElement).value.trim();
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }; });
+                                                                  onRolesChange(nuevaConfig);
+                                                                  (e.target as HTMLInputElement).value = '';
+                                                                }
+                                                              }}
+                                                            />
+                                                            <button
+                                                              onClick={() => {
+                                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                if (input && input.value.trim()) {
+                                                                  const obsEl = document.querySelector<HTMLInputElement>(`[data-nueva-obs-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const adjEl = document.querySelector<HTMLInputElement>(`[data-nueva-adj-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const fechaEl = document.querySelector<HTMLInputElement>(`[data-nueva-fecha-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                  const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id, requiereObservaciones: obsEl?.checked || false, requiereAdjuntos: adjEl?.checked || false, fechaEntrega: fechaEl?.value || undefined }] } : a) }; });
+                                                                  onRolesChange(nuevaConfig);
+                                                                  input.value = '';
+                                                                }
+                                                              }}
+                                                              className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                            >
+                                                              <Plus className="w-3 h-3" /> Agregar
+                                                            </button>
+                                                          </div>
                                                         </div>
                                                       </div>
                                                     </div>
@@ -11209,71 +11259,99 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     cambiarEstadoGeneral('DEVUELTO', nuevoHistorial);
   };
 
-  const exportarTrazabilidadAprobacionCSV = () => {
+  const exportarTrazabilidadAprobacionExcel = async () => {
     try {
-      const escapeCSV = (str?: string) => {
-        if (!str) return '""';
-        return `"${str.replace(/"/g, '""')}"`;
-      };
+      const { default: ExcelJS } = await import('exceljs');
+      
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'ESAP - Control Interno';
+      
+      const ws = workbook.addWorksheet('Trazabilidad', {
+        properties: { tabColor: { argb: 'FF2962FF' } },
+        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true }
+      });
+      
+      ws.columns = [
+        { header: 'Fase', key: 'fase', width: 35 },
+        { header: 'Nombre del Actor', key: 'actor', width: 35 },
+        { header: 'Rol', key: 'rol', width: 25 },
+        { header: 'Estado', key: 'estado', width: 15 },
+        { header: 'Fecha de Acción', key: 'fecha', width: 22 },
+        { header: 'Observación', key: 'obs', width: 40 },
+        { header: 'Respuesta de Subsanación', key: 'resp', width: 40 },
+        { header: 'ID Firma Electrónica', key: 'firma', width: 35 },
+        { header: 'IP Origen', key: 'ip', width: 20 }
+      ];
 
-      const cabeceras = [
-        'Fase',
-        'Nombre del Actor',
-        'Rol',
-        'Estado',
-        'Fecha de Accion',
-        'Observacion',
-        'Respuesta de Subsanacion',
-        'ID Firma Electronica',
-        'IP Origen'
-      ].join(';');
+      // Dar estilo a los encabezados
+      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
+      ws.getRow(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getRow(1).height = 25;
 
-      const fase1 = [
-        '"Fase 1: Creación y Formulación Inicial"',
-        escapeCSV(plan.jefeOCI?.nombre || 'Administrador OCI'),
-        '"Autor del Plan"',
-        '"COMPLETADO"',
-        escapeCSV(plan.fechaCreacion ? new Date(plan.fechaCreacion).toLocaleString('es-CO') : ''),
-        '""',
-        '""',
-        '""',
-        '""'
-      ].join(';');
-
-      const filasAprobadores = equipo.map(aprobador => {
-        const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' } as any;
-        return [
-          '"Fase 2: Aprobación PAI"',
-          escapeCSV(aprobador.nombre),
-          escapeCSV(aprobador.cargo || 'Comité'),
-          escapeCSV(track.estado),
-          escapeCSV(track.fecha ? new Date(track.fecha).toLocaleString('es-CO') : ''),
-          escapeCSV(track.observacion),
-          escapeCSV(track.respuestaSubsanacion),
-          escapeCSV(track.firmaElectronica?.hash || track.firmaElectronica?.id),
-          escapeCSV(track.firmaElectronica?.ip)
-        ].join(';');
+      // Fase 1
+      ws.addRow({
+        fase: 'Fase 1: Creación y Formulación Inicial',
+        actor: plan.jefeOCI?.nombre || 'Administrador OCI',
+        rol: 'Autor del Plan',
+        estado: 'COMPLETADO',
+        fecha: plan.fechaCreacion ? new Date(plan.fechaCreacion).toLocaleString('es-CO') : '',
+        obs: '',
+        resp: '',
+        firma: '',
+        ip: ''
       });
 
-      const fase3 = [
-        '"Fase 3: Activación Oficial"',
-        '"Sistema"',
-        '"Plataforma"',
-        `"${plan.estado === 'VIGENTE' ? 'VIGENTE' : 'PENDIENTE'}"`,
-        escapeCSV(plan.fechaAprobacion ? new Date(plan.fechaAprobacion).toLocaleString('es-CO') : ''),
-        '""',
-        '""',
-        '""',
-        '""'
-      ].join(';');
+      // Fase 2
+      equipo.forEach(aprobador => {
+        const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' } as any;
+        ws.addRow({
+          fase: 'Fase 2: Aprobación PAI',
+          actor: aprobador.nombre,
+          rol: aprobador.cargo || 'Comité',
+          estado: track.estado,
+          fecha: track.fecha ? new Date(track.fecha).toLocaleString('es-CO') : '',
+          obs: track.observacion || '',
+          resp: track.respuestaSubsanacion || '',
+          firma: track.firmaElectronica?.hash || track.firmaElectronica?.id || '',
+          ip: track.firmaElectronica?.ip || ''
+        });
+      });
 
-      const csvContent = ['sep=;', cabeceras, fase1, ...filasAprobadores, fase3].join('\n');
-      
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      // Fase 3
+      ws.addRow({
+        fase: 'Fase 3: Activación Oficial',
+        actor: 'Sistema',
+        rol: 'Plataforma',
+        estado: plan.estado === 'VIGENTE' ? 'VIGENTE' : 'PENDIENTE',
+        fecha: plan.fechaAprobacion ? new Date(plan.fechaAprobacion).toLocaleString('es-CO') : '',
+        obs: '',
+        resp: '',
+        firma: '',
+        ip: ''
+      });
+
+      // Bordes y alineación a todas las celdas
+      ws.eachRow((row, rowNumber) => {
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+            left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+            bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+            right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+          };
+          if (rowNumber > 1) {
+            cell.alignment = { vertical: 'middle', wrapText: true };
+          }
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Trazabilidad_Aprobacion_Plan_Anual_${plan.vigencia || new Date().getFullYear()}.csv`);
+      link.setAttribute('download', `Trazabilidad_Aprobacion_Plan_Anual_${plan.vigencia || new Date().getFullYear()}.xlsx`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -11281,7 +11359,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       
       toast.success('Trazabilidad de aprobación exportada correctamente');
     } catch (e) {
-      toast.error('Error al exportar la trazabilidad en CSV');
+      toast.error('Error al exportar la trazabilidad en Excel');
       console.error(e);
     }
   };
@@ -11304,12 +11382,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           </h2>
           <button 
             type="button"
-            onClick={exportarTrazabilidadAprobacionCSV}
+            onClick={exportarTrazabilidadAprobacionExcel}
             className="flex items-center justify-center gap-2 px-4 py-2 text-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-300 rounded-xl transition-all font-semibold shadow-sm w-fit active:scale-95"
-            title="Descargar trazabilidad completa de aprobación en formato CSV"
+            title="Descargar trazabilidad completa de aprobación en formato Excel"
           >
             <Download className="w-4 h-4" />
-            Descargar trazabilidad de aprobación (CSV)
+            Descargar trazabilidad de aprobación (Excel)
           </button>
         </div>
 

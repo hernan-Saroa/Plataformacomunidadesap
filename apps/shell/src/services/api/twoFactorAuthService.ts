@@ -2,9 +2,6 @@
  * Servicio de Autenticación de Dos Factores (2FA)
  */
 
-import { apiClient } from './apiClient';
-import { API_ENDPOINTS } from '../../config/environment';
-
 interface Send2FACodeResponse {
   success: boolean;
   message: string;
@@ -17,7 +14,15 @@ interface Verify2FACodeResponse {
   token?: string;
 }
 
+interface Active2FACode {
+  email: string;
+  code: string;
+  expiresAt: number;
+}
+
 class TwoFactorAuthService {
+  private activeCode: Active2FACode | null = null;
+
   /**
    * Enviar código de verificación al correo del usuario
    */
@@ -32,12 +37,14 @@ class TwoFactorAuthService {
       // Generar código mock (en producción esto se hace en el backend)
       const mockCode = Math.floor(100000 + Math.random() * 900000).toString();
       
-      // Guardar código en sessionStorage para demostración
-      sessionStorage.setItem('2fa-code', mockCode);
-      sessionStorage.setItem('2fa-email', email);
-      sessionStorage.setItem('2fa-expires', (Date.now() + 5 * 60 * 1000).toString());
+      // Mantener el código solo en memoria. No persistir correo/código en storage del navegador.
+      this.activeCode = {
+        email,
+        code: mockCode,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
       
-      console.log(`✅ Código 2FA generado (DEMO): ${mockCode}`);
+      console.log('✅ Código 2FA generado (DEMO)');
       console.log(`⏱️ Expira en 5 minutos`);
       
       return {
@@ -67,42 +74,38 @@ class TwoFactorAuthService {
   async verifyCode(email: string, code: string): Promise<Verify2FACodeResponse> {
     try {
       // Mock implementation
-      console.log(`🔐 Verificando código 2FA para ${email}: ${code}`);
+      console.log(`🔐 Verificando código 2FA para ${email}`);
       
       // Simular llamada al API
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Verificar código mock
-      const storedCode = sessionStorage.getItem('2fa-code');
-      const storedEmail = sessionStorage.getItem('2fa-email');
-      const expiresAt = sessionStorage.getItem('2fa-expires');
+      // Verificar código mock en memoria
+      const activeCode = this.activeCode;
       
       // Validaciones
-      if (!storedCode || !storedEmail || !expiresAt) {
+      if (!activeCode) {
         return {
           success: false,
           message: 'No hay código de verificación activo'
         };
       }
       
-      if (storedEmail !== email) {
+      if (activeCode.email !== email) {
         return {
           success: false,
           message: 'El código no corresponde a este usuario'
         };
       }
       
-      if (Date.now() > parseInt(expiresAt)) {
-        sessionStorage.removeItem('2fa-code');
-        sessionStorage.removeItem('2fa-email');
-        sessionStorage.removeItem('2fa-expires');
+      if (Date.now() > activeCode.expiresAt) {
+        this.clearCode();
         return {
           success: false,
           message: 'El código ha expirado. Solicita uno nuevo.'
         };
       }
       
-      if (code !== storedCode) {
+      if (code !== activeCode.code) {
         return {
           success: false,
           message: 'Código incorrecto. Verifica e intenta nuevamente.'
@@ -113,9 +116,7 @@ class TwoFactorAuthService {
       console.log('✅ Código 2FA verificado correctamente');
       
       // Limpiar código usado
-      sessionStorage.removeItem('2fa-code');
-      sessionStorage.removeItem('2fa-email');
-      sessionStorage.removeItem('2fa-expires');
+      this.clearCode();
       
       return {
         success: true,
@@ -142,9 +143,7 @@ class TwoFactorAuthService {
    */
   async resendCode(email: string, roleId?: string): Promise<Send2FACodeResponse> {
     // Limpiar código anterior
-    sessionStorage.removeItem('2fa-code');
-    sessionStorage.removeItem('2fa-email');
-    sessionStorage.removeItem('2fa-expires');
+    this.clearCode();
     
     // Enviar nuevo código
     return this.sendVerificationCode(email, roleId);
@@ -178,10 +177,10 @@ class TwoFactorAuthService {
    * Obtener tiempo restante del código actual
    */
   getCodeTimeRemaining(): number {
-    const expiresAt = sessionStorage.getItem('2fa-expires');
+    const expiresAt = this.activeCode?.expiresAt;
     if (!expiresAt) return 0;
     
-    const remaining = parseInt(expiresAt) - Date.now();
+    const remaining = expiresAt - Date.now();
     return remaining > 0 ? Math.floor(remaining / 1000) : 0;
   }
 
@@ -189,12 +188,11 @@ class TwoFactorAuthService {
    * Verificar si hay un código activo
    */
   hasActiveCode(email: string): boolean {
-    const storedEmail = sessionStorage.getItem('2fa-email');
-    const expiresAt = sessionStorage.getItem('2fa-expires');
+    const activeCode = this.activeCode;
     
-    if (!storedEmail || !expiresAt) return false;
-    if (storedEmail !== email) return false;
-    if (Date.now() > parseInt(expiresAt)) {
+    if (!activeCode) return false;
+    if (activeCode.email !== email) return false;
+    if (Date.now() > activeCode.expiresAt) {
       this.clearCode();
       return false;
     }
@@ -206,9 +204,15 @@ class TwoFactorAuthService {
    * Limpiar código almacenado
    */
   clearCode(): void {
-    sessionStorage.removeItem('2fa-code');
-    sessionStorage.removeItem('2fa-email');
-    sessionStorage.removeItem('2fa-expires');
+    this.activeCode = null;
+
+    try {
+      sessionStorage.removeItem('2fa-code');
+      sessionStorage.removeItem('2fa-email');
+      sessionStorage.removeItem('2fa-expires');
+    } catch {
+      // Storage may be unavailable in restricted browser contexts.
+    }
   }
 }
 

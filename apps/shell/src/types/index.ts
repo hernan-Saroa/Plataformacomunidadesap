@@ -75,8 +75,9 @@ export interface LoginResponse {
 }
 
 export interface RefreshTokenResponse {
-  accessToken: string;
-  expiresIn: number;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
 }
 
 export interface AuthUser {

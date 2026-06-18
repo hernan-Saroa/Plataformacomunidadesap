@@ -26,7 +26,6 @@ interface ExpedienteReporte {
   abogadoAsignado?: string;
   demandante?: string;
   demandado?: string;
-  fechaAdmision?: string | Date;
   fechaNotificacion?: string | Date;
   fechaVencimiento?: string | Date;
   diasRestantes?: number;
@@ -67,8 +66,15 @@ function getSemaforoColor(dias: number | undefined): { color: string; label: str
   return { color: '#10B981', label: 'EN TÉRMINO' };
 }
 
+function getTipoConteoLabel(tipoConteo: string | undefined): string {
+  if (tipoConteo === 'HORAS') return 'Horas';
+  if (tipoConteo === 'CALENDARIO') return 'Días Calendario';
+  return 'Días Hábiles';
+}
+
 function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposConfig?: CampoConfig[]): string {
   const semaforo = getSemaforoColor(exp.diasRestantes);
+  const tipoConteoLabel = getTipoConteoLabel(exp.tipoConteoTermino);
 
   // Partes procesales
   const partesHTML = (() => {
@@ -249,12 +255,6 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposCo
           <td style="padding:8px 12px;font-size:12px;font-weight:700;border-bottom:1px solid #E5E7EB;color:${exp.nivelRiesgo === 'Alto' ? '#DC2626' : exp.nivelRiesgo === 'Medio' ? '#D97706' : '#059669'};">${exp.nivelRiesgo || 'No evaluado'}</td>
         </tr>
         <tr>
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Admisión</td>
-          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${formatFecha(exp.fechaAdmision)}</td>
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Sede Territorial</td>
-          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.ubicacionFisica || '—'}</td>
-        </tr>
-        <tr>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Notificación</td>
           <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${formatFecha(exp.fechaNotificacion)}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Vencimiento</td>
@@ -262,14 +262,27 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposCo
         </tr>
         <tr style="background:#F9FAFB;">
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Tipo de Conteo</td>
-          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.tipoConteoTermino === 'CALENDARIO' ? 'Días Calendario' : 'Días Hábiles'}</td>
+          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${tipoConteoLabel}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Estado</td>
           <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.estado || 'ACTIVO'}</td>
         </tr>
         <tr>
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;">Abogado Asignado</td>
-          <td colspan="3" style="padding:8px 12px;font-size:12px;font-weight:700;color:#003DA5;">${exp.abogadoAsignado || 'Sin asignar'}</td>
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Abogado Asignado</td>
+          <td colspan="3" style="padding:8px 12px;font-size:12px;font-weight:700;color:#003DA5;border-bottom:1px solid #E5E7EB;">${exp.abogadoAsignado || 'Sin asignar'}</td>
         </tr>
+        ${(exp.territorial || exp.dependencia || exp.camposAdicionales?.cetap) ? `
+        <tr style="background:#F9FAFB;">
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Territorial</td>
+          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.territorial || '—'}</td>
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Dependencia</td>
+          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.dependencia || '—'}</td>
+        </tr>
+        ${exp.camposAdicionales?.cetap ? `
+        <tr>
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;">CETAP</td>
+          <td colspan="3" style="padding:8px 12px;font-size:11px;font-weight:600;">${exp.camposAdicionales.cetap}</td>
+        </tr>` : ''}
+        ` : ''}
       </table>
 
       ${camposAdicionalesHTML}
@@ -335,7 +348,14 @@ export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], f
     return;
   }
 
-  const tituloFiltro = filtroTipo === 'TODOS' ? 'Todos los Tipos de Proceso' : filtroTipo;
+  const tituloFiltro = (() => {
+    if (filtroTipo !== 'TODOS') return filtroTipo;
+    if (expedientes.length > 0) {
+      const tipos = new Set(expedientes.map(e => e.tipoProceso).filter(Boolean));
+      if (tipos.size === 1) return [...tipos][0]!;
+    }
+    return 'Todos los Tipos de Proceso';
+  })();
 
   // Portada
   const portada = `

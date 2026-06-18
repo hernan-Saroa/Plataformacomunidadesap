@@ -13,6 +13,7 @@ import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const TERRITORIALES_FILTER = [
   'Sede Central', 'Antioquia', 'Atlántico', 'Bogotá D.C.', 'Bolívar-Córdoba-Sucre',
@@ -100,6 +101,28 @@ function BarChart({ data }: { data: { label: string; value: number }[] }) {
 type Tab = 'listado' | 'estadisticas' | 'carga-masiva' | 'invitaciones';
 
 export function BancoDocentesPTA() {
+  const auth = useAuth();
+  
+  // Robust super user detection: check both MFE AuthContext AND shell's stored user
+  const isSuperUserFallback = (() => {
+    if (auth.isSuperUser) return true;
+    // Fallback: check shell's stored user from localStorage/sessionStorage
+    try {
+      const raw = localStorage.getItem('esap_user') || sessionStorage.getItem('esap_user');
+      if (raw) {
+        const shellUser = JSON.parse(raw);
+        const email = String(shellUser?.email || '').toLowerCase();
+        if (email === 'superuser@esap.edu.co') return true;
+        const roles = shellUser?.roles || [];
+        if (roles.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'SUPER_ADMIN')) return true;
+      }
+    } catch { /* ignore */ }
+    return false;
+  })();
+
+  const hasPermission = (perm: string) => isSuperUserFallback || auth.hasPermission(perm);
+  
+  console.log('[BancoDocentesPTA] AUTH:', { isSuperUser: auth.isSuperUser, isSuperUserFallback, email: auth.userEmail, role: auth.userRole, invite: hasPermission('banco-docentes.rund.invite'), import: hasPermission('banco-docentes.rund.import'), manage: hasPermission('banco-docentes.rund.manage') });
   const [tab, setTab] = useState<Tab>('listado');
   const [docentes, setDocentes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -335,16 +358,20 @@ export function BancoDocentesPTA() {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button 
-                onClick={() => setEditDocente({})}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: '8px', border: '1px solid #10b981', background: '#ecfdf5', color: '#047857', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.15s' }}>
-                <UserPlus size={16} /> Crear Docente (Canal 2)
-              </button>
-              <button 
-                onClick={() => setTab('invitaciones')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: '8px', border: '1px solid #6366f1', background: tab === 'invitaciones' ? '#4338ca' : '#eef2ff', color: tab === 'invitaciones' ? '#fff' : '#4338ca', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.15s' }}>
-                <MailPlus size={16} /> Invitaciones Autogestión (Canal 3)
-              </button>
+              {hasPermission('banco-docentes.rund.manage') && (
+                <button 
+                  onClick={() => setEditDocente({})}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: '8px', border: '1px solid #10b981', background: '#ecfdf5', color: '#047857', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.15s' }}>
+                  <UserPlus size={16} /> Crear Docente (Canal 2)
+                </button>
+              )}
+              {hasPermission('banco-docentes.rund.invite') && (
+                <button 
+                  onClick={() => setTab('invitaciones')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: '8px', border: '1px solid #6366f1', background: tab === 'invitaciones' ? '#4338ca' : '#eef2ff', color: tab === 'invitaciones' ? '#fff' : '#4338ca', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.15s' }}>
+                  <MailPlus size={16} /> Invitaciones Autogestión (Canal 3)
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -357,12 +384,16 @@ export function BancoDocentesPTA() {
           <button style={TAB_STYLES(tab === 'estadisticas')} onClick={() => setTab('estadisticas')}>
             <BarChart2 size={14} /> Estadísticas
           </button>
-          <button style={TAB_STYLES(tab === 'carga-masiva')} onClick={() => setTab('carga-masiva')}>
-            <Upload size={14} /> Carga Masiva
-          </button>
-          <button style={TAB_STYLES(tab === 'invitaciones')} onClick={() => setTab('invitaciones')}>
-            <MailPlus size={14} /> Invitaciones
-          </button>
+          {hasPermission('banco-docentes.rund.import') && (
+            <button style={TAB_STYLES(tab === 'carga-masiva')} onClick={() => setTab('carga-masiva')}>
+              <Upload size={14} /> Carga Masiva
+            </button>
+          )}
+          {hasPermission('banco-docentes.rund.invite') && (
+            <button style={TAB_STYLES(tab === 'invitaciones')} onClick={() => setTab('invitaciones')}>
+              <MailPlus size={14} /> Invitaciones
+            </button>
+          )}
         </div>
       </div>
 
@@ -634,37 +665,41 @@ export function BancoDocentesPTA() {
                               {selectedDocente === d.id ? <X size={14} color="#fff" /> : <Eye size={14} color="#6B7280" />}
                             </button>
                             {/* Botón Editar */}
-                            <button
-                              onClick={() => setEditDocente(d)}
-                              title="Editar docente"
-                              style={{
-                                width: 32, height: 32, borderRadius: 8,
-                                border: '1px solid #E5E7EB', background: '#FFFFFF',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.15s',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = '#F9FAFB'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; }}
-                            >
-                              <Edit2 size={14} color="#6B7280" />
-                            </button>
+                            {hasPermission('banco-docentes.rund.manage') && (
+                              <button
+                                onClick={() => setEditDocente(d)}
+                                title="Editar docente"
+                                style={{
+                                  width: 32, height: 32, borderRadius: 8,
+                                  border: '1px solid #E5E7EB', background: '#FFFFFF',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'all 0.15s',
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#F9FAFB'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; }}
+                              >
+                                <Edit2 size={14} color="#6B7280" />
+                              </button>
+                            )}
                             {/* Botón Toggle Estado */}
-                            <button
-                              onClick={() => handleToggleEstado(d.id)}
-                              title={d.estado === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
-                              style={{
-                                width: 32, height: 32, borderRadius: 8,
-                                border: `1px solid ${d.estado === 'ACTIVO' ? '#FCA5A5' : '#BBF7D0'}`,
-                                background: d.estado === 'ACTIVO' ? '#FEF2F2' : '#F0FDF4',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.15s',
-                              }}
-                            >
-                              {d.estado === 'ACTIVO'
-                                ? <ToggleRight size={14} color="#DC2626" />
-                                : <ToggleLeft size={14} color="#059669" />
-                              }
-                            </button>
+                            {hasPermission('banco-docentes.rund.manage') && (
+                              <button
+                                onClick={() => handleToggleEstado(d.id)}
+                                title={d.estado === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
+                                style={{
+                                  width: 32, height: 32, borderRadius: 8,
+                                  border: `1px solid ${d.estado === 'ACTIVO' ? '#FCA5A5' : '#BBF7D0'}`,
+                                  background: d.estado === 'ACTIVO' ? '#FEF2F2' : '#F0FDF4',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'all 0.15s',
+                                }}
+                              >
+                                {d.estado === 'ACTIVO'
+                                  ? <ToggleRight size={14} color="#DC2626" />
+                                  : <ToggleLeft size={14} color="#059669" />
+                                }
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

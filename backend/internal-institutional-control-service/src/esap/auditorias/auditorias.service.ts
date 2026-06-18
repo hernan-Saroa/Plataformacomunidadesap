@@ -307,6 +307,56 @@ export class AuditoriasService {
   private readonly uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+  private normalizeEstadoKanban(estadoInput: string | undefined | null): EstadoKanban {
+    if (!estadoInput) {
+      return EstadoKanban.PLAN_ANUAL;
+    }
+
+    const estadoNormalizado = estadoInput
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+    if (
+      estadoNormalizado.includes('plan anual') ||
+      estadoNormalizado.includes('programa anual') ||
+      estadoNormalizado === 'plan-anual' ||
+      estadoNormalizado === 'programa-anual'
+    ) {
+      return EstadoKanban.PLAN_ANUAL;
+    }
+    if (estadoNormalizado === 'planeacion' || estadoNormalizado === 'planificacion') {
+      return EstadoKanban.PLANEACION;
+    }
+    if (estadoNormalizado === 'ejecucion' || estadoNormalizado.includes('curso')) {
+      return EstadoKanban.EJECUCION;
+    }
+    if (
+      estadoNormalizado === 'comunicacion' ||
+      estadoNormalizado.includes('informe') ||
+      estadoNormalizado.includes('revision')
+    ) {
+      return EstadoKanban.COMUNICACION;
+    }
+    if (estadoNormalizado === 'seguimiento') {
+      return EstadoKanban.SEGUIMIENTO;
+    }
+    if (
+      estadoNormalizado === 'finalizada' ||
+      estadoNormalizado.includes('completad') ||
+      estadoNormalizado.includes('cerrad')
+    ) {
+      return EstadoKanban.FINALIZADA;
+    }
+
+    // Por defecto, intentar usar el valor tal como viene si coincide con el enum
+    const estadoDirecto = Object.values(EstadoKanban).find(
+      (e) => e.toLowerCase() === estadoNormalizado || e.toLowerCase() === estadoInput.toLowerCase(),
+    );
+    return estadoDirecto || EstadoKanban.PLANEACION;
+  }
+
   /**
    * Aplica columnas plan_anual_* desde DTO y/o metadata JSON (compatibilidad).
    */
@@ -892,9 +942,7 @@ export class AuditoriasService {
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-      // Establecer estadoKanban inicial - si viene del DTO usarlo, sino 'Plan Anual' por defecto
-      // El DTO puede enviar el string directamente que corresponde al valor del enum
-      estadoKanban: (createDto.estadoKanban as EstadoKanban) || EstadoKanban.PLAN_ANUAL,
+      estadoKanban: this.normalizeEstadoKanban(createDto.estadoKanban),
     };
 
     // Incluir campos opcionales si tienen valor
@@ -975,7 +1023,32 @@ export class AuditoriasService {
 
     const auditoria = this.auditoriaRepository.create(auditoriaData);
 
-    const saved = await this.auditoriaRepository.save(auditoria);
+    let saved: any;
+    try {
+      saved = await this.auditoriaRepository.save(auditoria);
+    } catch (error) {
+      console.error('[AuditoriasService.create] Error al guardar auditoría:', error);
+      if (error && (error.code === '23503' || error.message?.includes('foreign key constraint'))) {
+        if (error.message?.includes('plan_anual') || error.detail?.includes('plan_anual')) {
+          throw new BadRequestException('El Plan Anual especificado no existe o no es válido en el sistema');
+        }
+        if (error.message?.includes('auditor_lider') || error.detail?.includes('auditor_lider')) {
+          throw new BadRequestException('El Auditor Líder seleccionado no es válido o no existe');
+        }
+        if (error.message?.includes('auditor_asignado') || error.detail?.includes('auditor_asignado')) {
+          throw new BadRequestException('El Auditor Asignado seleccionado no es válido o no existe');
+        }
+        if (error.message?.includes('supervisor') || error.detail?.includes('supervisor')) {
+          throw new BadRequestException('El Supervisor seleccionado no es válido o no existe');
+        }
+        throw new BadRequestException('No se pudo crear la auditoría debido a una referencia no válida (llave foránea)');
+      }
+      if (error && (error.code === '23505' || error.message?.includes('unique constraint'))) {
+        throw new BadRequestException(`Ya existe una auditoría con datos duplicados: ${error.detail || error.message}`);
+      }
+      throw new BadRequestException(`Error al guardar la auditoría en la base de datos: ${error.message}`);
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     // Asegurar que saved es un objeto, no un array
     const auditoriaGuardada = Array.isArray(saved) ? saved[0] : saved;
@@ -993,7 +1066,12 @@ export class AuditoriasService {
         });
 
       if (objetivos.length > 0) {
-        await this.objetivoRepository.save(objetivos);
+        try {
+          await this.objetivoRepository.save(objetivos);
+        } catch (error) {
+          console.error('[AuditoriasService.create] Error al guardar objetivos:', error);
+          throw new BadRequestException('Error al guardar los objetivos de la auditoría');
+        }
       }
     }
 
@@ -1010,7 +1088,12 @@ export class AuditoriasService {
         });
 
       if (criterios.length > 0) {
-        await this.criterioRepository.save(criterios);
+        try {
+          await this.criterioRepository.save(criterios);
+        } catch (error) {
+          console.error('[AuditoriasService.create] Error al guardar criterios:', error);
+          throw new BadRequestException('Error al guardar los criterios de la auditoría');
+        }
       }
     }
 
@@ -1038,7 +1121,12 @@ export class AuditoriasService {
       const equipo = (await Promise.all(equipoPromises)).filter(e => e !== null);
 
       if (equipo.length > 0) {
-        await this.equipoRepository.save(equipo);
+        try {
+          await this.equipoRepository.save(equipo);
+        } catch (error) {
+          console.error('[AuditoriasService.create] Error al guardar equipo de auditores:', error);
+          throw new BadRequestException('Error al guardar el equipo de auditores');
+        }
       }
     }
 
@@ -1173,7 +1261,9 @@ export class AuditoriasService {
     if (updateDto.hallazgos !== undefined) auditoria.hallazgos = updateDto.hallazgos;
 
     // Actualizar campos del Kanban
-    if (updateDto.estadoKanban !== undefined) auditoria.estadoKanban = updateDto.estadoKanban;
+    if (updateDto.estadoKanban !== undefined) {
+      auditoria.estadoKanban = this.normalizeEstadoKanban(updateDto.estadoKanban);
+    }
     // Actualizar riesgoKanban - asegurar que se guarde incluso si viene como string
     if (updateDto.riesgoKanban !== undefined) {
       // Validar que el valor sea uno de los permitidos
@@ -1297,7 +1387,28 @@ export class AuditoriasService {
     const cambios: string[] = [];
 
     // Guardar cambios en la auditoría
-    const saved = await this.auditoriaRepository.save(auditoria);
+    let saved: any;
+    try {
+      saved = await this.auditoriaRepository.save(auditoria);
+    } catch (error) {
+      console.error('[AuditoriasService.update] Error al guardar auditoría:', error);
+      if (error && (error.code === '23503' || error.message?.includes('foreign key constraint'))) {
+        if (error.message?.includes('plan_anual') || error.detail?.includes('plan_anual')) {
+          throw new BadRequestException('El Plan Anual especificado no existe o no es válido en el sistema');
+        }
+        if (error.message?.includes('auditor_lider') || error.detail?.includes('auditor_lider')) {
+          throw new BadRequestException('El Auditor Líder seleccionado no es válido o no existe');
+        }
+        if (error.message?.includes('auditor_asignado') || error.detail?.includes('auditor_asignado')) {
+          throw new BadRequestException('El Auditor Asignado seleccionado no es válido o no existe');
+        }
+        if (error.message?.includes('supervisor') || error.detail?.includes('supervisor')) {
+          throw new BadRequestException('El Supervisor seleccionado no es válido o no existe');
+        }
+        throw new BadRequestException('No se pudo actualizar la auditoría debido a una referencia no válida (llave foránea)');
+      }
+      throw new BadRequestException(`Error al actualizar la auditoría en la base de datos: ${error.message}`);
+    }
 
     // Detectar cambios después de guardar
     if (updateDto.estadoKanban && updateDto.estadoKanban !== estadoAnterior) {
@@ -1343,7 +1454,12 @@ export class AuditoriasService {
         });
 
       if (nuevosObjetivos.length > 0) {
-        await this.objetivoRepository.save(nuevosObjetivos);
+        try {
+          await this.objetivoRepository.save(nuevosObjetivos);
+        } catch (error) {
+          console.error('[AuditoriasService.update] Error al guardar objetivos:', error);
+          throw new BadRequestException('Error al guardar los objetivos de la auditoría');
+        }
       }
     }
 
@@ -1366,7 +1482,12 @@ export class AuditoriasService {
         });
 
       if (nuevosCriterios.length > 0) {
-        await this.criterioRepository.save(nuevosCriterios);
+        try {
+          await this.criterioRepository.save(nuevosCriterios);
+        } catch (error) {
+          console.error('[AuditoriasService.update] Error al guardar criterios:', error);
+          throw new BadRequestException('Error al guardar los criterios de la auditoría');
+        }
       }
     }
 
@@ -1575,30 +1696,7 @@ export class AuditoriasService {
     // Guardar estado anterior para el historial
     const estadoAnterior = auditoria.estadoKanban;
     
-    // Normalizar el estado recibido del frontend
-    const estadoNormalizado = estadoKanbanInput.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-    
-    // Mapear al enum EstadoKanban
-    let nuevoEstadoKanban: EstadoKanban;
-    if (estadoNormalizado.includes('plan anual') || estadoNormalizado === 'plan-anual') {
-      nuevoEstadoKanban = EstadoKanban.PLAN_ANUAL;
-    } else if (estadoNormalizado === 'planeacion' || estadoNormalizado === 'planificacion') {
-      nuevoEstadoKanban = EstadoKanban.PLANEACION;
-    } else if (estadoNormalizado === 'ejecucion' || estadoNormalizado.includes('curso')) {
-      nuevoEstadoKanban = EstadoKanban.EJECUCION;
-    } else if (estadoNormalizado === 'comunicacion' || estadoNormalizado.includes('informe') || estadoNormalizado.includes('revision')) {
-      nuevoEstadoKanban = EstadoKanban.COMUNICACION;
-    } else if (estadoNormalizado === 'seguimiento') {
-      nuevoEstadoKanban = EstadoKanban.SEGUIMIENTO;
-    } else if (estadoNormalizado === 'finalizada' || estadoNormalizado.includes('completad') || estadoNormalizado.includes('cerrad')) {
-      nuevoEstadoKanban = EstadoKanban.FINALIZADA;
-    } else {
-      // Por defecto, intentar usar el valor tal como viene si coincide con el enum
-      const estadoDirecto = Object.values(EstadoKanban).find(
-        e => e.toLowerCase() === estadoNormalizado || e === estadoKanbanInput
-      );
-      nuevoEstadoKanban = estadoDirecto || EstadoKanban.PLANEACION;
-    }
+    const nuevoEstadoKanban = this.normalizeEstadoKanban(estadoKanbanInput);
     
     // Actualizar el estado
     auditoria.estadoKanban = nuevoEstadoKanban;
@@ -1624,7 +1722,7 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
     
     try {
-      // ✅ USAR CÓDIGO ESTÁNDAR: EVT-KANBAN-001 (Configurable desde el panel)
+      // ✅ 1. Evento estándar predefinido (si está activo)
       await this.notificacionesService.dispararEvento('EVT-KANBAN-001', {
         auditoriaId: saved.id,
         auditoriaCodigo: saved.codigo,
@@ -1633,6 +1731,18 @@ export class AuditoriasService {
         metadata: {
           auditoriaId: saved.id,
           nuevoEstado: nuevoEstadoKanban,
+          accion: 'movimiento_kanban'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+
+      // ✅ 2. Nuevo Motor: Disparar notificaciones personalizadas configuradas con esta condición
+      await this.notificacionesService.dispararPorCondicion('Al cambiar de estado Kanban', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        auditoriaNombre: saved.nombre,
+        metadata: {
+          etapa: nuevoEstadoKanban,
           accion: 'movimiento_kanban'
         },
         url_accion: `/control-interno/auditorias/${saved.id}`,
@@ -1728,6 +1838,35 @@ export class AuditoriasService {
 
     await this.historialRepository.save(historial);
 
+    try {
+      // ✅ 1. Evento estándar predefinido
+      await this.notificacionesService.dispararEvento('EVT-AUD-004', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        tituloCustom: `Auditoría finalizada: ${saved.codigo}`,
+        mensajeCustom: `La auditoría "${saved.nombre}" ha sido marcada como FINALIZADA con documento de cierre.`,
+        metadata: {
+          auditoriaId: saved.id,
+          accion: 'finalizacion_auditoria'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+
+      // ✅ 2. Nuevo Motor: Disparar notificaciones personalizadas configuradas con esta condición
+      await this.notificacionesService.dispararPorCondicion('Al finalizar auditoría', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        auditoriaNombre: saved.nombre,
+        metadata: {
+          etapa: 'Finalizada',
+          accion: 'finalizacion_auditoria'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+    } catch (e) {
+      console.error('Error al enviar notificaciones de finalización (con archivo):', e);
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(saved) as any;
   }
@@ -1787,7 +1926,7 @@ export class AuditoriasService {
     await this.historialRepository.save(historial);
 
     try {
-      // ✅ USAR CÓDIGO ESTÁNDAR: EVT-AUD-004
+      // ✅ 1. Evento estándar predefinido
       await this.notificacionesService.dispararEvento('EVT-AUD-004', {
         auditoriaId: saved.id,
         auditoriaCodigo: saved.codigo,
@@ -1795,6 +1934,18 @@ export class AuditoriasService {
         mensajeCustom: `La auditoría "${saved.nombre}" ha sido marcada como FINALIZADA con documento de cierre.`,
         metadata: {
           auditoriaId: saved.id,
+          accion: 'finalizacion_auditoria'
+        },
+        url_accion: `/control-interno/auditorias/${saved.id}`,
+      });
+
+      // ✅ 2. Nuevo Motor: Disparar notificaciones personalizadas configuradas con esta condición
+      await this.notificacionesService.dispararPorCondicion('Al finalizar auditoría', {
+        auditoriaId: saved.id,
+        auditoriaCodigo: saved.codigo,
+        auditoriaNombre: saved.nombre,
+        metadata: {
+          etapa: 'Finalizada',
           accion: 'finalizacion_auditoria'
         },
         url_accion: `/control-interno/auditorias/${saved.id}`,

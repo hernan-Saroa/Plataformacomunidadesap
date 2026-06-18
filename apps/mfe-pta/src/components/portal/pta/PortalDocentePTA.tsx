@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
@@ -185,6 +186,12 @@ function TrackingBar({ estado }: { estado: string }) {
 
 export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocentePTAProps) {
   const [vista, setVista] = useState<VistaPortal>('v01_dashboard');
+
+  const [slotNode, setSlotNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = document.getElementById('portal-left-sidebar-slot');
+    if (el) setSlotNode(el);
+  }, [vista]);
 
   // Dispatch global custom event for the shell container to adjust layout
   useEffect(() => {
@@ -606,83 +613,83 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.04, type: 'spring', stiffness: 320, damping: 28 }}
                         onClick={() => navigateToVista('v06_detalle', pta.id)}
-                        className={`group bg-white rounded-2xl sm:rounded-3xl border border-gray-200/60 p-4 sm:p-6 lg:p-7 cursor-pointer shadow-[0_2px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.07)] hover:-translate-y-0.5 hover:border-[#003DA5]/25 transition-all duration-300 relative overflow-hidden`}
+                        className={`group bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:border-gray-300 transition-all duration-300 relative overflow-hidden`}
                       >
                         {/* Left accent bar for action-needed states */}
-                        {needsAction && <div className="absolute top-0 left-0 bottom-0 w-1 sm:w-1.5 rounded-r-full" style={{ background: `linear-gradient(180deg, ${cfg.color}, ${cfg.color}88)` }} />}
+                        {needsAction && <div className="absolute top-0 left-0 bottom-0 w-1 sm:w-1.5 bg-red-500 rounded-r-full" />}
                         
                         {/* Card content wrapper */}
-                        <div className={`flex flex-col gap-4 sm:gap-5 ${needsAction ? 'pl-2 sm:pl-3' : ''}`}>
+                        <div className={`flex flex-col gap-5 ${needsAction ? 'pl-3' : ''}`}>
                           {/* Row 1: Title + Status Badge */}
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                                <h4 className="text-[1rem] sm:text-[1.15rem] lg:text-[1.3rem] font-black tracking-tight text-gray-900 leading-snug">
+                              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 mb-1">
+                                <h4 className="text-[1.1rem] sm:text-[1.25rem] font-bold text-gray-900 leading-snug m-0">
                                   Plan de Trabajo Académico
                                 </h4>
-                                <span className="text-gray-400 font-bold text-[0.72rem] sm:text-[0.8rem] tracking-widest uppercase">
+                                <span className="text-gray-500 font-semibold text-[0.8rem] sm:text-[0.85rem]">
                                   {pta.periodo || '2025-2'}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 sm:gap-3 mt-1.5 flex-wrap">
-                                <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded-md text-[0.68rem] sm:text-[0.72rem] font-semibold border border-gray-100">
-                                  <Clock className="w-3 h-3 text-gray-400" /> {pta.dedicacion || 'TC'}
+                              <div className="flex items-center gap-3 sm:gap-4 mt-1 flex-wrap">
+                                <span className="inline-flex items-center gap-1.5 text-gray-600 text-[0.8rem] font-medium">
+                                  <Clock className="w-3.5 h-3.5 text-gray-400" /> {pta.dedicacion || 'Tiempo Completo'}
                                 </span>
                                 <span className="hidden xs:inline w-1 h-1 rounded-full bg-gray-300" />
-                                <span className="inline-flex items-center gap-1 text-[0.68rem] sm:text-[0.72rem] font-semibold text-gray-500">
-                                  <Target className="w-3 h-3 text-indigo-400" />
-                                  <strong className="text-gray-800">{pta.horas_totales ?? pta.total_horas_programadas ?? 0}</strong>
+                                <span className="inline-flex items-center gap-1.5 text-[0.8rem] font-medium text-gray-600">
+                                  <Target className="w-3.5 h-3.5 text-gray-400" />
+                                  <strong className="text-gray-900">{pta.horas_totales ?? pta.total_horas_programadas ?? 0}</strong>
                                   <span className="hidden xs:inline">de {pta.horas_asignables ?? pta.horas_a_programar ?? 800}h</span>
                                 </span>
                               </div>
                             </div>
-                            {/* Status badges — stacked on mobile, inline on desktop */}
+                            {/* Status badges */}
                             <div className="flex flex-col items-end gap-1.5 shrink-0">
-                              <span className="inline-flex items-center px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[0.6rem] sm:text-[0.65rem] font-bold uppercase tracking-wider shadow-sm" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+                              <span className="inline-flex items-center px-3 py-1 rounded-lg text-[0.7rem] sm:text-[0.75rem] font-bold uppercase tracking-wide" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
                                 {cfg.label}
                               </span>
                               {needsAction && (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-600 text-[0.55rem] sm:text-[0.6rem] font-black uppercase tracking-wider animate-[pulse_2s_ease-in-out_infinite] border border-red-100">
-                                  <AlertTriangle className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Acción
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-[0.65rem] sm:text-[0.7rem] font-bold uppercase tracking-wide border border-red-100">
+                                  <AlertTriangle className="w-3 h-3" /> Acción
                                 </span>
                               )}
                             </div>
                           </div>
 
                           {/* Row 2: Stepper + Actions */}
-                          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 lg:gap-6">
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 lg:gap-6 pt-4 border-t border-gray-100">
                             {/* Stepper */}
-                            <div className="flex-1 w-full lg:max-w-xl bg-gray-50/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-gray-100/80">
-                              <div className="text-[0.58rem] sm:text-[0.62rem] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                                <History className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> Progreso
+                            <div className="flex-1 w-full lg:max-w-xl">
+                              <div className="text-[0.65rem] sm:text-[0.7rem] font-semibold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                <History className="w-3 h-3 text-gray-400" /> Progreso
                               </div>
                               <TrackingBar estado={pta.estado} />
                             </div>
 
-                            {/* Action Buttons — compact on mobile */}
-                            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
+                            {/* Action Buttons */}
+                            <div className="flex flex-wrap items-center gap-3 shrink-0">
                               {pta.estado === 'NOTIFICADO_DOCENTE' && (
-                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v02_revision', pta.id); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-amber-500 text-white text-[11px] sm:text-[12.5px] font-bold shadow-[0_3px_10px_rgba(245,158,11,0.2)] hover:bg-amber-600 active:scale-[0.97] transition-all">
-                                  <MessageSquare className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Revisar</span> propuesta
+                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v02_revision', pta.id); }} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-[13px] font-bold hover:bg-amber-600 transition-colors border-none cursor-pointer">
+                                  <MessageSquare className="w-4 h-4" /> <span className="hidden xs:inline">Revisar</span> propuesta
                                 </button>
                               )}
                               {pta.estado === 'Borrador' && (
-                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#003DA5] to-[#0052D4] text-white text-[11px] sm:text-[12.5px] font-bold shadow-[0_3px_10px_rgba(0,61,165,0.25)] hover:from-[#002B75] active:scale-[0.97] transition-all">
-                                  <Edit3 className="w-3.5 h-3.5" /> Continuar edición
+                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#003DA5] text-white text-[13px] font-bold hover:bg-[#002B75] transition-colors shadow-sm border-none cursor-pointer">
+                                  <Edit3 className="w-4 h-4" /> Continuar edición
                                 </button>
                               )}
                               {pta.estado === 'Devuelto' && (
-                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v10_devoluciones'); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-orange-600 text-white text-[11px] sm:text-[12.5px] font-bold shadow-[0_3px_10px_rgba(234,88,12,0.2)] hover:bg-orange-700 active:scale-[0.97] transition-all">
-                                  <RotateCcw className="w-3.5 h-3.5" /> Subsanar
+                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v10_devoluciones'); }} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-[13px] font-bold hover:bg-orange-700 transition-colors border-none cursor-pointer">
+                                  <RotateCcw className="w-4 h-4" /> Subsanar
                                 </button>
                               )}
                               {isEnRevisionDocente && (
-                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-white text-[11px] sm:text-[12.5px] font-bold active:scale-[0.97] transition-all" style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', boxShadow: '0 3px 10px rgba(124,58,237,0.3)' }}>
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> Revisar
+                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-[13px] font-bold transition-colors border-none cursor-pointer" style={{ background: '#7C3AED', boxShadow: '0 2px 5px rgba(124,58,237,0.2)' }}>
+                                  <CheckCircle2 className="w-4 h-4" /> Revisar
                                 </button>
                               )}
-                              <button className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-50/80 border border-gray-200 text-gray-600 text-[11px] sm:text-[12.5px] font-bold shadow-sm hover:shadow-md hover:bg-white active:scale-[0.97] transition-all group-hover:border-[#003DA5]/20 group-hover:text-[#003DA5]">
-                                <span className="hidden sm:inline">Ver</span> detalle <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                              <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-[13px] font-bold hover:bg-gray-100 transition-colors cursor-pointer group">
+                                <span className="hidden sm:inline">Ver detalle</span> <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
                               </button>
                             </div>
                           </div>
@@ -755,7 +762,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               </div>
 
               {/* Distribución por Componente */}
-              {(() => {
+              {selectedPta && (() => {
                 const asigs = selectedPta.asignaturas || [];
                 const horasDoc = selectedPta.horas_docencia ?? asigs.reduce((s: number, a: any) => s + (a.total_horas || a.horas || 0), 0);
                 const horasInv = selectedPta.horas_investigacion ?? 0;
@@ -784,18 +791,77 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   cumulativeOffset += dashLength;
                   return { ...c, pct, dashLength, dashOffset };
                 });
-                // Unused portion
-                const usedPct = horasMax > 0 ? Math.min(horasTotal / horasMax, 1) : 0;
 
+                const chartContent = (
+                  <div className="bg-white rounded-3xl border border-gray-200/80 p-4 shadow-sm mb-4">
+                    <h4 className="text-[11px] font-black tracking-widest text-gray-400 mb-3 flex items-center gap-1.5 uppercase">
+                      <Target className="w-3.5 h-3.5 text-[#003DA5]" /> Distribución por Componente
+                    </h4>
+
+                    <div className="flex flex-col items-center gap-4">
+                      {/* Donut Chart */}
+                      <div className="relative w-[110px] h-[110px] shrink-0">
+                        <svg className="w-full h-full" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
+                          <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="16" />
+                          {donutSegments.map((seg, i) => (
+                            <circle
+                              key={seg.label}
+                              cx="80" cy="80" r={radius}
+                              fill="none"
+                              stroke={seg.color}
+                              strokeWidth="16"
+                              strokeDasharray={`${seg.dashLength} ${circumference - seg.dashLength}`}
+                              strokeDashoffset={seg.dashOffset}
+                              strokeLinecap="butt"
+                              className="transition-all duration-600 ease-out"
+                              style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.04))' }}
+                            />
+                          ))}
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-[1.1rem] font-black text-gray-900 leading-none">{horasTotal}</span>
+                          <span className="text-[0.5rem] font-bold text-gray-400 uppercase tracking-wider mt-0.5">horas</span>
+                          <span className="text-[0.45rem] text-gray-450 mt-0.5">de {horasMax}h</span>
+                        </div>
+                      </div>
+
+                      {/* Stacked legend */}
+                      <div className="w-full space-y-2">
+                        {comps.map(c => {
+                          const pct = horasTotal > 0 ? Math.round((c.value / horasTotal) * 100) : 0;
+                          return (
+                            <div key={c.label} className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                                <span className="text-gray-600 font-semibold truncate text-[11px]">{c.label}</span>
+                              </div>
+                              <span className="text-gray-900 font-bold shrink-0 text-[11px]">
+                                {c.value}h <span className="text-gray-400 font-normal">({pct}%)</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-gray-100 text-[9.5px] text-gray-400 leading-normal">
+                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
+                    </div>
+                  </div>
+                );
+
+                if (slotNode) {
+                  return createPortal(chartContent, slotNode);
+                }
+
+                // Fallback inline for mobile or if slot is not found
                 return (
-                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm animate-in fade-in duration-300">
                     <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
                       <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#003DA5]" /> Distribución por Componente
                     </h4>
 
-                    {/* Responsive layout: stack on mobile, side-by-side on md+ */}
                     <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-center">
-                      {/* Donut Chart — hidden on very small, visible from sm */}
                       <div className="relative w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] shrink-0">
                         <svg className="w-full h-full" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
                           <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="16" />
@@ -821,7 +887,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                         </div>
                       </div>
 
-                      {/* Bar chart — fills remaining space */}
                       <div className="flex-1 min-w-0 w-full">
                         {comps.map(c => {
                           const maxH = Math.round(horasMax * 0.5);

@@ -189,7 +189,7 @@ function deriveFromGranular(
 
 const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = {
   admin: () => ({
-    vistasPerm: ['gestion','seguimiento_docs','solicitudes_pta','configuracion','programacion_institucional','cargas','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes'],
+    vistasPerm: ['gestion','seguimiento_docs','solicitudes_pta','configuracion','config_reglas','programacion_institucional','cargas','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','test_e2e','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes','mapeo_sincronizacion','salud_sistema','reconciliacion_masiva','tablero_unificado'],
     puedeAprobar: true,
     puedeExportar: true,
     puedeVerSNA: true,
@@ -311,6 +311,24 @@ export const ROL_STYLES: Record<RolPTA, { label: string; color: string; bg: stri
 // MAPEO: AuthContext.rol / persona.cargo → RolPTA
 // ============================================================================
 
+/**
+ * Robust check: is the current shell user a superuser?
+ * Checks localStorage/sessionStorage as fallback when AuthContext doesn't propagate correctly.
+ */
+function isShellSuperUser(): boolean {
+  try {
+    const raw = localStorage.getItem('esap_user') || sessionStorage.getItem('esap_user');
+    if (raw) {
+      const shellUser = JSON.parse(raw);
+      const email = String(shellUser?.email || '').toLowerCase();
+      if (email === 'superuser@esap.edu.co') return true;
+      const roles = shellUser?.roles || [];
+      if (roles.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'SUPER_ADMIN')) return true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
 function deriveRolPTA(
   rol: string,
   cargo?: string,
@@ -318,6 +336,8 @@ function deriveRolPTA(
   isSuperUser?: boolean,
 ): RolPTA {
   if (isSuperUser) return 'admin';
+  // Fallback: check shell localStorage for superuser
+  if (isShellSuperUser()) return 'admin';
 
   const r = (rol || '').toLowerCase().trim();
   const c = (cargo || '').toLowerCase().trim();
@@ -417,11 +437,12 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
   }, [auth.userEmail, auth.userRole]);
 
   // Perfil efectivo: override si existe y es superuser, sino perfil real
-  const perfil = (auth.isSuperUser && perfilOverride) ? perfilOverride : perfilReal;
-  const isSimulando = auth.isSuperUser && perfilOverride !== null;
+  const isSuperUserEffective = auth.isSuperUser || isShellSuperUser();
+  const perfil = (isSuperUserEffective && perfilOverride) ? perfilOverride : perfilReal;
+  const isSimulando = isSuperUserEffective && perfilOverride !== null;
 
   const setPerfil = (newPerfil: PerfilRolPTA) => {
-    if (auth.isSuperUser) {
+    if (isSuperUserEffective) {
       setPerfilOverride(newPerfil);
       console.log('[PermisosPTA] Superuser simulando rol:', newPerfil.rol, newPerfil.nombre);
     } else {
@@ -431,6 +452,13 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
 
   // ── DERIVAR PERMISOS: granular (KV) > hardcoded (fallback) ──────────
   const permisos = useMemo<PermisosPTA>(() => {
+    // Superuser ALWAYS gets full admin hardcoded permissions
+    if (isSuperUserEffective || perfil.rol === 'admin') {
+      const hardcoded = PERMISOS_POR_ROL['admin'](perfil);
+      console.log(`[PermisosPTA] Admin/Superuser → HARDCODED FULL ACCESS: ${hardcoded.vistasPerm.length} vistas`);
+      return hardcoded;
+    }
+
     const allPerms = auth.session?.permisos || [];
     
     // Intentar derivar desde permisos granulares
@@ -444,7 +472,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
     const hardcoded = PERMISOS_POR_ROL[perfil.rol](perfil);
     console.log(`[PermisosPTA] Fallback HARDCODED para rol '${perfil.rol}': ${hardcoded.vistasPerm.length} vistas`);
     return hardcoded;
-  }, [auth.session?.permisos, perfil]);
+  }, [auth.session?.permisos, perfil, isSuperUserEffective]);
 
   const tieneVista = useCallback((vista: string) => permisos.vistasPerm.includes(vista), [permisos]);
 

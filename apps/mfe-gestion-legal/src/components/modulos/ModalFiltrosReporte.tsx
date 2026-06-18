@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
-import { X, Download, Filter } from 'lucide-react';
+import { Download, Filter } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { estructuraService } from '../../../../services/api/estructura.service';
 
 interface ExpedienteParaFiltro {
   medioControl?: string;
-  fechaAdmision?: string | Date;
+  fechaNotificacion?: string | Date;
   provisionContable?: number | string;
   nivelRiesgo?: string;
   territorial?: string;
@@ -18,8 +18,8 @@ interface ExpedienteParaFiltro {
 
 interface FiltrosReporte {
   medioControl: string;
-  fechaAdmisionDesde: string;
-  fechaAdmisionHasta: string;
+  fechaNotificacionDesde: string;
+  fechaNotificacionHasta: string;
   provisionMin: string;
   provisionMax: string;
   nivelRiesgo: string[];
@@ -49,8 +49,8 @@ const RANGOS_PROVISION = [
 
 const FILTROS_INICIALES: FiltrosReporte = {
   medioControl: 'TODOS',
-  fechaAdmisionDesde: '',
-  fechaAdmisionHasta: '',
+  fechaNotificacionDesde: '',
+  fechaNotificacionHasta: '',
   provisionMin: '',
   provisionMax: '',
   nivelRiesgo: [],
@@ -137,12 +137,12 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
       // Medio de control
       if (filtros.medioControl !== 'TODOS' && exp.medioControl !== filtros.medioControl) return false;
 
-      // Fecha de admisión
-      if (filtros.fechaAdmisionDesde || filtros.fechaAdmisionHasta) {
-        const fecha = exp.fechaAdmision ? new Date(exp.fechaAdmision) : null;
+      // Fecha de notificación
+      if (filtros.fechaNotificacionDesde || filtros.fechaNotificacionHasta) {
+        const fecha = exp.fechaNotificacion ? new Date(exp.fechaNotificacion) : null;
         if (!fecha) return false;
-        if (filtros.fechaAdmisionDesde && fecha < new Date(filtros.fechaAdmisionDesde)) return false;
-        if (filtros.fechaAdmisionHasta && fecha > new Date(filtros.fechaAdmisionHasta + 'T23:59:59')) return false;
+        if (filtros.fechaNotificacionDesde && fecha < new Date(filtros.fechaNotificacionDesde)) return false;
+        if (filtros.fechaNotificacionHasta && fecha > new Date(filtros.fechaNotificacionHasta + 'T23:59:59')) return false;
       }
 
       // Provisión contable — parseamos a número para evitar problemas de tipo string/number
@@ -184,8 +184,8 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
   const handleGenerar = () => {
     const partes: string[] = [`Tipo: ${nombreTipoActual}`];
     if (filtros.medioControl !== 'TODOS') partes.push(`Medio: ${filtros.medioControl}`);
-    if (filtros.fechaAdmisionDesde || filtros.fechaAdmisionHasta) {
-      partes.push(`Admisión: ${filtros.fechaAdmisionDesde || '...'} – ${filtros.fechaAdmisionHasta || '...'}`);
+    if (filtros.fechaNotificacionDesde || filtros.fechaNotificacionHasta) {
+      partes.push(`Notificación: ${filtros.fechaNotificacionDesde || '...'} – ${filtros.fechaNotificacionHasta || '...'}`);
     }
     if (filtros.nivelRiesgo.length > 0) partes.push(`Riesgo: ${filtros.nivelRiesgo.join(', ')}`);
     if (filtros.territorial !== 'TODAS') {
@@ -238,16 +238,16 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
             </select>
           </div>
 
-          {/* Fecha de Admisión */}
+          {/* Fecha de Notificación */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Fecha de Admisión</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Fecha de Notificación</label>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Desde</label>
                 <input
                   type="date"
-                  value={filtros.fechaAdmisionDesde}
-                  onChange={e => set('fechaAdmisionDesde', e.target.value)}
+                  value={filtros.fechaNotificacionDesde}
+                  onChange={e => set('fechaNotificacionDesde', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -255,8 +255,8 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
                 <label className="block text-xs text-gray-500 mb-1">Hasta</label>
                 <input
                   type="date"
-                  value={filtros.fechaAdmisionHasta}
-                  onChange={e => set('fechaAdmisionHasta', e.target.value)}
+                  value={filtros.fechaNotificacionHasta}
+                  onChange={e => set('fechaNotificacionHasta', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>

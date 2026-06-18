@@ -683,15 +683,41 @@ export function CarpetaDigitalSharedView({
   const mappedRundDocs = useMemo<CarpetaDocumento[]>(() => {
     if (!tarjetaRund) return [];
     const docs: CarpetaDocumento[] = [];
+    // seenIds tracks the DB row ID to deduplicate across sources
+    const seenIds = new Set<string>();
+    // seenTipos ensures one entry per tipo_soporte code per docente
     const seenTipos = new Set<string>();
     
+    /**
+     * processSoporte: ONLY creates a document entry if the soporte record
+     * represents a REAL uploaded file (has nombre_archivo or documento_carpeta_id).
+     * Data-only campo entries from the RUND form are NOT treated as documents.
+     */
     const processSoporte = (sop: any) => {
-      // DB columns: tipo_soporte, documento_carpeta_id, nombre_archivo
+      // Require a real file reference: must have a filename OR a carpeta document link
+      const hasRealFile = !!(sop.nombre_archivo || sop.documento_carpeta_id || sop.url);
+      if (!hasRealFile) return;
+
       const tipoCode = (sop.tipo_soporte || sop.tipo || '').toLowerCase();
-      if (!tipoCode || seenTipos.has(tipoCode)) return;
+      if (!tipoCode) return;
+
+      // Deduplicate by DB row ID first, then by tipo code
+      const rowId = sop.id ? String(sop.id) : null;
+      if (rowId && seenIds.has(rowId)) return;
+      if (rowId) seenIds.add(rowId);
+      if (seenTipos.has(tipoCode)) return;
       seenTipos.add(tipoCode);
+
       const fileName = sop.nombre_archivo || sop.nombre || `${tipoCode}.pdf`;
       const fileUrl = sop.documento_carpeta_id || sop.url || '';
+      const estadoRaw = (sop.estado || '').toLowerCase();
+      const estado: 'validado' | 'rechazado' | 'pendiente' =
+        estadoRaw === 'aprobado' || estadoRaw === 'aceptado' || estadoRaw === 'ok'
+          ? 'validado'
+          : estadoRaw === 'rechazado' || estadoRaw === 'devuelto'
+            ? 'rechazado'
+            : 'pendiente';
+
       docs.push({
         id: sop.id || `rund-soporte-${tipoCode}`,
         carpeta_id: `carpeta:${cleanPersonaId}`,
@@ -699,12 +725,8 @@ export function CarpetaDigitalSharedView({
         categoria: 'rund',
         tipo_documento_id: `rund_${tipoCode}`,
         tipo_archivo: fileName.split('.').pop()?.toLowerCase() || 'pdf',
-        tamano_bytes: sop.tamano || 1024 * 1024,
-        estado: (sop.estado?.toLowerCase() === 'aprobado' || sop.estado?.toLowerCase() === 'aceptado' || sop.estado?.toLowerCase() === 'ok') 
-                  ? 'validado' 
-                  : (sop.estado?.toLowerCase() === 'rechazado' || sop.estado?.toLowerCase() === 'devuelto')
-                    ? 'rechazado'
-                    : 'pendiente',
+        tamano_bytes: sop.tamano || sop.tamano_bytes || 0,
+        estado,
         fecha_subida: sop.createdAt || sop.fecha_carga || new Date().toISOString(),
         url_archivo: fileUrl,
         version_actual: 1,
@@ -712,7 +734,12 @@ export function CarpetaDigitalSharedView({
       });
     };
     
-    // Source 1: Extract soportes from rundBloques (from /bloques API)
+    // ── Source 0: resumenSoportes (plano, directo del backend) ──
+    if (Array.isArray(tarjetaRund.resumenSoportes) && tarjetaRund.resumenSoportes.length > 0) {
+      tarjetaRund.resumenSoportes.forEach(processSoporte);
+    }
+
+    // ── Source 1: Real soportes from /bloques API ──
     if (rundBloques && rundBloques.length > 0) {
       rundBloques.forEach(bloque => {
         if (Array.isArray(bloque.soportes)) {
@@ -721,7 +748,7 @@ export function CarpetaDigitalSharedView({
       });
     }
     
-    // Source 2: Extract soportes from tarjetaRund.bloques (from /tarjeta-rund API)
+    // ── Source 2: soportes embedded in /tarjeta-rund response (always runs, deduplication prevents doubling) ──
     if (tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
       Object.values(tarjetaRund.bloques).forEach((bloqueData: any) => {
         if (Array.isArray(bloqueData?.soportes)) {
@@ -730,101 +757,53 @@ export function CarpetaDigitalSharedView({
       });
     }
 
-    // Source 3: Extract from validacionDocumental (persisted validation state)
+    // ── Source 3: validacionDocumental entries with a real Carpeta Digital link or RUND native upload ──
     if (Array.isArray(tarjetaRund.validacionDocumental)) {
       tarjetaRund.validacionDocumental.forEach((val: any) => {
-        if (!val.id_documento_carpeta && val.estado_documento === 'Sin cargar') return;
+        // Se requiere un link de archivo o el nombre del archivo nativo RUND
+        if (!val.id_documento_carpeta && !val.nombre_archivo) return;
+        
         const campoRund = (val.campo_rund || '').toLowerCase();
         if (!campoRund || seenTipos.has(campoRund)) return;
-        if (val.id_documento_carpeta || (val.estado_documento && val.estado_documento !== 'Sin cargar')) {
-          seenTipos.add(campoRund);
-          docs.push({
-            id: val.id || `rund-val-${campoRund}`,
-            carpeta_id: `carpeta:${cleanPersonaId}`,
-            nombre: `${campoRund}.pdf`,
-            categoria: 'rund',
-            tipo_documento_id: `rund_${campoRund}`,
-            tipo_archivo: 'pdf',
-            tamano_bytes: 1024 * 1024,
-            estado: (val.estado_documento === 'Aceptado' || val.estado_documento === 'Aprobado') ? 'validado'
-                  : val.estado_documento === 'Rechazado' ? 'rechazado' : 'pendiente',
-            fecha_subida: val.fecha_carga || val.created_at || new Date().toISOString(),
-            url_archivo: val.id_documento_carpeta || '',
-            version_actual: 1,
-            comentarios: val.observacion || '',
-          });
-        }
-      });
-    }
+        seenTipos.add(campoRund);
+        
+        const estadoDoc = (val.estado_documento || '').toLowerCase();
+        
+        // Determinar URL de archivo desde la base de datos
+        const urlArchivo = val.id_documento_carpeta && val.id_documento_carpeta.startsWith('http') 
+          ? val.id_documento_carpeta 
+          : val.id_documento_carpeta 
+            ? val.id_documento_carpeta
+            : `/pta/api/v1/uploads/carpeta-digital/${cleanPersonaId}/RUND/${val.nombre_archivo}`;
 
-    // Source 4: Derive documents from RUND campos with values
-    // The RUND module shows "Cargado exitosamente" when a campo has data.
-    // Mirror this in Carpeta Digital: if RUND has field data, show as a registered document.
-    // Map campo names → RUND soporte tipo codes (same as CATALOGO_BR039 in RundValidationPanel)
-    const CAMPO_TO_SOPORTE: Record<string, string> = {
-      'DOCUMENTO_IDENTIDAD': 'documento_identidad',
-      'TIPO_DOCUMENTO': 'documento_identidad',
-      'NOMBRE_COMPLETO': 'documento_identidad',
-      'GENERO': 'documento_identidad',
-      'FECHA_NACIMIENTO': 'documento_identidad',
-      'TITULO_PREGRADO': 'diploma_pregrado',
-      'TITULO_ESPECIALIZACION': 'diploma_especializacion',
-      'TITULO_MAESTRIA': 'diploma_maestria',
-      'TITULO_DOCTORADO': 'diploma_doctorado',
-      'TITULO_POSDOCTORADO': 'certificado_posdoctoral',
-      'PERFIL_ACADEMICO': 'hoja_vida_pro',
-      'TIPO_VINCULACION': 'acto_administrativo_vinculacion',
-      'DEDICACION': 'acto_administrativo_dedicacion',
-      'CATEGORIA_ESCALAFON': 'resolucion_escalafon',
-      'TERRITORIAL': 'acto_adscripcion_territorial',
-      'PUNTAJE_SALARIAL': 'resolucion_puntaje_salarial',
-      'SITUACION_ADMINISTRATIVA': 'acto_administrativo_situacion',
-      'NUCLEO_TEMATICO': 'acto_asignacion_nucleo',
-    };
-    const SOPORTE_LABELS: Record<string, string> = {
-      'documento_identidad': 'Documento de identidad (CC/CE/PA/PEP)',
-      'diploma_pregrado': 'Diploma + Acta de grado (Pregrado)',
-      'diploma_especializacion': 'Diploma + Acta de grado (Especialización)',
-      'diploma_maestria': 'Diploma + Acta de grado (Maestría)',
-      'diploma_doctorado': 'Diploma + Acta de grado (Doctorado)',
-      'certificado_posdoctoral': 'Certificado de estancia posdoctoral',
-      'hoja_vida_pro': 'Hoja de vida soportada por títulos',
-      'acto_administrativo_vinculacion': 'Acto administrativo de vinculación',
-      'acto_administrativo_dedicacion': 'Acto administrativo de dedicación',
-      'resolucion_escalafon': 'Resolución de escalafón',
-      'acto_adscripcion_territorial': 'Acto de adscripción territorial',
-      'resolucion_puntaje_salarial': 'Resolución de puntaje salarial',
-      'acto_administrativo_situacion': 'Acto administrativo de situación',
-      'acto_asignacion_nucleo': 'Acto de asignación de núcleo temático',
-    };
-
-    if (tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
-      Object.values(tarjetaRund.bloques).forEach((bloqueData: any) => {
-        if (!Array.isArray(bloqueData?.campos)) return;
-        bloqueData.campos.forEach((campo: any) => {
-          if (!campo.valor) return; // Skip campos without data
-          const soporteCode = CAMPO_TO_SOPORTE[campo.campo];
-          if (!soporteCode || seenTipos.has(soporteCode)) return;
-          seenTipos.add(soporteCode);
-          docs.push({
-            id: `rund-campo-${soporteCode}`,
-            carpeta_id: `carpeta:${cleanPersonaId}`,
-            nombre: SOPORTE_LABELS[soporteCode] || soporteCode,
-            categoria: 'rund',
-            tipo_documento_id: `rund_${soporteCode}`,
-            tipo_archivo: 'pdf',
-            tamano_bytes: 0,
-            estado: bloqueData.estado?.toLowerCase() === 'aprobado' ? 'validado' : 'pendiente',
-            fecha_subida: new Date().toISOString(),
-            url_archivo: '',
-            version_actual: 1,
-            comentarios: `Dato registrado en RUND: ${campo.valor}`,
-          });
+        docs.push({
+          id: val.id || `rund-val-${campoRund}`,
+          carpeta_id: `carpeta:${cleanPersonaId}`,
+          nombre: val.nombre_archivo || `${campoRund}.pdf`,
+          categoria: 'rund',
+          tipo_documento_id: `rund_${campoRund}`,
+          tipo_archivo: val.nombre_archivo?.split('.').pop()?.toLowerCase() || 'pdf',
+          tamano_bytes: 0,
+          estado: estadoDoc === 'aceptado' || estadoDoc === 'aprobado' ? 'validado'
+                : estadoDoc === 'rechazado' ? 'rechazado' : 'pendiente',
+          fecha_subida: val.fecha_carga || val.created_at || new Date().toISOString(),
+          url_archivo: urlArchivo,
+          version_actual: 1,
+          comentarios: val.observacion || '',
         });
       });
     }
+
+    // ── Source 4 REMOVED ──
+    // Previously, Source 4 created virtual "documents" from RUND campo values
+    // (e.g. nombre, género, título). This was INCORRECT: having a value in a RUND
+    // field does NOT mean the docente has uploaded the corresponding file.
+    // Each docente's progress must only reflect their actual uploaded soportes.
     
-    console.log('📂 CarpetaDigital mappedRundDocs:', docs.length, 'source:', docs.length > 0 ? 'soportes/tarjeta/validacion/campos' : 'empty', docs.map(d => ({ id: d.id, tipo_documento_id: d.tipo_documento_id, nombre: d.nombre })));
+    console.log(
+      '📂 CarpetaDigital mappedRundDocs (strict file-only):', docs.length,
+      docs.map(d => ({ id: d.id, tipo: d.tipo_documento_id, estado: d.estado, hasUrl: !!d.url_archivo }))
+    );
     return docs;
   }, [tarjetaRund, rundBloques, cleanPersonaId]);
 
@@ -999,17 +978,9 @@ export function CarpetaDigitalSharedView({
 
   const currentUserId = useMemo(() => {
     if (typeof window === 'undefined') return 'admin-user';
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      try {
-        const payloadPart = token.split('.')[1];
-        if (payloadPart) {
-          const payload = JSON.parse(atob(payloadPart));
-          return payload.id || payload.sub || payload.userId || 'admin-user';
-        }
-      } catch (e) {
-        // ignore
-      }
+    const authUser = (window as any).__esap_auth_cache;
+    if (authUser) {
+      return authUser.id || authUser.id_user || authUser.userId || authUser.sub || 'admin-user';
     }
     return 'admin-user';
   }, []);
@@ -1054,6 +1025,17 @@ export function CarpetaDigitalSharedView({
 
   useEffect(() => {
     fetchRundData();
+  }, [fetchRundData]);
+
+  // Escucha el evento 'rund:soporte-uploaded' para sincronizar con el panel RUND
+  // en tiempo real, sin recargar la página. Cubre todos los docentes del banco.
+  useEffect(() => {
+    const handler = () => fetchRundData();
+    window.addEventListener('rund:soporte-uploaded', handler);
+    return () => window.removeEventListener('rund:soporte-uploaded', handler);
+  }, [fetchRundData]);
+
+  useEffect(() => {
     handleSetFolder(null);
   }, [cleanPersonaId, fetchRundData]);
 
@@ -1553,7 +1535,7 @@ export function CarpetaDigitalSharedView({
       }
     });
 
-    const totalCompletados = tiposValidados + tiposPendientes;
+    const totalCompletados = tiposValidados;
     const pctGeneral = Math.round((tiposValidados / totalTipos) * 100);
 
     return {

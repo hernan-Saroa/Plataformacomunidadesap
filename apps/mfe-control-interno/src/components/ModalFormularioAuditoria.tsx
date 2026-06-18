@@ -128,7 +128,7 @@ interface FieldWrapperProps {
   error?: string | null;
   required?: boolean;
   children: React.ReactNode;
-  helpText?: string;
+  helpText?: React.ReactNode;
 }
 
 function FieldWrapper({ label, error, required, children, helpText }: FieldWrapperProps) {
@@ -153,10 +153,10 @@ function FieldWrapper({ label, error, required, children, helpText }: FieldWrapp
         )}
       </AnimatePresence>
       {!error && helpText && (
-        <p className="text-xs text-gray-500 flex items-center gap-1">
-          <Info className="w-3 h-3" />
-          {helpText}
-        </p>
+        <div className="text-xs text-gray-500 flex items-start gap-1 mt-1">
+          <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">{helpText}</div>
+        </div>
       )}
     </div>
   );

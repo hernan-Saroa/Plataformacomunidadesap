@@ -36,10 +36,12 @@ import { UpdateDisciplinaryProcessDto } from '../dtos/update-disciplinary-proces
 import { RemitirPorCompetenciaDto, RemisionPorCompetenciaResponseDto } from '../dtos/remitir-competencia.dto';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import {
-  DEFAULT_UPLOAD_DIR,
   StorageService,
   buildStoredFileName,
   ensureUploadDirExists,
+  getProcessStorageRelativePath,
+  getProcessUploadDir,
+  getUploadRootDir,
 } from '../services/storage.service';
 import type { Request, Response } from 'express';
 import * as fs from 'fs';
@@ -78,10 +80,10 @@ const PROCESS_DOCUMENT_UPLOAD_OPTIONS = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {
       try {
-        const uploadDir = path.resolve(process.cwd(), ensureUploadDirExists(DEFAULT_UPLOAD_DIR));
+        const uploadDir = path.resolve(ensureUploadDirExists(getUploadRootDir()));
         cb(null, uploadDir);
       } catch (error) {
-        cb(error as Error, path.resolve(process.cwd(), DEFAULT_UPLOAD_DIR));
+        cb(error as Error, path.resolve(getUploadRootDir()));
       }
     },
     filename: (_req, file, cb) => {
@@ -485,7 +487,7 @@ export class ProcessController {
           );
         }
 
-        rutaRelativa = file.filename;
+        rutaRelativa = await this.moveUploadedFileToProcessDir(file, proceso.radicadoProceso);
         console.log('✅ Archivo guardado en:', rutaRelativa);
 
         nombreDocumento = body.nombre || file.originalname;
@@ -816,6 +818,32 @@ export class ProcessController {
     } catch (cleanupError) {
       console.error('[ProcessController] No fue posible limpiar archivo temporal:', cleanupError);
     }
+  }
+
+  private async moveUploadedFileToProcessDir(
+    file: Express.Multer.File,
+    radicadoProceso: string,
+  ): Promise<string> {
+    const targetDir = getProcessUploadDir(radicadoProceso);
+    ensureUploadDirExists(targetDir);
+
+    const targetPath = path.join(targetDir, path.basename(file.filename));
+    if (path.resolve(file.path) !== path.resolve(targetPath)) {
+      try {
+        await fsPromises.rename(file.path, targetPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') {
+          throw error;
+        }
+
+        await fsPromises.copyFile(file.path, targetPath);
+        await fsPromises.unlink(file.path);
+      }
+    }
+
+    file.path = targetPath;
+    file.destination = targetDir;
+    return getProcessStorageRelativePath(radicadoProceso, file.filename);
   }
 
   /**
