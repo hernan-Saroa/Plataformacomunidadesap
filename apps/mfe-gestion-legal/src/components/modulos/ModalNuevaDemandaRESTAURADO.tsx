@@ -301,11 +301,17 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   // Filtrar tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
   const tiposProcesosActivos = useMemo(() => {
-    return (allTiposProcesos || []).filter((tp: any) => {
+    const porRol = (allTiposProcesos || []).filter((tp: any) => {
       if (!tp.rolAsociado) return true;
       return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
     });
-  }, [allTiposProcesos]);
+    // Si hay un tablero seleccionado, mostrar solo ese tipo de proceso en el dropdown
+    if (tableroSeleccionado) {
+      const solo = porRol.filter((tp: any) => tp.id === tableroSeleccionado);
+      if (solo.length > 0) return solo;
+    }
+    return porRol;
+  }, [allTiposProcesos, tableroSeleccionado]);
 
   const [pasoActual, setPasoActual] = useState(1);
   const totalPasos = 7;
@@ -834,7 +840,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         let defaultTipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas' = 'Dias Habiles';
         let defaultTermino = 30;
 
-        if (tableroSeleccionado && tableroSeleccionado !== 'TODOS') {
+        if (tableroSeleccionado) {
           const tp = allTiposProcesos?.find((t: any) => t.id === tableroSeleccionado);
           if (tp) {
             defaultTipoProceso = tp.nombre;

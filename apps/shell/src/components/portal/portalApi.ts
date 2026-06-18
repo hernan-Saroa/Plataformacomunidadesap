@@ -4,8 +4,7 @@
  * Reescrito para usar el `apiClient` unificado del shell, que ya maneja:
  *   - Modo `direct`  (`localhost`)  -> microservicio `auth` en puerto 3001.
  *   - Modo `gateway` (producción/intranet) -> `/services/auth/api/v1/...`.
- *   - Token JWT real (sessionStorage `esap_auth_token`) en `Authorization: Bearer`.
- *   - Header redundante `X-Access-Token` para gateways con SSL/proxy.
+ *   - Cookie HttpOnly `esap_access_token`, enviada por el navegador con credentials: include.
  *   - Refresh de token cuando expira.
  *
  * IMPORTANTE: Algunos de estos endpoints (`/portal/perfil/:id`, `/portal/estadisticas/:id`,

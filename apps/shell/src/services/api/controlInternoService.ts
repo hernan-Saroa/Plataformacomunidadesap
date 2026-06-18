@@ -16,7 +16,6 @@
  */
 
 import { getServiceUrl, API_MODE, MICROSERVICE_URLS, getDefaultHeaders, getUserContextHeaders } from '../../config/environment';
-import { getAccessToken } from './authTokenStore';
 
 // Base URL del servicio de Control Interno usando variables de entorno
 // En modo gateway: http://localhost:3000 o http://4.156.71.181/services
@@ -329,15 +328,10 @@ export interface UpdateTareaAuditoriaDto {
 
 /** Headers para descargas Blob fuera del método request() del cliente. */
 function controlInternoDownloadHeaders(): HeadersInit {
-  const h: Record<string, string> = {
+  return {
     ...(getDefaultHeaders(true) as Record<string, string>),
     ...(getUserContextHeaders() as Record<string, string>),
   };
-  const token = getAccessToken();
-  if (token) {
-    h.Authorization = `Bearer ${token}`;
-  }
-  return h;
 }
 
 class ControlInternoAPIClient {
@@ -356,10 +350,6 @@ class ControlInternoAPIClient {
     };
     if (extra && typeof extra === 'object' && !(extra instanceof Headers)) {
       Object.assign(headers, extra as Record<string, string>);
-    }
-    const token = getAccessToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
     }
     return headers;
   }

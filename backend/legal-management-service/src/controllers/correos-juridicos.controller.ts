@@ -47,14 +47,6 @@ export class CorreosJuridicosController {
         return this.correosService.reclassifyAll();
     }
 
-    /**
-     * Test Microsoft Graph connection
-     */
-    @Get('test-connection')
-    async testConnection(): Promise<{ success: boolean; message: string }> {
-        return this.correosService.testConnection();
-    }
-
     // ===================================================================
     //  TRACKING ENDPOINTS — MUST be before :id routes to avoid conflicts
     // ===================================================================
@@ -333,14 +325,5 @@ export class CorreosJuridicosController {
             body.attachments,
         );
         return { success: result.success, correo: result.correo };
-    }
-
-    /**
-     * Trigger Batch Backfill for unclassified emails
-     */
-    @Post('batch-classify')
-    @HttpCode(HttpStatus.OK)
-    async batchClassify(@Body() body: { limit?: number }): Promise<{ processed: number; updated: number }> {
-        return this.correosService.batchClassifyBackfill(body.limit || 50);
     }
 }
