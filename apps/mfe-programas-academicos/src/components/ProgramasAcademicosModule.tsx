@@ -103,9 +103,9 @@ export function ProgramasAcademicosModule() {
         const data = Array.isArray(res) ? res : [];
         const sorted = sortPeriodsByCreation(data);
         setPeriodosPA(sorted);
-        const selected = sorted[0];
+        const active = sorted.find((p: any) => p.estado === 'en_curso') || sorted[0];
         setPeriodoSeleccionadoPA(
-          selected ? selected.codigo || `${selected.anio}-${selected.semestre}` : '',
+          active ? active.codigo || `${active.anio}-${active.semestre}` : '',
         );
       } catch {
         setPeriodosPA([]);
@@ -117,7 +117,7 @@ export function ProgramasAcademicosModule() {
     cargarPeriodos();
   }, []);
 
-  const periodoActivoPA = periodosPA[0];
+  const periodoActivoPA = periodosPA.find((p) => p.estado === 'en_curso') || periodosPA[0];
   const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '';
   const esPeriodoActivoPA =
     !!periodoSeleccionadoPA && periodoSeleccionadoPA === periodoActivoCodigoPA;
@@ -401,7 +401,7 @@ export function ProgramasAcademicosModule() {
                       </div>
                       {periodosPA.length > 0 ? periodosPA.map((p: any, idx: number) => {
                         const codigo = p.codigo || `${p.anio}-${p.semestre}`;
-                        const esActivo = idx === 0;
+                        const esActivo = p.estado === 'en_curso';
                         return (
                           <button
                             key={idx}
