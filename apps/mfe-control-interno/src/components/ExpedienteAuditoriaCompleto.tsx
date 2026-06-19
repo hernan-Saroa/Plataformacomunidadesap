@@ -21,50 +21,68 @@
  * ÚLTIMA ACTUALIZACIÓN: 17 Febrero 2026
  */
 
-import { useState, useMemo, useEffect, useRef, type CSSProperties } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  X, FileText, Calendar, Users, Target, Clock, CheckCircle,
-  AlertCircle, TrendingUp, Activity, History, FolderOpen,
-  FileSearch, Send, Eye, Download, MapPin, Mail, Phone,
-  Building2, User, Award, ClipboardCheck, MessageSquare,
-  Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
-  Upload, Archive, ExternalLink, Filter, Search, Tag,
-  BarChart3, PieChart, LineChart, CheckSquare, Paperclip, BookOpen,
-  Lightbulb, Flag
-} from 'lucide-react';
-import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import {
+  Activity,
+  AlertCircle,
+  Archive,
+  Award,
+  BookOpen,
+  Building2,
+  Calendar,
+  CheckCircle,
+  CheckSquare,
+  ClipboardCheck,
+  Clock,
+  Download,
+  Edit2,
+  Eye,
+  FileSearch,
+  FileText,
+  Filter,
+  Flag,
+  FolderOpen,
+  History,
+  Info,
+  Lightbulb,
+  Mail,
+  MessageSquare,
+  Send,
+  Trash2,
+  TrendingUp,
+  Upload,
+  User,
+  Users,
+  X
+} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { notificationsService } from '../../services/api/notificationsService';
 
 // UI Components
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
-import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { Card } from '@esap-mfe/shared-ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 
 // Design System
-import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
-import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 
 // Sub-módulos
-import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
-import { ModalCargarDocumento } from './ModalCargarDocumento';
-import { ActividadesIntegradas } from './ActividadesAuditoriaIntegradas';
 import { ComunicacionAuditoriaModule } from './ComunicacionAuditoriaModule';
-import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
+import { ModalCargarDocumento } from './ModalCargarDocumento';
 import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
-import { SeccionTareasExpediente } from './SeccionTareasExpediente';
-import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
 import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
+import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
+import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
+import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 
 // Servicio API
+import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
 import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
 import { configuracionesProfesionalesOCIApi } from './services/api';
-import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { exportarPDFInformeEjecutivo } from './services/exportarPDFInformeCierreEjecutivo';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, type ConfiguracionDocumento } from './services/pdfESAPHeader';
 
@@ -481,9 +499,9 @@ export function ExpedienteAuditoriaCompleto({
       nivelRiesgo: (card.riesgo || card.riesgoKanban || 'Medio') as NivelRiesgo,
       responsableArea: {
         id: '1',
-        nombre: card.responsableAreaNombre || (card as any).responsable || 'Sin responsable',
-        cargo: card.responsableAreaCargo || 'Responsable del Área Auditada',
-        email: card.responsableAreaEmail || '',
+        nombre: card.responsableAreaNombre || card.responsable || 'Sin responsable',
+        cargo: card.responsableAreaCargo || 'Responsable',
+        email: card.responsableAreaEmail || 'Sin email',
       },
       auditorLider: {
         id: '1',
@@ -601,7 +619,7 @@ export function ExpedienteAuditoriaCompleto({
             id: String(data.auditorLiderId || '1'),
             nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
             cargo: data.responsableAreaCargo || 'Responsable',
-            email: data.responsableAreaEmail || 'responsable@esap.edu.co',
+            email: data.responsableAreaEmail || 'Sin email',
             telefono: undefined,
           },
 
@@ -739,15 +757,15 @@ export function ExpedienteAuditoriaCompleto({
           setAuditoria((prev) =>
             prev
               ? {
-                  ...prev,
-                  estadisticas: {
-                    ...prev.estadisticas,
-                    totalHallazgos: hallazgosData.length,
-                    hallazgosCriticos: criticos,
-                    hallazgosMayores: mayores,
-                    hallazgosMenores: menores,
-                  },
-                }
+                ...prev,
+                estadisticas: {
+                  ...prev.estadisticas,
+                  totalHallazgos: hallazgosData.length,
+                  hallazgosCriticos: criticos,
+                  hallazgosMayores: mayores,
+                  hallazgosMenores: menores,
+                },
+              }
               : null,
           );
         }
@@ -1538,246 +1556,246 @@ export function ExpedienteAuditoriaCompleto({
         </DialogDescription>
 
         <div className="flex flex-col flex-1 min-h-0 h-full w-full relative overflow-hidden">
-        {loading && !auditoria && (
-          <div
-            className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-white rounded-xl"
-            role="status"
-            aria-live="polite"
-          >
-            <div className="w-11 h-11 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-medium text-gray-700">Cargando expediente…</p>
-            {error && <p className="text-red-600 text-sm px-6 text-center">{error}</p>}
-          </div>
-        )}
+          {loading && !auditoria && (
+            <div
+              className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-white rounded-xl"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="w-11 h-11 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm font-medium text-gray-700">Cargando expediente…</p>
+              {error && <p className="text-red-600 text-sm px-6 text-center">{error}</p>}
+            </div>
+          )}
 
-        {!auditoria && !loading && error && (
-          <div className="flex flex-1 min-h-[280px] items-center justify-center p-8 text-center text-red-600">
-            {error}
-          </div>
-        )}
+          {!auditoria && !loading && error && (
+            <div className="flex flex-1 min-h-[280px] items-center justify-center p-8 text-center text-red-600">
+              {error}
+            </div>
+          )}
 
-        {auditoria && (
-          <>
-        {/* ═════════════════════════════════════════════════════════════════
+          {auditoria && (
+            <>
+              {/* ═════════════════════════════════════════════════════════════════
             HEADER GRADIENTE - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                {/* Icono con glassmorphism - SEGÚN ESTÁNDAR */}
-                <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                  <FileText className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  {/* Título - SEGÚN ESTÁNDAR: text-xl font-black */}
-                  <h2 className="text-xl font-black text-white">
-                    Expediente de Auditoría
-                  </h2>
-                  {/* Subtítulo - SEGÚN ESTÁNDAR: text-sm text-blue-100 */}
-                  <p className="text-sm text-blue-100">
-                    {auditoria.codigo} · {auditoria.nombre}
-                    {refreshing && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-blue-200">
-                        <Activity className="w-3 h-3 animate-spin" />
-                        sincronizando…
-                      </span>
-                    )}
-                  </p>
+              <div className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 sm:px-6 py-3 sm:py-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      {/* Icono con glassmorphism - SEGÚN ESTÁNDAR */}
+                      <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
+                        <FileText className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        {/* Título - SEGÚN ESTÁNDAR: text-xl font-black */}
+                        <h2 className="text-xl font-black text-white">
+                          Expediente de Auditoría
+                        </h2>
+                        {/* Subtítulo - SEGÚN ESTÁNDAR: text-sm text-blue-100 */}
+                        <p className="text-sm text-blue-100">
+                          {auditoria.codigo} · {auditoria.nombre}
+                          {refreshing && (
+                            <span className="ml-2 inline-flex items-center gap-1 text-blue-200">
+                              <Activity className="w-3 h-3 animate-spin" />
+                              sincronizando…
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* BADGES INFORMATIVOS - SEGÚN ESTÁNDAR: Mínimo 2-3 badges */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className="bg-white/20 text-white font-bold border border-white/30">
+                        <Building2 className="w-3 h-3 mr-1" />
+                        {auditoria.areaAuditable}
+                      </Badge>
+                      <Badge className="bg-white text-blue-700 font-bold">
+                        {auditoria.progreso.general}% completado
+                      </Badge>
+                      <Badge className="bg-green-500 text-white font-bold">
+                        <FileText className="w-3 h-3 mr-1" />
+                        {documentos.length} documentos
+                      </Badge>
+                      {auditoria.estadisticas.totalHallazgos > 0 && (
+                        <Badge className="bg-red-500 text-white font-bold">
+                          <AlertCircle className="w-3 h-3 mr-1" />
+                          {auditoria.estadisticas.totalHallazgos} hallazgos
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* BOTÓN CERRAR - SEGÚN ESTÁNDAR: variant="ghost" hover:bg-white/20 */}
+                  <Button
+                    onClick={onClose}
+                    variant="ghost"
+                    size="sm"
+                    className="ml-4 text-white hover:bg-white/20"
+                  >
+                    <X className="w-5 h-5" />
+                  </Button>
                 </div>
               </div>
 
-              {/* BADGES INFORMATIVOS - SEGÚN ESTÁNDAR: Mínimo 2-3 badges */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                  <Building2 className="w-3 h-3 mr-1" />
-                  {auditoria.areaAuditable}
-                </Badge>
-                <Badge className="bg-white text-blue-700 font-bold">
-                  {auditoria.progreso.general}% completado
-                </Badge>
-                <Badge className="bg-green-500 text-white font-bold">
-                  <FileText className="w-3 h-3 mr-1" />
-                  {documentos.length} documentos
-                </Badge>
-                {auditoria.estadisticas.totalHallazgos > 0 && (
-                  <Badge className="bg-red-500 text-white font-bold">
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    {auditoria.estadisticas.totalHallazgos} hallazgos
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            {/* BOTÓN CERRAR - SEGÚN ESTÁNDAR: variant="ghost" hover:bg-white/20 */}
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="ml-4 text-white hover:bg-white/20"
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* ═════════════════════════════════════════════════════════════════
+              {/* ═════════════════════════════════════════════════════════════════
             TABS PERSONALIZADOS (No está en estándar, pero se mantiene)
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="shrink-0 border-b bg-gray-50">
-          <div className="flex flex-wrap sm:flex-nowrap justify-start items-end gap-x-1 gap-y-0 overflow-x-auto px-4 sm:px-6 scrollbar-hide">
-            {pestanasVisibles.map((pestana) => {
-              const Icon = pestana.icon;
-              const isActive = activeTab === pestana.id;
+              <div className="shrink-0 border-b bg-gray-50">
+                <div className="flex flex-wrap sm:flex-nowrap justify-start items-end gap-x-1 gap-y-0 overflow-x-auto px-4 sm:px-6 scrollbar-hide">
+                  {pestanasVisibles.map((pestana) => {
+                    const Icon = pestana.icon;
+                    const isActive = activeTab === pestana.id;
 
-              return (
-                <button
-                  key={pestana.id}
-                  type="button"
-                  onClick={() => setActiveTab(pestana.id)}
-                  className={`
+                    return (
+                      <button
+                        key={pestana.id}
+                        type="button"
+                        onClick={() => setActiveTab(pestana.id)}
+                        className={`
                     shrink-0 flex items-center gap-2 px-3 sm:px-4 py-3 border-b-2 transition-all whitespace-nowrap text-sm
                     ${isActive
-                      ? 'border-blue-600 text-blue-700 font-bold bg-white'
-                      : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900 hover:bg-white/60'
-                    }
+                            ? 'border-blue-600 text-blue-700 font-bold bg-white'
+                            : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900 hover:bg-white/60'
+                          }
                   `}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
-                  <span className="text-sm">{pestana.label}</span>
-                  {pestana.id === 'documentacion' && documentos.length > 0 && (
-                    <Badge className="ml-1 bg-blue-100 text-blue-700 text-xs font-bold">
-                      {documentos.length}
-                    </Badge>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                      >
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
+                        <span className="text-sm">{pestana.label}</span>
+                        {pestana.id === 'documentacion' && documentos.length > 0 && (
+                          <Badge className="ml-1 bg-blue-100 text-blue-700 text-xs font-bold">
+                            {documentos.length}
+                          </Badge>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-        {/* ═════════════════════════════════════════════════════════════════
+              {/* ═════════════════════════════════════════════════════════════════
             CONTENIDO PRINCIPAL - SEGÚN ESTÁNDAR: flex-1 overflow-y-auto
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 sm:px-6 py-3 sm:py-4">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              className="min-h-0"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {activeTab === 'general' && <TabGeneral auditoria={auditoria} readOnly={auditoria.estado === 'finalizada'} />}
-              {activeTab === 'planeacion' && (
-                <TabPlaneacion
-                  auditoria={auditoria}
-                  readOnly={auditoria.estado === 'finalizada'}
-                  documentosAuditoriaBackend={
-                    expedienteListo ? documentosBackendRaw : undefined
-                  }
-                />
-              )}
-              {activeTab === 'ejecucion' && (
-                <TabEjecucion
-                  auditoria={auditoria}
-                  onRecargarDocumentos={recargarDocumentos}
-                  readOnly={auditoria.estado === 'finalizada'}
-                  hallazgosPrecargados={expedienteListo ? hallazgosExpediente : undefined}
-                  evidenciasPorHallazgoPrecargadas={
-                    expedienteListo ? evidenciasPorHallazgoExpediente : undefined
-                  }
-                  documentosAuditoriaBackend={
-                    expedienteListo ? documentosBackendRaw : undefined
-                  }
-                />
-              )}
-              {activeTab === 'comunicacion' && (
-                <TabComunicacion
-                  auditoria={auditoria}
-                  onComunicacionCompletada={() => {
-                    setRecargarTrigger(t => t + 1);
-                    setActiveTab('seguimiento');
-                    onComunicacionCompletadaProp?.();
-                  }}
-                  readOnly={auditoria.estado === 'finalizada'}
-                  documentosAuditoriaBackend={
-                    expedienteListo ? documentosBackendRaw : undefined
-                  }
-                />
-              )}
-              {activeTab === 'seguimiento' && (
-                <TabSeguimiento
-                  auditoria={auditoria}
-                  documentos={documentos}
-                  onSubirDocumento={subirDocumento}
-                  onRecargarDocumentos={recargarDocumentos}
-                  onComunicacionCompletada={() => {
-                    setRecargarTrigger(t => t + 1);
-                    onComunicacionCompletadaProp?.();
-                  }}
-                  readOnly={auditoria.estado === 'finalizada'}
-                />
-              )}
-              {activeTab === 'documentacion' && (
-                <TabDocumentacion
-                  documentos={documentosFiltrados}
-                  filtro={filtroDocumentos}
-                  onFiltroChange={setFiltroDocumentos}
-                  auditoriaId={auditoria.id}
-                  loading={loadingDocumentos}
-                  onSubirDocumento={auditoria.estado === 'finalizada' ? undefined : subirDocumento}
-                  onRecargar={recargarDocumentos}
-                  readOnly={auditoria.estado === 'finalizada'}
-                />
-              )}
-              {activeTab === 'historial' && <TabHistorial eventos={historial} />}
-              {activeTab === 'finalizada' && (
-                <TabFinalizada
-                  auditoriaId={auditoria.id}
-                  auditoria={auditoria}
-                  documentos={documentos}
-                  hallazgosPrecargados={expedienteListo ? hallazgosExpediente : undefined}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 sm:px-6 py-3 sm:py-4">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    className="min-h-0"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {activeTab === 'general' && <TabGeneral auditoria={auditoria} readOnly={auditoria.estado === 'finalizada'} />}
+                    {activeTab === 'planeacion' && (
+                      <TabPlaneacion
+                        auditoria={auditoria}
+                        readOnly={auditoria.estado === 'finalizada'}
+                        documentosAuditoriaBackend={
+                          expedienteListo ? documentosBackendRaw : undefined
+                        }
+                      />
+                    )}
+                    {activeTab === 'ejecucion' && (
+                      <TabEjecucion
+                        auditoria={auditoria}
+                        onRecargarDocumentos={recargarDocumentos}
+                        readOnly={auditoria.estado === 'finalizada'}
+                        hallazgosPrecargados={expedienteListo ? hallazgosExpediente : undefined}
+                        evidenciasPorHallazgoPrecargadas={
+                          expedienteListo ? evidenciasPorHallazgoExpediente : undefined
+                        }
+                        documentosAuditoriaBackend={
+                          expedienteListo ? documentosBackendRaw : undefined
+                        }
+                      />
+                    )}
+                    {activeTab === 'comunicacion' && (
+                      <TabComunicacion
+                        auditoria={auditoria}
+                        onComunicacionCompletada={() => {
+                          setRecargarTrigger(t => t + 1);
+                          setActiveTab('seguimiento');
+                          onComunicacionCompletadaProp?.();
+                        }}
+                        readOnly={auditoria.estado === 'finalizada'}
+                        documentosAuditoriaBackend={
+                          expedienteListo ? documentosBackendRaw : undefined
+                        }
+                      />
+                    )}
+                    {activeTab === 'seguimiento' && (
+                      <TabSeguimiento
+                        auditoria={auditoria}
+                        documentos={documentos}
+                        onSubirDocumento={subirDocumento}
+                        onRecargarDocumentos={recargarDocumentos}
+                        onComunicacionCompletada={() => {
+                          setRecargarTrigger(t => t + 1);
+                          onComunicacionCompletadaProp?.();
+                        }}
+                        readOnly={auditoria.estado === 'finalizada'}
+                      />
+                    )}
+                    {activeTab === 'documentacion' && (
+                      <TabDocumentacion
+                        documentos={documentosFiltrados}
+                        filtro={filtroDocumentos}
+                        onFiltroChange={setFiltroDocumentos}
+                        auditoriaId={auditoria.id}
+                        loading={loadingDocumentos}
+                        onSubirDocumento={auditoria.estado === 'finalizada' ? undefined : subirDocumento}
+                        onRecargar={recargarDocumentos}
+                        readOnly={auditoria.estado === 'finalizada'}
+                      />
+                    )}
+                    {activeTab === 'historial' && <TabHistorial eventos={historial} />}
+                    {activeTab === 'finalizada' && (
+                      <TabFinalizada
+                        auditoriaId={auditoria.id}
+                        auditoria={auditoria}
+                        documentos={documentos}
+                        hallazgosPrecargados={expedienteListo ? hallazgosExpediente : undefined}
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
 
-        {/* ═════════════════════════════════════════════════════════════════
+              {/* ═════════════════════════════════════════════════════════════════
             FOOTER - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
             ═════════════════════════════════════════════════════════════════ */}
-        <div className="shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            {/* IZQUIERDA: MÉTRICAS */}
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="text-[11px] sm:text-xs text-gray-600 leading-snug">
-                <strong className="font-black" style={{ color: '#003DA5' }}>
-                  {(pestanasVisibles.find((p) => p.id === activeTab) || pestanasVisibles[0])?.label}
-                </strong> ·
-                <strong className="text-green-600"> {auditoria.progreso.general}% completado</strong> ·
-                <strong className="text-orange-600"> {diasRestantes} días restantes</strong>
-                {auditoria.estadisticas.totalHallazgos > 0 && (
-                  <> · <strong className="text-red-600"> {auditoria.estadisticas.totalHallazgos} hallazgos</strong></>
-                )}
-              </div>
-            </div>
+              <div className="shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  {/* IZQUIERDA: MÉTRICAS */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="text-[11px] sm:text-xs text-gray-600 leading-snug">
+                      <strong className="font-black" style={{ color: '#003DA5' }}>
+                        {(pestanasVisibles.find((p) => p.id === activeTab) || pestanasVisibles[0])?.label}
+                      </strong> ·
+                      <strong className="text-green-600"> {auditoria.progreso.general}% completado</strong> ·
+                      <strong className="text-orange-600"> {diasRestantes} días restantes</strong>
+                      {auditoria.estadisticas.totalHallazgos > 0 && (
+                        <> · <strong className="text-red-600"> {auditoria.estadisticas.totalHallazgos} hallazgos</strong></>
+                      )}
+                    </div>
+                  </div>
 
-            {/* DERECHA: ACCIÓN PRINCIPAL */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generarInformePDF}
-              className="font-bold border-blue-600 text-blue-700 hover:bg-blue-50 shrink-0 self-start sm:self-center"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Generar Informe
-            </Button>
-          </div>
-        </div>
-          </>
-        )}
+                  {/* DERECHA: ACCIÓN PRINCIPAL */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={generarInformePDF}
+                    className="font-bold border-blue-600 text-blue-700 hover:bg-blue-50 shrink-0 self-start sm:self-center"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Generar Informe
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -2795,7 +2813,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos, hallazgosPrecargado
       try {
         const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
         const profs = Array.isArray(profsRes.data) ? profsRes.data : (Array.isArray(profsRes) ? profsRes : []);
-        
+
         if (profs.length > 0) {
           const matchProf = (nombre: string) => {
             const n = (nombre || '').toLowerCase().trim();

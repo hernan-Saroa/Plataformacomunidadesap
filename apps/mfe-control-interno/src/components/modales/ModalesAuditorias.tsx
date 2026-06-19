@@ -83,6 +83,9 @@ export interface Auditoria {
   tipo: string;
   proceso?: string;
   responsable: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   // Etapa 1: Planeación
   fechaInicioPlaneacion?: string;
   fechaFinPlaneacion?: string;
@@ -170,6 +173,9 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
     nombre: '',
     tipo: '',
     responsable: '',
+    responsableAreaNombre: '',
+    responsableAreaCargo: '',
+    responsableAreaEmail: '',
     // Etapa 1: Planeación
     fechaInicioPlaneacion: '',
     fechaFinPlaneacion: '',
@@ -243,6 +249,9 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         nombre: '',
         tipo: '',
         responsable: '',
+        responsableAreaNombre: '',
+        responsableAreaCargo: '',
+        responsableAreaEmail: '',
         // Etapa 1: Planeación
         fechaInicioPlaneacion: '',
         fechaFinPlaneacion: '',
@@ -635,6 +644,46 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Responsable del Área Auditada */}
+              <div className="xl:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl mt-2">
+                <div className="md:col-span-3 mb-2">
+                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <User className="w-4 h-4 text-gray-500" />
+                    Responsable del Área Auditada (Opcional)
+                  </h4>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Nombre</label>
+                  <input
+                    type="text"
+                    value={formData.responsableAreaNombre || ''}
+                    onChange={(e) => setFormData({ ...formData, responsableAreaNombre: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#003DA5]"
+                    placeholder="Ej: Juan Pérez"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Cargo</label>
+                  <input
+                    type="text"
+                    value={formData.responsableAreaCargo || ''}
+                    onChange={(e) => setFormData({ ...formData, responsableAreaCargo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#003DA5]"
+                    placeholder="Ej: Director Administrativo"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={formData.responsableAreaEmail || ''}
+                    onChange={(e) => setFormData({ ...formData, responsableAreaEmail: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#003DA5]"
+                    placeholder="ejemplo@esap.edu.co"
+                  />
                 </div>
               </div>
 
