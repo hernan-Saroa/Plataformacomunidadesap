@@ -216,6 +216,19 @@ export const planAnualApi = {
   },
 
   /**
+   * Crear nuevo rol personalizado
+   */
+  addRol: async (
+    planId: string,
+    data: { nombre: string; descripcion: string; color: string; numero: number },
+  ): Promise<ApiResponse<Rol>> => {
+    return apiRequest<Rol>(`${PLAN_ANUAL_ENDPOINT}/${planId}/roles`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
    * Solicitar al responsable del plan que revise y envíe al comité PAI (notificación in-app).
    */
   notificarResponsable: async (

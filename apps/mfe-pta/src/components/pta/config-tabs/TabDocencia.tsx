@@ -17,7 +17,7 @@ export function TabDocencia({ draft, handleChange }: { draft: PTARules; handleCh
   React.useEffect(() => {
     async function load() {
       try {
-        const { apiClient } = await import('../../../../shell/src/services/api');
+        const { apiClient } = await import('../../../../../shell/src/services/api');
         // Usamos el endpoint real de Programas Académicos
         const response = await apiClient.get<any>('/auth/api/v1/programas-academicos', { limit: 100 });
         if (response && response.data) {

@@ -12,4 +12,19 @@ export class UpdateRolPlanAnual5Dto {
   @IsOptional()
   @IsArray()
   responsables?: Array<{ id: string; nombre: string; cargo?: string; email?: string }>;
+
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  activo?: boolean;
 }

@@ -1349,7 +1349,7 @@ export class BancoDocentesService implements OnModuleInit {
   async toggleEstado(id: string) {
     const authRows = await this.dataSource.query(
       `
-      SELECT u.id_user, u.is_active
+      SELECT u.id_user, u.id_person, u.is_active
       FROM auth."user" u
       WHERE u.id_user::text = $1 OR u.id_person::text = $1
       LIMIT 1
@@ -1357,13 +1357,23 @@ export class BancoDocentesService implements OnModuleInit {
       [id],
     );
 
+    let activoFinal = false;
+
     if (authRows[0]) {
-      const activo = !authRows[0].is_active;
+      activoFinal = !authRows[0].is_active;
       await this.dataSource.query(
         `UPDATE auth."user" SET is_active = $1, updated_at = now() WHERE id_user = $2`,
-        [activo, authRows[0].id_user],
+        [activoFinal, authRows[0].id_user],
       );
-      return { id: authRows[0].id_user, estado: activo ? 'ACTIVO' : 'INACTIVO', activo };
+
+      // También sincronizar el estado en DocenteEntity para que la UI refleje el cambio
+      const d = await this.docenteRepo.findOne({ where: { personaId: authRows[0].id_person } as any });
+      if (d) {
+        d.estado = activoFinal ? 'ACTIVO' : 'INACTIVO';
+        await this.docenteRepo.save(d);
+      }
+
+      return { id: authRows[0].id_user, estado: activoFinal ? 'ACTIVO' : 'INACTIVO', activo: activoFinal };
     }
 
     const d = await this.docenteRepo.findOne({ where: { id } });
