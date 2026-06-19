@@ -4,9 +4,10 @@ import { PortalController } from './portal.controller';
 import { PortalService } from './portal.service';
 import { Person } from '../users/person.entity';
 import { User } from '../users/user.entity';
+import { CarpetaDigitalModule } from '../carpeta-digital/carpeta-digital.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Person, User])],
+  imports: [TypeOrmModule.forFeature([Person, User]), CarpetaDigitalModule],
   controllers: [PortalController],
   providers: [PortalService],
 })
