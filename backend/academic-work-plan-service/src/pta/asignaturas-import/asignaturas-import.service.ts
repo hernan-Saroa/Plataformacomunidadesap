@@ -275,7 +275,10 @@ export class AsignaturasImportService {
 
     this.buildRelationsAndSimulateCarga(rawAsignaturas, rawProgramas, matrizOferta, result, dryRun, validCetapsMap, omitErrors);
 
-    if (allIdentical) {
+    // allIdentical sólo bloquea si además no hay ofertas nuevas para ESTE periodo.
+    // Si los programas/asignaturas ya existen pero es un periodo nuevo, las
+    // oferta_cetap_programa todavía deben crearse para el nuevo periodo.
+    if (allIdentical && newOfertasCount === 0) {
       (result as any).blocked_reason = 'ALL_IDENTICAL';
       result.success = true; // El archivo es válido, pero no hay nada nuevo
       result.tiempo_ms = Date.now() - startTime;
@@ -414,12 +417,18 @@ export class AsignaturasImportService {
    */
   async getLastImport(periodo: string = '2025-2'): Promise<any> {
     const counts = await this.dataSource.query(`
-      SELECT 
-        (SELECT COUNT(*) FROM academic_work_plan.programa) AS programas,
-        (SELECT COUNT(*) FROM academic_work_plan.nucleo_tematico) AS nucleos_tematicos,
-        (SELECT COUNT(*) FROM academic_work_plan.cetap) AS cetaps,
-        (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas,
-        (SELECT COUNT(*) FROM academic_work_plan.asignatura) AS asignaturas
+      SELECT
+        (SELECT COUNT(DISTINCT ocp.id_programa)
+         FROM academic_work_plan.oferta_cetap_programa ocp
+         WHERE ocp.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS programas,
+        (SELECT COUNT(*)
+         FROM academic_work_plan.asignatura a
+         WHERE a.id_programa IN (
+           SELECT DISTINCT ocp2.id_programa
+           FROM academic_work_plan.oferta_cetap_programa ocp2
+           WHERE ocp2.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)
+         )) AS asignaturas,
+        (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas
     `, [periodo]);
 
     const stats = counts[0] || {};
@@ -428,8 +437,6 @@ export class AsignaturasImportService {
       periodo,
       counts: {
         programas: parseInt(stats.programas || 0, 10),
-        nucleos_tematicos: parseInt(stats.nucleos_tematicos || 0, 10),
-        cetaps: parseInt(stats.cetaps || 0, 10),
         ofertas_cetap_programa: parseInt(stats.ofertas || 0, 10),
         asignaturas: parseInt(stats.asignaturas || 0, 10),
       },

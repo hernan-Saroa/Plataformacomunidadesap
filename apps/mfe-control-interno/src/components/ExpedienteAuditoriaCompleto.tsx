@@ -71,7 +71,7 @@ import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, type Configura
 // ============ TIPOS ============
 
 type EstadoAuditoria = 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'finalizada';
-type TipoAuditoria = 'Sede' | 'Territorial' | 'Especial';
+type TipoAuditoria = 'Regular' | 'Territorial' | 'Especial';
 type NivelRiesgo = 'Alto' | 'Medio' | 'Bajo';
 type TabActiva = 'general' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'documentacion' | 'historial' | 'finalizada';
 
@@ -183,7 +183,7 @@ const AUDITORIA_EJEMPLO: Auditoria = {
   id: 'aud-001',
   codigo: 'AUD-2026-001',
   nombre: 'Auditoría de Gestión Académica',
-  tipo: 'Sede',
+  tipo: 'Regular',
   estado: 'ejecucion',
   areaAuditable: 'Dirección Académica Nacional',
   procesoNombre: 'Gestión Académica',
@@ -474,16 +474,16 @@ export function ExpedienteAuditoriaCompleto({
       codigo: card.codigo || `AUD-${String(card.id || '').slice(0, 8)}`,
       nombre: card.titulo || card.nombre || card.descripcion || 'Auditoría',
       territorial: card.territorial,
-      tipo: 'Sede',
+      tipo: mapearTipoAuditoria(card.tipo),
       estado,
       areaAuditable: card.areaObjetivo || card.territorial || 'Sin área definida',
       procesoNombre: card.areaObjetivo || card.titulo || '',
       nivelRiesgo: (card.riesgo || card.riesgoKanban || 'Medio') as NivelRiesgo,
       responsableArea: {
         id: '1',
-        nombre: card.auditorLider?.nombre || card.auditorLider || 'Sin responsable',
-        cargo: 'Responsable',
-        email: '',
+        nombre: card.responsableAreaNombre || (card as any).responsable || 'Sin responsable',
+        cargo: card.responsableAreaCargo || 'Responsable del Área Auditada',
+        email: card.responsableAreaEmail || '',
       },
       auditorLider: {
         id: '1',
@@ -590,8 +590,7 @@ export function ExpedienteAuditoriaCompleto({
           codigo: data.codigo,
           nombre: data.nombre,
           territorial: data.territorial || data.sede || undefined,
-          tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' :
-            data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
+          tipo: mapearTipoAuditoria(data.tipo),
           // Priorizar estadoKanban (Seguimiento vs Finalizada) sobre fase (ambos son COMPLETADA)
           estado: mapearEstado(data.estadoKanban || data.fase),
           areaAuditable: data.areaObjetivo || data.territorial || 'Sin área definida',
@@ -602,7 +601,7 @@ export function ExpedienteAuditoriaCompleto({
             id: String(data.auditorLiderId || '1'),
             nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
             cargo: data.responsableAreaCargo || 'Responsable',
-            email: `responsable@esap.edu.co`,
+            email: data.responsableAreaEmail || 'responsable@esap.edu.co',
             telefono: undefined,
           },
 
@@ -1103,6 +1102,21 @@ export function ExpedienteAuditoriaCompleto({
   };
 
   // Funciones auxiliares para mapeo
+
+  /**
+   * Mapea el tipo de auditoría del backend/Kanban al formato del Expediente.
+   * Respeta el valor original configurado en la creación de la auditoría.
+   * Backend enum: Regular | Territorial | Especial
+   */
+  function mapearTipoAuditoria(tipo?: string): TipoAuditoria {
+    if (!tipo) return 'Regular';
+    const t = tipo.toLowerCase().trim();
+    if (t === 'territorial') return 'Territorial';
+    if (t === 'especial') return 'Especial';
+    // 'regular', 'sede', 'gestión', 'cumplimiento', etc. → Regular
+    return 'Regular';
+  }
+
   function mapearEstado(fase: string): EstadoAuditoria {
     const e = String(fase || '')
       .trim()
@@ -1238,7 +1252,7 @@ export function ExpedienteAuditoriaCompleto({
         ['Fecha Inicio', auditoria.cronograma?.fechaInicio || 'N/A'],
         ['Fecha Fin', auditoria.cronograma?.fechaFin || 'N/A'],
         [''],
-        ['RESPONSABLE DEL ÁREA'],
+        ['RESPONSABLE DEL ÁREA AUDITADA'],
         ['Nombre', auditoria.responsableArea.nombre],
         ['Cargo', auditoria.responsableArea.cargo],
         ['Email', auditoria.responsableArea.email],
@@ -1800,7 +1814,7 @@ function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: 
           </div>
 
           <div>
-            <p className="text-xs font-bold text-gray-700 mb-2">Responsable del Área</p>
+            <p className="text-xs font-bold text-gray-700 mb-2">Responsable del Área Auditada</p>
             <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
               <div className="flex items-center gap-2 mb-2">
                 <User className="w-4 h-4 text-blue-600" />

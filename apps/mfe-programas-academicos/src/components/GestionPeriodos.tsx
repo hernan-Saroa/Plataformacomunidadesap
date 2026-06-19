@@ -28,9 +28,10 @@ import { useImportAsignaturas } from '../hooks/useImportAsignaturas';
 interface GestionPeriodosProps {
   onBack: () => void;
   onNavigateToImport: (periodoCodigo: string) => void;
+  onPeriodosChanged?: () => void;
 }
 
-export function GestionPeriodos({ onBack, onNavigateToImport }: GestionPeriodosProps) {
+export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged }: GestionPeriodosProps) {
   const { getPeriodos, createPeriodo, updatePeriodo, getLastImport, getPeriodoDetalle, loading } = useImportAsignaturas();
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [periodStats, setPeriodStats] = useState<Record<string, any>>({});
@@ -111,6 +112,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport }: GestionPeriodosP
         toast.success(`Periodo académico ${res.codigo} creado exitosamente.`);
         setShowCreateModal(false);
         setRefreshTrigger(prev => prev + 1);
+        onPeriodosChanged?.();
         // Reset form
         setNewAnio(new Date().getFullYear());
         setNewSemestre(1);
@@ -149,6 +151,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport }: GestionPeriodosP
         toast.success(`Periodo académico ${res.codigo} actualizado exitosamente.`);
         setShowEditModal(false);
         setRefreshTrigger(prev => prev + 1);
+        onPeriodosChanged?.();
       }
     } catch (err: any) {
       toast.error(err.message || 'Error al actualizar el periodo académico');
@@ -169,6 +172,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport }: GestionPeriodosP
         toast.success(`✅ Periodo ${p.codigo} activado como "En Curso"`);
         setPeriodoToActivate(null);
         setRefreshTrigger(prev => prev + 1);
+        onPeriodosChanged?.();
       }
     } catch (err: any) {
       toast.error(err.message || 'Error al activar el periodo');
@@ -184,6 +188,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport }: GestionPeriodosP
       if (res) {
         toast.success(`Periodo ${p.codigo} cerrado (Solo lectura)`);
         setRefreshTrigger(prev => prev + 1);
+        onPeriodosChanged?.();
       }
     } catch (err: any) {
       toast.error(err.message || 'Error al cerrar el periodo');

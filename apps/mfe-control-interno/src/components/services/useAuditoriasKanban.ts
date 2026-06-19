@@ -96,6 +96,10 @@ export interface AuditoriaKanban {
   criterios?: CriterioAuditoria[];
   // ID del auditor líder asignado
   auditorLiderId?: string | number;
+  // ✅ Responsable del Área Auditada (viene del backend)
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   // Vigencia asociada
   planAnualAño?: number;
   vigencia?: number;
@@ -205,14 +209,25 @@ function calcularSemaforo(progreso: number, diasRestantes: number, porcentajeTie
  */
 function calcularTiempos(fechaInicio: string, fechaFin: string): { diasRestantes: number; porcentajeTiempo: number } {
   const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
   const inicio = new Date(fechaInicio);
   const fin = new Date(fechaFin);
   
   const totalDias = Math.max(1, Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)));
-  const diasTranscurridos = Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
-  const diasRestantes = Math.max(0, Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
   
-  const porcentajeTiempo = Math.min(100, Math.round((diasTranscurridos / totalDias) * 100));
+  let diasRestantes = 0;
+  let porcentajeTiempo = 0;
+  
+  if (hoy < inicio) {
+    // Si la auditoría es en el futuro, no ha empezado el consumo de tiempo
+    diasRestantes = totalDias;
+    porcentajeTiempo = 0;
+  } else {
+    const diasTranscurridos = Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+    diasRestantes = Math.max(0, Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
+    porcentajeTiempo = Math.min(100, Math.round((diasTranscurridos / totalDias) * 100));
+  }
   
   return { diasRestantes, porcentajeTiempo };
 }
@@ -495,6 +510,12 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     actividadesCompletas: true,
     actividadesPendientes: 0,
     auditorLiderId: auditoriaBackend.auditorLiderId,
+    // ✅ Responsable del Área Auditada (datos reales del backend)
+    // Fallback: si responsableAreaNombre es null (auditorías legacy), usar el campo 'responsable'
+    // que fue poblado con el nombre del responsable del área durante la creación.
+    responsableAreaNombre: auditoriaBackend.responsableAreaNombre || auditoriaBackend.responsable_area_nombre || auditoriaBackend.responsable || undefined,
+    responsableAreaCargo: auditoriaBackend.responsableAreaCargo || auditoriaBackend.responsable_area_cargo || undefined,
+    responsableAreaEmail: auditoriaBackend.responsableAreaEmail || auditoriaBackend.responsable_area_email || undefined,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
     planAnualAño:

@@ -10,10 +10,12 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -188,8 +190,17 @@ export class PtaController {
   }
 
   @Post('save')
-  async save(@Body() body: any) {
-    const data = await this.ptaService.savePTA(body || {});
+  async save(@Body() body: any, @Req() req: Request) {
+    const payload = body || {};
+    // Fallback: si el front no envió docente_id (userPersonId vacío en el portal),
+    // usar el usuario autenticado que el gateway inyecta en x-user-id. fetchAuthDocenteInfo
+    // acepta tanto id_person/id_tercero como id_user como clave de búsqueda.
+    const hasDocente = payload.docente_id || payload.docenteId || payload?.docente?.id || payload?.docente?.personaId;
+    if (!hasDocente && !payload._adminEdit) {
+      const headerUserId = (req.headers['x-user-id'] as string) || '';
+      if (headerUserId) payload.docente_id = headerUserId;
+    }
+    const data = await this.ptaService.savePTA(payload);
     return { success: true, data };
   }
 
@@ -288,10 +299,12 @@ export class PtaController {
   // Firma electrónica OTP (legacy)
   // ─────────────────────────────
   @Post('firma-docente/request-code')
-  async requestFirmaDocenteCode(@Body() body: any) {
+  async requestFirmaDocenteCode(@Body() body: any, @Req() req: Request) {
+    // Fallback al usuario autenticado (x-user-id) cuando el front no envía docenteId.
+    const docenteId = body?.docenteId || (req.headers['x-user-id'] as string) || '';
     const data = await this.ptaService.requestFirmaDocenteOtp({
       ptaId: body?.ptaId,
-      docenteId: body?.docenteId,
+      docenteId,
       periodo: body?.periodo,
       etapaLabel: body?.etapaLabel,
     });
