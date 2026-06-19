@@ -665,6 +665,10 @@ export function CarpetaDigitalSharedView({
   const [uploadingRundDoc, setUploadingRundDoc] = useState<{ bloque: string; tipo: string } | null>(null);
   const rundFileInputRef = useRef<HTMLInputElement>(null);
   const [rundPreviewUrl, setRundPreviewUrl] = useState<{ url: string; name: string } | null>(null);
+  // Preview del documento en el visor a pantalla completa (blob autenticado vía gateway).
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const cleanPersonaId = useMemo(() => {
     if (!personaId) return '';
@@ -1181,6 +1185,55 @@ export function CarpetaDigitalSharedView({
     setZoomScale(1);
     setRotateAngle(0);
   }, []);
+
+  // Carga del documento para previsualización vía apiClient.getBlob (autenticado, vía gateway).
+  // No podemos poner la ruta relativa (/pta/api/v1/uploads/...) directo en el <iframe src>
+  // porque el navegador la resuelve contra el origin del shell (localhost:3000) → 404.
+  // En su lugar descargamos el blob y construimos un object URL (blob:), igual que el panel RUND.
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+
+    const load = async () => {
+      setPreviewError(null);
+      if (!previewDoc?.url_archivo) {
+        setPreviewBlobUrl(null);
+        return;
+      }
+      const raw = previewDoc.url_archivo;
+      // URLs absolutas o ya-blob: se usan tal cual.
+      if (/^(blob:|https?:|data:)/i.test(raw)) {
+        setPreviewBlobUrl(raw);
+        return;
+      }
+      setPreviewLoading(true);
+      try {
+        const blob = await apiClient.getBlob(raw);
+        if (cancelled) return;
+        const extMatch = raw.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+        const ext = extMatch ? extMatch[1].toLowerCase() : (previewDoc.tipo_archivo || 'pdf').toLowerCase();
+        let mime = 'application/pdf';
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        const typedBlob = blob.type ? blob : blob.slice(0, blob.size, mime);
+        createdUrl = URL.createObjectURL(typedBlob);
+        setPreviewBlobUrl(createdUrl);
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('[CarpetaDigital] Error cargando documento para preview:', err);
+          setPreviewError(err?.message || 'No se pudo cargar el documento');
+          setPreviewBlobUrl(null);
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [previewDoc]);
 
   const activePreviewIndex = useMemo(() => {
     if (!previewDoc) return -1;
@@ -3311,11 +3364,29 @@ export function CarpetaDigitalSharedView({
                 overflow: 'auto',
               }}>
                 {(() => {
+                  if (previewLoading) {
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: '#94A3B8' }}>
+                        <Loader2 size={40} style={{ animation: 'spin 1s linear infinite' }} />
+                        <span style={{ fontSize: 13 }}>Cargando documento…</span>
+                      </div>
+                    );
+                  }
+                  if (previewError) {
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: '#FCA5A5', textAlign: 'center', maxWidth: 360 }}>
+                        <AlertTriangle size={40} />
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>No se pudo cargar el documento</span>
+                        <span style={{ fontSize: 12, color: '#94A3B8' }}>{previewError}</span>
+                      </div>
+                    );
+                  }
+                  const src = previewBlobUrl || '';
                   const ext = previewDoc.tipo_archivo?.toLowerCase() || '';
                   if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
                     return (
                       <img
-                        src={previewDoc.url_archivo || ''}
+                        src={src}
                         alt={previewDoc.nombre}
                         style={{
                           maxWidth: '100%',
@@ -3330,10 +3401,10 @@ export function CarpetaDigitalSharedView({
                       />
                     );
                   }
-                  
+
                   return (
                     <iframe
-                      src={previewDoc.url_archivo || ''}
+                      src={src}
                       title={previewDoc.nombre}
                       style={{
                         width: '100%',

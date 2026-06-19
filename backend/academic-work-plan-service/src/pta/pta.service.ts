@@ -32,6 +32,11 @@ export class PtaService {
   private readonly otpStore = new Map<string, { code: string; expiresAt: Date }>();
   private readonly logger = new Logger(PtaService.name);
 
+  // MOCK de firma OTP: mientras esté activo, cualquier código de 6 dígitos es válido
+  // para avanzar (no se valida contra el código generado). Se desactiva con
+  // PTA_MOCK_FIRMA_OTP=false. Por ahora viene mockeado por defecto para pruebas.
+  private readonly MOCK_FIRMA_OTP = process.env.PTA_MOCK_FIRMA_OTP !== 'false';
+
   constructor(
     @InjectRepository(PlanTrabajoAcademicoEntity)
     private readonly ptaRepo: Repository<PlanTrabajoAcademicoEntity>,
@@ -1801,7 +1806,7 @@ export class PtaService {
     if (!docenteId) throw new BadRequestException('docenteId es requerido para enviar el código de firma.');
 
     const docente = await this.fetchAuthDocenteInfo(docenteId);
-    if (!docente.email) {
+    if (!docente.email && !this.MOCK_FIRMA_OTP) {
       throw new BadRequestException('El docente no tiene correo registrado para enviar el código de validación.');
     }
 
@@ -1809,24 +1814,27 @@ export class PtaService {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     const verificationId = this.buildFirmaOtpKey({ ptaId: payload?.ptaId, docenteId });
 
-    this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email}: ${code}`);
+    this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
 
-    try {
-      await this.sendFirmaOtpEmail({
-        to: docente.email,
-        code,
-        fullName: docente.fullName,
-        periodo: payload?.periodo,
-        etapaLabel: payload?.etapaLabel,
-        expiresAt,
-      });
-    } catch (emailError) {
-      const isDev = (process.env.NODE_ENV || 'development') !== 'production';
-      if (isDev) {
-        this.logger.warn(`⚠️  [DEV] Email de firma OTP falló — código OTP para ${docente.email}: ${code}`);
-        this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
-      } else {
-        throw emailError;
+    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
+    if (!this.MOCK_FIRMA_OTP && docente.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: docente.email,
+          code,
+          fullName: docente.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP falló — código OTP para ${docente.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
       }
     }
 
@@ -1835,7 +1843,7 @@ export class PtaService {
     return {
       verificationId,
       expiresAt: expiresAt.toISOString(),
-      email: this.maskEmail(docente.email),
+      email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
       devCode: code,
     };
   }
@@ -1860,6 +1868,15 @@ export class PtaService {
   verifyOtp(ptaId: string, otp: string, { consume }: { consume: boolean }) {
     if (!otp || String(otp).length !== 6) {
       throw new Error('OTP inválido. Debe tener 6 dígitos.');
+    }
+
+    // MOCK: cualquier código de 6 dígitos avanza el flujo. No se valida contra
+    // el código generado ni la expiración. Útil para pruebas mientras el envío
+    // real de correo no esté disponible.
+    if (this.MOCK_FIRMA_OTP) {
+      this.logger.warn(`[MOCK-OTP] Validación de firma mockeada para "${ptaId}" — cualquier código de 6 dígitos es aceptado.`);
+      if (consume) this.otpStore.delete(ptaId);
+      return true;
     }
 
     const stored = this.otpStore.get(ptaId);

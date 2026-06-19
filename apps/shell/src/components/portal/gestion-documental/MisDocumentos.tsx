@@ -147,16 +147,28 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
 
       try {
         const checklistResult = await getChecklistForPersona(syncedPersonaId);
-        if (checklistResult.success && checklistResult.data && !checklistResult.data.useGlobalTypes && checklistResult.data.tiposDocumentos.length > 0) {
-          tiposRaw = checklistResult.data.tiposDocumentos;
+        const checklistTipos = checklistResult?.data?.tiposDocumentos;
+        if (
+          checklistResult?.success &&
+          checklistResult.data &&
+          !checklistResult.data.useGlobalTypes &&
+          Array.isArray(checklistTipos) &&
+          checklistTipos.length > 0
+        ) {
+          tiposRaw = checklistTipos;
         }
       } catch { /* fall through */ }
 
       // 2. Fallback: global tipos
       if (tiposRaw.length === 0) {
         const result = await getTiposDocumentos();
-        if (result.success && result.data) {
-          tiposRaw = result.data.filter((t: any) => t.activo);
+        const rawList = Array.isArray(result?.data)
+          ? result.data
+          : Array.isArray((result?.data as any)?.items)
+            ? (result.data as any).items
+            : [];
+        if (result?.success && rawList.length > 0) {
+          tiposRaw = rawList.filter((t: any) => t && t.activo !== false);
         }
       }
 

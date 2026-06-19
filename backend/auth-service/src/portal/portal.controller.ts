@@ -1,6 +1,11 @@
-import { Controller, Get, Post, Put, Param, Body, Req, HttpCode, HttpStatus, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, HttpCode, HttpStatus, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import * as fs from 'fs';
 import type { Request } from 'express';
 import { PortalService } from './portal.service';
+import { CarpetaDigitalService } from '../carpeta-digital/carpeta-digital.service';
 import { Public } from '../auth/decorators/public.decorator';
 
 /**
@@ -12,7 +17,10 @@ import { Public } from '../auth/decorators/public.decorator';
 @Public()
 @Controller('portal')
 export class PortalController {
-  constructor(private readonly portalService: PortalService) {}
+  constructor(
+    private readonly portalService: PortalService,
+    private readonly carpetaDigitalService: CarpetaDigitalService,
+  ) {}
 
   /**
    * POST /portal/inicializar
@@ -133,15 +141,169 @@ export class PortalController {
     };
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // CARPETA DIGITAL — wrappers que reutilizan CarpetaDigitalService.
+  // Las rutas mantienen el prefijo /portal/* esperado por el shell.
+  // El orden importa: rutas estáticas ANTES de las dinámicas (:id).
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /portal/carpeta-digital/tipos-documentos
+   * Catálogo global de tipos de documentos requeridos.
+   */
+  @Get('carpeta-digital/tipos-documentos')
+  async getTiposDocumentos(@Query('carpetaDigitalId') carpetaDigitalId?: string) {
+    const data = await this.carpetaDigitalService.getTiposDocumentos(carpetaDigitalId);
+    return { success: true, data: Array.isArray(data) ? data : [] };
+  }
+
+  /**
+   * GET /portal/carpeta-digital/:personaId/checklist
+   * Tipos de documentos requeridos + carpeta de la persona.
+   */
+  @Get('carpeta-digital/:personaId/checklist')
+  async getChecklistForPersona(@Param('personaId') personaId: string) {
+    const cleanId = String(personaId || '').replace(/^carpeta:/, '');
+    try {
+      const data = await this.carpetaDigitalService.getChecklistForPersona(cleanId);
+      return { success: true, data };
+    } catch (err: any) {
+      return { success: true, data: { useGlobalTypes: true, tiposDocumentos: [] }, message: err?.message };
+    }
+  }
+
+  /**
+   * GET /portal/carpeta-digital/:personaId/documentos
+   * Documentos persistidos (UNIÓN auth.documento_carpeta_digital + RUND soportes).
+   */
+  @Get('carpeta-digital/:personaId/documentos')
+  async getDocumentosByPersona(@Param('personaId') personaId: string) {
+    try {
+      const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId);
+      return { success: true, data: Array.isArray(data) ? data : [] };
+    } catch (err: any) {
+      return { success: true, data: [], message: err?.message };
+    }
+  }
+
+  /**
+   * POST /portal/carpeta-digital/upload
+   * Sube un documento a la carpeta de una persona. Multipart con field "file".
+   * Body extra: personaId, tipoDocumento (id|nombre), categoria, descripcion, rundSoporteId
+   */
+  @Post('carpeta-digital/upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, _file, cb) => {
+        const personaId = String(req.body?.personaId || req.body?.persona_id || 'desconocido').replace(/^carpeta:/, '');
+        const path = `./uploads/carpeta-digital/${personaId}`;
+        if (!fs.existsSync(path)) fs.mkdirSync(path, { recursive: true });
+        cb(null, path);
+      },
+      filename: (_req, file, cb) => {
+        const rand = Array(32).fill(null).map(() => Math.round(Math.random() * 16).toString(16)).join('');
+        cb(null, `${rand}${extname(file.originalname)}`);
+      },
+    }),
+  }))
+  async uploadDocumento(@Body() body: any, @UploadedFile() file?: any) {
+    if (!file) return { success: false, message: 'Archivo requerido' };
+    const personaId = String(body?.personaId || body?.persona_id || '').replace(/^carpeta:/, '');
+    if (!personaId) return { success: false, message: 'personaId es requerido' };
+    const urlArchivo = `/auth/api/v1/uploads/carpeta-digital/${personaId}/${file.filename}`;
+    try {
+      const data = await this.carpetaDigitalService.createDocumento({
+        personaId,
+        nombre: file.originalname,
+        urlArchivo,
+        tipoDocumentoId: body?.tipoDocumentoId || body?.tipoDocumento || null,
+        rundSoporteId: body?.rundSoporteId || null,
+        categoria: body?.categoria || 'otros',
+        tipoArchivo: extname(file.originalname).replace('.', '').toLowerCase(),
+        tamanoBytes: file.size,
+        comentarios: body?.descripcion || null,
+      });
+      return { success: true, data };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Error al guardar documento' };
+    }
+  }
+
+  /**
+   * PUT /portal/carpeta-digital/documentos/:id/reclassify
+   */
+  @Put('carpeta-digital/documentos/:id/reclassify')
+  async reclassifyDocumento(@Param('id') id: string, @Body() body: any) {
+    try {
+      const data = await this.carpetaDigitalService.reclassifyDocumento(id, {
+        tipoDocumentoId: body?.tipo_documento_id || body?.tipoDocumentoId,
+        categoria: body?.categoria,
+      });
+      return { success: true, data };
+    } catch (err: any) {
+      return { success: false, message: err?.message };
+    }
+  }
+
+  /**
+   * PUT /portal/carpeta-digital/documentos/:id/validate
+   */
+  @Put('carpeta-digital/documentos/:id/validate')
+  async validateDocumento(@Param('id') id: string, @Body() body: any) {
+    try {
+      const data = await this.carpetaDigitalService.validateDocumento(id, {
+        estado: body?.estado,
+        comentarios: body?.comentarios,
+        validadoPor: body?.validadoPor,
+      });
+      return { success: true, data };
+    } catch (err: any) {
+      return { success: false, message: err?.message };
+    }
+  }
+
+  /**
+   * DELETE /portal/carpeta-digital/documentos/:id
+   */
+  @Delete('carpeta-digital/documentos/:id')
+  async deleteDocumento(@Param('id') id: string) {
+    try {
+      const data = await this.carpetaDigitalService.deleteDocumento(id);
+      return { success: true, data };
+    } catch (err: any) {
+      return { success: false, message: err?.message };
+    }
+  }
+
   /**
    * GET /portal/carpeta-digital/:id
+   * Resumen agregado: carpeta + documentos + tipos. Conserva el contrato anterior.
    */
   @Get('carpeta-digital/:id')
-  getCarpetaDigital(@Param('id') id: string) {
-    return {
-      success: true,
-      data: { documentos: [], tipos_requeridos: [], persona: null },
-    };
+  async getCarpetaDigital(@Param('id') id: string) {
+    const cleanId = String(id || '').replace(/^carpeta:/, '');
+    try {
+      const [carpeta, documentos, checklist] = await Promise.all([
+        this.carpetaDigitalService.getCarpetaByPersona(cleanId).catch(() => null),
+        this.carpetaDigitalService.listDocumentosByPersona(cleanId).catch(() => []),
+        this.carpetaDigitalService.getChecklistForPersona(cleanId).catch(() => ({ tiposDocumentos: [] })),
+      ]);
+      return {
+        success: true,
+        data: {
+          carpeta,
+          persona: carpeta ? { id: cleanId, nombre: carpeta.nombre_carpeta, email: carpeta.email_propietario, numero_documento: carpeta.numero_documento } : null,
+          documentos: Array.isArray(documentos) ? documentos : [],
+          tipos_requeridos: (checklist as any)?.tiposDocumentos || [],
+        },
+      };
+    } catch (err: any) {
+      return {
+        success: true,
+        data: { documentos: [], tipos_requeridos: [], persona: null },
+        message: err?.message,
+      };
+    }
   }
 
   /**

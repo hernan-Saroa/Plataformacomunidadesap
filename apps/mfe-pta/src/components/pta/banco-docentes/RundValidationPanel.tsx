@@ -391,22 +391,43 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       setRundBloques(blq);
       setRundAuditLog(Array.isArray(auditRes?.data || auditRes) ? (auditRes?.data || auditRes) : []);
 
-      // Inicializar el estado de validación granular
-      // Build reverse map: tipoSoporte -> campo name from CATALOGO_BR039
+      // Inicializar el estado de validación granular.
+      // Construimos dos mapas inversos para soportar AMBOS formatos en `campo_rund`:
+      //   a) Legacy / por catálogo: 'documento_identidad' → primer c.campo asociado
+      //   b) Nuevo (lo que se guarda hoy desde handleAprobarRund): c.campo en mayúsculas
+      // El UI lee docStatus[c.campo] con la casing ORIGINAL del catálogo, así que la key
+      // restaurada DEBE coincidir exactamente con `c.campo` (no su versión upper-case).
       const tipoSoporteToCampo: Record<string, string> = {};
+      const upperCampoToCampo: Record<string, string> = {};
       Object.values(CATALOGO_BR039).forEach(cfg => {
         cfg.campos.forEach(c => {
-          if (c.tipoSoporte) tipoSoporteToCampo[c.tipoSoporte] = c.campo;
+          // Sólo el primer campo por tipoSoporte (evita que el último sobrescriba)
+          if (c.tipoSoporte && !tipoSoporteToCampo[c.tipoSoporte]) {
+            tipoSoporteToCampo[c.tipoSoporte] = c.campo;
+          }
+          upperCampoToCampo[c.campo.toUpperCase()] = c.campo;
         });
       });
+
+      const resolveCampoKey = (campoRundRaw: any): string => {
+        const raw = String(campoRundRaw || '').trim();
+        if (!raw) return raw;
+        // 1) Match exacto contra c.campo en mayúsculas (formato actual)
+        const exactUpper = upperCampoToCampo[raw.toUpperCase()];
+        if (exactUpper) return exactUpper;
+        // 2) Match contra tipoSoporte en minúsculas (formato legacy)
+        const byTipo = tipoSoporteToCampo[raw.toLowerCase()];
+        if (byTipo) return byTipo;
+        // 3) Fallback: usar el valor crudo (no debería pasar)
+        return raw;
+      };
 
       if (tar?.validacionDocumental && Array.isArray(tar.validacionDocumental)) {
         const initDocStatus: Record<string, 'Aprobado' | 'Rechazado'> = {};
         const initMockUploadedDocs: Record<string, string> = {};
 
         tar.validacionDocumental.forEach((val: any) => {
-          // Map campo_rund -> CATALOGO_BR039 campo name (e.g. 'DOCUMENTO_IDENTIDAD' -> 'Tipo y número de documento')
-          const campoKey = tipoSoporteToCampo[val.campo_rund?.toLowerCase()] || val.campo_rund;
+          const campoKey = resolveCampoKey(val.campo_rund);
 
           if (val.estado_documento === 'Aceptado' || val.estado_documento === 'Aprobado') {
             initDocStatus[campoKey] = 'Aprobado';
@@ -421,19 +442,44 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
         setMockUploadedDocs(prev => ({ ...prev, ...initMockUploadedDocs }));
       }
 
-      // Also populate mockUploadedDocs from bloques soportes
+      // ── Fuente de verdad UNIFICADA: el estado de los soportes (RundSoporteCampo.estado) ──
+      // Un soporte (ej. documento_identidad) cubre VARIOS campos (Tipo doc, Nombre, Género,
+      // Fecha nac). Por eso mapeamos cada tipoSoporte a TODOS sus campos y propagamos
+      // tanto la URL del archivo (mockUploadedDocs) como el estado de aprobación (docStatus).
+      // Esto hace que tras recargar/guardar, los campos cuyo soporte ya fue aprobado/rechazado
+      // muestren el badge correcto y NO vuelvan a aparecer los botones Aprobar/Rechazar.
+      const tipoSoporteToCampos: Record<string, string[]> = {};
+      Object.values(CATALOGO_BR039).forEach(cfg => {
+        cfg.campos.forEach(c => {
+          if (!c.tipoSoporte) return;
+          (tipoSoporteToCampos[c.tipoSoporte] ||= []).push(c.campo);
+        });
+      });
+
       if (Array.isArray(blq)) {
         const fromSoportes: Record<string, string> = {};
+        const fromSoportesStatus: Record<string, 'Aprobado' | 'Rechazado'> = {};
         blq.forEach((b: any) => {
           (b.soportes || []).forEach((s: any) => {
-            if (s.documento_carpeta_id && s.tipo_soporte) {
-              const campoKey = tipoSoporteToCampo[s.tipo_soporte] || s.tipo_soporte;
-              fromSoportes[campoKey] = s.documento_carpeta_id;
-            }
+            if (!s.tipo_soporte) return;
+            const campos = tipoSoporteToCampos[s.tipo_soporte] || [tipoSoporteToCampo[s.tipo_soporte] || s.tipo_soporte];
+            const estadoNorm = String(s.estado || '').toLowerCase().trim();
+            const mappedStatus: 'Aprobado' | 'Rechazado' | null =
+              estadoNorm === 'aprobado' || estadoNorm === 'aceptado' ? 'Aprobado'
+              : estadoNorm === 'rechazado' || estadoNorm === 'devuelto' ? 'Rechazado'
+              : null;
+            campos.forEach(campoKey => {
+              if (s.documento_carpeta_id) fromSoportes[campoKey] = s.documento_carpeta_id;
+              if (mappedStatus) fromSoportesStatus[campoKey] = mappedStatus;
+            });
           });
         });
         if (Object.keys(fromSoportes).length > 0) {
           setMockUploadedDocs(prev => ({ ...fromSoportes, ...prev }));
+        }
+        if (Object.keys(fromSoportesStatus).length > 0) {
+          // El estado del soporte tiene prioridad sobre lo que vino de validacionDocumental.
+          setDocStatus(prev => ({ ...prev, ...fromSoportesStatus }));
         }
       }
     } catch (err) {

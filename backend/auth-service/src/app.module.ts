@@ -21,6 +21,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { CarpetaDigitalModule } from './carpeta-digital/carpeta-digital.module';
 import { CarpetaDigital } from './carpeta-digital/carpeta-digital.entity';
 import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
+import { DocumentoCarpetaDigital } from './carpeta-digital/documento-carpeta-digital.entity';
 import { EstructuraImportModule } from './estructura-import/estructura-import.module';
 
 @NestModule({
@@ -47,6 +48,7 @@ import { EstructuraImportModule } from './estructura-import/estructura-import.mo
         Asignatura,
         CarpetaDigital,
         TipoDocumento,
+        DocumentoCarpetaDigital,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
     }),
