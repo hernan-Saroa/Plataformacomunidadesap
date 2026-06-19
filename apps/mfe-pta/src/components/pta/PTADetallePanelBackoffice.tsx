@@ -145,6 +145,7 @@ function getNextStateLabel(current: string, hayModificaciones = false): string {
   if (current === 'Pendiente Jefatura') return 'Aprobar → Avanzar a Decanatura';
   if (current === 'Pendiente Decanatura') return 'Aprobar → Avanzar a G. Profesoral';
   if (current === 'Pendiente Gestión Profesoral') return 'Aprobar PTA (Firma Digital)';
+  if (current === 'PENDIENTE_APROBACION') return 'Aprobar por Componentes';
   return 'Aprobar';
 }
 
@@ -975,15 +976,16 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
     const estado = approval.estado || 'pendiente';
+    const isAutoAprobado = estado === 'aprobado' && approval.aprobadorNombre === 'Sistema';
     const isEditing = estado !== 'aprobado' || !!evaluandoComponente[key];
     const isProcessing = !!procesandoAprobacionComponente[key];
 
     const componentAuthorized = isComponentAuthorized(key);
-    const canEvaluateComponent = puedeAprobar && isPendiente && componentAuthorized;
+    const canEvaluateComponent = puedeAprobar && isPendiente && componentAuthorized && !isAutoAprobado;
 
     const getAssignmentDate = () => {
       const transition = (pta.historialEstados || []).find(
-        (h: any) => h.estadoNuevo === 'Pendiente Jefatura' || h.estado_nuevo === 'Pendiente Jefatura'
+        (h: any) => ['Pendiente Jefatura', 'PENDIENTE_APROBACION'].includes(h.estadoNuevo || h.estado_nuevo || '')
       );
       if (transition && transition.createdAt) {
         return new Date(transition.createdAt);
@@ -1212,17 +1214,24 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         {/* Detalle de Aprobación Guardada */}
         {!isEditing && (
           <div style={{
-            background: 'rgba(240, 253, 244, 0.4)',
+            background: isAutoAprobado ? 'rgba(241, 245, 249, 0.6)' : 'rgba(240, 253, 244, 0.4)',
             borderRadius: 10,
             padding: '12px 14px',
             fontSize: '0.74rem',
-            color: '#15803D',
-            border: '1px dashed #A7F3D0',
+            color: isAutoAprobado ? '#475569' : '#15803D',
+            border: isAutoAprobado ? '1px dashed #CBD5E1' : '1px dashed #A7F3D0',
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
             marginLeft: 6
           }}>
+            {isAutoAprobado ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#64748B', fontStyle: 'italic' }}>
+                <CheckCircle style={{ width: 13, height: 13, color: '#94A3B8', flexShrink: 0 }} />
+                Sin actividades registradas — no requiere aprobación
+              </div>
+            ) : (
+              <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', fontSize: '0.7rem' }}>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Aprobado Por</span>
@@ -1297,6 +1306,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               >
                 Volver a evaluar
               </button>
+            )}
+              </>
             )}
           </div>
         )}
@@ -2343,11 +2354,26 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
                 {/* Progress Stats & Count Badges */}
                 {(() => {
-                  const total = 9;
-                  const aprobados = componentesAprobacion.filter(c => c.estado === 'aprobado').length;
-                  const devueltos = componentesAprobacion.filter(c => c.estado === 'devuelto').length;
+                  // Componentes fijos (Docencia, Investigación, Complementarias, AADM) = 4
+                  // + sub-componentes de extensión que tengan horas > 0
+                  const extSubKeyMap: Record<string, string> = {
+                    capacitacion: 'ext_capacitacion',
+                    seleccion: 'ext_procesos',
+                    fortalecimiento: 'ext_fortalecimiento',
+                    alto_gobierno: 'ext_gobierno',
+                    otras: 'ext_secciones',
+                  };
+                  const extSubKeys = Object.keys(extSubKeyMap);
+                  const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
+                  const visibleComponenteKeys = new Set([
+                    'academica', 'investigacion', 'complementarias', 'academicas_admin',
+                    ...extConHoras.map(k => extSubKeyMap[k]),
+                  ]);
+                  const total = visibleComponenteKeys.size;
+                  const aprobados = componentesAprobacion.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
+                  const devueltos = componentesAprobacion.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
                   const pendientes = total - aprobados - devueltos;
-                  const pct = Math.round((aprobados / total) * 100);
+                  const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
                   return (
                     <div style={{ marginTop: 16 }}>
                       {/* Stats Badges Grid */}
@@ -2476,8 +2502,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       gap: 12,
                       paddingLeft: 6,
                     }}>
-                      {/* Sub 1: Capacitación */}
-                      {renderComponentCard(
+                      {/* Sub 1: Capacitación — solo si tiene horas */}
+                      {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
                         'ext_capacitacion',
                         'Capacitación y Formación',
                         GraduationCap,
@@ -2486,8 +2512,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 2: Procesos de Selección */}
-                      {renderComponentCard(
+                      {/* Sub 2: Procesos de Selección — solo si tiene horas */}
+                      {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
                         'ext_procesos',
                         'Procesos de Selección',
                         Briefcase,
@@ -2496,8 +2522,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 3: Fortalecimiento Institucional */}
-                      {renderComponentCard(
+                      {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
+                      {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
                         'ext_fortalecimiento',
                         'Fortalecimiento Institucional',
                         Building2,
@@ -2506,8 +2532,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 4: Escuela de Alto Gobierno */}
-                      {renderComponentCard(
+                      {/* Sub 4: Escuela de Alto Gobierno — solo si tiene horas */}
+                      {getSubcomponentHours('alto_gobierno') > 0 && renderComponentCard(
                         'ext_gobierno',
                         'Escuela de Alto Gobierno',
                         Shield,
@@ -2516,8 +2542,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 5: Secciones y Actividades */}
-                      {renderComponentCard(
+                      {/* Sub 5: Secciones y Actividades — solo si tiene horas */}
+                      {getSubcomponentHours('otras') > 0 && renderComponentCard(
                         'ext_secciones',
                         'Secciones y Actividades',
                         Layers,
@@ -2821,7 +2847,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {isPendiente && puedeAprobarNivelActual && (
+              {isPendiente && puedeAprobarNivelActual && pta.estado !== 'PENDIENTE_APROBACION' && (
                 <>
                   {yaAproboEstaJefatura ? (
                     <div style={{
@@ -2968,7 +2994,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 )}
               </div>
 
-              {isPendiente && puedeAprobarNivelActual && (
+              {isPendiente && puedeAprobarNivelActual && pta.estado !== 'PENDIENTE_APROBACION' && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   {!yaAproboEstaJefatura && (
                   <button

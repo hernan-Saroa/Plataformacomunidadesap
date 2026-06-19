@@ -361,7 +361,16 @@ export class PtaService {
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    const hExt = extActs.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    // Aplicar multiplicador x2 para capacitación (igual que computeHorasTotales) para mantener consistencia
+    const extActsNorm = extActs.map((a: any) => {
+      const actId = String(a?.actividad_id || a?.id || '');
+      const seccion = String(a?.seccion || '');
+      const esCapacitacion = actId.startsWith('CAP_') || seccion === 'capacitacion';
+      if (!esCapacitacion) return a;
+      const horasEjec = Number(a?.horas_ejecutadas ?? a?.horas ?? 0);
+      return { ...a, horas: horasEjec * 2 };
+    });
+    const hExt = extActsNorm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp + hAcad);
@@ -1926,28 +1935,81 @@ export class PtaService {
 
   async getComponentesAprobacion(ptaId: string) {
     const list = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+
+    // Fetch PTA content to determine which components have hours
+    const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    const ds = (ptaEntity?.datosEstructurados as any) || {};
+
+    const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
+    const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
+    const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
+    const comp: any[] = Array.isArray(ds.complementarias) ? ds.complementarias : [];
+    const acadAdmin: any[] = Array.isArray(ds.academico_admin) ? ds.academico_admin : [];
+
+    const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+      invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
+    const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+
+    const extBySeccion = (seccion: string) =>
+      extActs
+        .filter((a: any) => String(a?.seccion || '') === seccion)
+        .reduce((s: number, a: any) => {
+          const h = seccion === 'capacitacion'
+            ? Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * 2
+            : Number(a?.horas ?? 0);
+          return s + h;
+        }, 0);
+
+    const horasPorComponente: Record<string, number> = {
+      academica: hDocencia,
+      investigacion: hInv,
+      ext_capacitacion: extBySeccion('capacitacion'),
+      ext_procesos: extBySeccion('procesos_seleccion'),
+      ext_fortalecimiento: extBySeccion('fortalecimiento'),
+      ext_gobierno: extBySeccion('gobierno_territorial'),
+      ext_secciones: extBySeccion('otras_secciones'),
+      complementarias: hComp,
+      academicas_admin: hAcad,
+    };
+
+    const todosComponentes = Object.keys(horasPorComponente);
+
     if (list.length === 0) {
-      const componentes = [
-        'academica',
-        'investigacion',
-        'ext_capacitacion',
-        'ext_procesos',
-        'ext_fortalecimiento',
-        'ext_gobierno',
-        'ext_secciones',
-        'complementarias',
-        'academicas_admin',
-      ];
-      const items = componentes.map(comp =>
-        this.ptaComponentApprovalRepo.create({
+      // Create all records, auto-approving those with 0h
+      const items = todosComponentes.map(c => {
+        const tieneHoras = horasPorComponente[c] > 0;
+        return this.ptaComponentApprovalRepo.create({
           ptaId,
-          componente: comp,
-          estado: 'pendiente',
-        }),
-      );
+          componente: c,
+          estado: tieneHoras ? 'pendiente' : 'aprobado',
+          ...(tieneHoras ? {} : {
+            aprobadorNombre: 'Sistema',
+            comentarios: 'Sin actividades — aprobación automática',
+            fechaAprobacion: new Date(),
+          }),
+        });
+      });
       await this.ptaComponentApprovalRepo.save(items);
       return items;
     }
+
+    // Auto-approve existing 'pendiente' records that have 0h (retroactive fix)
+    const toUpdate: typeof list = [];
+    for (const record of list) {
+      if (record.estado === 'pendiente' && horasPorComponente[record.componente] === 0) {
+        record.estado = 'aprobado';
+        record.aprobadorNombre = 'Sistema';
+        record.comentarios = 'Sin actividades — aprobación automática';
+        record.fechaAprobacion = new Date();
+        toUpdate.push(record);
+      }
+    }
+    if (toUpdate.length > 0) {
+      await this.ptaComponentApprovalRepo.save(toUpdate);
+    }
+
     return list;
   }
 
