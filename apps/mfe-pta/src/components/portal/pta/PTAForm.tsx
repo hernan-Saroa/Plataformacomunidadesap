@@ -1701,7 +1701,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   };
 
   return (
-    <div className={`max-w-7xl mx-auto w-full pb-32 animate-in fade-in duration-500${isAdminEdit ? ' px-6 pt-2' : ''}`}>
+    <div className={`mx-auto w-full pb-32 animate-in fade-in duration-500${isAdminEdit ? ' px-6 pt-2' : ''}`}>
       {/* Header — solo título, sin botones de acción (movidos al sticky footer) */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
         <div>
@@ -2036,7 +2036,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 </div>
                 <div className="p-5">
                   <div className="text-center mb-5">
-                    <div className="relative w-[100px] h-[100px] mx-auto flex items-center justify-center">
+                    <div className="relative w-[100px] h-[100px] mx-auto flex items-center justify-center" style={{height: '100px'}}>
                       {(() => {
                         const r = 42;
                         const circ = 2 * Math.PI * r;
@@ -3210,7 +3210,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           </div>{/* cierra wrapper layout columna */}
 
       {/* ─── STICKY FOOTER ─── */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-2xl border-t border-gray-200/50 p-4 px-6 md:px-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-2xl border-t border-gray-200/50 p-4 px-6 md:px-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]" style={{borderTop: '1px solid darkgray'}}>
         <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto w-full">
           {/* Status compacto */}
           <div className={`hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${totalHoras > horasAProgramar ? 'bg-red-50/80 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-blue-50/80 border-blue-200 text-blue-800'}`}>

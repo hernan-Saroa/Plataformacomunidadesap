@@ -242,15 +242,20 @@ export function ReviewRequestsModule({
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
-  const PERSON_NAME_MAX_LENGTH = 100;
+  const REVIEW_NOTES_MIN_LENGTH = 10;
+  const REVIEW_NOTES_MAX_LENGTH = 4000;
+  const PERSON_NAME_MIN_LENGTH = 5;
+  const PERSON_NAME_MAX_LENGTH = 150;
   const DOCUMENT_MIN_LENGTH = 5;
-  const DOCUMENT_MAX_LENGTH = 10;
+  const DOCUMENT_MAX_LENGTH = 20;
+  const EMAIL_MIN_LENGTH = 5;
   const EMAIL_MAX_LENGTH = 254;
-  const REGISTRY_FIELD_MAX_LENGTH = 10;
-  const REVIEW_NOTES_MAX_LENGTH = 1000;
+  const REGISTRY_NUMBER_MAX_LENGTH = 20;
+  const FOLIO_BOOK_MAX_LENGTH = 10;
   const MIN_GRADUATION_YEAR = 1900;
   const MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS = 15;
-  const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
+  const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
+  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
 
   const normalizeKey = (value?: string) =>
     (value || '')
@@ -302,11 +307,11 @@ export function ReviewRequestsModule({
   const sanitizeDigits = (value: string, maxLength: number) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
 
+  const sanitizeAlphanumeric = (value: string, maxLength: number) =>
+    value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
+
   const sanitizePersonName = (value: string) =>
-    value
-      .replace(/[0-9]/g, '')
-      .replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]/g, '')
-      .slice(0, PERSON_NAME_MAX_LENGTH);
+    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
 
   const getPersonNameValidationError = (value: string, fieldLabel: string) => {
     const normalized = normalizeSpaces(value);
@@ -315,8 +320,8 @@ export function ReviewRequestsModule({
       return `${fieldLabel} es obligatorio`;
     }
 
-    if (normalized.length < 2) {
-      return `${fieldLabel} debe tener al menos 2 caracteres`;
+    if (normalized.length < PERSON_NAME_MIN_LENGTH) {
+      return `${fieldLabel} debe tener al menos ${PERSON_NAME_MIN_LENGTH} caracteres`;
     }
 
     if (normalized.length > PERSON_NAME_MAX_LENGTH) {
@@ -1554,7 +1559,7 @@ export function ReviewRequestsModule({
     return {
       fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
       idNumber:
-        sanitizeDigits(
+        sanitizeAlphanumeric(
           getPayloadText(payload, 'idNumber') || baseForm.idNumber,
           DOCUMENT_MAX_LENGTH,
         ) || baseForm.idNumber,
@@ -1571,17 +1576,17 @@ export function ReviewRequestsModule({
       numRegistro:
         sanitizeDigits(
           getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
-          REGISTRY_FIELD_MAX_LENGTH,
+          REGISTRY_NUMBER_MAX_LENGTH,
         ) || baseForm.numRegistro,
       numFolio:
         sanitizeDigits(
           getPayloadText(payload, 'numFolio') || baseForm.numFolio,
-          REGISTRY_FIELD_MAX_LENGTH,
+          FOLIO_BOOK_MAX_LENGTH,
         ) || baseForm.numFolio,
       numLibro:
         sanitizeDigits(
           getPayloadText(payload, 'numLibro') || baseForm.numLibro,
-          REGISTRY_FIELD_MAX_LENGTH,
+          FOLIO_BOOK_MAX_LENGTH,
         ) || baseForm.numLibro,
     };
   };
@@ -1611,7 +1616,7 @@ export function ReviewRequestsModule({
       fullName:
         (request.graduateLastName || '').trim() ||
         (request.requester.type === 'graduado' ? request.requester.name.trim() : ''),
-      idNumber: sanitizeDigits(
+      idNumber: sanitizeAlphanumeric(
         request.graduateDocumentNumber,
         DOCUMENT_MAX_LENGTH,
       ),
@@ -1682,7 +1687,7 @@ export function ReviewRequestsModule({
           .find((value) => value.length > 0) || '';
 
       try {
-        const documentForExistingPrograms = sanitizeDigits(
+        const documentForExistingPrograms = sanitizeAlphanumeric(
           detail.idNumber || request.graduateDocumentNumber,
           DOCUMENT_MAX_LENGTH,
         );
@@ -1702,7 +1707,7 @@ export function ReviewRequestsModule({
 
       let nextForm: ApprovalForm = {
         fullName: resolvedFullName,
-        idNumber: sanitizeDigits(
+        idNumber: sanitizeAlphanumeric(
           detail.idNumber || request.graduateDocumentNumber,
           DOCUMENT_MAX_LENGTH,
         ),
@@ -1726,7 +1731,7 @@ export function ReviewRequestsModule({
           nextForm = {
             ...nextForm,
             fullName: graduate.fullName || nextForm.fullName,
-            idNumber: sanitizeDigits(
+            idNumber: sanitizeAlphanumeric(
               graduate.idNumber || nextForm.idNumber,
               DOCUMENT_MAX_LENGTH,
             ),
@@ -1787,6 +1792,12 @@ export function ReviewRequestsModule({
       );
       return;
     }
+    if (trimmedReviewNotes.length < REVIEW_NOTES_MIN_LENGTH) {
+      toast.error(
+        `Las notas de revisión deben tener al menos ${REVIEW_NOTES_MIN_LENGTH} caracteres`,
+      );
+      return;
+    }
     if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
       toast.error(`Las notas de revisión no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
       return;
@@ -1795,15 +1806,29 @@ export function ReviewRequestsModule({
     let approvalDetails: ApprovalForm | undefined;
     if (reviewAction === 'approve') {
       const trimmedFullName = normalizeSpaces(approvalForm.fullName);
-      const trimmedIdNumber = sanitizeDigits(
+      const trimmedIdNumber = sanitizeAlphanumeric(
         approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || '',
         DOCUMENT_MAX_LENGTH,
       );
       const trimmedEmail = approvalForm.email.trim();
-      const trimmedRegistro = sanitizeDigits(approvalForm.numRegistro, REGISTRY_FIELD_MAX_LENGTH);
-      const trimmedFolio = sanitizeDigits(approvalForm.numFolio, REGISTRY_FIELD_MAX_LENGTH);
-      const trimmedLibro = sanitizeDigits(approvalForm.numLibro, REGISTRY_FIELD_MAX_LENGTH);
-      const digitsOnly = new RegExp(`^\\d{1,${REGISTRY_FIELD_MAX_LENGTH}}$`);
+      const trimmedRegistro = sanitizeDigits(
+        approvalForm.numRegistro,
+        REGISTRY_NUMBER_MAX_LENGTH,
+      );
+      const trimmedFolio = sanitizeDigits(
+        approvalForm.numFolio,
+        FOLIO_BOOK_MAX_LENGTH,
+      );
+      const trimmedLibro = sanitizeDigits(
+        approvalForm.numLibro,
+        FOLIO_BOOK_MAX_LENGTH,
+      );
+      const registryDigitsOnly = new RegExp(
+        `^\\d{1,${REGISTRY_NUMBER_MAX_LENGTH}}$`,
+      );
+      const folioBookDigitsOnly = new RegExp(
+        `^\\d{1,${FOLIO_BOOK_MAX_LENGTH}}$`,
+      );
       const nameValidationError = getPersonNameValidationError(
         approvalForm.fullName,
         'El nombre del graduado',
@@ -1819,9 +1844,12 @@ export function ReviewRequestsModule({
       if (
         !trimmedIdNumber ||
         trimmedIdNumber.length < DOCUMENT_MIN_LENGTH ||
-        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH
+        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH ||
+        !DOCUMENT_ALLOWED_REGEX.test(trimmedIdNumber)
       ) {
-        toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
+        toast.error(
+          `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres, solo letras y números`,
+        );
         return;
       }
       if (!trimmedEmail) {
@@ -1829,7 +1857,11 @@ export function ReviewRequestsModule({
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (trimmedEmail.length > EMAIL_MAX_LENGTH || !emailRegex.test(trimmedEmail)) {
+      if (
+        trimmedEmail.length < EMAIL_MIN_LENGTH ||
+        trimmedEmail.length > EMAIL_MAX_LENGTH ||
+        !emailRegex.test(trimmedEmail)
+      ) {
         toast.error('El email no tiene un formato válido');
         return;
       }
@@ -1893,16 +1925,22 @@ export function ReviewRequestsModule({
         toast.error('La sede seleccionada no pertenece a la territorial indicada');
         return;
       }
-      if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
-        toast.error('El número de registro es obligatorio y debe tener máximo 10 dígitos');
+      if (!trimmedRegistro || !registryDigitsOnly.test(trimmedRegistro)) {
+        toast.error(
+          `El número de registro es obligatorio y debe tener máximo ${REGISTRY_NUMBER_MAX_LENGTH} dígitos`,
+        );
         return;
       }
-      if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
-        toast.error('El número de folio es obligatorio y debe tener máximo 10 dígitos');
+      if (!trimmedFolio || !folioBookDigitsOnly.test(trimmedFolio)) {
+        toast.error(
+          `El número de folio es obligatorio y debe tener máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos`,
+        );
         return;
       }
-      if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
-        toast.error('El número de libro es obligatorio y debe tener máximo 10 dígitos');
+      if (!trimmedLibro || !folioBookDigitsOnly.test(trimmedLibro)) {
+        toast.error(
+          `El número de libro es obligatorio y debe tener máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos`,
+        );
         return;
       }
 
@@ -3289,6 +3327,7 @@ export function ReviewRequestsModule({
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
+                onBlur={() => setReviewNotes((value) => value.trim())}
                 placeholder={
                   reviewAction === 'approve'
                     ? 'Describe la información revisada y los soportes cargados...'
@@ -3296,8 +3335,18 @@ export function ReviewRequestsModule({
                 }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
+                minLength={REVIEW_NOTES_MIN_LENGTH}
                 maxLength={REVIEW_NOTES_MAX_LENGTH}
               />
+              <div className="mt-1 flex items-start justify-between gap-3 text-xs text-gray-500">
+                <span>
+                  Texto libre, incluidos signos de puntuación, caracteres especiales y saltos de línea.
+                  Mínimo {REVIEW_NOTES_MIN_LENGTH} caracteres.
+                </span>
+                <span className="whitespace-nowrap">
+                  {reviewNotes.length}/{REVIEW_NOTES_MAX_LENGTH}
+                </span>
+              </div>
             </div>
 
             {reviewAction === 'approve' && (
@@ -3322,8 +3371,13 @@ export function ReviewRequestsModule({
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="Nombre completo"
                       disabled={isLoadingApprovalData}
+                      minLength={PERSON_NAME_MIN_LENGTH}
                       maxLength={PERSON_NAME_MAX_LENGTH}
                     />
+                    <p className="text-xs text-gray-500">
+                      Entre {PERSON_NAME_MIN_LENGTH} y {PERSON_NAME_MAX_LENGTH} caracteres.
+                      Solo letras, espacios, apóstrofes y guiones.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3334,14 +3388,19 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          idNumber: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                          idNumber: sanitizeAlphanumeric(e.target.value, DOCUMENT_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      inputMode="numeric"
+                      inputMode="text"
+                      minLength={DOCUMENT_MIN_LENGTH}
                       maxLength={DOCUMENT_MAX_LENGTH}
                       disabled
                     />
+                    <p className="text-xs text-gray-500">
+                      Entre {DOCUMENT_MIN_LENGTH} y {DOCUMENT_MAX_LENGTH} caracteres,
+                      únicamente letras y números.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3356,9 +3415,16 @@ export function ReviewRequestsModule({
                           email: e.target.value.slice(0, EMAIL_MAX_LENGTH),
                         })
                       }
+                      onBlur={() =>
+                        setApprovalForm((current) => ({
+                          ...current,
+                          email: current.email.trim(),
+                        }))
+                      }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
+                      minLength={EMAIL_MIN_LENGTH}
                       maxLength={EMAIL_MAX_LENGTH}
                       required
                     />
@@ -3373,7 +3439,10 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numRegistro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numRegistro: sanitizeDigits(
+                            e.target.value,
+                            REGISTRY_NUMBER_MAX_LENGTH,
+                          ),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3381,9 +3450,13 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={REGISTRY_NUMBER_MAX_LENGTH}
                       required
                     />
+                    <p className="text-xs text-gray-500">
+                      Solo números, máximo {REGISTRY_NUMBER_MAX_LENGTH} dígitos.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3395,7 +3468,7 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numFolio: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numFolio: sanitizeDigits(e.target.value, FOLIO_BOOK_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3403,7 +3476,8 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={FOLIO_BOOK_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -3417,7 +3491,7 @@ export function ReviewRequestsModule({
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numLibro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numLibro: sanitizeDigits(e.target.value, FOLIO_BOOK_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -3425,7 +3499,8 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={FOLIO_BOOK_MAX_LENGTH}
                       required
                     />
                   </div>

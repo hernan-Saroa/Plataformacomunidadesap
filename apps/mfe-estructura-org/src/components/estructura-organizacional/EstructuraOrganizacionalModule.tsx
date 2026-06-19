@@ -90,7 +90,8 @@ export function EstructuraOrganizacionalModule() {
       const sorted = sortPeriodsByCreation(list);
       setPeriodos(sorted);
       if (sorted.length > 0) {
-        setPeriodo(sorted[0].codigo || '');
+        const actual = sorted.find(p => p.estado === 'en_curso');
+        setPeriodo(actual?.codigo || '');
       } else {
         setPeriodo('');
       }
@@ -329,7 +330,9 @@ export function EstructuraOrganizacionalModule() {
                   className="text-sm font-bold text-[#003DA5] bg-transparent border-0 focus:ring-0 focus:outline-none cursor-pointer pr-6 appearance-auto"
                 >
                   {periodos.map((p) => (
-                    <option key={p.codigo} value={p.codigo}>{p.codigo}</option>
+                    <option key={p.codigo} value={p.codigo}>
+                      {p.codigo}{p.estado === 'en_curso' && ' - Actual'}
+                    </option>
                   ))}
                 </select>
               </div>
