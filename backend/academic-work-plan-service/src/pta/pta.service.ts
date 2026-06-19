@@ -507,7 +507,7 @@ export class PtaService {
   }
 
   async savePTA(input: SavePtaInput) {
-    const id = coalesceString(input?.id);
+    let id = coalesceString(input?.id);
     const docenteKey = coalesceString(
       input?.docente_id,
       input?.docenteId,
@@ -558,14 +558,22 @@ export class PtaService {
       });
 
       if (ptaActivo) {
-        const solicitud = await this.solicitudRepo.findOne({
-          where: { docenteId, estado: 'aprobado' } as any,
-          order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
-        });
-        if (!solicitud) {
-          throw new BadRequestException(
-            'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
-          );
+        const estadoActivo = String(ptaActivo.estado || '').toLowerCase();
+        // Si el único PTA activo es un BORRADOR, el docente lo está editando/enviando:
+        // reutilizamos su id para ACTUALIZARLO en vez de bloquear (el front a veces no
+        // reenvía el id al guardar). Solo bloqueamos si ya hay un PTA enviado/en proceso.
+        if (estadoActivo === 'borrador') {
+          id = ptaActivo.id;
+        } else {
+          const solicitud = await this.solicitudRepo.findOne({
+            where: { docenteId, estado: 'aprobado' } as any,
+            order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
+          });
+          if (!solicitud) {
+            throw new BadRequestException(
+              'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
+            );
+          }
         }
       }
     }

@@ -16,7 +16,7 @@
  * @date 2026-03-13
  */
 
-import React, { useState, useMemo, useEffect, type ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
