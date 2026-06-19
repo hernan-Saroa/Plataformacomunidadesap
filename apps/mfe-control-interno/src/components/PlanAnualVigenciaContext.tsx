@@ -74,7 +74,7 @@ export function PlanAnualVigenciaSelector({
         className={className || SELECT_CLASS}
         aria-label="Vigencia del plan anual"
       >
-        <option>{vigencia}</option>
+        <option>Sin planes</option>
       </select>
     );
   }
