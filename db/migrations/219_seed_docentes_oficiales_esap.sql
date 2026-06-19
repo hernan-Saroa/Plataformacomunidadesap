@@ -334,7 +334,7 @@ BEGIN
   )
   -- personaId es uuid (FK a auth.personas tras migración 315).
   -- territorialId guarda el id_seccional (bigint as text) de auth.seccionales, SIN FK.
-  SELECT p.id_person::text, p.id_person,
+  SELECT p.id_person, p.id_person,
          COALESCE(t.id_seccional::text, (SELECT id_seccional::text FROM auth.seccionales ORDER BY id_seccional LIMIT 1)),
          t.vinculacion, 'Tiempo Completo', 'ACTIVO',
          800, t.correo, NOW(), NOW()
@@ -342,6 +342,6 @@ BEGIN
   JOIN auth.personas p ON p.num_identificacion = t.num_doc
   WHERE NOT EXISTS (
     SELECT 1 FROM academic_work_plan."Docente" d
-    WHERE d."personaId" = p.id_person OR d.id = p.id_person::text
+    WHERE d."personaId" = p.id_person OR d.id = p.id_person
   );
 END $$;

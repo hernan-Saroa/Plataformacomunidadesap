@@ -284,7 +284,7 @@ function Paso0ListasChequeo({ auditoria }: { auditoria: Auditoria }) {
           <ul className="list-disc list-inside mt-2">
             <li>Auditor Líder</li>
             <li>Equipo de Auditoría</li>
-            <li>Responsable del Área</li>
+            <li>Responsable del Área Auditada</li>
           </ul>
         </div>
 
@@ -401,7 +401,7 @@ function Paso2ProcesoAuditado({ auditoria }: { auditoria: Auditoria }) {
 
       {/* Responsable del área */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">Responsable del Área</h4>
+        <h4 className="text-sm font-medium text-gray-900 mb-3">Responsable del Área Auditada</h4>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-medium">

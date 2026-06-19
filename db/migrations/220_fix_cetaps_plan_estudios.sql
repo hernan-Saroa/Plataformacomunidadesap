@@ -362,20 +362,24 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM auth.sedes sede WHERE sede.id_sede = seed.legacy_id);
 
   -- 2) Re-conectar asignaturas (plan de estudios) a los programas nuevos
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '055118cc-895e-4e9a-a64b-047c436c59f7', "updatedAt" = NOW() WHERE "programaId" = 'AP_Diurno';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '055118cc-895e-4e9a-a64b-047c436c59f7', "updatedAt" = NOW() WHERE "programaId" = 'AP-01';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '8dced35a-12c8-44a8-a1de-0ed60f882954', "updatedAt" = NOW() WHERE "programaId" = 'AP_Nocturno';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'cae0f4b2-fc47-4e45-a523-5a4e0d38c6bb', "updatedAt" = NOW() WHERE "programaId" = 'APT';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'cae0f4b2-fc47-4e45-a523-5a4e0d38c6bb', "updatedAt" = NOW() WHERE "programaId" = 'APT-02';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '65b32ee1-e935-4ea0-ad9f-75fd99ca4c37', "updatedAt" = NOW() WHERE "programaId" = 'Economía_Pública';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '01e9aed0-fc97-48f1-a565-a03f22f9dc62', "updatedAt" = NOW() WHERE "programaId" = 'Alta_Dirección_Del_Estado_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '95f81ef0-d4ac-4f80-ace0-7dd0cef586cd', "updatedAt" = NOW() WHERE "programaId" = 'Derechos_Humanos_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '93a70719-9076-44e5-aa9f-9d1e00ba923d', "updatedAt" = NOW() WHERE "programaId" = 'Finanzas_Públicas_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'e9fc371e-2fc4-4505-a1e0-8b692fcbc8ce', "updatedAt" = NOW() WHERE "programaId" = 'GEPUR_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '780225e6-97a5-4cac-a76d-c75add01264a', "updatedAt" = NOW() WHERE "programaId" = 'Gerencia_Social_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = 'be3ff6ec-7b89-4a35-ab4e-6fdb4e30d9f3', "updatedAt" = NOW() WHERE "programaId" = 'Gestión_Pública_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '9fda5af6-0cf0-4c40-a5a9-b516946efe7c', "updatedAt" = NOW() WHERE "programaId" = 'Proyectos_de_Desarrollo_ESP';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '7a737691-b084-4b67-abaf-1f82676b2ec2', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_DDHH_y_Posconflicto';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '99ac91a2-9593-4ec8-ae9d-78dea310d5cb', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_AdministraciónPública_DISTANCIA';
-  UPDATE academic_work_plan."Asignatura" SET "programaId" = '3a6a64c1-9478-4cb3-a1a9-a2d918375820', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_AdministraciónPública_PRESENCIAL';
+  IF to_regclass('academic_work_plan."Asignatura"') IS NOT NULL THEN
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '055118cc-895e-4e9a-a64b-047c436c59f7', "updatedAt" = NOW() WHERE "programaId" = 'AP_Diurno';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '055118cc-895e-4e9a-a64b-047c436c59f7', "updatedAt" = NOW() WHERE "programaId" = 'AP-01';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '8dced35a-12c8-44a8-a1de-0ed60f882954', "updatedAt" = NOW() WHERE "programaId" = 'AP_Nocturno';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = 'cae0f4b2-fc47-4e45-a523-5a4e0d38c6bb', "updatedAt" = NOW() WHERE "programaId" = 'APT';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = 'cae0f4b2-fc47-4e45-a523-5a4e0d38c6bb', "updatedAt" = NOW() WHERE "programaId" = 'APT-02';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '65b32ee1-e935-4ea0-ad9f-75fd99ca4c37', "updatedAt" = NOW() WHERE "programaId" = 'Economía_Pública';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '01e9aed0-fc97-48f1-a565-a03f22f9dc62', "updatedAt" = NOW() WHERE "programaId" = 'Alta_Dirección_Del_Estado_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '95f81ef0-d4ac-4f80-ace0-7dd0cef586cd', "updatedAt" = NOW() WHERE "programaId" = 'Derechos_Humanos_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '93a70719-9076-44e5-aa9f-9d1e00ba923d', "updatedAt" = NOW() WHERE "programaId" = 'Finanzas_Públicas_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = 'e9fc371e-2fc4-4505-a1e0-8b692fcbc8ce', "updatedAt" = NOW() WHERE "programaId" = 'GEPUR_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '780225e6-97a5-4cac-a76d-c75add01264a', "updatedAt" = NOW() WHERE "programaId" = 'Gerencia_Social_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = 'be3ff6ec-7b89-4a35-ab4e-6fdb4e30d9f3', "updatedAt" = NOW() WHERE "programaId" = 'Gestión_Pública_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '9fda5af6-0cf0-4c40-a5a9-b516946efe7c', "updatedAt" = NOW() WHERE "programaId" = 'Proyectos_de_Desarrollo_ESP';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '7a737691-b084-4b67-abaf-1f82676b2ec2', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_DDHH_y_Posconflicto';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '99ac91a2-9593-4ec8-ae9d-78dea310d5cb', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_AdministraciónPública_DISTANCIA';
+    UPDATE academic_work_plan."Asignatura" SET "programaId" = '3a6a64c1-9478-4cb3-a1a9-a2d918375820', "updatedAt" = NOW() WHERE "programaId" = 'Maestria_AdministraciónPública_PRESENCIAL';
+  ELSE
+    RAISE NOTICE 'Tabla academic_work_plan."Asignatura" no existe; se omite la reconexion de programas.';
+  END IF;
 END $$;
