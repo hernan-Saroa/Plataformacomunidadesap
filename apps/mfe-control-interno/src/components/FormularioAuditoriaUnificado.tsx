@@ -30,7 +30,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft,
+  X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
   User, Calendar, Target, FileText, Shield, Info, Users, Building2,
   ClipboardCheck, DollarSign, TrendingUp, FileCheck, MapPin, Clock,
   AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings
@@ -1476,7 +1476,7 @@ function Paso1InformacionBasica({
 
           {/* Título de Auditoría - BÚSQUEDA CON AUTOCOMPLETADO */}
           <FieldWrapper 
-            label="Título de Auditoría" 
+            label="Asociar a Proceso" 
             required
             helpText={
               cargandoProcesos 
@@ -1487,26 +1487,36 @@ function Paso1InformacionBasica({
             <div className="relative">
               <Input
                 value={busquedaProceso}
-                onChange={(e) => handleChangeBusqueda(e.target.value)}
+                onChange={(e) => {
+                  handleChangeBusqueda(e.target.value);
+                  setMostrarSugerenciasProcesos(true);
+                }}
                 onFocus={() => setMostrarSugerenciasProcesos(true)}
                 placeholder="Escribe para buscar y seleccionar el proceso a auditar..."
-                className="border-gray-300"
+                className="border-gray-300 pr-10 cursor-pointer"
                 disabled={cargandoProcesos}
                 autoComplete="off"
               />
               
-              {cargandoProcesos && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {cargandoProcesos ? (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                     className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full"
                   />
                 </div>
+              ) : (
+                <div 
+                  className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-400 hover:text-gray-600"
+                  onClick={() => setMostrarSugerenciasProcesos(!mostrarSugerenciasProcesos)}
+                >
+                  <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${mostrarSugerenciasProcesos ? 'rotate-180' : ''}`} />
+                </div>
               )}
 
               {/* Lista de sugerencias con información de riesgo */}
-              {mostrarSugerenciasProcesos && busquedaProceso && (evaluaciones.length > 0 || procesosFiltrados.length > 0) && (
+              {mostrarSugerenciasProcesos && (evaluaciones.length > 0 || procesosFiltrados.length > 0) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1517,6 +1527,7 @@ function Paso1InformacionBasica({
                     // Mostrar desde evaluaciones (Universo Auditable real)
                     evaluaciones
                       .filter(ev => {
+                        if (!busquedaProceso) return true;
                         const searchStr = `${ev.proceso?.nombre || ''} ${ev.dependenciaResponsable || ''}`;
                         return searchStr.toLowerCase().includes(busquedaProceso.toLowerCase());
                       })

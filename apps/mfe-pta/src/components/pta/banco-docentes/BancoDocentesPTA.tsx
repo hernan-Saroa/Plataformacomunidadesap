@@ -3,7 +3,7 @@ import {
   Users, Search, Upload, Download, RefreshCw, ChevronLeft, ChevronRight,
   X, CheckCircle, XCircle, Edit2, ToggleLeft, ToggleRight,
   GraduationCap, Building2, Clock, BarChart2, Eye, FileSpreadsheet, Database, Info, UserPlus, MailPlus,
-  Filter, ExternalLink, MapPin, ArrowRight, RotateCcw
+  Filter, ExternalLink, MapPin, ArrowRight, RotateCcw, ChevronDown
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, toggleBancoDocenteEstado, bulkUploadBancoDocentes
@@ -141,6 +141,8 @@ export function BancoDocentesPTA() {
   const [filterDedicacion, setFilterDedicacion] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterPeriodo, setFilterPeriodo] = useState('');
+  const [periodoDropdownOpen, setPeriodoDropdownOpen] = useState(false);
+  const [periodoSearch, setPeriodoSearch] = useState('');
   const [periodos, setPeriodos] = useState<any[]>([]);
   const [selectedDocente, setSelectedDocente] = useState<string | null>(null);
   const [editDocente, setEditDocente] = useState<any>(null);
@@ -176,6 +178,7 @@ export function BancoDocentesPTA() {
         })
         .catch((err) => {
           console.error('Error cargando periodos:', err);
+          alert('Error cargando periodos: ' + err.message);
           setFilterPeriodo('');
         });
     });
@@ -189,12 +192,12 @@ export function BancoDocentesPTA() {
         territorial: statsFilterTerritorial || undefined,
         dedicacion: statsFilterDedicacion || undefined,
         estado: statsFilterEstado || undefined,
-        periodoCarga: statsFilterPeriodo || undefined,
+        periodoCarga: filterPeriodo || undefined,
       });
       if (statsRes.success && statsRes.data) setStats(statsRes.data);
     } catch { /* silencioso */ }
     finally { setStatsLoading(false); }
-  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, statsFilterPeriodo]);
+  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
@@ -345,17 +348,55 @@ export function BancoDocentesPTA() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>PERIODO:</span>
-              <select value={filterPeriodo} onChange={(e) => setFilterPeriodo(e.target.value)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem', fontWeight: 600, color: '#0f172a', background: '#f8fafc', cursor: 'pointer', outline: 'none' }}>
-                <option value="">Todos los periodos</option>
-                {periodos.map((p) => {
-                  const label = p.codigo || `${p.anio}-${p.semestre}`;
-                  return (
-                    <option key={p.id} value={label}>
-                      {label} {p.estado === 'en_curso' ? ' Actual' : ''}
-                    </option>
-                  );
-                })}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <button 
+                  onClick={() => setPeriodoDropdownOpen(!periodoDropdownOpen)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem', fontWeight: 600, color: '#0f172a', background: '#f8fafc', cursor: 'pointer', outline: 'none', minWidth: '150px', justifyContent: 'space-between' }}
+                >
+                  {filterPeriodo || 'Todos los periodos'}
+                  <ChevronDown size={14} color="#64748b" />
+                </button>
+                
+                {periodoDropdownOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '4px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '200px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: '#f1f5f9', borderRadius: '6px', marginBottom: '4px' }}>
+                      <Search size={12} color="#64748b" />
+                      <input 
+                        autoFocus
+                        value={periodoSearch} 
+                        onChange={(e) => setPeriodoSearch(e.target.value)} 
+                        placeholder="Buscar periodo..." 
+                        style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.8rem', width: '100%' }} 
+                      />
+                    </div>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <button 
+                        onClick={() => { setFilterPeriodo(''); setPeriodoDropdownOpen(false); setPeriodoSearch(''); }}
+                        style={{ padding: '6px 8px', textAlign: 'left', background: filterPeriodo === '' ? '#eff6ff' : 'transparent', color: filterPeriodo === '' ? '#1d4ed8' : '#334155', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                      >
+                        Todos los periodos
+                      </button>
+                      {periodos.filter(p => {
+                        const label = p.codigo || `${p.anio}-${p.semestre}`;
+                        return label.toLowerCase().includes(periodoSearch.toLowerCase());
+                      }).map(p => {
+                        const label = p.codigo || `${p.anio}-${p.semestre}`;
+                        const isSelected = filterPeriodo === label;
+                        return (
+                          <button 
+                            key={p.id}
+                            onClick={() => { setFilterPeriodo(label); setPeriodoDropdownOpen(false); setPeriodoSearch(''); }}
+                            style={{ padding: '6px 8px', textAlign: 'left', background: isSelected ? '#eff6ff' : 'transparent', color: isSelected ? '#1d4ed8' : '#334155', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between' }}
+                          >
+                            <span>{label}</span>
+                            {p.estado === 'en_curso' && <span style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px' }}>Actual</span>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {hasPermission('banco-docentes.rund.manage') && (

@@ -70,12 +70,12 @@ BEGIN
   END IF;
 
   -- 4) academic_work_plan."Docente" (correoInstitucional = email institucional visible)
-  IF NOT EXISTS (SELECT 1 FROM academic_work_plan."Docente" d WHERE d."personaId" = v_person_id OR d.id = v_person_id::text) THEN
+  IF NOT EXISTS (SELECT 1 FROM academic_work_plan."Docente" d WHERE d."personaId" = v_person_id OR d.id = v_person_id) THEN
     INSERT INTO academic_work_plan."Docente" (
       id, "personaId", "territorialId", "tipoVinculacion", dedicacion, estado,
       "horasAsignables", "correoInstitucional", "createdAt", "updatedAt"
     ) VALUES (
-      v_person_id::text, v_person_id, v_seccional::text, 'CARRERA_003', 'Tiempo Completo', 'ACTIVO',
+      v_person_id, v_person_id, v_seccional::text, 'CARRERA_003', 'Tiempo Completo', 'ACTIVO',
       800, v_email_inst, NOW(), NOW()
     );
   ELSE

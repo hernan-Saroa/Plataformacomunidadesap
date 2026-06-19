@@ -1,12 +1,24 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ResponseInterceptor } from './common/response.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.getHttpAdapter().getInstance().disable?.('x-powered-by');
+
+  // Static assets para los documentos subidos a la Carpeta Digital genérica.
+  // Multer escribe a ./uploads/carpeta-digital/{personaId}/... relativo al CWD,
+  // y __dirname apunta a /dist (prod) o /src (dev): con un único '..' caemos en la
+  // raíz del service donde vive la carpeta uploads/.
+  const uploadsDir = join(__dirname, '..', 'uploads');
+  app.useStaticAssets(uploadsDir, {
+    prefix: '/uploads/',
+  });
+  console.log(`📁 Static uploads served from ${uploadsDir} -> /uploads/`);
 
   // Configurar CORS para desarrollo (permisivo)
   app.enableCors({

@@ -861,7 +861,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }, []);
 
   const [filtroEstado, setFiltroEstado] = useState('');
-  const [filtroPeriodo, setFiltroPeriodo] = useState('2025-2');
+  const [filtroPeriodo, setFiltroPeriodo] = useState('');
   const [filtroPrograma, setFiltroPrograma] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 

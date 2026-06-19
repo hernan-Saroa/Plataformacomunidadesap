@@ -1639,12 +1639,29 @@ class ControlInternoService {
   /**
    * Obtiene todos los documentos
    */
-  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string; tipoDocumento?: string }): Promise<any[]> {
+  async getDocumentos(params?: {
+    auditoriaId?: string;
+    etapa?: string;
+    tipo?: string;
+    tipoDocumento?: string;
+    planAnualVigencia?: number;
+    planAnualId?: string;
+    bibliotecaOnly?: boolean;
+    search?: string;
+    hallazgoId?: string;
+    planMejoramientoId?: string;
+  }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
     if (params?.etapa) queryParams.append('etapa', params.etapa);
     const tipo = params?.tipoDocumento || params?.tipo;
     if (tipo) queryParams.append('tipoDocumento', tipo);
+    if (params?.planAnualVigencia != null) queryParams.append('planAnualVigencia', params.planAnualVigencia.toString());
+    if (params?.planAnualId) queryParams.append('planAnualId', params.planAnualId);
+    if (params?.bibliotecaOnly !== undefined) queryParams.append('bibliotecaOnly', params.bibliotecaOnly.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.hallazgoId) queryParams.append('hallazgoId', params.hallazgoId);
+    if (params?.planMejoramientoId) queryParams.append('planMejoramientoId', params.planMejoramientoId);
     const query = queryParams.toString();
     return client.get<any[]>(`/documentos${query ? `?${query}` : ''}`);
   }
@@ -1698,6 +1715,8 @@ class ControlInternoService {
       documentoBibliotecaId?: string;
       visibleAuditoriaId?: string;
       subidoPor?: string;
+      planAnualVigencia?: number;
+      planAnualId?: string;
     },
     onProgress?: (progress: number) => void
   ): Promise<any> {
@@ -1724,6 +1743,8 @@ class ControlInternoService {
     if (metadata.documentoBibliotecaId) formData.append('documentoBibliotecaId', metadata.documentoBibliotecaId);
     if (metadata.visibleAuditoriaId) formData.append('visibleAuditoriaId', metadata.visibleAuditoriaId);
     if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+    if (metadata.planAnualVigencia != null) formData.append('planAnualVigencia', metadata.planAnualVigencia.toString());
+    if (metadata.planAnualId) formData.append('planAnualId', metadata.planAnualId);
 
     return client.upload<any>('/documentos', formData, onProgress);
   }
