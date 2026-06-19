@@ -898,7 +898,9 @@ export function FormularioAuditoriaUnificado({
       console.log('   tipoAuditoria:', formData.tipoAuditoria);
       console.log('═══════════════════════════════════════════════════════════════');
       
-      const resultado = await onSubmit(formData);
+      const dataToSubmit = { ...formData };
+      
+      const resultado = await onSubmit(dataToSubmit);
       
       // ✅ Verificar si onSubmit retornó false (error en backend)
       if (resultado === false) {
@@ -1321,77 +1323,16 @@ function Paso1InformacionBasica({
       // Actualizar nivel de riesgo automáticamente
       onChange('nivelRiesgo', nivelRiesgoForm);
       
-      // Construir lista de riesgos identificados basados en la evaluación
-      const riesgosIdentificadosArr: string[] = [];
+      // Inicializar riesgos y controles vacíos para que el usuario los ingrese manualmente
+      onChange('riesgosIdentificados', []);
+      onChange('controlesAplicar', []);
       
-      const ext = evaluacionProceso.riesgosExtremos || riesgo.riesgosExtremos || 0;
-      const alt = evaluacionProceso.riesgosAltos || riesgo.riesgosAltos || 0;
-      const mod = evaluacionProceso.riesgosModerados || riesgo.riesgosModerados || 0;
-      const baj = evaluacionProceso.riesgosBajos || riesgo.riesgosBajos || 0;
-      
-      const sumaRiesgos = ext + alt + mod + baj;
-      if (sumaRiesgos > 0) {
-        riesgosIdentificadosArr.push(`Evaluación DAFP: ${sumaRiesgos} riesgos totales (${ext} Extremos, ${alt} Altos, ${mod} Moderados, ${baj} Bajos)`);
-      }
-
-      if (evaluacionProceso.ponderacionFinalDafp && evaluacionProceso.ponderacionFinalDafp >= 4) {
-        riesgosIdentificadosArr.push(`Ponderación DAFP CRÍTICA (${evaluacionProceso.ponderacionFinalDafp}/5) - El proceso requiere priorización en el Plan Anual`);
-      } else if (evaluacionProceso.ponderacionFinalDafp && evaluacionProceso.ponderacionFinalDafp >= 3) {
-        riesgosIdentificadosArr.push(`Ponderación DAFP ALTA (${evaluacionProceso.ponderacionFinalDafp}/5) - Nivel de riesgo significativo`);
-      }
-      
-      if (ext > 0) {
-        riesgosIdentificadosArr.push(`Se identificaron ${ext} riesgos EXTREMOS que requieren monitoreo inmediato`);
-      }
-      if (alt > 0) {
-        riesgosIdentificadosArr.push(`Se identificaron ${alt} riesgos ALTOS que requieren fortalecimiento de controles`);
-      }
-      
-      // Agregar información de decisión si existe
-      const decisionFinal = evaluacionProceso.decisionFinal || riesgo.decisionFinal;
-      const motivoDecision = evaluacionProceso.motivoDecision || riesgo.motivoDecision;
-      if (decisionFinal && motivoDecision) {
-        riesgosIdentificadosArr.push(`Decisión DAFP: ${decisionFinal} - ${motivoDecision}`);
-      }
-      
-      // Actualizar riesgos identificados
-      if (riesgosIdentificadosArr.length > 0) {
-        onChange('riesgosIdentificados', riesgosIdentificadosArr);
-      } else {
-        // Fallback si no hay riesgos registrados
-        onChange('riesgosIdentificados', ['El proceso seleccionado no cuenta con riesgos tipificados en la última evaluación']);
-      }
-      
-      // Construir controles a aplicar basados en la evaluación
-      const controles: string[] = [];
-      
-      if (ext > 0 || alt > 0) {
-        controles.push('Revisar y probar controles mitigantes para riesgos Extremos/Altos');
-        controles.push('Verificar diseño de planes de contingencia');
-      }
-      
-      if (evaluacionProceso.ponderacionFinalDafp && evaluacionProceso.ponderacionFinalDafp >= 3) {
-        controles.push('Evaluar segregación de funciones y responsabilidades');
-        controles.push('Implementar pruebas de eficacia de controles clave');
-      }
-      
-      controles.push('Revisión documental de políticas y procedimientos del proceso');
-      controles.push('Entrevistas con el responsable del área y ejecutores');
-      controles.push('Muestreo estadístico de transacciones operativas');
-      
-      // Actualizar controles a aplicar
-      if (controles.length > 0) {
-        onChange('controlesAplicar', controles);
-      }
-      
-      console.log('✅ Riesgos y controles cargados automáticamente desde evaluación del proceso');
+      console.log('✅ Nivel de riesgo cargado automáticamente desde evaluación del proceso');
       console.log(`   - Nivel de riesgo: ${nivelRiesgoForm}`);
-      console.log(`   - Riesgos identificados: ${riesgosIdentificadosArr.length}`);
-      console.log(`   - Controles a aplicar: ${controles.length}`);
       
       // Notificar al usuario
-      toast.success('Riesgos y controles cargados automáticamente', {
-        description: `Nivel: ${nivelRiesgoForm} | ${sumaRiesgos} riesgos | ${controles.length} controles`
+      toast.success('Proceso seleccionado', {
+        description: `Nivel de riesgo inicial: ${nivelRiesgoForm}`
       });
     }
   };

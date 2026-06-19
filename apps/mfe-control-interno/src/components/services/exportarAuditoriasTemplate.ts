@@ -5,34 +5,54 @@ export async function exportarAuditoriasTemplate(
   auditorias: AuditoriaExcel[]
 ): Promise<{ exito: boolean; nombreArchivo: string; mensaje?: string; error?: string }> {
   try {
-    console.log('Generando Excel desde la plantilla EM-FO-001...');
+    console.log('Generando Excel desde cero (sin plantilla)...');
 
-    // 1. Cargar la plantilla desde la carpeta public
-    // Se asume que el archivo fue copiado a /formatos/EM-FO-001.xlsx
-    const response = await fetch('/formatos/EM-FO-001.xlsx');
-    if (!response.ok) {
-      throw new Error(`No se pudo cargar la plantilla (HTTP ${response.status}). Asegúrese de que el archivo EM-FO-001.xlsx esté en la carpeta public/formatos.`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(arrayBuffer);
+    workbook.creator = 'ESAP';
+    workbook.created = new Date();
 
-    // 2. Obtener la primera hoja de cálculo
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet) {
-      throw new Error('La plantilla de Excel no tiene hojas de cálculo.');
-    }
+    const worksheet = workbook.addWorksheet('Programa Anual');
 
-    // 3. Fila inicial de datos (según análisis de la plantilla)
-    const START_ROW = 9;
+    // Configurar columnas y anchos
+    worksheet.getColumn(1).width = 40; // Unidad Auditada
+    worksheet.getColumn(2).width = 30; // Responsable
     
-    // Limpiar celdas existentes (para borrar datos dummy de la plantilla) sin perder el formato base
-    for (let i = START_ROW; i <= 60; i++) {
-      const r = worksheet.getRow(i);
-      for (let j = 2; j <= 57; j++) {
-        r.getCell(j).value = null;
-      }
+    // Semanas (1 a 53)
+    for (let i = 3; i <= 55; i++) {
+      worksheet.getColumn(i).width = 5;
+    }
+    worksheet.getColumn(56).width = 50; // Observaciones
+
+    // Fila 1: Título principal
+    worksheet.mergeCells('A1:BD1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = 'PROGRAMA ANUAL DE AUDITORÍAS';
+    titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(1).height = 30;
+
+    // Fila 2: Cabeceras
+    const headerRow = worksheet.getRow(2);
+    headerRow.height = 25;
+    headerRow.getCell(1).value = 'Unidad Auditada / Título';
+    headerRow.getCell(2).value = 'Responsable';
+    
+    for (let w = 1; w <= 53; w++) {
+      headerRow.getCell(w + 2).value = `S${w}`;
+    }
+    headerRow.getCell(56).value = 'Observaciones';
+
+    // Estilo de las cabeceras
+    for (let col = 1; col <= 56; col++) {
+      const cell = headerRow.getCell(col);
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2962FF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin' }, left: { style: 'thin' },
+        bottom: { style: 'thin' }, right: { style: 'thin' }
+      };
     }
 
     // Helper para obtener número de semana (1 a 53)
@@ -44,18 +64,21 @@ export async function exportarAuditoriasTemplate(
       return Math.ceil((day + start.getDay() + 1) / 7);
     };
 
-    // 4. Llenar los datos
+    // Llenar los datos
+    const START_ROW = 3;
     auditorias.forEach((auditoria, index) => {
       const rowIndex = START_ROW + index;
       const row = worksheet.getRow(rowIndex);
 
-      // Columna A (índice 1): Unidad Auditada / Título
       row.getCell(1).value = auditoria.titulo || 'Sin título';
+      row.getCell(1).alignment = { vertical: 'middle', wrapText: true };
+      row.getCell(1).font = { size: 10 };
       
-      // Columna B (índice 2): Responsable
       row.getCell(2).value = auditoria.auditorLider?.nombre || 'No asignado';
+      row.getCell(2).alignment = { vertical: 'middle', wrapText: true };
+      row.getCell(2).font = { size: 10 };
 
-      // Lógica de Gantt (Columnas 3 a 55, que representan las semanas)
+      // Lógica de Gantt
       if (auditoria.fechaInicio && auditoria.fechaFin) {
         const start = new Date(auditoria.fechaInicio);
         const end = new Date(auditoria.fechaFin);
@@ -73,37 +96,60 @@ export async function exportarAuditoriasTemplate(
           const ejecucionWeeks = Math.max(1, Math.floor(totalWeeks * 0.5));
           
           for (let w = startWeek; w <= endWeek; w++) {
-            const colIndex = 2 + w; // La semana 1 está en el índice 3 de la fila (Col C)
+            const colIndex = 2 + w;
             const weekRelative = w - startWeek + 1;
             
             let etapa = '';
+            let color = 'FFFFFFFF';
+            let fontColor = 'FF000000';
+
             if (weekRelative <= planeacionWeeks) {
-              etapa = 'P'; // Planeación
+              etapa = 'P';
+              color = 'FFDBEAFE'; // Azul claro
+              fontColor = 'FF1E40AF';
             } else if (weekRelative <= planeacionWeeks + ejecucionWeeks) {
-              etapa = 'E'; // Ejecución
+              etapa = 'E';
+              color = 'FFFEF08A'; // Amarillo claro
+              fontColor = 'FF854D0E';
             } else {
-              etapa = 'C'; // Comunicación
+              etapa = 'C';
+              color = 'FFD1FAE5'; // Verde claro
+              fontColor = 'FF065F46';
             }
             
-            row.getCell(colIndex).value = etapa;
-            // Opcional: centrar el texto
-            row.getCell(colIndex).alignment = { horizontal: 'center', vertical: 'middle' };
+            const cell = row.getCell(colIndex);
+            cell.value = etapa;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.font = { bold: true, color: { argb: fontColor }, size: 9 };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
           }
         }
       }
 
-      // Columna BD (índice 56): Observaciones
+      // Observaciones
       row.getCell(56).value = `Estado: ${auditoria.estado} | Avance: ${auditoria.progreso}% | Riesgo: ${auditoria.riesgo}`;
+      row.getCell(56).alignment = { vertical: 'middle', wrapText: true };
+      row.getCell(56).font = { size: 10 };
+
+      // Bordes suaves para todas las celdas de la fila
+      for (let col = 1; col <= 56; col++) {
+        row.getCell(col).border = {
+          top: { style: 'thin', color: { argb: 'FFEEEEEE' } },
+          bottom: { style: 'thin', color: { argb: 'FFEEEEEE' } },
+          left: { style: 'thin', color: { argb: 'FFEEEEEE' } },
+          right: { style: 'thin', color: { argb: 'FFEEEEEE' } }
+        };
+      }
     });
 
-    // 5. Descargar el archivo modificado
+    // Descargar el archivo
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
     
     const link = document.createElement('a');
     const fecha = new Date().toISOString().split('T')[0];
-    const nombreArchivo = `PAI_2025_ETAPAS_AUDITORIA_${fecha}.xlsx`;
+    const nombreArchivo = `Programa_Anual_Auditorias_${fecha}.xlsx`;
     link.href = url;
     link.download = nombreArchivo;
     document.body.appendChild(link);
@@ -114,14 +160,14 @@ export async function exportarAuditoriasTemplate(
     return {
       exito: true,
       nombreArchivo,
-      mensaje: `Plantilla exportada correctamente con ${auditorias.length} auditorías.`
+      mensaje: `Excel generado correctamente con ${auditorias.length} auditorías.`
     };
   } catch (error) {
-    console.error('Error al exportar plantilla:', error);
+    console.error('Error al exportar Excel:', error);
     return {
       exito: false,
       nombreArchivo: '',
-      error: error instanceof Error ? error.message : 'Error desconocido al generar la plantilla.'
+      error: error instanceof Error ? error.message : 'Error desconocido al generar el archivo Excel.'
     };
   }
 }
