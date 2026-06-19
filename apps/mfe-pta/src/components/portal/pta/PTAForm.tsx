@@ -1457,11 +1457,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             toast.error(reenvio.message || 'Error al re-enviar el PTA');
           }
         } else {
-          // Flujo normal Borrador → Pendiente Jefatura
-          const envio = await updatePTAStatus(savedId, { estado: 'Pendiente Jefatura' });
+          // Flujo normal Borrador → PENDIENTE_APROBACION (aprobación por componentes)
+          const envio = await updatePTAStatus(savedId, { estado: 'PENDIENTE_APROBACION' });
           if (envio.success) {
-            toast.success('PTA enviado a revisión de Jefatura');
-            addNotification({ type: 'success', title: 'PTA enviado', message: 'Tu PTA fue enviado exitosamente a Pendiente Jefatura' });
+            toast.success('PTA enviado a aprobación');
+            addNotification({ type: 'success', title: 'PTA enviado', message: 'Tu PTA fue enviado exitosamente a aprobación' });
             if (envio.faltaRevisor) {
               toast.warning('Aviso: no hay evaluadores asignados para tu territorial. La revisión podría demorar.', { duration: 8000 });
             }

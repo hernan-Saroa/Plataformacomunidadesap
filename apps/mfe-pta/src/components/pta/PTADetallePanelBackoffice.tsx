@@ -127,6 +127,7 @@ function getResponsableRoleLabel(key: string): string {
 function getStatusConfig(estado: string) {
   const found = FLUJO_COMPLETO.find(f => f.key === estado);
   if (found) return found;
+  if (estado === 'PENDIENTE_APROBACION') return { key: estado, label: 'Pendiente Aprobación', short: 'Pend.', color: '#B45309', bg: '#FEF3C7' };
   if (estado === 'Rechazado') return { key: estado, label: 'Rechazado', short: 'Rech.', color: '#991B1B', bg: '#FEE2E2' };
   if (estado === 'Devuelto') return { key: estado, label: 'Devuelto', short: 'Dev.', color: '#9A3412', bg: '#FFF7ED' };
   if (estado === 'ESCALADO_SNA') return { key: estado, label: 'Escalado SNA', short: 'SNA', color: '#991B1B', bg: '#FEE2E2' };
@@ -736,8 +737,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   }, [initialPta?.id]);
 
   const sc = getStatusConfig(pta.estado);
-  const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
-  const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion);
+  const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado);
+  const puedeAprobarNivelActual = puedeAprobar && (pta.estado === 'PENDIENTE_APROBACION' || puedeAprobarEstadoActual(pta.estado, nivelAprobacion));
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;

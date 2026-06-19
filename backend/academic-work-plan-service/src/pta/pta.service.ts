@@ -545,6 +545,7 @@ export class PtaService {
         'Pendiente Jefatura',
         'Pendiente Decanatura',
         'Pendiente Gestión Profesoral',
+        'PENDIENTE_APROBACION',
         'REVISION_DOCENTE_N1',
         'REVISION_DOCENTE_N2',
         'REVISION_DOCENTE_N3',
@@ -863,8 +864,9 @@ export class PtaService {
       }
     }
 
-    // ── Cuando el PTA llega a Pendiente Jefatura, inicializar aprobaciones ──────
-    if (nuevoEstado === 'Pendiente Jefatura' && existing.estado !== 'Pendiente Jefatura') {
+    // ── Cuando el PTA llega a Pendiente Jefatura o PENDIENTE_APROBACION, inicializar aprobaciones ──────
+    const estadosQueInicializan = ['Pendiente Jefatura', 'PENDIENTE_APROBACION'];
+    if (estadosQueInicializan.includes(nuevoEstado) && !estadosQueInicializan.includes(existing.estado)) {
       await this.initAprobacionesJefatura(ptaId, existing.datosEstructurados);
     }
 
@@ -1909,7 +1911,7 @@ export class PtaService {
     const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existing) throw new NotFoundException('PTA no encontrado');
 
-    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'Pendiente Jefatura';
+    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'PENDIENTE_APROBACION';
     const updated = await this.updatePTAStatus(ptaId, { estado: estadoDestino, actorId: existing.docenteId, actorRol: 'Docente' });
 
     const certNumber =
