@@ -533,10 +533,6 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     planAnualVigencia:
       auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
     planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
-    // ✅ RESPONSABLE DEL ÁREA AUDITADA (campos planos del backend)
-    responsableAreaNombre: auditoriaBackend.responsableAreaNombre || auditoriaBackend.responsable || undefined,
-    responsableAreaCargo: auditoriaBackend.responsableAreaCargo || undefined,
-    responsableAreaEmail: auditoriaBackend.responsableAreaEmail || undefined,
   };
 }
 
