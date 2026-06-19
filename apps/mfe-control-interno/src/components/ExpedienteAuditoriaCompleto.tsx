@@ -481,9 +481,9 @@ export function ExpedienteAuditoriaCompleto({
       nivelRiesgo: (card.riesgo || card.riesgoKanban || 'Medio') as NivelRiesgo,
       responsableArea: {
         id: '1',
-        nombre: card.auditorLider?.nombre || card.auditorLider || 'Sin responsable',
-        cargo: 'Responsable',
-        email: '',
+        nombre: card.responsableAreaNombre || card.responsable || 'Sin responsable',
+        cargo: card.responsableAreaCargo || 'Responsable',
+        email: card.responsableAreaEmail || 'Sin email',
       },
       auditorLider: {
         id: '1',
@@ -602,7 +602,7 @@ export function ExpedienteAuditoriaCompleto({
             id: String(data.auditorLiderId || '1'),
             nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
             cargo: data.responsableAreaCargo || 'Responsable',
-            email: `responsable@esap.edu.co`,
+            email: data.responsableAreaEmail || 'Sin email',
             telefono: undefined,
           },
 

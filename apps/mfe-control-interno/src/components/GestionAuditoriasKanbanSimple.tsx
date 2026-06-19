@@ -143,6 +143,9 @@ interface Auditoria {
   areaObjetivo: string;
   permiteCambiarObjetivos: boolean;
   equipoAuditores: string[];
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
 
   // Información territorial (si aplica)
   territorialInfo?: {
@@ -1991,6 +1994,9 @@ export function GestionAuditoriasKanbanSimple() {
         actividadesCompletas: aud.actividadesCompletas,
         actividadesPendientes: aud.actividadesPendientes,
         documentoCierre: aud.documentoCierre,
+        responsableAreaNombre: aud.responsableAreaNombre,
+        responsableAreaCargo: aud.responsableAreaCargo,
+        responsableAreaEmail: aud.responsableAreaEmail,
       } as Auditoria));
       setAuditorias(auditoriasTransformadas);
 
@@ -2566,6 +2572,10 @@ export function GestionAuditoriasKanbanSimple() {
       criterios: (data.criterios || []).map((crit: any) =>
         typeof crit === 'string' ? crit : (crit.criterio || crit.descripcion)
       ),
+      // Responsable del Área Auditada
+      responsableAreaNombre: (data as any).responsableAreaNombre,
+      responsableAreaCargo: (data as any).responsableAreaCargo,
+      responsableAreaEmail: (data as any).responsableAreaEmail,
     };
 
     const exito = await actualizarAuditoriaBackend(auditoriaParaEditar.id, datosBackend);
@@ -2599,7 +2609,10 @@ export function GestionAuditoriasKanbanSimple() {
               criterios: (data.criterios || []).map((crit: any, i: number) => ({
                 id: crit.id || `crit-${i}`,
                 criterio: typeof crit === 'string' ? crit : (crit.criterio || crit.descripcion || '')
-              }))
+              })),
+              responsableAreaNombre: (data as any).responsableAreaNombre,
+              responsableAreaCargo: (data as any).responsableAreaCargo,
+              responsableAreaEmail: (data as any).responsableAreaEmail,
             }
             : aud
         )
@@ -4236,6 +4249,9 @@ export function GestionAuditoriasKanbanSimple() {
                 tipo: auditoriaParaEditar.tipo || '',
                 proceso: (auditoriaParaEditar as any).procesoAuditado || auditoriaParaEditar.areaObjetivo || auditoriaParaEditar.descripcion,
                 responsable: auditoriaParaEditar.auditorLider?.nombre || 'Sin asignar',
+                responsableAreaNombre: (auditoriaParaEditar as any).responsableAreaNombre,
+                responsableAreaCargo: (auditoriaParaEditar as any).responsableAreaCargo,
+                responsableAreaEmail: (auditoriaParaEditar as any).responsableAreaEmail,
                 // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
                 // Etapa 1: Planeación
                 fechaInicio: auditoriaParaEditar.fechaInicio,
@@ -4266,6 +4282,9 @@ export function GestionAuditoriasKanbanSimple() {
                 tipo: data.tipo,
                 procesoAuditado: data.proceso,
                 riesgo: auditoriaParaEditar.riesgo || 'Medio',
+                responsableAreaNombre: data.responsableAreaNombre,
+                responsableAreaCargo: data.responsableAreaCargo,
+                responsableAreaEmail: data.responsableAreaEmail,
                 // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
                 // Etapa 1: Planeación - usar fechaInicioPlaneacion o fechaInicio
                 fechaInicio: (data as any).fechaInicioPlaneacion || data.fechaInicio,
@@ -4309,10 +4328,14 @@ export function GestionAuditoriasKanbanSimple() {
                 territorial: auditoriaSeleccionada.territorial,
                 areaAuditable: auditoriaSeleccionada.areaObjetivo || 'Control Interno',
                 procesoNombre: auditoriaSeleccionada.areaObjetivo || auditoriaSeleccionada.titulo,
+                responsableAreaNombre: auditoriaSeleccionada.responsableAreaNombre || 'Sin responsable asignado',
+                responsableAreaCargo: auditoriaSeleccionada.responsableAreaCargo || 'Responsable de Área Auditada',
+                responsableAreaEmail: auditoriaSeleccionada.responsableAreaEmail || '',
+                // Mantener el objeto anidado por retrocompatibilidad con la interfaz en InicioAuditoriaWizardWorldClass
                 responsableArea: {
-                  nombre: 'Responsable del Área',
-                  cargo: 'Director',
-                  email: 'responsable@esap.edu.co'
+                  nombre: auditoriaSeleccionada.responsableAreaNombre || 'Sin responsable asignado',
+                  cargo: auditoriaSeleccionada.responsableAreaCargo || 'Responsable de Área Auditada',
+                  email: auditoriaSeleccionada.responsableAreaEmail || '',
                 },
                 auditorLider: {
                   nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
