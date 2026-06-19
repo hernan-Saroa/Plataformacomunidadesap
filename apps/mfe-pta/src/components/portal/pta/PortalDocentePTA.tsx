@@ -68,6 +68,7 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'Aprobado': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Aprobado' },
   'En Firme': { bg: '#047857', color: '#FFFFFF', border: '#059669', label: 'En Firme — Firmado y Radicado' },
   'Rechazado': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Rechazado' },
+  'PENDIENTE_APROBACION': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente Aprobación' },
   'Devuelto': { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74', label: 'Devuelto — Corrección requerida' },
   'REVISION_DOCENTE_N1': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — Jefatura aprobó' },
   'REVISION_DOCENTE_N2': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — Decanatura aprobó' },
@@ -333,7 +334,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   const stats = useMemo(() => {
     const total = ptas.length;
     const aprobados = ptas.filter(p => p.estado === 'Aprobado').length;
-    const pendientes = ptas.filter(p => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)).length;
+    const pendientes = ptas.filter(p => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(p.estado)).length;
     const requiereAccion = ptas.filter(p => ['NOTIFICADO_DOCENTE', 'Devuelto', 'EN_CONCERTACION'].includes(p.estado)).length;
     const devueltos = ptas.filter(p => p.estado === 'Devuelto').length;
     return { total, aprobados, pendientes, requiereAccion, devueltos };
@@ -360,6 +361,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     'ACEPTADO_DOCENTE', 'MODIFICADO_DOCENTE', 'OBJETADO_DOCENTE',
     'EN_CONCERTACION', 'CONCERTADO', 'ESCALADO_SNA',
     'Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral',
+    'PENDIENTE_APROBACION',
     'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3',
     'Devuelto', 'Aprobado',
   ];
@@ -413,14 +415,12 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
   // ═══ Re-enviar devuelto ═══
   const reenviarPTA = async (ptaId: string) => {
-    const res = await enviarAprobacionPTA(ptaId, { enviado_por: userPersonId });
+    const res = await updatePTAStatus(ptaId, { estado: 'PENDIENTE_APROBACION', observaciones: 'Re-envío tras corrección' });
     if (res.success) {
       toast.success('PTA re-enviado a aprobación');
       loadPtas();
     } else {
-      const res2 = await updatePTAStatus(ptaId, { estado: 'Pendiente Jefatura', observaciones: 'Re-envío tras corrección' });
-      if (res2.success) { toast.success('PTA re-enviado'); loadPtas(); }
-      else toast.error('Error al re-enviar');
+      toast.error(res.message || 'Error al re-enviar');
     }
   };
 

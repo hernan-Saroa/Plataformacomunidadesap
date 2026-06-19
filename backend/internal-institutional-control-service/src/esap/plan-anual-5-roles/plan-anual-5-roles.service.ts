@@ -95,7 +95,33 @@ export class PlanAnual5RolesService {
       query.andWhere('plan.año = :year', { year });
     }
 
-    return query.getMany();
+    const plans = await query.getMany();
+
+    // Enrich with responsable_email from auth.personas
+    const responsableIds = [...new Set(plans.map((p) => p.responsable_id).filter(Boolean))];
+    if (responsableIds.length > 0) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT id_person, dir_email FROM auth.personas WHERE id_person = ANY($1::uuid[])`,
+          [responsableIds]
+        );
+        const emailMap = new Map<string, string>();
+        for (const row of rows) {
+          if (row.id_person && row.dir_email) {
+            emailMap.set(String(row.id_person), String(row.dir_email));
+          }
+        }
+        for (const plan of plans) {
+          if (plan.responsable_id && emailMap.has(String(plan.responsable_id))) {
+            (plan as any).responsable_email = emailMap.get(String(plan.responsable_id));
+          }
+        }
+      } catch (err) {
+        console.error('[PlanAnual5RolesService] Error enriching findAll with responsable_email:', err);
+      }
+    }
+
+    return plans;
   }
 
   async findOne(id: string): Promise<PlanAnual5Roles> {
@@ -114,11 +140,26 @@ export class PlanAnual5RolesService {
       throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
     }
 
+    // Enrich with responsable_email
+    if (plan.responsable_id) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT dir_email FROM auth.personas WHERE id_person = $1::uuid`,
+          [plan.responsable_id]
+        );
+        if (rows && rows.length > 0 && rows[0].dir_email) {
+          (plan as any).responsable_email = rows[0].dir_email;
+        }
+      } catch (err) {
+        console.error('[PlanAnual5RolesService] Error enriching findOne with responsable_email:', err);
+      }
+    }
+
     return plan;
   }
 
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
-    return this.planRepository
+    const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
@@ -129,13 +170,34 @@ export class PlanAnual5RolesService {
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
+
+    if (plan && plan.responsable_id) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT dir_email FROM auth.personas WHERE id_person = $1::uuid`,
+          [plan.responsable_id]
+        );
+        if (rows && rows.length > 0 && rows[0].dir_email) {
+          (plan as any).responsable_email = rows[0].dir_email;
+        }
+      } catch (err) {
+        console.error('[PlanAnual5RolesService] Error enriching findByYear with responsable_email:', err);
+      }
+    }
+
+    return plan;
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
     // Verificar si ya existe un plan para la misma vigencia
     const existing = await this.findByYear(createDto.año);
     if (existing) {
-      throw new BadRequestException(`Ya existe un plan anual activo para la vigencia ${createDto.año}.`);
+      if (existing.estado === 'borrador') {
+        // Eliminar el borrador existente para permitir la creación del nuevo plan
+        await this.planRepository.remove(existing);
+      } else {
+        throw new BadRequestException(`Ya existe un plan anual activo para la vigencia ${createDto.año}.`);
+      }
     }
 
     // Crear el plan
@@ -156,14 +218,11 @@ export class PlanAnual5RolesService {
     // Obtener roles del template desde la BD (NO desde memoria)
     const rolesTemplate = await this.getRolesTemplate();
 
-    // Verificar que tenemos exactamente 5 roles
-    if (rolesTemplate.length !== 5) {
-      throw new BadRequestException(
-        `Se esperaban 5 roles del template, pero se encontraron ${rolesTemplate.length}. Verifique la tabla rol_decreto_648_template.`
-      );
+    if (rolesTemplate.length === 0) {
+      console.warn(`[PlanAnual5Roles] No se encontraron roles en el template para inicializar el plan.`);
     }
 
-    // Crear los 5 roles basados en el template de la BD (ya vienen ordenados por rol_numero)
+    // Crear los roles basados en el template de la BD (ya vienen ordenados por rol_numero)
     const roles = rolesTemplate.map((rolTemplate) =>
       this.rolRepository.create({
         planId: savedPlan.id,
@@ -891,6 +950,42 @@ export class PlanAnual5RolesService {
       }
     }
 
+    if (updateDto.activo !== undefined && updateDto.activo !== rol.activo) {
+      cambios.push({
+        campo: 'activo',
+        valorAnterior: String(rol.activo),
+        valorNuevo: String(updateDto.activo),
+      });
+      rol.activo = updateDto.activo;
+    }
+
+    if (updateDto.nombre !== undefined && updateDto.nombre !== rol.nombre) {
+      cambios.push({
+        campo: 'nombre',
+        valorAnterior: rol.nombre,
+        valorNuevo: updateDto.nombre,
+      });
+      rol.nombre = updateDto.nombre;
+    }
+
+    if (updateDto.descripcion !== undefined && updateDto.descripcion !== rol.descripcion) {
+      cambios.push({
+        campo: 'descripcion',
+        valorAnterior: rol.descripcion,
+        valorNuevo: updateDto.descripcion,
+      });
+      rol.descripcion = updateDto.descripcion;
+    }
+
+    if (updateDto.color !== undefined && updateDto.color !== rol.color) {
+      cambios.push({
+        campo: 'color',
+        valorAnterior: rol.color,
+        valorNuevo: updateDto.color,
+      });
+      rol.color = updateDto.color;
+    }
+
     const saved = await this.rolRepository.save(rol);
 
     if (cambios.length > 0) {
@@ -905,6 +1000,37 @@ export class PlanAnual5RolesService {
         cambios,
       );
     }
+
+    return saved;
+  }
+
+  async addRolAdicional(
+    planId: string,
+    createRolDto: { nombre: string; descripcion: string; color: string; numero: number },
+    usuarioId?: string,
+  ): Promise<RolPlanAnual5> {
+    const plan = await this.findOne(planId);
+    if (!plan) throw new NotFoundException(`Plan ${planId} no encontrado`);
+
+    const rol = this.rolRepository.create({
+      planId: plan.id,
+      rol_numero: createRolDto.numero,
+      nombre: createRolDto.nombre,
+      descripcion: createRolDto.descripcion,
+      color: createRolDto.color,
+      activo: true,
+      responsables: []
+    });
+
+    const saved = await this.rolRepository.save(rol);
+
+    await this.registrarHistorial(
+      planId,
+      TipoEventoPlanAnual.ACTUALIZACION,
+      'Rol adicional creado',
+      `Rol ${saved.rol_numero}: ${saved.nombre} agregado al plan`,
+      usuarioId,
+    );
 
     return saved;
   }
@@ -931,7 +1057,7 @@ export class PlanAnual5RolesService {
 
   private async recalcularPlan(planId: string): Promise<void> {
     const roles = await this.rolRepository.find({
-      where: { planId },
+      where: { planId, activo: true },
       relations: ['actividades'],
     });
 

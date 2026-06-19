@@ -151,6 +151,21 @@ export class PlanAnual5RolesController {
     return this.service.create(createDto, req.user?.userId);
   }
 
+  @Post(':id/roles')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_CREATE)
+  @HttpCode(HttpStatus.CREATED)
+  async addRol(
+    @Param('id') planId: string,
+    @Body() createRolDto: { nombre: string; descripcion: string; color: string; numero: number },
+    @Req() req: any,
+  ) {
+    if (!planId || planId === 'undefined') {
+      throw new BadRequestException('planId es requerido');
+    }
+    return this.service.addRolAdicional(planId, createRolDto, req.user?.userId);
+  }
+
   @Put(':id/roles/:rolId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.PLAN_ANUAL_EDIT)

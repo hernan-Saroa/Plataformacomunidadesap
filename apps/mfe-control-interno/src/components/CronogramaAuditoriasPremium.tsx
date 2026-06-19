@@ -57,6 +57,9 @@ import {
   type EstadoAuditoria as EstadoAuditoriaHook,
 } from './hooks/useProgramaAnualData';
 import { esFestivo } from '../gestion-legal/utils/diasHabiles';
+import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
+import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
+
 
 /** Colores por columna del tablero (misma semántica que `resolverColumnaKanban`) */
 const COLORES_POR_COLUMNA_KANBAN: Record<
@@ -544,6 +547,30 @@ export function CronogramaAuditoriasPremium({
     setFechaActual(new Date());
   };
 
+  const handleExportExcel = async () => {
+    toast.info('Generando archivo Excel...');
+    const datosExcel: AuditoriaExcel[] = auditoriasFiltradas.map((a: any) => ({
+      codigo: a.id.substring(0, 8).toUpperCase(),
+      titulo: a.nombre,
+      tipo: a.tipoOperativo || a.tipoKanban || a.tipo || 'Regular',
+      estado: a.estadoKanban || a.fase || a.estado,
+      territorial: a.territorial || 'Sede Central',
+      auditorLider: { nombre: safeNombre(a.auditorLider) },
+      fechaInicio: a.fechaInicio ? new Date(a.fechaInicio).toLocaleDateString() : 'N/A',
+      fechaFin: a.fechaFin ? new Date(a.fechaFin).toLocaleDateString() : 'N/A',
+      progreso: typeof a.avance === 'number' ? a.avance : 0,
+      hallazgos: 0, 
+      riesgo: a.riesgo || 'Bajo'
+    }));
+
+    const resultado = await exportarAuditoriasTemplate(datosExcel);
+    if (resultado.exito) {
+      toast.success(resultado.mensaje);
+    } else {
+      toast.error('Error al exportar: ' + resultado.error);
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-lg overflow-hidden">
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -699,7 +726,7 @@ export function CronogramaAuditoriasPremium({
 
             {/* Exportar */}
             <button
-              onClick={() => toast.success('Exportando cronograma...')}
+              onClick={handleExportExcel}
               className="px-3 py-2 bg-white border-2 border-gray-300 hover:border-[#2962FF] rounded-lg text-xs font-bold flex items-center gap-2 transition-all"
             >
               <Download className="w-4 h-4" />

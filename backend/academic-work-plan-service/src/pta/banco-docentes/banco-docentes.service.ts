@@ -1349,7 +1349,7 @@ export class BancoDocentesService implements OnModuleInit {
   async toggleEstado(id: string) {
     const authRows = await this.dataSource.query(
       `
-      SELECT u.id_user, u.is_active
+      SELECT u.id_user, u.id_person, u.is_active
       FROM auth."user" u
       WHERE u.id_user::text = $1 OR u.id_person::text = $1
       LIMIT 1
@@ -1357,13 +1357,23 @@ export class BancoDocentesService implements OnModuleInit {
       [id],
     );
 
+    let activoFinal = false;
+
     if (authRows[0]) {
-      const activo = !authRows[0].is_active;
+      activoFinal = !authRows[0].is_active;
       await this.dataSource.query(
         `UPDATE auth."user" SET is_active = $1, updated_at = now() WHERE id_user = $2`,
-        [activo, authRows[0].id_user],
+        [activoFinal, authRows[0].id_user],
       );
-      return { id: authRows[0].id_user, estado: activo ? 'ACTIVO' : 'INACTIVO', activo };
+
+      // También sincronizar el estado en DocenteEntity para que la UI refleje el cambio
+      const d = await this.docenteRepo.findOne({ where: { personaId: authRows[0].id_person } as any });
+      if (d) {
+        d.estado = activoFinal ? 'ACTIVO' : 'INACTIVO';
+        await this.docenteRepo.save(d);
+      }
+
+      return { id: authRows[0].id_user, estado: activoFinal ? 'ACTIVO' : 'INACTIVO', activo: activoFinal };
     }
 
     const d = await this.docenteRepo.findOne({ where: { id } });
@@ -2005,10 +2015,22 @@ export class BancoDocentesService implements OnModuleInit {
 
     // Aprobar
     await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado" 
+      `UPDATE academic_work_plan."RundCampoEstado"
        SET estado = 'Aprobado', revisado_por = $1, fecha_revision = NOW(), observacion = NULL, "updatedAt" = NOW()
        WHERE docente_id = $2 AND bloque = $3`,
       [aprobadorId, docenteId, bloqueUpper],
+    );
+
+    // Propagar el estado a los soportes del bloque para que la fuente de verdad
+    // (RundSoporteCampo.estado) quede alineada con las 3 vistas:
+    //  - RUND backoffice (docStatus se reconstruye desde aquí → botones no reaparecen)
+    //  - Carpeta Digital backoffice/docente (lee el estado del soporte → muestra "Aprobado")
+    // No tocamos soportes ya rechazados.
+    await this.dataSource.query(
+      `UPDATE academic_work_plan."RundSoporteCampo"
+       SET estado = 'Aprobado'
+       WHERE docente_id = $1 AND bloque = $2 AND estado != 'Rechazado'`,
+      [docenteId, bloqueUpper],
     );
 
     // BR-056 â€” Log de auditorÃ­a inmutable
@@ -2057,10 +2079,19 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     await this.dataSource.query(
-      `UPDATE academic_work_plan."RundCampoEstado" 
+      `UPDATE academic_work_plan."RundCampoEstado"
        SET estado = 'Devuelto', revisado_por = $1, observacion = $2, fecha_revision = NOW(), "updatedAt" = NOW()
        WHERE docente_id = $3 AND bloque = $4`,
       [aprobadorId, observacion.trim(), docenteId, bloqueUpper],
+    );
+
+    // Propagar el rechazo a los soportes del bloque (fuente de verdad unificada),
+    // para que tanto el RUND como la Carpeta Digital muestren el estado "Rechazado".
+    await this.dataSource.query(
+      `UPDATE academic_work_plan."RundSoporteCampo"
+       SET estado = 'Rechazado', observacion = $3
+       WHERE docente_id = $1 AND bloque = $2`,
+      [docenteId, bloqueUpper, observacion.trim()],
     );
 
     // Actualizar estado global del docente

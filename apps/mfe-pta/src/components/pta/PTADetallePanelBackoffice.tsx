@@ -16,7 +16,7 @@
  * @date 2026-03-13
  */
 
-import React, { useState, useMemo, useEffect, type ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -25,9 +25,10 @@ import {
   ChevronDown, ChevronRight, ArrowRight, AlertTriangle, Calendar,
   MapPin, Award, Hash, Calculator, TrendingUp, Shield, Printer,
   GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2, Edit2,
-  Activity, Download, ExternalLink, Lock
+  Activity, Download, ExternalLink, Lock, ShieldCheck
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
+import { usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
 import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
@@ -101,6 +102,20 @@ const COMPONENT_LEVELS: Record<string, number> = {
   academicas_admin: 3,
 };
 
+// Permiso granular específico requerido para aprobar cada componente.
+// Coincide con auth.permission creados en la migración 327.
+const COMPONENT_PERMISSION: Record<string, string> = {
+  academica: 'pta.approve.academica',
+  complementarias: 'pta.approve.complementarias',
+  investigacion: 'pta.approve.investigacion',
+  ext_capacitacion: 'pta.approve.extension.capacitacion',
+  ext_procesos: 'pta.approve.extension.procesos_seleccion',
+  ext_fortalecimiento: 'pta.approve.extension.fortalecimiento',
+  ext_gobierno: 'pta.approve.extension.alto_gobierno',
+  ext_secciones: 'pta.approve.extension.secciones_actividades',
+  academicas_admin: 'pta.approve.academicas_admin',
+};
+
 function getResponsableRoleLabel(key: string): string {
   const lvl = COMPONENT_LEVELS[key];
   if (lvl === 1) return 'Jefatura de Programa';
@@ -112,6 +127,7 @@ function getResponsableRoleLabel(key: string): string {
 function getStatusConfig(estado: string) {
   const found = FLUJO_COMPLETO.find(f => f.key === estado);
   if (found) return found;
+  if (estado === 'PENDIENTE_APROBACION') return { key: estado, label: 'Pendiente Aprobación', short: 'Pend.', color: '#B45309', bg: '#FEF3C7' };
   if (estado === 'Rechazado') return { key: estado, label: 'Rechazado', short: 'Rech.', color: '#991B1B', bg: '#FEE2E2' };
   if (estado === 'Devuelto') return { key: estado, label: 'Devuelto', short: 'Dev.', color: '#9A3412', bg: '#FFF7ED' };
   if (estado === 'ESCALADO_SNA') return { key: estado, label: 'Escalado SNA', short: 'SNA', color: '#991B1B', bg: '#FEE2E2' };
@@ -129,6 +145,7 @@ function getNextStateLabel(current: string, hayModificaciones = false): string {
   if (current === 'Pendiente Jefatura') return 'Aprobar → Avanzar a Decanatura';
   if (current === 'Pendiente Decanatura') return 'Aprobar → Avanzar a G. Profesoral';
   if (current === 'Pendiente Gestión Profesoral') return 'Aprobar PTA (Firma Digital)';
+  if (current === 'PENDIENTE_APROBACION') return 'Aprobar por Componentes';
   return 'Aprobar';
 }
 
@@ -556,7 +573,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
   puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId, actorNombre,
 }, ref) => {
-  const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion' | 'evidencias'>('resumen');
+  const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion' | 'evidencias' | 'trazabilidad'>('resumen');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   const [aprobacionesJefatura, setAprobacionesJefatura] = useState<any[]>([]);
   const [pta, setPta] = useState<any>(initialPta);
@@ -574,6 +591,26 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // ═══ FEATURE 3: MODO EDICIÓN ═══
   const { rules } = usePTARules();
   const [showEditForm, setShowEditForm] = useState(false);
+
+  // ── Autorización por COMPONENTE basada en permisos granulares (pta.approve.*) ──
+  // Si el usuario tiene algún permiso granular pta.approve.*, la autorización se basa
+  // EXCLUSIVAMENTE en esos permisos (cada componente exige el suyo). Si no tiene ninguno,
+  // se mantiene la compatibilidad con el sistema legacy de niveles (nivelAprobacion).
+  const { puede: puedePerm } = usePermisosPTAGranulares();
+  const tieneAlgunPermisoComponente = useMemo(
+    () => Object.values(COMPONENT_PERMISSION).some(p => puedePerm(p)),
+    [puedePerm],
+  );
+  const isComponentAuthorized = useCallback((key: string): boolean => {
+    if (isSuperUser) return true;
+    const perm = COMPONENT_PERMISSION[key];
+    if (tieneAlgunPermisoComponente) {
+      // El usuario opera bajo el esquema granular: solo aprueba el componente de su permiso.
+      return !!perm && puedePerm(perm);
+    }
+    // Fallback legacy por nivel (compatibilidad con roles sin permisos granulares).
+    return nivelAprobacion === COMPONENT_LEVELS[key];
+  }, [isSuperUser, tieneAlgunPermisoComponente, puedePerm, nivelAprobacion]);
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 640);
@@ -604,8 +641,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   }, [pta?.id]);
 
   const handleAprobarComponente = async (componente: string, estado: 'aprobado' | 'devuelto') => {
-    const isComponentAuthorized = isSuperUser || (nivelAprobacion === COMPONENT_LEVELS[componente]);
-    const canApprove = puedeAprobar && isPendiente && isComponentAuthorized;
+    const canApprove = puedeAprobar && isPendiente && isComponentAuthorized(componente);
     if (!canApprove) {
       toast.error('No tiene permisos para realizar esta acción');
       return;
@@ -702,8 +738,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   }, [initialPta?.id]);
 
   const sc = getStatusConfig(pta.estado);
-  const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
-  const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion);
+  const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado);
+  const puedeAprobarNivelActual = puedeAprobar && (pta.estado === 'PENDIENTE_APROBACION' || puedeAprobarEstadoActual(pta.estado, nivelAprobacion));
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
@@ -913,11 +949,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Número de la versión del reporte actual (cuenta snapshots guardados)
   const reporteVersionActual = historialEstados.filter((h: any) => h.snapshotPta && typeof h.snapshotPta === 'object').length || 1;
 
+  const componentesPendientes = componentesAprobacion.filter(c => c.estado === 'pendiente' || !c.estado).length;
   const TABS = [
     { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     { key: 'componentes', label: 'Componentes', icon: Layers },
-    { key: 'historial', label: 'Traza Componentes', icon: Activity, badge: historialEstados.length },
+    { key: 'historial', label: 'Aprobación', icon: ShieldCheck, badge: componentesPendientes || undefined },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
+    { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
     ...(isConcertacion || concertacion.mensajes?.length > 0
       ? [{ key: 'concertacion', label: 'Concertación', icon: MessageSquare, badge: concertacion.mensajes?.length || 0 }]
       : []),
@@ -938,15 +976,16 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
     const estado = approval.estado || 'pendiente';
+    const isAutoAprobado = estado === 'aprobado' && approval.aprobadorNombre === 'Sistema';
     const isEditing = estado !== 'aprobado' || !!evaluandoComponente[key];
     const isProcessing = !!procesandoAprobacionComponente[key];
 
-    const isComponentAuthorized = isSuperUser || (nivelAprobacion === COMPONENT_LEVELS[key]);
-    const canEvaluateComponent = puedeAprobar && isPendiente && isComponentAuthorized;
+    const componentAuthorized = isComponentAuthorized(key);
+    const canEvaluateComponent = puedeAprobar && isPendiente && componentAuthorized && !isAutoAprobado;
 
     const getAssignmentDate = () => {
       const transition = (pta.historialEstados || []).find(
-        (h: any) => h.estadoNuevo === 'Pendiente Jefatura' || h.estado_nuevo === 'Pendiente Jefatura'
+        (h: any) => ['Pendiente Jefatura', 'PENDIENTE_APROBACION'].includes(h.estadoNuevo || h.estado_nuevo || '')
       );
       if (transition && transition.createdAt) {
         return new Date(transition.createdAt);
@@ -989,7 +1028,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       dotPulse = false;
     }
 
-    if (!isComponentAuthorized) {
+    if (!componentAuthorized) {
       cardBg = 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)';
       cardBorder = '1px solid #E2E8F0';
       badgeBg = 'rgba(148, 163, 184, 0.08)';
@@ -1013,7 +1052,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
     return (
       <motion.div
-        whileHover={isComponentAuthorized ? { y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' } : undefined}
+        whileHover={componentAuthorized ? { y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' } : undefined}
         transition={{ type: 'spring', stiffness: 300, damping: 20 }}
         style={{
           background: cardBg,
@@ -1026,7 +1065,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           position: 'relative',
           overflow: 'hidden',
           marginBottom: isSubComponent ? 0 : 16,
-          opacity: isComponentAuthorized ? 1 : 0.82,
+          opacity: componentAuthorized ? 1 : 0.82,
           transition: 'border-color 0.25s ease, background 0.25s ease, opacity 0.25s ease',
         }}
       >
@@ -1037,7 +1076,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           bottom: 0,
           left: 0,
           width: 5,
-          background: isComponentAuthorized
+          background: componentAuthorized
             ? `linear-gradient(180deg, ${color} 0%, ${color}CC 100%)`
             : 'linear-gradient(180deg, #94A3B8 0%, #94A3B8CC 100%)',
           borderRadius: '4px 0 0 4px'
@@ -1057,14 +1096,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               width: isSubComponent ? 34 : 42,
               height: isSubComponent ? 34 : 42,
               borderRadius: 10,
-              background: isComponentAuthorized
+              background: componentAuthorized
                 ? `linear-gradient(135deg, ${color}1A 0%, ${color}0D 100%)`
                 : 'linear-gradient(135deg, rgba(148, 163, 184, 0.15) 0%, rgba(148, 163, 184, 0.08) 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: isComponentAuthorized ? color : '#64748B',
-              border: isComponentAuthorized ? `1px solid ${color}26` : '1px solid rgba(148, 163, 184, 0.25)',
+              color: componentAuthorized ? color : '#64748B',
+              border: componentAuthorized ? `1px solid ${color}26` : '1px solid rgba(148, 163, 184, 0.25)',
               flexShrink: 0,
               boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
             }}>
@@ -1175,17 +1214,24 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         {/* Detalle de Aprobación Guardada */}
         {!isEditing && (
           <div style={{
-            background: 'rgba(240, 253, 244, 0.4)',
+            background: isAutoAprobado ? 'rgba(241, 245, 249, 0.6)' : 'rgba(240, 253, 244, 0.4)',
             borderRadius: 10,
             padding: '12px 14px',
             fontSize: '0.74rem',
-            color: '#15803D',
-            border: '1px dashed #A7F3D0',
+            color: isAutoAprobado ? '#475569' : '#15803D',
+            border: isAutoAprobado ? '1px dashed #CBD5E1' : '1px dashed #A7F3D0',
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
             marginLeft: 6
           }}>
+            {isAutoAprobado ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#64748B', fontStyle: 'italic' }}>
+                <CheckCircle style={{ width: 13, height: 13, color: '#94A3B8', flexShrink: 0 }} />
+                Sin actividades registradas — no requiere aprobación
+              </div>
+            ) : (
+              <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', fontSize: '0.7rem' }}>
               <div>
                 <span style={{ display: 'block', fontSize: '0.62rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', marginBottom: 2 }}>Aprobado Por</span>
@@ -1260,6 +1306,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               >
                 Volver a evaluar
               </button>
+            )}
+              </>
             )}
           </div>
         )}
@@ -1404,6 +1452,122 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           </div>
         )}
       </motion.div>
+    );
+  };
+
+  // ── Timeline de trazabilidad del proceso (reutilizado en el tab Trazabilidad) ──
+  // Muestra cada transición de estado; las que tienen snapshot son clickeables y
+  // abren el reporte versionado R-XX correspondiente.
+  const renderHistorialTimeline = () => {
+    if (historialEstados.length === 0) {
+      return (
+        <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: '0.78rem' }}>
+          Sin transiciones registradas.
+        </div>
+      );
+    }
+    const displayOrder = [...historialEstados].reverse();
+    const snapshotNums = new Map<string, number>();
+    let reporteNum = 1;
+    displayOrder.forEach((s: any, i: number) => {
+      if (s.snapshotPta && typeof s.snapshotPta === 'object') {
+        snapshotNums.set(s.id || String(i), reporteNum++);
+      }
+    });
+    return (
+      <div style={{ position: 'relative', marginTop: 10 }}>
+        <div style={{ position: 'absolute', top: 14, bottom: 14, left: 15, width: 2, background: '#E0E7FF', borderRadius: 1 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {displayOrder.map((step: any, idx: number) => {
+            const isLatest = idx === 0;
+            const hsc = getStatusConfig(step.estadoNuevo || '');
+            const date = step.createdAt ? new Date(step.createdAt) : null;
+            const snap = step.snapshotPta;
+            const hasSnapshot = snap && typeof snap === 'object';
+            const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(idx)) : null;
+            return (
+              <motion.div
+                key={step.id || idx}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.04 }}
+                onClick={() => { if (hasSnapshot) { setSelectedSnapshot(step); setSelectedSnapshotVersion(reporteNumStep || 1); } }}
+                style={{
+                  display: 'flex', gap: 14, position: 'relative', zIndex: 1,
+                  padding: '10px 12px', borderRadius: 10, marginLeft: 0,
+                  cursor: hasSnapshot ? 'pointer' : 'default',
+                  background: isLatest ? `${hsc.bg || '#F3F4F6'}` : 'transparent',
+                  border: isLatest ? `1px solid ${hsc.color}20` : '1px solid transparent',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { if (hasSnapshot) { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
+                onMouseLeave={e => { if (!isLatest) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } else { e.currentTarget.style.background = hsc.bg || '#F3F4F6'; e.currentTarget.style.borderColor = `${hsc.color}20`; } }}
+              >
+                <div style={{
+                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                  background: isLatest ? (hsc.color || '#4F46E5') : 'white',
+                  border: `2.5px solid ${isLatest ? (hsc.color || '#4F46E5') : '#CBD5E1'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: isLatest ? `0 0 0 3px ${hsc.color}18` : 'none',
+                }}>
+                  <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />
+                </div>
+                <div style={{ flex: 1, paddingTop: 2, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 6,
+                      background: hsc.bg || '#F3F4F6', color: hsc.color || '#374151',
+                      fontSize: '0.72rem', fontWeight: 700,
+                      border: `1px solid ${hsc.color || '#D1D5DB'}20`,
+                    }}>
+                      {step.estadoNuevo?.replace(/_/g, ' ')}
+                    </span>
+                    {step.version && step.version > 1 && (
+                      <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 6, background: '#F3E8FF', color: '#6B21A8', fontWeight: 700 }}>v{step.version}</span>
+                    )}
+                  </div>
+                  {date && (
+                    <div style={{ fontSize: '0.68rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                      <Calendar style={{ width: 11, height: 11, color: '#9CA3AF' }} />
+                      {date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      <Clock style={{ width: 11, height: 11, color: '#9CA3AF', marginLeft: 4 }} />
+                      <span style={{ color: '#374151', fontWeight: 600 }}>
+                        {date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    {step.actorRol && (
+                      <span style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <Users style={{ width: 10, height: 10 }} /> {step.actorRol}
+                      </span>
+                    )}
+                    {hasSnapshot && (
+                      <span style={{
+                        fontSize: '0.6rem', color: '#4F46E5', fontWeight: 700,
+                        display: 'flex', alignItems: 'center', gap: 3,
+                        padding: '2px 7px', borderRadius: 4, background: '#EEF2FF',
+                        border: '1px solid #C7D2FE',
+                      }}>
+                        <Eye style={{ width: 10, height: 10 }} /> R-{String(reporteNumStep).padStart(2, '0')}
+                      </span>
+                    )}
+                  </div>
+                  {step.comentarios && (
+                    <p style={{
+                      fontSize: '0.72rem', color: '#64748B', margin: '5px 0 0',
+                      padding: '5px 8px', background: '#F8FAFC', borderRadius: 6,
+                      border: '1px solid #E2E8F0', lineHeight: 1.4, fontStyle: 'italic',
+                    }}>
+                      "{step.comentarios}"
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
     );
   };
 
@@ -2190,11 +2354,26 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
                 {/* Progress Stats & Count Badges */}
                 {(() => {
-                  const total = 9;
-                  const aprobados = componentesAprobacion.filter(c => c.estado === 'aprobado').length;
-                  const devueltos = componentesAprobacion.filter(c => c.estado === 'devuelto').length;
+                  // Componentes fijos (Docencia, Investigación, Complementarias, AADM) = 4
+                  // + sub-componentes de extensión que tengan horas > 0
+                  const extSubKeyMap: Record<string, string> = {
+                    capacitacion: 'ext_capacitacion',
+                    seleccion: 'ext_procesos',
+                    fortalecimiento: 'ext_fortalecimiento',
+                    alto_gobierno: 'ext_gobierno',
+                    otras: 'ext_secciones',
+                  };
+                  const extSubKeys = Object.keys(extSubKeyMap);
+                  const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
+                  const visibleComponenteKeys = new Set([
+                    'academica', 'investigacion', 'complementarias', 'academicas_admin',
+                    ...extConHoras.map(k => extSubKeyMap[k]),
+                  ]);
+                  const total = visibleComponenteKeys.size;
+                  const aprobados = componentesAprobacion.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
+                  const devueltos = componentesAprobacion.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
                   const pendientes = total - aprobados - devueltos;
-                  const pct = Math.round((aprobados / total) * 100);
+                  const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
                   return (
                     <div style={{ marginTop: 16 }}>
                       {/* Stats Badges Grid */}
@@ -2323,8 +2502,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       gap: 12,
                       paddingLeft: 6,
                     }}>
-                      {/* Sub 1: Capacitación */}
-                      {renderComponentCard(
+                      {/* Sub 1: Capacitación — solo si tiene horas */}
+                      {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
                         'ext_capacitacion',
                         'Capacitación y Formación',
                         GraduationCap,
@@ -2333,8 +2512,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 2: Procesos de Selección */}
-                      {renderComponentCard(
+                      {/* Sub 2: Procesos de Selección — solo si tiene horas */}
+                      {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
                         'ext_procesos',
                         'Procesos de Selección',
                         Briefcase,
@@ -2343,8 +2522,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 3: Fortalecimiento Institucional */}
-                      {renderComponentCard(
+                      {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
+                      {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
                         'ext_fortalecimiento',
                         'Fortalecimiento Institucional',
                         Building2,
@@ -2353,8 +2532,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 4: Escuela de Alto Gobierno */}
-                      {renderComponentCard(
+                      {/* Sub 4: Escuela de Alto Gobierno — solo si tiene horas */}
+                      {getSubcomponentHours('alto_gobierno') > 0 && renderComponentCard(
                         'ext_gobierno',
                         'Escuela de Alto Gobierno',
                         Shield,
@@ -2363,8 +2542,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 5: Secciones y Actividades */}
-                      {renderComponentCard(
+                      {/* Sub 5: Secciones y Actividades — solo si tiene horas */}
+                      {getSubcomponentHours('otras') > 0 && renderComponentCard(
                         'ext_secciones',
                         'Secciones y Actividades',
                         Layers,
@@ -2395,126 +2574,42 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 </div>
               )}
 
-              {/* Historial de transiciones de estado completo al final (collapsible) */}
-              <div style={{ marginTop: 24 }}>
-                <SectionCollapsible
-                  title={`Historial de Cambios de Estado del PTA`}
-                  icon={Activity}
-                  color="#6366F1"
-                  count={historialEstados.length}
-                  defaultOpen={false}
-                >
-                  {historialEstados.length > 0 ? (
-                    <div style={{ position: 'relative', marginTop: 10 }}>
-                      <div style={{ position: 'absolute', top: 14, bottom: 14, left: 15, width: 2, background: '#E0E7FF', borderRadius: 1 }} />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {(() => {
-                          const displayOrder = [...historialEstados].reverse();
-                          const snapshotNums = new Map<string, number>();
-                          let reporteNum = 1;
-                          displayOrder.forEach((s: any, i: number) => {
-                            if (s.snapshotPta && typeof s.snapshotPta === 'object') {
-                              snapshotNums.set(s.id || String(i), reporteNum++);
-                            }
-                          });
-                          return displayOrder.map((step: any, idx: number) => {
-                            const isLatest = idx === 0;
-                            const hsc = getStatusConfig(step.estadoNuevo || '');
-                            const date = step.createdAt ? new Date(step.createdAt) : null;
-                            const snap = step.snapshotPta;
-                            const hasSnapshot = snap && typeof snap === 'object';
-                            const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(idx)) : null;
-                            return (
-                              <motion.div
-                                key={step.id || idx}
-                                initial={{ opacity: 0, x: -8 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: idx * 0.04 }}
-                                onClick={() => { if (hasSnapshot) { setSelectedSnapshot(step); setSelectedSnapshotVersion(reporteNumStep || 1); } }}
-                                style={{
-                                  display: 'flex', gap: 14, position: 'relative', zIndex: 1,
-                                  padding: '10px 12px', borderRadius: 10, marginLeft: 0,
-                                  cursor: hasSnapshot ? 'pointer' : 'default',
-                                  background: isLatest ? `${hsc.bg || '#F3F4F6'}` : 'transparent',
-                                  border: isLatest ? `1px solid ${hsc.color}20` : '1px solid transparent',
-                                  transition: 'all 0.15s',
-                                }}
-                                onMouseEnter={e => { if (hasSnapshot) { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
-                                onMouseLeave={e => { if (!isLatest) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } else { e.currentTarget.style.background = hsc.bg || '#F3F4F6'; e.currentTarget.style.borderColor = `${hsc.color}20`; } }}
-                              >
-                                <div style={{
-                                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                                  background: isLatest ? (hsc.color || '#4F46E5') : 'white',
-                                  border: `2.5px solid ${isLatest ? (hsc.color || '#4F46E5') : '#CBD5E1'}`,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  boxShadow: isLatest ? `0 0 0 3px ${hsc.color}18` : 'none',
-                                }}>
-                                  <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />
-                                </div>
-                                <div style={{ flex: 1, paddingTop: 2, minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                                    <span style={{
-                                      padding: '2px 8px', borderRadius: 6,
-                                      background: hsc.bg || '#F3F4F6', color: hsc.color || '#374151',
-                                      fontSize: '0.72rem', fontWeight: 700,
-                                      border: `1px solid ${hsc.color || '#D1D5DB'}20`,
-                                    }}>
-                                      {step.estadoNuevo?.replace(/_/g, ' ')}
-                                    </span>
-                                    {step.version && step.version > 1 && (
-                                      <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 6, background: '#F3E8FF', color: '#6B21A8', fontWeight: 700 }}>v{step.version}</span>
-                                    )}
-                                  </div>
-                                  {date && (
-                                    <div style={{ fontSize: '0.68rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                      <Calendar style={{ width: 11, height: 11, color: '#9CA3AF' }} />
-                                      {date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                      <Clock style={{ width: 11, height: 11, color: '#9CA3AF', marginLeft: 4 }} />
-                                      <span style={{ color: '#374151', fontWeight: 600 }}>
-                                        {date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                      </span>
-                                    </div>
-                                  )}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                                    {step.actorRol && (
-                                      <span style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
-                                        <Users style={{ width: 10, height: 10 }} /> {step.actorRol}
-                                      </span>
-                                    )}
-                                    {hasSnapshot && (
-                                      <span style={{
-                                        fontSize: '0.6rem', color: '#4F46E5', fontWeight: 700,
-                                        display: 'flex', alignItems: 'center', gap: 3,
-                                        padding: '2px 7px', borderRadius: 4, background: '#EEF2FF',
-                                        border: '1px solid #C7D2FE',
-                                      }}>
-                                        <Eye style={{ width: 10, height: 10 }} /> R-{String(reporteNumStep).padStart(2, '0')}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {step.comentarios && (
-                                    <p style={{
-                                      fontSize: '0.72rem', color: '#64748B', margin: '5px 0 0',
-                                      padding: '5px 8px', background: '#F8FAFC', borderRadius: 6,
-                                      border: '1px solid #E2E8F0', lineHeight: 1.4, fontStyle: 'italic',
-                                    }}>
-                                      "{step.comentarios}"
-                                    </p>
-                                  )}
-                                </div>
-                              </motion.div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: '0.78rem' }}>
-                      Sin transiciones registradas.
-                    </div>
-                  )}
-                </SectionCollapsible>
+            </div>
+          )}
+
+          {/* ═══ TAB: Trazabilidad (traza del proceso + versiones de reporte R-XX) ═══ */}
+          {activeTab === 'trazabilidad' && (
+            <div>
+              <div style={{
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                borderRadius: 16,
+                padding: '18px 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.01)',
+                marginBottom: 20,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: '240px' }}>
+                    <h4 style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0F172A', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '-0.015em' }}>
+                      <Activity style={{ width: 20, height: 20, color: '#6366F1', strokeWidth: 2.5 }} />
+                      Trazabilidad del Proceso
+                    </h4>
+                    <p style={{ fontSize: '0.74rem', color: '#64748B', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+                      Cada aprobación o devolución del PTA queda registrada como una transición de estado. Las transiciones marcadas con <strong>R-XX</strong> generan una versión congelada del reporte: haz clic para ver el estado del PTA en ese momento.
+                    </p>
+                  </div>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10,
+                    background: '#EEF2FF', border: '1px solid #C7D2FE', color: '#4338CA', fontSize: '0.78rem', fontWeight: 800,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    <FileText style={{ width: 14, height: 14 }} />
+                    Versión actual: R-{String(reporteVersionActual).padStart(2, '0')}
+                  </div>
+                </div>
               </div>
+
+              {renderHistorialTimeline()}
             </div>
           )}
 
@@ -2752,7 +2847,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {isPendiente && puedeAprobarNivelActual && (
+              {isPendiente && puedeAprobarNivelActual && pta.estado !== 'PENDIENTE_APROBACION' && (
                 <>
                   {yaAproboEstaJefatura ? (
                     <div style={{
@@ -2899,7 +2994,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 )}
               </div>
 
-              {isPendiente && puedeAprobarNivelActual && (
+              {isPendiente && puedeAprobarNivelActual && pta.estado !== 'PENDIENTE_APROBACION' && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   {!yaAproboEstaJefatura && (
                   <button
