@@ -13,12 +13,13 @@ import { useImportAsignaturas, ImportResult } from '../hooks/useImportAsignatura
 
 interface ImportarAsignaturasProps {
   onBack: () => void;
+  onImportSuccess?: () => void;
   initialPeriodo?: string;
 }
 
 type WizardStep = 'upload' | 'validate' | 'importing';
 
-export function ImportarAsignaturas({ onBack, initialPeriodo }: ImportarAsignaturasProps) {
+export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }: ImportarAsignaturasProps) {
   const { uploadCatalog, getPeriodos, checkEstructuraStatus, loading, result, error } = useImportAsignaturas();
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -123,6 +124,7 @@ export function ImportarAsignaturas({ onBack, initialPeriodo }: ImportarAsignatu
         toast.success('Catálogo cargado exitosamente', {
           description: 'El nuevo catálogo está disponible para armar los PTAs.',
         });
+        onImportSuccess?.();
       }
     } catch (err: any) {
       console.error(err);

@@ -85,6 +85,7 @@ export function ProgramasAcademicosModule() {
   const [selectedProgramaForCetaps, setSelectedProgramaForCetaps] = useState<ProgramaAcademicoDTO | null>(null);
   const [selectedPeriodoForImport, setSelectedPeriodoForImport] = useState<string | undefined>(undefined);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [periodosRefreshTrigger, setPeriodosRefreshTrigger] = useState(0);
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
@@ -115,7 +116,7 @@ export function ProgramasAcademicosModule() {
       }
     };
     cargarPeriodos();
-  }, []);
+  }, [periodosRefreshTrigger]);
 
   const periodoActivoPA = periodosPA.find((p) => p.estado === 'en_curso') || periodosPA[0];
   const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '';
@@ -489,6 +490,7 @@ export function ProgramasAcademicosModule() {
               setActiveView('lista');
               setSelectedPeriodoForImport(undefined);
             }}
+            onImportSuccess={() => setRefreshTrigger(prev => prev + 1)}
             initialPeriodo={selectedPeriodoForImport}
           />
         </motion.div>
@@ -504,6 +506,7 @@ export function ProgramasAcademicosModule() {
               setSelectedPeriodoForImport(pCod);
               setActiveView('importar-asignaturas');
             }}
+            onPeriodosChanged={() => setPeriodosRefreshTrigger(prev => prev + 1)}
           />
         </motion.div>
       ) : (
