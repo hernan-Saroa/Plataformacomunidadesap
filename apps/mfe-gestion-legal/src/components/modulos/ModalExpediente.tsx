@@ -2159,10 +2159,22 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           } else {
                             display = String(v);
                           }
+                          // Texto largo: se muestra apilado a todo el ancho, alineado a la
+                          // izquierda y respetando saltos de línea, en lugar de comprimirlo
+                          // en la columna derecha (que rompía palabras y se veía mal).
+                          const esTextoLargo = (c.tipo === 'texto' || c.tipo === 'lista') && display.length > 60;
+                          if (esTextoLargo) {
+                            return (
+                              <div key={c.id} className="py-2 border-b border-gray-100 last:border-0 md:col-span-2">
+                                <span className="text-xs font-semibold text-gray-500 block mb-1">{c.nombre}</span>
+                                <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">{display}</p>
+                              </div>
+                            );
+                          }
                           return (
-                            <div key={c.id} className="flex items-start justify-between py-2 border-b border-gray-100 last:border-0">
+                            <div key={c.id} className="flex items-start justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
                               <span className="text-xs text-gray-500 flex-shrink-0">{c.nombre}:</span>
-                              <span className="text-sm font-bold text-gray-900 text-right ml-2 break-all">{display}</span>
+                              <span className="text-sm font-bold text-gray-900 text-right break-words min-w-0">{display}</span>
                             </div>
                           );
                         })}
