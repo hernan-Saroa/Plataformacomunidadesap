@@ -1876,7 +1876,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         placeholder="Ej: 66001233300020260012300"
                         value={formData.numeroRadicado}
                         maxLength={23}
-                        className={erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                        className={`bg-white ${erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                         onChange={(e) => {
                           // Solo permitir dígitos, máximo 23
                           const valor = e.target.value.replace(/[^0-9]/g, '').slice(0, 23);
@@ -2029,7 +2029,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             inputMode="numeric"
                             placeholder="0"
                             value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
-                            className={erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                            className={`bg-white ${erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                             onChange={(e) => {
                               const raw = e.target.value.replace(/[^0-9]/g, '');
                               // Si está vacío, poner 0

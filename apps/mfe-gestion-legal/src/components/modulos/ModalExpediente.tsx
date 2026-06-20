@@ -3045,6 +3045,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         radicado={expediente.radicado}
         documentosDelExpediente={documentos}
         isApprovalMode={modoAprobacion}
+        abogadoEncargadoId={expediente.abogadoSustanciador}
+        abogadoEncargadoNombre={expediente.abogadoAsignado || expediente.abogadoResponsable}
       />
       <ModalProgramarAudiencia
         isOpen={modalProgramarAudienciaAbierto}
