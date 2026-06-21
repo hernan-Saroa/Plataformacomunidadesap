@@ -412,8 +412,8 @@ export function FirmaDigitalActuacion({
     return null;
   }
 
-  return (
-    <div 
+  const modalUI = (
+    <div
       style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', background: 'rgba(17,24,39,0.7)', backdropFilter: 'blur(6px)', overflowY: 'auto' }}
       onWheel={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
@@ -1000,4 +1000,12 @@ export function FirmaDigitalActuacion({
       </motion.div>
     </div>
   );
+
+  // Se portaliza a document.body para que el overlay (position: fixed) NO quede atrapado
+  // dentro de contenedores con transform/overflow (el DialogContent del visor usa
+  // -translate-x/-y y overflow-hidden, lo que recortaba/ocultaba este modal y daba la
+  // sensación de que "se cerraba la ventana y no abría nada").
+  return typeof document !== 'undefined'
+    ? createPortal(modalUI, document.body)
+    : modalUI;
 }

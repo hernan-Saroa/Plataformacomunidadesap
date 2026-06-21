@@ -69,6 +69,18 @@ interface TabActuacionesExpedienteProps {
   onAutoAdvanceStage?: () => void;
   onDeleteActuacion?: (id: string) => Promise<void> | void;
   onSendEmail?: (data: { para: string; cc?: string; asunto: string; cuerpo: string; archivos?: File[] }) => void;
+  /**
+   * Configuración de aprobación de la ETAPA ACTUAL del expediente (campo "Aprobación para entrar").
+   * Si la etapa actual exige aprobación, las actuaciones quedan pendientes de firma y solo
+   * el rol/usuario configurado (o un super admin) puede autorizarlas. Es dinámica: depende
+   * de la etapa en la que se encuentre actualmente el expediente.
+   */
+  aprobacionEtapaActual?: {
+    aprobacionTipo?: 'ninguno' | 'rol' | 'usuario';
+    aprobacionRol?: string;
+    aprobacionUsuario?: string;
+    nombreEtapa?: string;
+  } | null;
 }
 
 export function TabActuacionesExpediente({
@@ -85,7 +97,8 @@ export function TabActuacionesExpediente({
   onViewDocument,
   onAutoAdvanceStage,
   onDeleteActuacion,
-  onSendEmail
+  onSendEmail,
+  aprobacionEtapaActual
 }: TabActuacionesExpedienteProps) {
   const [firmaSeleccionadaUrl, setFirmaSeleccionadaUrl] = useState<string | null>(null);
   const [lockedButtons, setLockedButtons] = useState<number[]>([]);
@@ -354,25 +367,47 @@ export function TabActuacionesExpediente({
     return role;
   };
 
-  const isUserAuthorizedToApprove = (metadata: any) => {
-    if (!metadata) return false;
+  // ¿La etapa siguiente exige aprobación para entrar? (dinámico según etapa actual del expediente)
+  const requiereFirmaEtapa = !!(aprobacionEtapaActual && aprobacionEtapaActual.aprobacionTipo && aprobacionEtapaActual.aprobacionTipo !== 'ninguno');
+
+  /**
+   * Estado de firma DERIVADO de la etapa actual del expediente (no congelado al crear).
+   * - AUTORIZADO / DEVUELTO: resultado real de una acción de aprobación (persistido).
+   * - PENDIENTE: la etapa siguiente requiere aprobación y aún no se ha firmado.
+   * - NINGUNO: entrada directa (no requiere firma).
+   */
+  const getEstadoFirma = (act: ActuacionExpediente): 'AUTORIZADO' | 'DEVUELTO' | 'PENDIENTE' | 'NINGUNO' => {
+    const stored = act?.metadata?.estadoAutorizacion;
+    if (stored === 'AUTORIZADO') return 'AUTORIZADO';
+    if (stored === 'DEVUELTO') return 'DEVUELTO';
+    // Las actuaciones del sistema (cambios de etapa, trazas) nunca requieren firma
+    if (act?.tipo === 'CAMBIO_ETAPA' || (act?.origen && act.origen !== 'MANUAL')) return 'NINGUNO';
+    return requiereFirmaEtapa ? 'PENDIENTE' : 'NINGUNO';
+  };
+
+  /**
+   * Valida si el usuario activo puede autorizar/firmar, según el rol o usuario configurado
+   * en la etapa siguiente ("Aprobación para entrar"). Los super admin siempre pueden.
+   */
+  const isUserAuthorizedToApprove = () => {
+    if (!requiereFirmaEtapa || !aprobacionEtapaActual) return false;
     const currentUser = authService.getCurrentUser() as any;
     if (!currentUser) return false;
 
     // Super admins can always authorize
     const rolesList = currentUser.roles || [];
-    const isSuperAdmin = rolesList.some((r: any) => 
-      typeof r === 'string' ? r === 'SUPER_ADMIN' : r.code === 'SUPER_ADMIN'
+    const isSuperAdmin = rolesList.some((r: any) =>
+      typeof r === 'string' ? r === 'SUPER_ADMIN' : r.code === 'SUPER_ADMIN' || r.name === 'SUPER_ADMIN'
     );
     if (isSuperAdmin) return true;
 
-    if (metadata.aprobacionTipo === 'rol' && metadata.aprobacionRol) {
-      return authService.hasRole(metadata.aprobacionRol);
+    if (aprobacionEtapaActual.aprobacionTipo === 'rol' && aprobacionEtapaActual.aprobacionRol) {
+      return authService.hasRole(aprobacionEtapaActual.aprobacionRol);
     }
 
-    if (metadata.aprobacionTipo === 'usuario' && metadata.aprobacionUsuario) {
+    if (aprobacionEtapaActual.aprobacionTipo === 'usuario' && aprobacionEtapaActual.aprobacionUsuario) {
       const currentUserId = currentUser.id || currentUser.id_user || currentUser.user?.id || currentUser.user?.id_user || currentUser.person?.id;
-      return String(currentUserId) === String(metadata.aprobacionUsuario);
+      return String(currentUserId) === String(aprobacionEtapaActual.aprobacionUsuario);
     }
 
     return false;
@@ -756,7 +791,9 @@ export function TabActuacionesExpediente({
             const isCompleted = actuacion.estado === 'Completado' || actuacion.estado === 'COMPLETADA';
             const isScheduled = actuacion.estado === 'Programado';
             const isRecent = idx === 0;
-            const hasUnsignedDocs = !checkAllAssociatedDocsSigned(actuacion);
+            // Solo es relevante "firma pendiente" si la etapa siguiente exige aprobación.
+            // En entrada directa los documentos no requieren firma.
+            const hasUnsignedDocs = getEstadoFirma(actuacion) === 'PENDIENTE' && !checkAllAssociatedDocsSigned(actuacion);
 
             return (
               <Card 
@@ -850,7 +887,7 @@ export function TabActuacionesExpediente({
 
                       {/* Actions and status on the right */}
                       <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        {actuacion.metadata?.estadoAutorizacion === 'PENDIENTE' && (
+                        {getEstadoFirma(actuacion) === 'PENDIENTE' && (
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {checkAllAssociatedDocsSigned(actuacion) ? (
                               <Badge className="bg-emerald-50 border border-emerald-200 text-emerald-850 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-emerald-50 shadow-none">
@@ -860,27 +897,27 @@ export function TabActuacionesExpediente({
                             ) : (
                               <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-amber-50 shadow-none">
                                 <Lock className="w-3 h-3 text-amber-600 animate-pulse" />
-                                Firma Pendiente ({actuacion.metadata.aprobacionTipo === 'rol' ? getFriendlyRoleName(actuacion.metadata.aprobacionRol) : 'Usuario'})
+                                Firma Pendiente ({aprobacionEtapaActual?.aprobacionTipo === 'rol' ? getFriendlyRoleName(aprobacionEtapaActual?.aprobacionRol || '') : 'Usuario'})
                               </Badge>
                             )}
                           </div>
                         )}
 
-                        {actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO' && (
+                        {getEstadoFirma(actuacion) === 'AUTORIZADO' && (
                           <Badge className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-emerald-50 shadow-none">
                             <CheckCircle className="w-3 h-3 text-emerald-600" />
                             Firmado por {actuacion.metadata.firmadoPor}
                           </Badge>
                         )}
 
-                        {actuacion.metadata?.estadoAutorizacion === 'DEVUELTO' && (
+                        {getEstadoFirma(actuacion) === 'DEVUELTO' && (
                           <Badge className="bg-red-50 border border-red-200 text-red-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-red-50 shadow-none" title={actuacion.metadata.observacionesDevolucion}>
                             <X className="w-3 h-3 text-red-600" />
                             Devuelto por {actuacion.metadata.devueltoPor}
                           </Badge>
                         )}
 
-                        {onSendEmail && actuacion.tipo !== 'CAMBIO_ETAPA' && !hasUnsignedDocs && (!actuacion.metadata?.aprobacionTipo || actuacion.metadata?.estadoAutorizacion === 'AUTORIZADO') && (
+                        {onSendEmail && actuacion.tipo !== 'CAMBIO_ETAPA' && !hasUnsignedDocs && getEstadoFirma(actuacion) === 'AUTORIZADO' && (
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1268,20 +1305,24 @@ export function TabActuacionesExpediente({
                                       <Download className="w-3.5 h-3.5" /> Descargar
                                     </Button>
                                   )}
-                                  {!signed && onViewDocument && doc.archivoUrl && (
+                                  {!signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove() && (
                                     <Button
                                       size="sm"
                                       className="h-8 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1 bg-white"
                                       variant="outline"
                                       onClick={() => {
-                                        setActuacionDetalle(null);
-                                        onViewDocument({
+                                        const docInfo = {
                                           id: doc.id,
                                           nombre: doc.nombre,
                                           url: doc.archivoUrl,
                                           tipo: doc.tipo || 'Documento Asociado',
                                           descripcion: doc.descripcion || ''
-                                        });
+                                        };
+                                        // Cerramos primero el detalle (portal) y abrimos el visor en el
+                                        // siguiente tick para no encadenar el cierre del modal del expediente
+                                        // (evita que el clic se interprete como descarte y vuelva al Kanban).
+                                        setActuacionDetalle(null);
+                                        setTimeout(() => onViewDocument(docInfo), 0);
                                       }}
                                     >
                                       <PenTool className="w-3.5 h-3.5 text-emerald-600" /> Firmar
@@ -1294,7 +1335,7 @@ export function TabActuacionesExpediente({
                         </div>
 
                         <div className="mt-4 pt-2 border-t border-slate-100">
-                          {actuacionDetalle.metadata?.estadoAutorizacion === 'AUTORIZADO' ? (
+                          {getEstadoFirma(actuacionDetalle) === 'AUTORIZADO' ? (
                             <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl space-y-1 shadow-sm">
                               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
                                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1316,7 +1357,7 @@ export function TabActuacionesExpediente({
                                 )}
                               </div>
                             </div>
-                          ) : actuacionDetalle.metadata?.estadoAutorizacion === 'PENDIENTE' ? (
+                          ) : getEstadoFirma(actuacionDetalle) === 'PENDIENTE' ? (
                             <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50/30 border border-amber-200 rounded-xl space-y-2 shadow-sm">
                               <div className="flex items-center gap-2 text-xs font-black text-amber-800 uppercase tracking-wider">
                                 <Lock className="w-4 h-4 text-amber-600 animate-bounce" />
@@ -1325,18 +1366,18 @@ export function TabActuacionesExpediente({
                               <p className="text-xs text-amber-700 leading-relaxed">
                                 Esta actuación y sus documentos asociados se encuentran en estado <strong className="text-amber-900 font-extrabold">SIN FIRMA</strong>. Se requiere la firma electrónica del aprobador para formalizar la actuación.
                               </p>
-                              {isUserAuthorizedToApprove(actuacionDetalle.metadata) ? (
+                              {isUserAuthorizedToApprove() ? (
                                 <div className="bg-amber-100/50 p-3 rounded-lg border border-amber-200/40 text-xs text-amber-950 font-semibold mt-2 flex flex-col gap-1">
                                   <span>👉 Usted es el usuario/rol autorizado.</span>
                                   <span className="text-[11px] font-medium text-amber-800">Puede autorizar y firmar digitalmente esta actuación usando los botones del footer de este modal.</span>
                                 </div>
                               ) : (
                                 <p className="text-[11px] text-amber-600 bg-amber-50/50 p-2 rounded border border-amber-100">
-                                  <strong>Aprobador requerido:</strong> {actuacionDetalle.metadata.aprobacionTipo === 'rol' ? getFriendlyRoleName(actuacionDetalle.metadata.aprobacionRol) : (userNamesMap[String(actuacionDetalle.metadata.aprobacionUsuario)] || actuacionDetalle.metadata.aprobacionUsuario)}
+                                  <strong>Aprobador requerido:</strong> {aprobacionEtapaActual?.aprobacionTipo === 'rol' ? getFriendlyRoleName(aprobacionEtapaActual?.aprobacionRol || '') : (userNamesMap[String(aprobacionEtapaActual?.aprobacionUsuario)] || aprobacionEtapaActual?.aprobacionUsuario)}
                                 </p>
                               )}
                             </div>
-                          ) : actuacionDetalle.metadata?.estadoAutorizacion === 'DEVUELTO' ? (
+                          ) : getEstadoFirma(actuacionDetalle) === 'DEVUELTO' ? (
                             <div className="p-3 bg-red-50 border border-red-100 rounded-xl space-y-1 shadow-sm">
                               <div className="flex items-center gap-1.5 text-xs font-bold text-red-800">
                                 <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
@@ -1373,20 +1414,22 @@ export function TabActuacionesExpediente({
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider block flex items-center gap-1.5">
                     <Settings className="w-3.5 h-3.5 text-slate-400" /> Reglas de Transición Kanban (Columna)
                   </label>
-                  {actuacionDetalle.metadata?.aprobacionTipo ? (
+                  {requiereFirmaEtapa ? (
                     <div className="space-y-2">
                       <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-lg flex items-start gap-3">
                         <Lock className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-bold text-indigo-900">Requiere Autorización para ingresar a la columna</p>
+                          <p className="text-xs font-bold text-indigo-900">
+                            Requiere Autorización en la etapa {aprobacionEtapaActual?.nombreEtapa ? `"${aprobacionEtapaActual.nombreEtapa}"` : 'actual'}
+                          </p>
                           <p className="text-[11px] text-indigo-700 mt-1 leading-relaxed">
-                            {actuacionDetalle.metadata.aprobacionTipo === 'rol' ? (
+                            {aprobacionEtapaActual?.aprobacionTipo === 'rol' ? (
                               <>
-                                <strong>Rol Aprobador:</strong> {getFriendlyRoleName(actuacionDetalle.metadata.aprobacionRol)} (<code>{actuacionDetalle.metadata.aprobacionRol}</code>)
+                                <strong>Rol Aprobador:</strong> {getFriendlyRoleName(aprobacionEtapaActual?.aprobacionRol || '')} (<code>{aprobacionEtapaActual?.aprobacionRol}</code>)
                               </>
                             ) : (
                               <>
-                                <strong>Usuario Aprobador Asignado:</strong> {userNamesMap[String(actuacionDetalle.metadata.aprobacionUsuario)] || `Usuario (ID: ${actuacionDetalle.metadata.aprobacionUsuario})`}
+                                <strong>Usuario Aprobador Asignado:</strong> {userNamesMap[String(aprobacionEtapaActual?.aprobacionUsuario)] || `Usuario (ID: ${aprobacionEtapaActual?.aprobacionUsuario})`}
                               </>
                             )}
                           </p>
@@ -1480,9 +1523,9 @@ export function TabActuacionesExpediente({
                 </div>
                 
                 <div className="flex gap-2 shrink-0">
-                  {actuacionDetalle.metadata?.estadoAutorizacion === 'PENDIENTE' && (
+                  {getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && (
                     <div className="flex gap-2 shrink-0">
-                      {isUserAuthorizedToApprove(actuacionDetalle.metadata) ? (
+                      {isUserAuthorizedToApprove() ? (
                         <>
                           <Button
                             size="sm"
@@ -1533,7 +1576,7 @@ export function TabActuacionesExpediente({
                       )}
                     </div>
                   )}
-                  {onSendEmail && checkAllAssociatedDocsSigned(actuacionDetalle) && (!actuacionDetalle.metadata?.aprobacionTipo || actuacionDetalle.metadata?.estadoAutorizacion === 'AUTORIZADO') && (
+                  {onSendEmail && checkAllAssociatedDocsSigned(actuacionDetalle) && getEstadoFirma(actuacionDetalle) === 'AUTORIZADO' && (
                     <Button 
                       size="sm"
                       className="text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9 border-none"
