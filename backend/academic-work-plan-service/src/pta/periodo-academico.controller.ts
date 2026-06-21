@@ -140,7 +140,38 @@ export class PeriodoAcademicoController {
       if (!validStates.includes(estado)) {
         throw new BadRequestException(`El estado debe ser uno de: ${validStates.join(', ')}`);
       }
+
+      if (estado !== 'en_curso' && period.estado === 'en_curso') {
+        const activeCount = await this.repo.count({ where: { estado: 'en_curso' } });
+        if (activeCount <= 1) {
+          throw new BadRequestException(
+            'Debe haber exactamente un periodo activo ("En Curso") en el sistema. ' +
+            'Active otro periodo para archivar o cambiar el estado de este automáticamente.'
+          );
+        }
+      }
+
       period.estado = estado;
+
+      if (estado === 'en_curso') {
+        const allOtherPeriods = await this.repo.find();
+        for (const p of allOtherPeriods) {
+          if (p.id !== period.id) {
+            if (
+              p.anio < period.anio || 
+              (p.anio === period.anio && p.semestre < period.semestre)
+            ) {
+              p.estado = 'cerrado'; // Histórico
+            } else if (
+              p.anio > period.anio || 
+              (p.anio === period.anio && p.semestre > period.semestre)
+            ) {
+              p.estado = 'planeacion'; // Planeación
+            }
+            await this.repo.save(p);
+          }
+        }
+      }
     }
 
     return this.repo.save(period);

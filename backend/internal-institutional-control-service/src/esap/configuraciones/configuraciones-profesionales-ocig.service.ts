@@ -541,12 +541,14 @@ export class ConfiguracionesProfesionalesOCIGService {
     // Separar UUIDs válidos (nuevos) de IDs legacy (viejos enteros guardados como string)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const uuids = idsTerceros.filter((id) => uuidRegex.test(id));
+    const legacyIds = idsTerceros.filter((id) => !uuidRegex.test(id) && /^\d+$/.test(id));
 
     const personasMap = new Map<
       string,
       { nombre: string; email: string; identificacion: string; roles: string[] }
     >();
 
+    // 1. Consultar personas por UUID (id_person)
     if (uuids.length > 0) {
       try {
         const rows: Array<{
@@ -591,7 +593,39 @@ export class ConfiguracionesProfesionalesOCIGService {
           });
         }
       } catch (err) {
-        console.error('[enrichWithPersonaData] Error al consultar personas:', err);
+        console.error('[enrichWithPersonaData] Error al consultar personas por UUID:', err);
+      }
+    }
+
+    // 2. Consultar personas legacy por id_tercero (BIGINT)
+    if (legacyIds.length > 0) {
+      try {
+        const legacyNums = legacyIds.map(Number);
+        const rows: Array<{
+          id_tercero: string;
+          id_person: string;
+          nom_largo: string | null;
+          dir_email: string | null;
+          num_identificacion: string | null;
+        }> = await this.configRepository.query(
+          `SELECT id_tercero::text, id_person, nom_largo, dir_email, num_identificacion
+           FROM auth.personas
+           WHERE id_tercero = ANY($1::bigint[])`,
+          [legacyNums],
+        );
+
+        for (const row of rows) {
+          // Map by the legacy id_tercero string so it matches config.idTercero
+          personasMap.set(row.id_tercero, {
+            nombre: row.nom_largo || 'Sin Nombre',
+            email: row.dir_email || '',
+            identificacion: row.num_identificacion || '',
+            roles: [],
+          });
+        }
+        console.log(`[enrichWithPersonaData] Resolved ${rows.length}/${legacyIds.length} legacy id_tercero entries`);
+      } catch (err) {
+        console.error('[enrichWithPersonaData] Error al consultar personas legacy:', err);
       }
     }
 

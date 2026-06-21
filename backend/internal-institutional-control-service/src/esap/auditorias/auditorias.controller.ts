@@ -749,9 +749,18 @@ export class AuditoriasController {
   @Permissions(CIP.AUDITORIA_EDIT)
   async generarInformePreliminar(@Param('id') id: string) {
     const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id);
+
+    // ✅ Actualizar fecha de inicio de comunicación en la auditoría a la fecha de hoy
+    try {
+      const hoyStr = new Date().toISOString().split('T')[0];
+      await this.auditoriasService.update(id, { fechaInicioComunicacion: hoyStr });
+    } catch (err: any) {
+      console.error('[AuditoriasController] Error actualizando fechaInicioComunicacion:', err.message);
+    }
+
     let mensaje: string;
     if (count > 0) {
-      mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 10 días hábiles iniciado.`;
+      mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 5 días hábiles iniciado.`;
     } else if (total > 0) {
       mensaje = `Informe preliminar generado. Los ${total} hallazgo(s) ya estaban notificados o procesados (aceptados/ratificados).`;
     } else {

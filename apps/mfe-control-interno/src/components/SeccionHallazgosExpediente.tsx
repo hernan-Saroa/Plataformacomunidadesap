@@ -29,7 +29,7 @@ import { controlInternoService, type Hallazgo } from '../../../services/api/cont
 import { toast } from 'sonner';
 
 // Tipos locales para UI
-type CategoriaHallazgo = 'critico' | 'controversia' | 'borrador';
+type CategoriaHallazgo = 'borrador' | 'leve' | 'moderado' | 'grave' | 'critico' | 'controversia';
 type EstadoHallazgo = 'borrador' | 'notificado' | 'aceptado' | 'en-controversia' | 'ratificado' | 'modificado' | 'retirado' | 'cerrado';
 
 // Áreas/Dependencias de la ESAP
@@ -215,11 +215,17 @@ export function SeccionHallazgosExpediente({
         const { auditoriasApi } = await import('./services/api');
         const response = await auditoriasApi.getPersonasDisponibles();
         if (response.success && response.data) {
-          const personas = response.data.map((p: any) => ({
-            id: String(p.idPersona || p.id_tercero || p.id),
-            nombre: p.nombre || p.nom_largo || 'Sin nombre',
-            cargo: p.cargo || 'Auditor'
-          }));
+          const personas = response.data
+            .map((p: any) => ({
+              id: String(p.idPersona || p.id_tercero || p.id),
+              nombre: p.nombre || p.nom_largo || '',
+              cargo: p.cargo || 'Auditor'
+            }))
+            // Filter out entries without a valid name
+            .filter((p: PersonaDisponible) => {
+              const n = (p.nombre || '').trim();
+              return n && n !== 'Sin nombre' && n !== 'Usuario Sin Nombre' && n !== 'Sin Nombre';
+            });
           setPersonasDisponibles(personas);
         }
       } catch (err) {
@@ -458,10 +464,15 @@ export function SeccionHallazgosExpediente({
     switch (categoria) {
       case 'critico':
         return 'bg-red-100 text-red-800 border-red-300';
-      case 'controversia':
+      case 'grave':
         return 'bg-orange-100 text-orange-800 border-orange-300';
+      case 'moderado':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'leve':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'controversia':
+        return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'borrador':
-        return 'bg-gray-100 text-gray-800 border-gray-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
@@ -495,7 +506,10 @@ export function SeccionHallazgosExpediente({
   const getLabelCategoria = (cat: string): string => {
     switch (cat) {
       case 'critico': return 'Crítico';
-      case 'controversia': return 'Controversia';
+      case 'grave': return 'Grave';
+      case 'moderado': return 'Moderado';
+      case 'leve': return 'Leve';
+      case 'controversia': return 'En Controversia';
       case 'borrador': return 'Por clasificar';
       default: return cat;
     }
@@ -602,8 +616,10 @@ export function SeccionHallazgosExpediente({
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="borrador">Por clasificar</option>
+                    <option value="leve">Leve</option>
+                    <option value="moderado">Moderado</option>
+                    <option value="grave">Grave</option>
                     <option value="critico">Crítico</option>
-                    <option value="controversia">En Controversia</option>
                   </select>
                 </div>
 
@@ -840,9 +856,11 @@ export function SeccionHallazgosExpediente({
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Todas</option>
-                    <option value="critico">Crítico</option>
-                    <option value="controversia">En Controversia</option>
                     <option value="borrador">Por clasificar</option>
+                    <option value="leve">Leve</option>
+                    <option value="moderado">Moderado</option>
+                    <option value="grave">Grave</option>
+                    <option value="critico">Crítico</option>
                   </select>
                 </div>
 

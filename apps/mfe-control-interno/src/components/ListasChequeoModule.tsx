@@ -28,7 +28,7 @@ import { toast } from 'sonner';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
-import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
+import { controlInternoService, ListaChequeo as ListaChequeoService } from '../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { useConfiguracionKanban } from './services/useConfiguracionKanban';
 import { useAuth } from '../../../hooks/useAuth';

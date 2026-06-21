@@ -318,6 +318,13 @@ export const estructuraService = {
     // No forzar Content-Type — el navegador lo setea automáticamente con el boundary correcto para FormData
     return apiClient.post<any>(url, formData);
   },
+
+  async toggleSedePeriodStatus(idSede: number, periodoCodigo: string, activo: boolean): Promise<any> {
+    return apiClient.patch<any>(`${SERVICE_PREFIX}/estructura-organizacional/sedes/${idSede}/periodo`, {
+      periodoCodigo,
+      activo,
+    });
+  },
 };
 
 export default estructuraService;

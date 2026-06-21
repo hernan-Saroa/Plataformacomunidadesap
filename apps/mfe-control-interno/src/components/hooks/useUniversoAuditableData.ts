@@ -15,8 +15,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { controlInternoService } from '@/services/api/controlInternoService';
-import type { ProcesoAuditable as BackendProcesoAuditable } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
+import type { ProcesoAuditable as BackendProcesoAuditable } from '../../services/api/controlInternoService';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS FRONTEND (usados por el componente UniversoAuditableUnificado)

@@ -10,7 +10,7 @@
  *
  *   1. NOTIFICACIÓN   El auditor genera el Informe Preliminar.
  *                     -> Llegan los hallazgos al portal (estado 'notificado').
- *                     -> Plazo: 10 días hábiles para responder cada hallazgo.
+ *                     -> Plazo: 5 días hábiles para responder cada hallazgo.
  *
  *   2. RESPUESTA      Por cada hallazgo el auditado decide:
  *                       (a) Aceptar  -> hallazgo.estado = 'aceptado'.
@@ -115,7 +115,7 @@ const USE_API_ESTADO     = true;
 // ════════════════════════════════════════════════════════════════════════════
 
 /** Plazo para responder cada hallazgo (Comunicación de la auditoría). */
-const PLAZO_RESPUESTA_DIAS_HABILES = 10;
+const PLAZO_RESPUESTA_DIAS_HABILES = 5;
 
 /** Plazo para formular el Plan de Mejoramiento desde el Informe Final. */
 const PLAZO_PLAN_DIAS_HABILES = 30;
@@ -190,7 +190,7 @@ function calcularPlazoActivo(auditoria: AuditoriaItem, hoy: Date = new Date()): 
       vencido: restantes < 0,
     };
   }
-  // Etapa "Comunicación": 10 días hábiles desde la Notificación.
+  // Etapa "Comunicación": 5 días hábiles desde la Notificación.
   if (auditoria.estado === 'Notificada' || auditoria.estado === 'En Respuesta') {
     const base = parseFechaCO(auditoria.fechaNotificacion);
     if (!base) return null;
@@ -284,9 +284,11 @@ interface HallazgoItem {
   recomendaciones?: string[];
   // Respuesta del auditado (controversia)
   argumentosControversia?: string;
+  observacionesControversia?: string;
   documentoControversiaNombre?: string;
   documentoControversiaUrl?: string;
   fechaPresentacion?: string;
+  controversiaTurno?: 'auditor' | 'auditado' | null;
   // Decisión del auditor (luego de la controversia)
   decisionAuditor?: 'ratificado' | 'modificado' | 'retirado';
   fundamentacionTecnica?: string;
@@ -318,7 +320,7 @@ interface MisAuditoriasControlInternoProps {
 const AUDITORIAS_MOCK: AuditoriaItem[] = [
   {
     // Notificada hace pocos días: el auditado todavía está dentro del plazo
-    // de 10 días hábiles para responder hallazgos.
+    // de 5 días hábiles para responder hallazgos.
     id: 'aud-001',
     codigo: 'AUD-2026-004',
     titulo: 'Auditoría de Gestión Administrativa',
@@ -613,9 +615,11 @@ function mapHallazgoApi(raw: any): HallazgoItem {
     efectos: Array.isArray(raw.efectos) ? raw.efectos : raw.efecto ? [raw.efecto] : undefined,
     recomendaciones: Array.isArray(raw.recomendaciones) ? raw.recomendaciones : undefined,
     argumentosControversia: raw.argumentosControversia ?? undefined,
+    observacionesControversia: raw.observacionesControversia ?? undefined,
     documentoControversiaNombre: raw.documentoControversiaNombre ?? undefined,
     documentoControversiaUrl: raw.documentoControversiaUrl ?? undefined,
     fechaPresentacion: fechaCO(raw.fechaPresentacionControversia ?? raw.fechaAceptacion ?? raw.updatedAt) || undefined,
+    controversiaTurno: raw.controversiaTurno ?? undefined,
     decisionAuditor: ['ratificado','modificado','retirado'].includes(estadoRaw) ? estadoRaw as any : raw.decisionAuditor ?? undefined,
     fundamentacionTecnica: raw.fundamentacionTecnica ?? undefined,
     fechaDecision: fechaCO(raw.fechaDecisionAuditor ?? raw.fechaDecision) || undefined,
@@ -3350,7 +3354,7 @@ function TabHallazgos({
         }}>
           <AlertTriangle style={{ width: 18, height: 18, color: '#DC2626', flexShrink: 0, marginTop: 2 }} />
           <div style={{ fontSize: 13, color: '#7F1D1D', lineHeight: 1.5 }}>
-            <strong>El plazo de 10 días hábiles para responder los hallazgos venció.</strong>{' '}
+            <strong>El plazo de {PLAZO_RESPUESTA_DIAS_HABILES} días hábiles para responder los hallazgos venció.</strong>{' '}
             Los hallazgos sin respuesta podrán ser ratificados por el equipo auditor sin
             controversia, según el procedimiento de Control Interno.
           </div>
@@ -3440,7 +3444,8 @@ function TabHallazgos({
             <div key={h.id}>
               <HallazgoCard
                 hallazgo={h}
-                readOnly={readOnly || plazoVencido}
+                readOnly={readOnly}
+                plazoVencido={plazoVencido}
                 onAceptar={onAceptar}
                 onSubirDocumentoControversia={onSubirDocumentoControversia}
                 onPresentarControversia={onPresentarControversia}
@@ -3506,7 +3511,7 @@ function ConsecuenciaHallazgo({ hallazgo }: { hallazgo: HallazgoItem }) {
     tone = 'warn'; Icono = Clock;
     titulo = 'Hallazgo en preparación';
     mensaje =
-      'El equipo auditor aún no ha notificado este hallazgo al área. Cuando se publique el Informe Preliminar podrás aceptarlo o presentar controversia (plazo de 10 días hábiles).';
+      `El equipo auditor aún no ha notificado este hallazgo al área. Cuando se publique el Informe Preliminar podrás aceptarlo o presentar controversia (plazo de ${PLAZO_RESPUESTA_DIAS_HABILES} días hábiles).`;
   } else {
     return null; // 'notificado' no muestra mensaje (los botones se muestran abajo)
   }
@@ -3530,6 +3535,7 @@ function ConsecuenciaHallazgo({ hallazgo }: { hallazgo: HallazgoItem }) {
 function HallazgoCard({
   hallazgo,
   readOnly,
+  plazoVencido = false,
   onAceptar,
   onSubirDocumentoControversia,
   onPresentarControversia,
@@ -3539,6 +3545,7 @@ function HallazgoCard({
 }: {
   hallazgo: HallazgoItem;
   readOnly: boolean;
+  plazoVencido?: boolean;
   onAceptar: (id: string) => Promise<void>;
   onSubirDocumentoControversia: (file: File, hallazgoId: string) => Promise<{ documentoId: string; nombre: string }>;
   onPresentarControversia: (id: string, argumentos: string, documentoId: string, documentoNombre: string) => Promise<void>;
@@ -3568,7 +3575,9 @@ function HallazgoCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const estadoCol = ESTADO_HALLAZGO[hallazgo.estado];
-  const puedeResponder = !readOnly && hallazgo.estado === 'notificado';
+  const esTurnoAuditado = hallazgo.estado === 'en-controversia' && hallazgo.controversiaTurno === 'auditado';
+  const puedeResponder = !readOnly && !plazoVencido && (hallazgo.estado === 'notificado' || esTurnoAuditado);
+  const mostrarBotones = !readOnly && (hallazgo.estado === 'notificado' || esTurnoAuditado);
 
   const handleAceptar = async () => {
     setSubmitting(true);
@@ -3717,18 +3726,18 @@ function HallazgoCard({
               <DetalleHallazgoCampos hallazgo={hallazgo} />
 
               {/* Respuesta del auditado (si ya la presentó) */}
-              {(hallazgo.argumentosControversia || hallazgo.documentoControversiaNombre) && (
+              {(hallazgo.observacionesControversia || hallazgo.argumentosControversia || hallazgo.documentoControversiaNombre) && (
                 <div style={{
                   marginTop: 14, padding: 14, borderRadius: 10,
                   background: '#EFF6FF', border: '1px solid #BFDBFE',
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#1D4ED8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Scale style={{ width: 12, height: 12 }} />
-                    Tu controversia {hallazgo.fechaPresentacion ? `· ${hallazgo.fechaPresentacion}` : ''}
+                    Historial de la controversia {hallazgo.fechaPresentacion ? `· ${hallazgo.fechaPresentacion}` : ''}
                   </div>
-                  {hallazgo.argumentosControversia && (
-                    <div style={{ fontSize: 13, color: '#1F2937', lineHeight: 1.5, marginBottom: hallazgo.documentoControversiaNombre ? 8 : 0 }}>
-                      {hallazgo.argumentosControversia}
+                  {(hallazgo.observacionesControversia || hallazgo.argumentosControversia) && (
+                    <div style={{ fontSize: 13, color: '#1F2937', lineHeight: 1.5, marginBottom: hallazgo.documentoControversiaNombre ? 8 : 0, whiteSpace: 'pre-wrap' }}>
+                      {hallazgo.observacionesControversia || hallazgo.argumentosControversia}
                     </div>
                   )}
                   {hallazgo.documentoControversiaNombre && (
@@ -3762,37 +3771,42 @@ function HallazgoCard({
                 </div>
               )}
 
-              {/* Acciones del auditado: solo si está en 'notificado' */}
-              {puedeResponder && !showControversiaForm && (
+              {/* Acciones del auditado: si está en 'notificado' o es su turno en controversia */}
+              {mostrarBotones && !showControversiaForm && (
                 <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button
-                    onClick={handleAceptar}
-                    disabled={submitting}
+                    onClick={plazoVencido ? undefined : handleAceptar}
+                    disabled={submitting || plazoVencido}
+                    title={plazoVencido ? 'El plazo de respuesta ha vencido' : undefined}
                     style={{
                       height: 38, padding: '0 16px', borderRadius: 10, border: 'none',
-                      background: submitting ? '#9CA3AF' : '#047857',
-                      color: 'white', fontSize: 13, fontWeight: 600,
-                      cursor: submitting ? 'wait' : 'pointer',
+                      background: submitting || plazoVencido ? '#D1D5DB' : '#047857',
+                      color: submitting || plazoVencido ? '#9CA3AF' : 'white',
+                      fontSize: 13, fontWeight: 600,
+                      cursor: submitting ? 'wait' : plazoVencido ? 'not-allowed' : 'pointer',
                       display: 'inline-flex', alignItems: 'center', gap: 8,
-                      boxShadow: '0 2px 8px rgba(4,120,87,0.18)',
+                      boxShadow: submitting || plazoVencido ? 'none' : '0 2px 8px rgba(4,120,87,0.18)',
                     }}
                   >
                     <ThumbsUp style={{ width: 14, height: 14 }} />
-                    Aceptar hallazgo
+                    {esTurnoAuditado ? 'Aceptar controversia' : 'Aceptar hallazgo'}
                   </button>
                   <button
-                    onClick={() => setShowControversiaForm(true)}
-                    disabled={submitting}
+                    onClick={plazoVencido ? undefined : () => setShowControversiaForm(true)}
+                    disabled={submitting || plazoVencido}
+                    title={plazoVencido ? 'El plazo de respuesta ha vencido' : undefined}
                     style={{
                       height: 38, padding: '0 16px', borderRadius: 10,
-                      border: '1px solid #1D4ED8', background: 'white',
-                      color: '#1D4ED8', fontSize: 13, fontWeight: 600,
-                      cursor: 'pointer',
+                      border: `1px solid ${plazoVencido ? '#D1D5DB' : '#1D4ED8'}`,
+                      background: 'white',
+                      color: plazoVencido ? '#9CA3AF' : '#1D4ED8',
+                      fontSize: 13, fontWeight: 600,
+                      cursor: plazoVencido ? 'not-allowed' : 'pointer',
                       display: 'inline-flex', alignItems: 'center', gap: 8,
                     }}
                   >
                     <Scale style={{ width: 14, height: 14 }} />
-                    Presentar controversia
+                    {esTurnoAuditado ? 'Devolver con observaciones' : 'Presentar controversia'}
                   </button>
                 </div>
               )}

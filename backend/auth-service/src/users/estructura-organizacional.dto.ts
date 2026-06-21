@@ -5,7 +5,7 @@ import { IsString, IsOptional, IsNumber, MaxLength, IsEmail, IsBoolean, IsArray,
 export class CreateSeccionalDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de seccional no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de seccional no puede exceder 20 caracteres' })
   codSeccional?: string;
 
   @IsString()
@@ -24,7 +24,7 @@ export class CreateSeccionalDto {
 export class UpdateSeccionalDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de seccional no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de seccional no puede exceder 20 caracteres' })
   codSeccional?: string;
 
   @IsOptional()
@@ -46,7 +46,7 @@ export class UpdateSeccionalDto {
 export class CreateSedeDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de sede no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de sede no puede exceder 20 caracteres' })
   codSede?: string;
 
   @IsString()
@@ -78,7 +78,7 @@ export class CreateSedeDto {
 export class UpdateSedeDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de sede no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de sede no puede exceder 20 caracteres' })
   codSede?: string;
 
   @IsOptional()
@@ -122,4 +122,13 @@ export class AsignarUsuariosDto {
   @IsString()
   @IsOptional()
   cetapId?: string;
+}
+
+export class ToggleSedePeriodStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  periodoCodigo: string;
+
+  @IsBoolean()
+  activo: boolean;
 }

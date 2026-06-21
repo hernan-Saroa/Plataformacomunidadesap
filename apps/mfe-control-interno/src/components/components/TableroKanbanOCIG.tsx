@@ -20,7 +20,7 @@ import { ESAP_CLASSES } from '../utils/esapThemeOCI';
 import { toast } from 'sonner';
 import { useConfiguracionKanban } from '../services/useConfiguracionKanban';
 import { notificationsService } from '../../services/api/notificationsService';
-import { controlInternoService } from '../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 
 // ═════════════════════════════════════════════════════════════════════════
 // DATOS DE EJEMPLO
