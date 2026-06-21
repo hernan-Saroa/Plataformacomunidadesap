@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Archive,
   Award,
+  BarChart3,
   BookOpen,
   Building2,
   Calendar,
@@ -47,13 +48,18 @@ import {
   Info,
   Lightbulb,
   Mail,
+  MapPin,
   MessageSquare,
+  Plus,
   Send,
+  Sparkles,
+  Target,
   Trash2,
   TrendingUp,
   Upload,
   User,
   Users,
+  UserPlus,
   X
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -351,12 +357,12 @@ function filtrarPestanasPorEstado(
 /**
  * Modal expediente: sin animación fade-in (evita quedar en opacity 0) y centrado real.
  */
-/** Tamaño fijo en escritorio: ~860×920 (más alto que ancho) */
+/** World-class: 60vw wide, 95vh tall – maximizes usable space */
 const ESTILO_MODAL_EXPEDIENTE: CSSProperties = {
-  width: 'min(94vw, 940px)',
-  maxWidth: 940,
-  height: 'min(90dvh, 920px)',
-  maxHeight: '90vh',
+  width: '60vw',
+  maxWidth: '60vw',
+  height: '95vh',
+  maxHeight: '95vh',
   minHeight: 480,
   display: 'flex',
   flexDirection: 'column',
@@ -365,7 +371,8 @@ const ESTILO_MODAL_EXPEDIENTE: CSSProperties = {
 
 /** Complementa size="expediente" del Dialog */
 const CLASE_MODAL_EXPEDIENTE = [
-  'gap-0 p-0 flex flex-col h-full min-h-0 overflow-hidden',
+  '!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh]',
+  'gap-0 p-0 flex flex-col min-h-0 overflow-hidden rounded-xl shadow-2xl border-0',
   'bg-white text-gray-900 opacity-100',
   'animate-none data-[state=open]:animate-none data-[state=closed]:animate-none',
   'data-[state=open]:opacity-100 data-[state=open]:zoom-in-100',
@@ -1577,73 +1584,86 @@ export function ExpedienteAuditoriaCompleto({
           {auditoria && (
             <>
               {/* ═════════════════════════════════════════════════════════════════
-            HEADER GRADIENTE - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
+            HEADER WORLD-CLASS — Fondo blanco limpio (estilo ModalHeaderClean)
             ═════════════════════════════════════════════════════════════════ */}
-              <div className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 sm:px-6 py-3 sm:py-4">
+              <div className="shrink-0 bg-white border-b border-gray-200 px-6 sm:px-8 py-5">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      {/* Icono con glassmorphism - SEGÚN ESTÁNDAR */}
-                      <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                        <FileText className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-4 mb-3">
+                      {/* Icono con borde suave */}
+                      <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 shadow-sm">
+                        <FileText className="w-6 h-6" />
                       </div>
-                      <div>
-                        {/* Título - SEGÚN ESTÁNDAR: text-xl font-black */}
-                        <h2 className="text-xl font-black text-white">
-                          Expediente de Auditoría
-                        </h2>
-                        {/* Subtítulo - SEGÚN ESTÁNDAR: text-sm text-blue-100 */}
-                        <p className="text-sm text-blue-100">
-                          {auditoria.codigo} · {auditoria.nombre}
+                      <div className="flex-1">
+                        {/* Título: text-2xl font-black */}
+                        <div className="flex items-center gap-3">
+                          <h2 className="text-2xl font-black text-gray-900 tracking-tight">
+                            {auditoria.codigo} · {auditoria.nombre}
+                          </h2>
                           {refreshing && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-blue-200">
-                              <Activity className="w-3 h-3 animate-spin" />
-                              sincronizando…
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold animate-pulse border border-blue-100">
+                              <Activity className="w-3.5 h-3.5" />
+                              Sincronizando
                             </span>
                           )}
+                        </div>
+                        <p className="text-sm text-gray-500 font-medium mt-1">
+                          Expediente de Auditoría
                         </p>
                       </div>
                     </div>
 
-                    {/* BADGES INFORMATIVOS - SEGÚN ESTÁNDAR: Mínimo 2-3 badges */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                        <Building2 className="w-3 h-3 mr-1" />
+                    {/* Barra de progreso inline + Badges outline */}
+                    <div className="flex flex-wrap items-center gap-3 mt-1">
+                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-full pl-3 pr-4 py-1.5 shadow-sm">
+                        <div className="text-xs font-black text-gray-700">Progreso</div>
+                        <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-blue-600 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${auditoria.progreso.general}%` }}
+                            transition={{ duration: 0.8 }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-blue-700">{auditoria.progreso.general}%</span>
+                      </div>
+
+                      <Badge variant="outline" className="bg-white border-gray-200 text-gray-700 font-bold py-1.5 px-3">
+                        <Building2 className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
                         {auditoria.areaAuditable}
                       </Badge>
-                      <Badge className="bg-white text-blue-700 font-bold">
-                        {auditoria.progreso.general}% completado
-                      </Badge>
-                      <Badge className="bg-green-500 text-white font-bold">
-                        <FileText className="w-3 h-3 mr-1" />
+                      <Badge variant="outline" className="bg-green-50 border-green-200 text-green-700 font-bold py-1.5 px-3">
+                        <FileText className="w-3.5 h-3.5 mr-1.5" />
                         {documentos.length} documentos
                       </Badge>
                       {auditoria.estadisticas.totalHallazgos > 0 && (
-                        <Badge className="bg-red-500 text-white font-bold">
-                          <AlertCircle className="w-3 h-3 mr-1" />
+                        <Badge variant="outline" className="bg-red-50 border-red-200 text-red-700 font-bold py-1.5 px-3">
+                          <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
                           {auditoria.estadisticas.totalHallazgos} hallazgos
                         </Badge>
                       )}
                     </div>
                   </div>
 
-                  {/* BOTÓN CERRAR - SEGÚN ESTÁNDAR: variant="ghost" hover:bg-white/20 */}
-                  <Button
-                    onClick={onClose}
-                    variant="ghost"
-                    size="sm"
-                    className="ml-4 text-white hover:bg-white/20"
-                  >
-                    <X className="w-5 h-5" />
-                  </Button>
+                  <div className="flex flex-col items-end gap-2 ml-4">
+                    {/* BOTÓN CERRAR - Minimalista hover bg-gray-100 */}
+                    <Button
+                      onClick={onClose}
+                      variant="ghost"
+                      size="icon"
+                      className="text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full w-8 h-8"
+                    >
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               {/* ═════════════════════════════════════════════════════════════════
-            TABS PERSONALIZADOS (No está en estándar, pero se mantiene)
+            TABS WORLD CLASS - Pill style con bg-gray-100
             ═════════════════════════════════════════════════════════════════ */}
-              <div className="shrink-0 border-b bg-gray-50">
-                <div className="flex flex-wrap sm:flex-nowrap justify-start items-end gap-x-1 gap-y-0 overflow-x-auto px-4 sm:px-6 scrollbar-hide">
+              <div className="shrink-0 border-b border-gray-100 bg-white px-6 sm:px-8 py-3">
+                <div className="flex justify-start items-center p-1 bg-gray-100 rounded-xl overflow-x-auto scrollbar-hide shadow-inner gap-1">
                   {pestanasVisibles.map((pestana) => {
                     const Icon = pestana.icon;
                     const isActive = activeTab === pestana.id;
@@ -1654,17 +1674,17 @@ export function ExpedienteAuditoriaCompleto({
                         type="button"
                         onClick={() => setActiveTab(pestana.id)}
                         className={`
-                    shrink-0 flex items-center gap-2 px-3 sm:px-4 py-3 border-b-2 transition-all whitespace-nowrap text-sm
-                    ${isActive
-                            ? 'border-blue-600 text-blue-700 font-bold bg-white'
-                            : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900 hover:bg-white/60'
+                          shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg transition-all whitespace-nowrap text-sm font-semibold
+                          ${isActive
+                            ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
                           }
-                  `}
+                        `}
                       >
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
-                        <span className="text-sm">{pestana.label}</span>
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                        <span>{pestana.label}</span>
                         {pestana.id === 'documentacion' && documentos.length > 0 && (
-                          <Badge className="ml-1 bg-blue-100 text-blue-700 text-xs font-bold">
+                          <Badge className={`ml-1.5 text-[10px] px-1.5 py-0 min-w-[20px] ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
                             {documentos.length}
                           </Badge>
                         )}
@@ -1677,7 +1697,7 @@ export function ExpedienteAuditoriaCompleto({
               {/* ═════════════════════════════════════════════════════════════════
             CONTENIDO PRINCIPAL - SEGÚN ESTÁNDAR: flex-1 overflow-y-auto
             ═════════════════════════════════════════════════════════════════ */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 sm:px-6 py-3 sm:py-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-6 sm:px-8 py-5 sm:py-6 bg-gray-50/30">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeTab}
@@ -1947,7 +1967,7 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
         auditorLiderEmail: email,
       });
 
-      toast.success('âœ… Auditor LÍ­der reasignado', {
+      toast.success('✅ Auditor Líder reasignado', {
         description: `Asignado a ${nombre}`,
       });
       setShowReasignar(false);
@@ -1957,6 +1977,45 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
       toast.error('Error al reasignar auditor');
     } finally {
       setReasignando(false);
+    }
+  };
+
+  // ═══ GESTIONAR EQUIPO AUDITOR ═══
+  const [showReasignarEquipo, setShowReasignarEquipo] = useState(false);
+  const [selectedEquipoProfId, setSelectedEquipoProfId] = useState('');
+  const [reasignandoEquipo, setReasignandoEquipo] = useState(false);
+
+  const handleAgregarEquipo = async () => {
+    if (!selectedEquipoProfId) return;
+    setReasignandoEquipo(true);
+    try {
+      const prof = profesionales.find((p: any) => String(p.id) === selectedEquipoProfId);
+      const nombre = prof?._nombre || 'Auditor';
+      const cargo = prof?._cargo || 'Auditor';
+      
+      const nuevoMiembro = {
+        id: String(prof?.id || Date.now()),
+        nombre: nombre,
+        rol: cargo
+      };
+      
+      const nuevoEquipo = [...auditoria.equipoAuditores, nuevoMiembro];
+
+      await controlInternoService.updateAuditoria(auditoria.id, {
+        equipoAuditores: nuevoEquipo
+      });
+
+      toast.success('✅ Auditor agregado al equipo', {
+        description: `Se agregó a ${nombre}`,
+      });
+      setShowReasignarEquipo(false);
+      setSelectedEquipoProfId('');
+      if (onReload) onReload();
+    } catch (err) {
+      console.error('Error agregando al equipo:', err);
+      toast.error('Error al agregar al equipo');
+    } finally {
+      setReasignandoEquipo(false);
     }
   };
 
@@ -2245,8 +2304,9 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
             ))}
           </div>
 
-          {/* Reasignar */}
-          <div className="mt-auto pt-4 border-t border-gray-200">
+          {/* Reasignar Lider y Gestionar Equipo */}
+          <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
+            {/* Lider */}
             {showReasignar ? (
               <div className="space-y-2">
                 <select
@@ -2257,7 +2317,7 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
                   <option value="">Seleccionar profesional...</option>
                   {profesionales.map((p: any) => (
                     <option key={p.id} value={String(p.id)}>
-                      {p._nombre} â€” {p._cargo}
+                      {p._nombre} — {p._cargo}
                     </option>
                   ))}
                 </select>
@@ -2273,11 +2333,46 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
                 size="sm"
                 variant="outline"
                 className="w-full gap-1.5 text-xs"
-                onClick={() => { cargarProfesionales(); setShowReasignar(true); }}
+                onClick={() => { cargarProfesionales(); setShowReasignar(true); setShowReasignarEquipo(false); }}
                 disabled={readOnly}
               >
                 <Users className="w-3.5 h-3.5" />
-                Reasignar Auditor LÍ­der
+                Reasignar Auditor Líder
+              </Button>
+            )}
+
+            {/* Equipo */}
+            {showReasignarEquipo ? (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <select
+                  className="w-full text-xs border border-gray-200 rounded-md px-2.5 py-2 bg-white focus:ring-2 focus:ring-blue-500/30"
+                  value={selectedEquipoProfId}
+                  onChange={(e) => setSelectedEquipoProfId(e.target.value)}
+                >
+                  <option value="">Seleccionar para el equipo...</option>
+                  {profesionales.map((p: any) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p._nombre} — {p._cargo}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" className="flex-1 text-xs h-8" onClick={() => setShowReasignarEquipo(false)}>Cancelar</Button>
+                  <Button size="sm" className="flex-1 text-xs h-8 bg-blue-600 text-white" onClick={handleAgregarEquipo} disabled={!selectedEquipoProfId || reasignandoEquipo}>
+                    {reasignandoEquipo ? 'Agregando...' : 'Agregar al equipo'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5 text-xs border-dashed"
+                onClick={() => { cargarProfesionales(); setShowReasignarEquipo(true); setShowReasignar(false); }}
+                disabled={readOnly}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Agregar al Equipo
               </Button>
             )}
           </div>

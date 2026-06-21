@@ -49,7 +49,7 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
 // ============ SERVICIO BACKEND ============
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 // import { notificationsService } from '@/services/api/notificationsService';
 import { notificationsService } from '../../services/api/notificationsService';
 

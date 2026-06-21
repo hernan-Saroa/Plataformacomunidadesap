@@ -19,7 +19,7 @@ import {
   controlInternoService, 
   type EvaluacionProceso, 
   type CreateEvaluacionProcesoDTO 
-} from '../../../services/api/controlInternoService';
+} from '../../services/api/controlInternoService';
 import { calcularAuditableDesdeCiclo } from '../../utils/auditableEvaluacion';
 
 // ════════════════════════════════════════════════════════════════════════════
