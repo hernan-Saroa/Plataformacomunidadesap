@@ -188,7 +188,7 @@ export interface AuditoriaProgramada {
 export interface Hallazgo {
   id: string;
   codigo: string;
-  categoria: 'critico' | 'controversia' | 'borrador';
+  categoria: 'critico' | 'grave' | 'moderado' | 'leve' | 'borrador' | 'controversia';
   estado: string;
   area: string;
   auditoria: string;
@@ -810,7 +810,7 @@ class ControlInternoService {
    */
   async decisionAuditor(
     hallazgoId: string,
-    data: { tipoDecision: 'ratificado' | 'modificado' | 'retirado'; fundamentacionTecnica: string; auditorId?: number },
+    data: { tipoDecision: 'ratificado' | 'modificado' | 'retirado' | 'devolver'; fundamentacionTecnica: string; auditorId?: number },
   ): Promise<Hallazgo> {
     return client.post<Hallazgo>(`/hallazgos/${hallazgoId}/decision-auditor`, data);
   }

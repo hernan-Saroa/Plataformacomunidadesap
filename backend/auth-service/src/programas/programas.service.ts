@@ -430,12 +430,73 @@ export class ProgramasService {
         }
       }
 
+      // Resolve or create nucleo tematico dynamically by name or ID
+      let nucleoTematicoId = idNucleo;
+      if (data.nucleoTematico && data.nucleoTematico !== 'Sin definir') {
+        try {
+          const dbNucleos = await this.programaRepo.query(
+            'SELECT id FROM academic_work_plan.nucleo_tematico WHERE LOWER(nombre) = LOWER($1) AND id_programa = $2 LIMIT 1',
+            [data.nucleoTematico.trim(), programaId]
+          );
+          if (dbNucleos && dbNucleos.length > 0) {
+            nucleoTematicoId = dbNucleos[0].id.toString();
+          } else {
+            const code = `NUC_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+            const insertRes = await this.programaRepo.query(
+              "INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, id_programa, activo) VALUES ($1, $2, $3, true) RETURNING id",
+              [code, data.nucleoTematico.trim(), programaId]
+            );
+            nucleoTematicoId = insertRes[0].id.toString();
+          }
+        } catch (e) {
+          console.warn('Error resolving/creating nucleo_tematico by name', e);
+        }
+      } else if (data.nucleoTematicoId && data.nucleoTematicoId !== '1') {
+        try {
+          const dbNucleos = await this.programaRepo.query(
+            'SELECT id FROM academic_work_plan.nucleo_tematico WHERE id = $1 LIMIT 1',
+            [data.nucleoTematicoId]
+          );
+          if (dbNucleos && dbNucleos.length > 0) {
+            nucleoTematicoId = data.nucleoTematicoId;
+          }
+        } catch (e) {
+          console.warn('Error verifying nucleoTematicoId', e);
+        }
+      }
+
+      // Map modality with suffixes properly
       const modStr = (data.modalidad || '').toLowerCase();
       let modalidad = 'sin_definir';
-      if (modStr.includes('presencial')) modalidad = 'presencial';
-      else if (modStr.includes('distancia')) modalidad = 'distancia';
-      else if (modStr.includes('virtual')) modalidad = 'virtual';
-      else if (modStr.includes('mixto') || modStr.includes('hibrid')) modalidad = 'mixto';
+      const validModalidades = ['presencial', 'presencial_dia', 'presencial_noche', 'virtual', 'distancia', 'mixto'];
+      if (validModalidades.includes(modStr)) {
+        modalidad = modStr;
+      } else if (modStr.includes('presencial')) {
+        if (modStr.includes('noche')) {
+          modalidad = 'presencial_noche';
+        } else if (modStr.includes('dia') || modStr.includes('días') || modStr.includes('diurna')) {
+          modalidad = 'presencial_dia';
+        } else {
+          modalidad = 'presencial';
+        }
+      } else if (modStr.includes('virtual')) {
+        modalidad = 'virtual';
+      } else if (modStr.includes('distancia')) {
+        modalidad = 'distancia';
+      } else if (modStr.includes('mixto') || modStr.includes('hibrid')) {
+        modalidad = 'mixto';
+      }
+
+      // Resolve horasFijasPta from user input (horasFijasPta or horas_fijas_pta)
+      let horasFijasPta: any = null;
+      if (data.horasFijasPta !== undefined && data.horasFijasPta !== null) {
+        horasFijasPta = parseInt(data.horasFijasPta, 10);
+      } else if (data.horas_fijas_pta !== undefined && data.horas_fijas_pta !== null) {
+        horasFijasPta = parseInt(data.horas_fijas_pta, 10);
+      }
+      if (isNaN(horasFijasPta as any) || horasFijasPta === null) {
+        horasFijasPta = null;
+      }
 
       const asignaturaData = {
         programaId,
@@ -443,11 +504,11 @@ export class ProgramasService {
         codigo: data.codigo || `ASIG_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         creditos: data.creditos || 3,
         semestreId,
-        nucleoTematicoId: idNucleo,
+        nucleoTematicoId,
         facultadId: idFacultad,
         modalidad,
         tipoExcepcion: data.tipo && data.tipo !== 'obligatoria' ? data.tipo : null,
-        horasFijasPta: data.horas || null,
+        horasFijasPta,
         activa: true,
       };
 

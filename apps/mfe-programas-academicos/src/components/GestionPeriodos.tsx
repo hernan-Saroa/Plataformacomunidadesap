@@ -232,6 +232,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
           label: 'Planeación',
           className: 'bg-blue-50 text-blue-700 border-blue-200',
           desc: 'Carga de catálogo y programas en planeación.',
+          tooltip: 'Fase de planeación: Configuración del catálogo y asignación de programas. Solo lectura para docentes.',
           icon: CalendarDays
         };
       case 'concertacion':
@@ -239,6 +240,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
           label: 'Concertación',
           className: 'bg-purple-50 text-purple-700 border-purple-200',
           desc: 'Apertura de concertación de Planes de Trabajo Académico (PTA).',
+          tooltip: 'Fase de concertación: Los docentes y directores aprueban el Plan de Trabajo Académico (PTA).',
           icon: FileCheck
         };
       case 'en_curso':
@@ -246,6 +248,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
           label: 'En Curso',
           className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
           desc: 'Periodo académico activo. Registro de actividades en curso.',
+          tooltip: 'Periodo Activo actual: Define el contexto y datos de trabajo en todos los demás módulos del sistema.',
           icon: ShieldCheck
         };
       case 'cerrado':
@@ -253,6 +256,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
           label: 'Cerrado',
           className: 'bg-gray-50 text-gray-700 border-gray-200',
           desc: 'Periodo cerrado. Acceso de solo lectura histórico.',
+          tooltip: 'Periodo Histórico cerrado: Toda la información es inmutable y de solo lectura.',
           icon: Archive
         };
       default:
@@ -260,6 +264,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
           label: estado,
           className: 'bg-gray-50 text-gray-700 border-gray-200',
           desc: '',
+          tooltip: '',
           icon: Clock
         };
     }
@@ -355,17 +360,26 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ duration: 0.2, delay: index * 0.05 }}
-                          className={`hover:bg-blue-50/20 transition-colors group cursor-pointer ${expandedPeriodoId === p.id ? 'bg-blue-50/30' : ''}`}
+                          className={`hover:bg-blue-50/20 transition-all group cursor-pointer ${
+                            p.estado === 'en_curso' 
+                              ? 'bg-blue-50/30' 
+                              : expandedPeriodoId === p.id 
+                                ? 'bg-blue-50/10' 
+                                : ''
+                          }`}
                           onClick={() => handleViewDetail(p)}
                         >
-                          <td className="px-6 py-4">
+                          <td className={`px-6 py-4 ${p.estado === 'en_curso' ? 'border-l-4 border-[#003DA5]' : ''}`}>
                             <div className="flex items-center gap-3">
                               <div className="p-2 rounded-xl bg-blue-50 text-[#003DA5] border border-blue-100 shrink-0">
                                 <Calendar className="w-4 h-4" />
                               </div>
                               <div>
-                                <p className="font-semibold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
+                                <p className="font-semibold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors flex items-center gap-1.5">
                                   Periodo {p.codigo}
+                                  {p.estado === 'en_curso' && (
+                                    <span className="text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Activo</span>
+                                  )}
                                 </p>
                                 <p className="text-[10px] text-gray-400 mt-0.5">Semestre {p.semestre} — Año {p.anio}</p>
                               </div>
@@ -373,7 +387,10 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                           </td>
 
                           <td className="px-5 py-4">
-                            <Badge className={`${stateInfo.className} font-bold px-2 py-0.5 border text-xs`}>
+                            <Badge 
+                              title={stateInfo.tooltip}
+                              className={`${stateInfo.className} font-bold px-2 py-0.5 border text-xs cursor-help`}
+                            >
                               <StateIcon className="w-3 h-3 mr-1" />
                               {stateInfo.label}
                             </Badge>
@@ -435,7 +452,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                   <ShieldCheck className="w-3 h-3" />
                                   Cerrar
                                 </button>
-                              ) : p.estado !== 'cerrado' ? (
+                              ) : (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setPeriodoToActivate(p); }}
                                   className="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-[11px] font-bold border border-green-200 transition-all flex items-center gap-1"
@@ -443,7 +460,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                   <CheckCircle2 className="w-3 h-3" />
                                   Activar
                                 </button>
-                              ) : null}
+                              )}
                               <button
                                 onClick={(e) => { e.stopPropagation(); onNavigateToImport(p.codigo); }}
                                 className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] rounded-lg text-[11px] font-bold border border-blue-100 transition-all flex items-center gap-1"
@@ -460,7 +477,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                 }`}
                               >
                                 <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${expandedPeriodoId === p.id ? 'rotate-90' : ''}`} />
-                                {expandedPeriodoId === p.id ? 'Cerrar' : 'Ver más'}
+                                {expandedPeriodoId === p.id ? 'Ocultar' : 'Ver más'}
                               </button>
                             </div>
                           </td>
@@ -918,12 +935,32 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
               </div>
 
               {periodoActivo && periodoActivo.id !== periodoToActivate.id && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-                  <p className="text-[11px] text-amber-800 font-semibold flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    El periodo <strong>{periodoActivo.codigo}</strong> se cerrará automáticamente
+                <div className="border border-gray-100 rounded-2xl p-3.5 bg-gray-50/50 mb-5 space-y-3 shadow-inner">
+                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center">
+                    Reordenamiento en Cascada
                   </p>
-                  <p className="text-[10px] text-amber-600 mt-1">Solo puede haber un periodo activo a la vez.</p>
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <div className="bg-white border rounded-xl p-2.5 flex-1 text-center shadow-sm">
+                      <span className="text-[9px] text-gray-400 uppercase block font-black">Activo Anterior</span>
+                      <span className="font-black text-gray-800 text-xs">{periodoActivo.codigo}</span>
+                      <span className="block text-[8px] text-amber-700 font-bold mt-1 bg-amber-50 rounded-full px-1.5 py-0.5 leading-none">
+                        En Curso ➔ Cerrado
+                      </span>
+                    </div>
+                    
+                    <div className="text-gray-300 font-bold">➔</div>
+                    
+                    <div className="bg-green-50/50 border border-green-100 rounded-xl p-2.5 flex-1 text-center shadow-sm">
+                      <span className="text-[9px] text-green-700 uppercase block font-black">Nuevo Activo</span>
+                      <span className="font-black text-green-900 text-xs">{periodoToActivate.codigo}</span>
+                      <span className="block text-[8px] text-green-700 font-bold mt-1 bg-green-100 rounded-full px-1.5 py-0.5 leading-none">
+                        Cerrado ➔ En Curso
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[9.5px] text-amber-600 text-center font-medium leading-relaxed">
+                    ⚠️ <strong>Nota:</strong> Los periodos se clasificarán automáticamente como Históricos o de Planeación.
+                  </p>
                 </div>
               )}
 

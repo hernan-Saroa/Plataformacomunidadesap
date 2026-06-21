@@ -76,6 +76,8 @@ export interface AuditoriaBasicaPDF {
   planAnualAño?: number;
   /** Período evaluado (ej: '1 de enero al 31 de diciembre de 2024') — distinto a las fechas de ejecución */
   periodoAuditadoTexto?: string;
+  planAnualInicio?: string;
+  planAnualFin?: string;
   procesosAuditados?: Array<{
     categoria: string;
     numero: number;
@@ -126,6 +128,35 @@ export interface HallazgoPDF {
 type TipoInforme = 'preliminar' | 'final' | 'ejecutivo';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Convierte una fecha YYYY-MM-DD o DD/MM/YYYY a formato de texto formal en español (ej: "1 de enero de 2026") */
+function formatFechaEspañol(fechaStr: string): string {
+  if (!fechaStr) return '';
+  let date: Date;
+  if (fechaStr.includes('/')) {
+    const parts = fechaStr.split('/');
+    if (parts.length === 3) {
+      date = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    } else {
+      date = new Date(fechaStr);
+    }
+  } else {
+    const parts = fechaStr.split('-');
+    if (parts.length === 3) {
+      date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else {
+      date = new Date(fechaStr);
+    }
+  }
+
+  if (isNaN(date.getTime())) return fechaStr;
+
+  const meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
+  return `${date.getDate()} de ${meses[date.getMonth()]} de ${date.getFullYear()}`;
+}
 
 /** Dibuja el encabezado institucional en la página activa y devuelve la Y donde termina */
 function encabezadoInforme(doc: JsPDFType, tipo?: TipoInforme, proceso?: string): number {
@@ -560,34 +591,44 @@ export async function exportarPDFInformeAuditoria(
     y += LH * 2;
 
     // Cuerpo
+    const planInicioTexto = auditoria.planAnualInicio ? formatFechaEspañol(auditoria.planAnualInicio) : null;
+    const planFinTexto = auditoria.planAnualFin ? formatFechaEspañol(auditoria.planAnualFin) : null;
+    
+    const periodoPlanTexto = (planInicioTexto && planFinTexto)
+      ? `el periodo comprendido entre el ${planInicioTexto} y el ${planFinTexto}`
+      : `el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}`;
+
     const parrafosCuerpo = tipo === 'final'
       ? [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           `La ${unidad} tiene plazo hasta el ${plazoPronunc}, para formular un plan de mejora el cual debe contener acciones con el objetivo de subsanar la(s) causa(s) raíz de los hallazgos formalizados.`,
           '',
           'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
           '',
           'Cordialmente,',
+          'Jefe Oficina de Control Interno',
         ].join('\n')
       : tipo === 'ejecutivo'
       ? [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           'Este documento resume los resultados definitivos y la evaluación del sistema de control interno del proceso auditado.',
           '',
           'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
           '',
           'Cordialmente,',
+          'Jefe Oficina de Control Interno',
         ].join('\n')
       : [
-          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento y pronunciamiento el Informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para ${periodoPlanTexto}.`,
           '',
           `Así mismo, la ${unidad} tiene plazo hasta el ${plazoPronunc}, para que se pronuncie frente a cada uno de los hallazgos y recomendaciones incluidas en el informe preliminar, allegando los soportes y evidencias respectivos, con el objetivo que los hallazgos sean levantados o en su defecto declarada su firmeza.`,
           '',
           'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
           '',
           'Cordialmente,',
+          'Jefe Oficina de Control Interno',
         ].join('\n');
 
     const lineasCuerpo = doc.splitTextToSize(parrafosCuerpo, pageWidth - 2 * margin);

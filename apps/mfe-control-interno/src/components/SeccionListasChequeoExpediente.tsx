@@ -30,7 +30,7 @@ import {
   AlertCircle, Calendar, User, Loader2, CheckCircle, Trash2, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { useAuth } from '../../../hooks/useAuth';
 

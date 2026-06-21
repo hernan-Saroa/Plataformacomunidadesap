@@ -84,14 +84,13 @@ export function Container4K({
   
   // Aplicar min-width si está definido
   const style = minWidth ? { minWidth } : undefined;
-  const normalizedChildren = React.Children.toArray(children);
     
   return (
     <div 
       className={`w-full ${paddingClass} ${className}`}
       style={style}
     >
-      {normalizedChildren}
+      {children}
     </div>
   );
 }

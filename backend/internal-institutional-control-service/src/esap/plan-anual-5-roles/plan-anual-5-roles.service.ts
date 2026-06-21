@@ -34,13 +34,13 @@ export class PlanAnual5RolesService {
     'completado',
   ]);
 
-  /** YYYY-MM-DD → Date en hora local (evita corrimiento de día por UTC). */
+  /** YYYY-MM-DD → Date en UTC (evita corrimiento de día por UTC al guardar con TypeORM). */
   private fechaSoloDia(valor?: string): Date | undefined {
     if (!valor?.trim()) return undefined;
     const base = valor.trim().split('T')[0];
     const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return undefined;
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   }
 
   private normalizarEstadoPlan(estado?: string): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' {

@@ -2375,6 +2375,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Modal Crear Usuario */}
       <CreatePersonModal
+        key="create-person-modal"
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreateUser}
@@ -2382,6 +2383,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Modal Editar Usuario */}
       <CreatePersonModal
+        key="edit-person-modal"
         isOpen={isCreateModalOpen}
         onClose={() => {
           setIsCreateModalOpen(false);
@@ -2395,6 +2397,7 @@ export function UsersPersonsModulePremium() {
       {/* Modal Asignar Accesos */}
       {showAssignAccessModal && selectedUser && (
         <AssignAccessModal
+          key="assign-access-modal"
           isOpen={showAssignAccessModal}
           onClose={() => {
             setShowAssignAccessModal(false);
@@ -2408,6 +2411,7 @@ export function UsersPersonsModulePremium() {
       {/* ✅ Modal Editar Usuario Unificado */}
       {showEditModal && selectedUser && (
         <CreatePersonModal
+          key="unified-edit-person-modal"
           isOpen={showEditModal}
           onClose={() => {
             setShowEditModal(false);
@@ -2422,6 +2426,7 @@ export function UsersPersonsModulePremium() {
       {/* ✅ Modal Asignar Roles */}
       {showAssignRolesModal && selectedUser && (
         <AssignRolesModal
+          key="assign-roles-modal"
           isOpen={showAssignRolesModal}
           onClose={() => {
             setShowAssignRolesModal(false);
@@ -2440,6 +2445,7 @@ export function UsersPersonsModulePremium() {
 
       {/* ✅ Modal Exportar Usuarios por Sede */}
       <ExportUsersBySede
+        key="export-users-by-sede"
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         usuarios={filteredUsers}
@@ -2448,6 +2454,7 @@ export function UsersPersonsModulePremium() {
       {/* ✅ Modal Cambiar Contraseña */}
       {showChangePasswordModal && selectedUser && (
         <ModalCambiarContrasena
+          key="modal-cambiar-contrasena"
           isOpen={showChangePasswordModal}
           onClose={() => {
             setShowChangePasswordModal(false);
@@ -2461,6 +2468,7 @@ export function UsersPersonsModulePremium() {
       {/* ✅ Modal Historial de Contraseñas */}
       {showPasswordHistoryModal && selectedUser && (
         <PasswordHistoryModal
+          key="password-history-modal"
           isOpen={showPasswordHistoryModal}
           onClose={() => {
             setShowPasswordHistoryModal(false);

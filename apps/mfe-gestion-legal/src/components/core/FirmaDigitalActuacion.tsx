@@ -12,7 +12,6 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, Key, CheckCircle, Lock, FileSignature,
@@ -52,6 +51,38 @@ export interface FirmaData {
 }
 
 type FirmaStep = 'verificacion' | 'trazado' | 'generando' | 'confirmacion' | 'completado';
+
+const signatureFonts = [
+  {
+    name: 'script-elegante',
+    label: 'Elegante y Fluida',
+    fontFamily: '"Brush Script MT", "Segoe Script", "Snell Roundhand", "Apple Chancery", cursive',
+  },
+  {
+    name: 'script-clasica',
+    label: 'Clásica Caligráfica',
+    fontFamily: '"Lucida Handwriting", "Segoe Script", "Brush Script MT", cursive',
+  },
+  {
+    name: 'script-moderna',
+    label: 'Moderna y Casual',
+    fontFamily: '"Bradley Hand", "Comic Sans MS", "Segoe Print", cursive',
+  },
+  {
+    name: 'script-formal',
+    label: 'Sofisticada y Formal',
+    fontFamily: '"Snell Roundhand", "Apple Chancery", "Lucida Calligraphy", cursive',
+  },
+  {
+    name: 'script-legible',
+    label: 'Suave y Legible',
+    fontFamily: '"Segoe Print", "Bradley Hand", "Comic Sans MS", cursive',
+  },
+];
+
+function getSignatureFontFamily(fontName: string): string {
+  return signatureFonts.find(font => font.name === fontName)?.fontFamily || signatureFonts[0].fontFamily;
+}
 
 function generateHash(input: string): string {
   // Simulated SHA-256 hash generation
@@ -103,33 +134,8 @@ export function FirmaDigitalActuacion({
   // Cursive fonts, text signature, and file upload states
   const [firmaMode, setFirmaMode] = useState<'dibujar' | 'escribir' | 'cargar'>('dibujar');
   const [textoFirma, setTextoFirma] = useState('');
-  const [fuenteSeleccionada, setFuenteSeleccionada] = useState('Dancing Script');
+  const [fuenteSeleccionada, setFuenteSeleccionada] = useState(signatureFonts[0].name);
   const [uploadedImage, setUploadedImage] = useState<string>('');
-
-  const signatureFonts = [
-    { name: 'Dancing Script', label: 'Elegante y Fluida' },
-    { name: 'Great Vibes', label: 'Clásica Caligráfica' },
-    { name: 'Caveat', label: 'Moderna y Casual' },
-    { name: 'Alex Brush', label: 'Pincel y Cursiva' },
-    { name: 'Sacramento', label: 'Fina y Delicada' },
-    { name: 'Pacifico', label: 'Llamativa y Gruesa' },
-    { name: 'Pinyon Script', label: 'Sofisticada y Formal' },
-    { name: 'Monsieur La Doulaise', label: 'Florituras Clásicas' },
-    { name: 'Allura', label: 'Suave y Legible' },
-    { name: 'Parisienne', label: 'Vintage y Chic' },
-    { name: 'Italianno', label: 'Inclinada y Tradicional' },
-  ];
-
-  // Dynamic Google Fonts loader
-  useEffect(() => {
-    const link = document.createElement('link');
-    link.href = 'https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Great+Vibes&family=Italianno&family=Monsieur+La+Doulaise&family=Pacifico&family=Parisienne&family=Pinyon+Script&family=Sacramento&display=swap';
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
-    return () => {
-      document.head.removeChild(link);
-    };
-  }, []);
 
   const generateTypedSignatureBase64 = (text: string, fontName: string): string => {
     const tempCanvas = document.createElement('canvas');
@@ -142,7 +148,8 @@ export function FirmaDigitalActuacion({
     
     // Medir el texto para evitar que se corte si es muy largo
     const baseFontSize = 110;
-    ctx.font = `italic ${baseFontSize}px "${fontName}", cursive`;
+    const fontFamily = getSignatureFontFamily(fontName);
+    ctx.font = `italic ${baseFontSize}px ${fontFamily}`;
     const metrics = ctx.measureText(text);
     const textWidth = metrics.width;
     
@@ -153,7 +160,7 @@ export function FirmaDigitalActuacion({
       finalFontSize = Math.floor(baseFontSize * (maxWidth / textWidth));
     }
     
-    ctx.font = `italic ${finalFontSize}px "${fontName}", cursive`;
+    ctx.font = `italic ${finalFontSize}px ${fontFamily}`;
     ctx.fillStyle = '#003DA5';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -413,7 +420,7 @@ export function FirmaDigitalActuacion({
   }
 
   return (
-    <div 
+    <div
       style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', background: 'rgba(17,24,39,0.7)', backdropFilter: 'blur(6px)', overflowY: 'auto' }}
       onWheel={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
@@ -651,7 +658,7 @@ export function FirmaDigitalActuacion({
                         >
                           {signatureFonts.map((font) => (
                             <option key={font.name} value={font.name}>
-                              {font.name} — {font.label}
+                              {font.label}
                             </option>
                           ))}
                         </select>
@@ -676,7 +683,7 @@ export function FirmaDigitalActuacion({
                           Vista previa de su firma
                         </span>
                         <div style={{ 
-                          fontFamily: `"${fuenteSeleccionada}", cursive`, 
+                          fontFamily: getSignatureFontFamily(fuenteSeleccionada), 
                           fontSize: '1.95rem', 
                           color: '#003DA5',
                           wordBreak: 'break-all',
@@ -1000,4 +1007,5 @@ export function FirmaDigitalActuacion({
       </motion.div>
     </div>
   );
+
 }

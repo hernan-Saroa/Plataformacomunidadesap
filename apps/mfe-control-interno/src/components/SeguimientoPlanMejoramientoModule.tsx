@@ -28,7 +28,7 @@ import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { InputSIGL } from '../gestion-legal/design-system/Input';
 import { TextareaSIGL } from '../gestion-legal/design-system/TextareaSIGL';
 import { toast } from 'sonner';
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 
 // ====================================
 // TIPOS Y DATOS

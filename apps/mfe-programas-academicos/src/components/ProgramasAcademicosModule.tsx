@@ -23,7 +23,8 @@ import {
   AlertCircle,
   Loader2,
   BarChart3,
-  Layers
+  Layers,
+  Settings
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Container4K, ResponsiveHeader, ConfirmationDialog } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
@@ -400,24 +401,39 @@ export function ProgramasAcademicosModule() {
                       <div className="px-3 py-2 border-b border-gray-100">
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
                       </div>
-                      {periodosPA.length > 0 ? periodosPA.map((p: any, idx: number) => {
-                        const codigo = p.codigo || `${p.anio}-${p.semestre}`;
-                        const esActivo = p.estado === 'en_curso';
-                        return (
-                          <button
-                            key={idx}
-                            onClick={() => { setPeriodoSeleccionadoPA(codigo); setShowPeriodoDropdownPA(false); }}
-                            className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
-                              codigo === periodoSeleccionadoPA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
-                            }`}
-                          >
-                            <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
-                            {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
-                          </button>
-                        );
-                      }) : (
-                        <div className="px-3 py-3 text-sm text-gray-500">No hay periodos disponibles</div>
-                      )}
+                      <div className="max-h-60 overflow-y-auto">
+                        {periodosPA.length > 0 ? periodosPA.map((p: any, idx: number) => {
+                          const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                          const esActivo = p.estado === 'en_curso';
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => { setPeriodoSeleccionadoPA(codigo); setShowPeriodoDropdownPA(false); }}
+                              className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                                codigo === periodoSeleccionadoPA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
+                              {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-3 py-3 text-sm text-gray-500">No hay periodos disponibles</div>
+                        )}
+                      </div>
+                      <div className="border-t border-gray-100 mt-1 p-1 bg-gray-50/50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveView('periodos-academicos');
+                            setShowPeriodoDropdownPA(false);
+                          }}
+                          className="w-full px-3 py-2 text-center text-xs font-bold text-[#003DA5] hover:bg-blue-50 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                          Administrar Periodos
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}

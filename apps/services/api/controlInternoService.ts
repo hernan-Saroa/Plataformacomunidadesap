@@ -188,7 +188,7 @@ export interface AuditoriaProgramada {
 export interface Hallazgo {
   id: string;
   codigo: string;
-  categoria: 'critico' | 'controversia' | 'borrador';
+  categoria: 'critico' | 'grave' | 'moderado' | 'leve' | 'borrador' | 'controversia';
   estado: string;
   area: string;
   auditoria: string;
