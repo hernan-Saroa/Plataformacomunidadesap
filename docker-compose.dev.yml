@@ -215,6 +215,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - ./backend/academic-work-plan-service/uploads:/app/uploads
     networks:
       - superapp-net
     restart: unless-stopped

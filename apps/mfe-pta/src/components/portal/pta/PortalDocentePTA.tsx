@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
   AlertTriangle, Download, Eye, ArrowRight, RotateCcw, XCircle,
-  Send, MessageSquare, BarChart3, Zap, Info, Bell, History,
+  Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
   Shield, ChevronRight, ExternalLink, ListChecks,
   FlaskConical, Globe, Briefcase, X,
@@ -656,16 +656,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                             </div>
                           </div>
 
-                          {/* Row 2: Stepper + Actions */}
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 lg:gap-6 pt-4 border-t border-gray-100">
-                            {/* Stepper */}
-                            <div className="flex-1 w-full lg:max-w-xl">
-                              <div className="text-[0.65rem] sm:text-[0.7rem] font-semibold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                <History className="w-3 h-3 text-gray-400" /> Progreso
-                              </div>
-                              <TrackingBar estado={pta.estado} />
-                            </div>
-
+                          {/* Row 2: Actions */}
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-end gap-5 lg:gap-6 pt-4 border-t border-gray-100">
                             {/* Action Buttons */}
                             <div className="flex flex-wrap items-center gap-3 shrink-0">
                               {pta.estado === 'NOTIFICADO_DOCENTE' && (
@@ -734,11 +726,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   </div>
                 </div>
 
-                {/* V08: Tracking bar */}
+                {/* Estado de aprobación */}
                 <div className="p-3 sm:p-4 bg-gray-50/70 rounded-xl border border-gray-100/60 mb-4">
                   <div className="text-[0.62rem] sm:text-[0.68rem] font-bold text-gray-400 uppercase tracking-wider mb-2">Estado de aprobación</div>
-                  <TrackingBar estado={selectedPta.estado} />
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2">
                     <span className="px-2.5 py-1 rounded-lg text-[0.65rem] sm:text-[0.7rem] font-bold" style={{ background: getEstadoCfg(selectedPta.estado).bg, color: getEstadoCfg(selectedPta.estado).color }}>
                       {getEstadoCfg(selectedPta.estado).label}
                     </span>
