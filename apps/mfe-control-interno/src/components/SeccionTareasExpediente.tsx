@@ -30,7 +30,7 @@ import {
   type PrioridadTarea,
   type FaseTarea,
   type CreateTareaAuditoriaDto 
-} from '../../../services/api/controlInternoService';
+} from '../services/api/controlInternoService';
 import { toast } from 'sonner';
 
 // Usuario de ejemplo para responsable (en producción vendría del contexto de auth)

@@ -37,7 +37,7 @@
                                           import { configuracionesProfesionalesOCIGApi } from './services/api';
 
                                           // ✅ API para cargar evidencias
-                                          import { controlInternoService } from '../../../services/api/controlInternoService';
+                                          import { controlInternoService } from '../services/api/controlInternoService';
 
                                           // ✅ Utilidades PDF para reportes institucionales
                                           import { 

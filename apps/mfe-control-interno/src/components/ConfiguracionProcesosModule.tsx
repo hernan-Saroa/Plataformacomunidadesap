@@ -13,8 +13,8 @@ import {
   Building2, Star, AlertCircle, CheckCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { controlInternoService } from '@/services/api/controlInternoService';
-import type { ProcesoAuditable } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
+import type { ProcesoAuditable } from '../services/api/controlInternoService';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════

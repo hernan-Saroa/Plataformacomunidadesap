@@ -58,7 +58,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
 // ✅ Servicio para crear planes de mejoramiento
-import controlInternoService from '../../../services/api/controlInternoService';
+import controlInternoService from '../services/api/controlInternoService';
 import { notificationsService } from '../../services/api/notificationsService';
 
 // ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
