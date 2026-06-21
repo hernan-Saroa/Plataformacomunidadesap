@@ -19,6 +19,9 @@ import { authService } from '../../../../services/api/authService';
 import { toast } from 'sonner';
 import * as mammoth from 'mammoth';
 import { isViewableInBrowser, getFileTypeCategory } from '../../../../utils/fileUtils';
+import pdfjsWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.js?url';
+
+const pdfjsWorkerUrl = new URL(pdfjsWorkerSrc, import.meta.url).toString();
 
 interface VisorDocumentoModalProps {
   isOpen: boolean;
@@ -345,7 +348,7 @@ const stampPdf = async (
 
 const loadPdfjs = (): Promise<any> => {
   return import('pdfjs-dist').then(pdfjs => {
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
     return pdfjs;
   });
 };
