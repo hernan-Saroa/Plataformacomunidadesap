@@ -2331,9 +2331,6 @@ export class AuditoriasService {
               observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO
               programaAnualMetadata: auditoria.programaAnualMetadata || undefined, // Incluir metadata del programa anual
               // ✅ RESPONSABLE DEL ÁREA AUDITADA — campos reales de la BD
-              responsableAreaNombre: auditoria.responsableAreaNombre || undefined,
-              responsableAreaCargo: auditoria.responsableAreaCargo || undefined,
-              responsableAreaEmail: auditoria.responsableAreaEmail || undefined,
               responsable: auditoria.responsable || undefined,
               // ✅ CAMPOS DE APROBACIÓN
               aprobada: auditoria.aprobada ?? false,
@@ -2345,6 +2342,10 @@ export class AuditoriasService {
               fechaInicioEjecucion: auditoria.fechaInicioEjecucion ? this.serializeDate(auditoria.fechaInicioEjecucion) : undefined,
               fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : undefined,
               fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : undefined,
+              // ✅ RESPONSABLE DEL ÁREA AUDITADA
+              responsableAreaNombre: auditoria.responsableAreaNombre || auditoria.responsable || undefined,
+              responsableAreaCargo: auditoria.responsableAreaCargo || undefined,
+              responsableAreaEmail: auditoria.responsableAreaEmail || undefined,
             };
           } catch (error) {
             console.error(`Error al procesar auditoría ${auditoria.id}:`, error);
@@ -2385,9 +2386,6 @@ export class AuditoriasService {
               alcance: '',
               observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO EN FALLBACK
               // ✅ RESPONSABLE DEL ÁREA AUDITADA EN FALLBACK
-              responsableAreaNombre: auditoria.responsableAreaNombre || undefined,
-              responsableAreaCargo: auditoria.responsableAreaCargo || undefined,
-              responsableAreaEmail: auditoria.responsableAreaEmail || undefined,
               responsable: auditoria.responsable || undefined,
               // ✅ CAMPOS DE APROBACIÓN EN FALLBACK
               aprobada: auditoria.aprobada ?? false,
@@ -2399,6 +2397,10 @@ export class AuditoriasService {
               fechaInicioEjecucion: auditoria.fechaInicioEjecucion ? this.serializeDate(auditoria.fechaInicioEjecucion) : undefined,
               fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : undefined,
               fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : undefined,
+              // ✅ RESPONSABLE DEL ÁREA AUDITADA EN FALLBACK
+              responsableAreaNombre: auditoria.responsableAreaNombre || auditoria.responsable || undefined,
+              responsableAreaCargo: auditoria.responsableAreaCargo || undefined,
+              responsableAreaEmail: auditoria.responsableAreaEmail || undefined,
             };
           }
         })

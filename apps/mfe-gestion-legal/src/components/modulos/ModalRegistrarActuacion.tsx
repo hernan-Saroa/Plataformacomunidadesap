@@ -5,7 +5,7 @@
  * ✅ Validación y guardado
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { authService, type AbogadoResuelve } from '../../../../services/api/authService';
 
 interface ModalRegistrarActuacionProps {
   isOpen: boolean;
@@ -28,6 +29,10 @@ interface ModalRegistrarActuacionProps {
   radicado?: string; // Display-friendly identifier
   documentosDelExpediente?: any[];
   isApprovalMode?: boolean;
+  /** Abogado encargado del expediente (id), se preselecciona como responsable */
+  abogadoEncargadoId?: string;
+  /** Nombre del abogado encargado, para mostrar/preseleccionar */
+  abogadoEncargadoNombre?: string;
 }
 
 const TIPOS_ACTUACION = [
@@ -61,7 +66,9 @@ export function ModalRegistrarActuacion({
   expedienteId,
   radicado,
   documentosDelExpediente = [],
-  isApprovalMode = false
+  isApprovalMode = false,
+  abogadoEncargadoId,
+  abogadoEncargadoNombre
 }: ModalRegistrarActuacionProps) {
   
   const { getTiposActuacionesActivos } = useConfiguracionesSIGL();
@@ -74,13 +81,76 @@ export function ModalRegistrarActuacion({
   const [hora, setHora] = useState(new Date().toTimeString().slice(0, 5));
   const [tipo, setTipo] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [responsable, setResponsable] = useState('');
+  const [responsable, setResponsable] = useState(''); // nombre del responsable (valor que se guarda)
+  const [responsableId, setResponsableId] = useState(''); // id del usuario seleccionado (value del select)
+  const [responsables, setResponsables] = useState<AbogadoResuelve[]>([]);
+  const [loadingResponsables, setLoadingResponsables] = useState(false);
   const [estado, setEstado] = useState('Completado');
   const [observaciones, setObservaciones] = useState('');
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [documentosAsociados, setDocumentosAsociados] = useState<string[]>([]);
   const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setDocumentosAsociados(documentosDelExpediente.map((doc: any) => doc.id?.toString()));
+
+    let cancelado = false;
+    setLoadingResponsables(true);
+
+    authService
+      .getResponsablesActuacion()
+      .then((lista) => {
+        if (cancelado) return;
+
+        // Asegurar que el abogado encargado siempre esté disponible como opción,
+        // aunque su rol todavía no tenga el permiso asignado.
+        let opciones = lista;
+        const encargadoEnLista = lista.some(
+          (p) =>
+            (abogadoEncargadoId && p.id === abogadoEncargadoId) ||
+            (abogadoEncargadoNombre && p.nombreCompleto === abogadoEncargadoNombre),
+        );
+        if (!encargadoEnLista && (abogadoEncargadoId || abogadoEncargadoNombre)) {
+          const nombre = abogadoEncargadoNombre || 'Abogado encargado';
+          opciones = [
+            {
+              id: abogadoEncargadoId || `encargado:${nombre}`,
+              nombreCompleto: nombre,
+              nombre,
+              email: '',
+            },
+            ...lista,
+          ];
+        }
+        setResponsables(opciones);
+
+        // Preseleccionar el abogado encargado del expediente.
+        const preseleccion =
+          (abogadoEncargadoId &&
+            opciones.find((p) => p.id === abogadoEncargadoId)) ||
+          (abogadoEncargadoNombre &&
+            opciones.find((p) => p.nombreCompleto === abogadoEncargadoNombre)) ||
+          null;
+        if (preseleccion) {
+          setResponsableId(preseleccion.id);
+          setResponsable(preseleccion.nombreCompleto);
+        }
+      })
+      .catch((error) => {
+        console.error('Error cargando responsables de actuación', error);
+        if (!cancelado) setResponsables([]);
+      })
+      .finally(() => {
+        if (!cancelado) setLoadingResponsables(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [isOpen, abogadoEncargadoId, abogadoEncargadoNombre]);
 
   /**
    * Validar formulario
@@ -153,10 +223,11 @@ export function ModalRegistrarActuacion({
     setTipo('');
     setDescripcion('');
     setResponsable('');
+    setResponsableId('');
     setEstado('Completado');
     setObservaciones('');
     setErrores({});
-    setDocumentosAsociados([]);
+    setDocumentosAsociados(documentosDelExpediente.map((doc: any) => doc.id?.toString()));
   };
 
   /**
@@ -317,15 +388,37 @@ export function ModalRegistrarActuacion({
                 <User className="w-4 h-4 inline mr-1" />
                 Responsable de la Actuación *
               </label>
-              <Input
-                placeholder="Ej: Dra. Ana María López"
-                value={responsable}
+              <select
+                value={responsableId}
+                disabled={loadingResponsables}
                 onChange={(e) => {
-                  setResponsable(e.target.value);
+                  const id = e.target.value;
+                  setResponsableId(id);
+                  const seleccionado = responsables.find((p) => p.id === id);
+                  setResponsable(seleccionado?.nombreCompleto || '');
                   setErrores({ ...errores, responsable: '' });
                 }}
-                className={`text-sm ${errores.responsable ? 'border-red-500' : ''}`}
-              />
+                className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 ${
+                  errores.responsable ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">
+                  {loadingResponsables
+                    ? 'Cargando responsables...'
+                    : 'Selecciona el responsable...'}
+                </option>
+                {responsables.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombreCompleto}
+                    {p.email ? ` — ${p.email}` : ''}
+                  </option>
+                ))}
+              </select>
+              {!loadingResponsables && responsables.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  No hay personas con el permiso para ser responsables de actuación.
+                </p>
+              )}
               {errores.responsable && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />

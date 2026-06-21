@@ -2,6 +2,9 @@ import { Injectable, ConflictException, NotFoundException, Logger } from '@nestj
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository, Like } from 'typeorm';
+import { randomBytes } from 'node:crypto';
+import { extname, join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
@@ -22,6 +25,8 @@ export class ExpedienteService {
         private expedienteRepository: Repository<Expediente>,
         @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
+        @InjectRepository(Documento)
+        private documentoRepository: Repository<Documento>,
         @InjectRepository(DecisionDisciplinaria)
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
@@ -136,6 +141,15 @@ export class ExpedienteService {
         const nuevoExpediente = this.expedienteRepository.create(data);
         const saved = await this.expedienteRepository.save(nuevoExpediente);
 
+        // Persistir como Documentos del expediente los archivos cargados en campos adicionales
+        // (llegan como base64 dentro de camposAdicionales). Así aparecen en la pestaña de Documentos.
+        // Reemplaza el base64 pesado por metadata liviana en camposAdicionales.
+        try {
+            await this.persistirDocumentosCamposAdicionales(saved, creadoPor);
+        } catch (err: any) {
+            Logger.warn(`[ExpedienteService] Falló persistencia de documentos de campos adicionales: ${err?.message || err}`);
+        }
+
         const esDisciplinario =
             saved.jurisdiccion === 'DISCIPLINARIO' ||
             saved.jurisdiccion === 'Disciplinaria' ||
@@ -143,25 +157,113 @@ export class ExpedienteService {
             saved.tipoProceso === 'Disciplinario';
         const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
 
-        await this.legalNotifications.notifyProcesoCreado({
-            modulo,
-            radicado: saved.radicado,
-            procesoId: saved.id,
-            creadoPor,
-        });
+        // Notificaciones en segundo plano: NO deben bloquear la respuesta del POST.
+        // Antes esto se hacía con await y, si el notifications-service estaba caído/lento,
+        // cada llamada esperaba hasta el timeout de axios (~3s), retrasando varios segundos
+        // la creación visible para el usuario. Ahora se disparan sin bloquear (fire-and-forget).
+        void (async () => {
+            try {
+                await this.legalNotifications.notifyProcesoCreado({
+                    modulo,
+                    radicado: saved.radicado,
+                    procesoId: saved.id,
+                    creadoPor,
+                });
 
-        if (saved.abogadoSustanciador) {
-            await this.legalNotifications.notifyProfesionalAsignado({
-                modulo,
-                radicado: saved.radicado,
-                procesoId: saved.id,
-                abogadoId: saved.abogadoSustanciador,
-                asignadoPor: creadoPor,
-                esReasignacion: false,
-            });
-        }
+                if (saved.abogadoSustanciador) {
+                    await this.legalNotifications.notifyProfesionalAsignado({
+                        modulo,
+                        radicado: saved.radicado,
+                        procesoId: saved.id,
+                        abogadoId: saved.abogadoSustanciador,
+                        asignadoPor: creadoPor,
+                        esReasignacion: false,
+                    });
+                }
+            } catch (err: any) {
+                Logger.warn(`[ExpedienteService] Notificación de creación falló (no bloqueante): ${err?.message || err}`);
+            }
+        })();
 
         return saved;
+    }
+
+    /**
+     * Extrae los archivos cargados (base64) en `camposAdicionales` y los persiste como
+     * Documentos del expediente, para que aparezcan en la pestaña de Documentos.
+     * Luego reemplaza el base64 pesado por metadata liviana dentro de camposAdicionales.
+     */
+    private async persistirDocumentosCamposAdicionales(expediente: Expediente, creadoPor: string): Promise<void> {
+        const campos = expediente.camposAdicionales as Record<string, any> | undefined | null;
+        if (!campos || typeof campos !== 'object') return;
+
+        const uploadsDir = join(process.cwd(), 'uploads');
+        if (!existsSync(uploadsDir)) {
+            mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        let huboCambios = false;
+        const camposLimpios: Record<string, any> = {};
+
+        for (const [key, val] of Object.entries(campos)) {
+            const esArray = Array.isArray(val);
+            const docs: any[] = esArray
+                ? val
+                : (val && typeof val === 'object' && val.base64 ? [val] : []);
+
+            if (docs.length === 0) {
+                camposLimpios[key] = val;
+                continue;
+            }
+
+            const docsResultantes: any[] = [];
+            for (const doc of docs) {
+                if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
+                    try {
+                        const base64Str = String(doc.base64);
+                        const comma = base64Str.indexOf(',');
+                        const soloBase64 = comma >= 0 ? base64Str.slice(comma + 1) : base64Str;
+                        const buffer = Buffer.from(soloBase64, 'base64');
+                        const filename = `${randomBytes(16).toString('hex')}${extname(doc.nombre) || ''}`;
+                        writeFileSync(join(uploadsDir, filename), buffer);
+
+                        const documento = this.documentoRepository.create({
+                            expedienteId: expediente.id,
+                            nombre: doc.nombre,
+                            tipo: 'DATO_ADICIONAL',
+                            categoria: 'documentos',
+                            subidoPor: creadoPor || 'Sistema (Campo Dinámico)',
+                            archivoUrl: `files/${filename}`,
+                            archivoNombreOriginal: doc.nombre,
+                            archivoMimeType: doc.tipoMime || undefined,
+                            archivoTamano: doc.tamano ?? buffer.length,
+                        });
+                        await this.documentoRepository.save(documento);
+
+                        // Metadata liviana para no dejar el base64 dentro de camposAdicionales (JSON pesado).
+                        docsResultantes.push({
+                            nombre: doc.nombre,
+                            tipoMime: doc.tipoMime,
+                            tamano: doc.tamano ?? buffer.length,
+                            cargado: true,
+                        });
+                        huboCambios = true;
+                    } catch (err: any) {
+                        Logger.warn(`[ExpedienteService] No se pudo persistir documento "${doc.nombre}" del campo "${key}": ${err?.message || err}`);
+                        docsResultantes.push(doc); // conservar tal cual si falla
+                    }
+                } else {
+                    docsResultantes.push(doc);
+                }
+            }
+
+            camposLimpios[key] = esArray ? docsResultantes : (docsResultantes[0] ?? val);
+        }
+
+        if (huboCambios) {
+            expediente.camposAdicionales = camposLimpios;
+            await this.expedienteRepository.save(expediente);
+        }
     }
 
     private addBusinessDays(startDate: Date, days: number): Date {

@@ -119,6 +119,22 @@ export class UsersController {
     };
   }
 
+  @Get('by-permission')
+  @InternalServiceAccess()
+  async findByPermission(
+    @Req() req: AuthRequest,
+    @Query('code') code: string,
+  ) {
+    const exposeInternalIds = this.isInternalServiceRequest(req);
+    const users = await this.usersService.findUsersByPermissionCode(code);
+
+    return {
+      data: users.map((user) =>
+        this.toPersonResponseDto(user, exposeInternalIds),
+      ),
+    };
+  }
+
   @Get(':id')
   @InternalServiceAccess()
   async findOne(@Req() req: AuthRequest, @Param('id') id: string) {

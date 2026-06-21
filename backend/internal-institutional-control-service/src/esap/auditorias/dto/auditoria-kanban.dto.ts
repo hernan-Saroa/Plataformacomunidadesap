@@ -67,6 +67,10 @@ export interface AuditoriaKanbanDto {
   fechaAprobacion?: string; // Fecha de aprobación (DD/MM/YYYY)
   aprobadaPor?: string; // Nombre del usuario que aprobó
   aprobadaPorId?: number; // ID del usuario que aprobó
+  // ✅ RESPONSABLE DEL ÁREA AUDITADA
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
 }
 
 

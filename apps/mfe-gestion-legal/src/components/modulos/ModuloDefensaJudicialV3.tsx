@@ -304,12 +304,14 @@ export function ModuloDefensaJudicialV3() {
     try {
       setLoading(true);
 
-      // Cargar expedientes y abogados en paralelo; usuarios se carga aparte para no bloquear si falla
-      const [data, abogadosData] = await Promise.all([
+      // Cargar expedientes, abogados y usuarios en paralelo. Antes los usuarios se cargaban
+      // secuencialmente DESPUÉS del Promise.all, sumando su latencia al tiempo total del kanban.
+      // El .catch en usuarios evita que un fallo en esa carga bloquee la lista de expedientes.
+      const [data, abogadosData, todosLosUsuarios] = await Promise.all([
         legalService.getExpedientes(),
         legalService.getAbogadosDashboard(),
+        authService.getTodosLosUsuariosActivos().catch(() => []),
       ]);
-      const todosLosUsuarios = await authService.getTodosLosUsuariosActivos().catch(() => []);
 
       // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
       const abogadosMap = new Map();
@@ -1043,39 +1045,12 @@ export function ModuloDefensaJudicialV3() {
         dependenciaNombre: (demandaData as any).dependenciaNombre,
       };
 
-      const created = await legalService.crearExpediente(expedienteData);
+      await legalService.crearExpediente(expedienteData);
 
-      // Subir documentos de campos adicionales dinámicos si son nuevos
-      const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
-      if (id && demandaData.camposAdicionales) {
-        for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
-          const docs: any[] = Array.isArray(val)
-            ? val
-            : (val && typeof val === 'object' && (val as any).base64 ? [val] : []);
-          for (const doc of docs) {
-            if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
-              try {
-                const res = await fetch(doc.base64);
-                const blob = await res.blob();
-                const file = new File([blob], doc.nombre, { type: doc.tipoMime || blob.type });
-
-                const formDataDoc = new FormData();
-                formDataDoc.append('archivo', file);
-                formDataDoc.append('expedienteId', id);
-                formDataDoc.append('nombre', doc.nombre);
-                formDataDoc.append('tipo', 'DATO_ADICIONAL');
-                formDataDoc.append('origen', 'CARGA_DIRECTA');
-                formDataDoc.append('categoria', 'documentos');
-                formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
-
-                await legalService.crearDocumento(formDataDoc);
-              } catch (err) {
-                console.error('Error uploading dynamic document:', err);
-              }
-            }
-          }
-        }
-      }
+      // Los documentos cargados en campos adicionales (base64) viajan dentro de
+      // camposAdicionales y ahora los persiste el backend al crear el expediente
+      // (ver ExpedienteService.persistirDocumentosCamposAdicionales). De esa forma
+      // quedan en la pestaña de Documentos sin depender de un fetch(data:) que el CSP bloquea.
 
       toast.success('Demanda registrada exitosamente', {
         description: `Radicado: ${demandaData.numeroRadicado}`

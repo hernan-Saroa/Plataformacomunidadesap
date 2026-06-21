@@ -103,6 +103,10 @@ export interface AuditoriaKanban {
   // Vigencia asociada
   planAnualAño?: number;
   vigencia?: number;
+  // ✅ RESPONSABLE DEL ÁREA AUDITADA
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
 }
 
 export interface CriterioAuditoria {

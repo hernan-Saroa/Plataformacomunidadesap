@@ -259,6 +259,11 @@ export class ApiClient {
 
       xhr.open('POST', url);
 
+      // El JWT viaja como cookie HttpOnly (OTIC-001); withCredentials es
+      // imprescindible para que el navegador la envíe en el XHR de upload.
+      // Sin esto el backend responde 401 Unauthorized (cross-origin en local).
+      xhr.withCredentials = true;
+
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
         xhr.setRequestHeader(key, value as string);
