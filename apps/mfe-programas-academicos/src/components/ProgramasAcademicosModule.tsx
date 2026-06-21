@@ -251,14 +251,17 @@ export function ProgramasAcademicosModule() {
     );
   };
 
-  const getNivelBadge = (nivel: NivelFormacion) => {
-    const nivelColors: Record<NivelFormacion, string> = {
+  const getNivelBadge = (nivel?: string) => {
+    const nivelColors: Record<string, string> = {
       'Pregrado': 'bg-blue-100 text-blue-700',
+      'Técnico Profesional': 'bg-cyan-100 text-cyan-700',
+      'Tecnológico': 'bg-indigo-100 text-indigo-700',
       'Especialización': 'bg-orange-100 text-orange-700',
       'Maestría': 'bg-pink-100 text-pink-700',
       'Doctorado': 'bg-red-100 text-red-700'
     };
-    return <Badge className={nivelColors[nivel]}>{nivel}</Badge>;
+    const label = nivel || 'Sin nivel';
+    return <Badge className={nivelColors[label] || 'bg-gray-100 text-gray-700'}>{label}</Badge>;
   };
 
   const handleEdit = (programa: ProgramaAcademico) => {
