@@ -1343,36 +1343,9 @@ function TarjetaAuditoria({
                 </button>
               )}
 
-              {/* Enviar a aprobación - SOLO en Comunicación y Seguimiento */}
-              {puedeAprobar && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento') {
-                      onEnviarAprobacion(auditoria);
-                    }
-                  }}
-                  disabled={auditoria.estado !== 'Comunicación' && auditoria.estado !== 'Seguimiento'}
-                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                      ? 'hover:bg-white cursor-pointer'
-                      : 'opacity-40 cursor-not-allowed'
-                    }`}
-                  title={
-                    auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                      ? 'Aceptar hallazgos identificados'
-                      : 'Solo disponible en Comunicación/Seguimiento'
-                  }
-                >
-                  <Send className={`w-3.5 h-3.5 ${auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                      ? 'text-green-600'
-                      : 'text-gray-400'
-                    }`} />
-                  <span className={`text-[9px] font-medium ${auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                      ? 'text-green-600'
-                      : 'text-gray-400'
-                    }`}>Aceptar</span>
-                </button>
-              )}
+              {/* El botón "Aceptar" se ha eliminado según el requerimiento. 
+                 El cambio de estado a Seguimiento será detonado por la generación del informe preliminar. 
+                 Si lo requieres, puede usar el botón 'Estado' para moverlo manualmente. */}
 
               {/* Exportar - SOLO disponible desde Ejecución en adelante */}
               <button

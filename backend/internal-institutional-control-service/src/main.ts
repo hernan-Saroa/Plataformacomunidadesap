@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as bodyParser from 'body-parser';
 import { join } from 'path';
+import { CleanUploadFileNameInterceptor } from './common/interceptors/clean-upload-filename.interceptor';
 
 async function bootstrap() {
   try {
@@ -105,6 +106,9 @@ async function bootstrap() {
       };
       next();
     });
+
+    // Interceptor global para limpiar nombres de archivos subidos
+    app.useGlobalInterceptors(new CleanUploadFileNameInterceptor());
 
     // Validación global
     app.useGlobalPipes(

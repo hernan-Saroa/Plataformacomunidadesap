@@ -3,8 +3,8 @@ import { IsIn, IsNotEmpty, IsOptional, IsString, IsNumber } from 'class-validato
 export class DecisionAuditorDto {
   @IsString()
   @IsNotEmpty()
-  @IsIn(['ratificado', 'modificado', 'retirado'])
-  tipoDecision: 'ratificado' | 'modificado' | 'retirado';
+  @IsIn(['ratificado', 'modificado', 'retirado', 'devolver'])
+  tipoDecision: 'ratificado' | 'modificado' | 'retirado' | 'devolver';
 
   @IsString()
   @IsNotEmpty()

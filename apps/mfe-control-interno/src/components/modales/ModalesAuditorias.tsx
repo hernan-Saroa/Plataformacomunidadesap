@@ -1802,7 +1802,7 @@ export function ModalRegistrarHallazgo({
 }: ModalRegistrarHallazgoProps) {
   const [formData, setFormData] = React.useState({
     titulo: '',
-    categoria: 'critico' as 'critico' | 'controversia' | 'borrador',
+    categoria: 'borrador' as 'borrador' | 'leve' | 'moderado' | 'grave' | 'critico' | 'controversia',
     tipo: 'no-conformidad' as 'no-conformidad' | 'observacion' | 'oportunidad-mejora',
     area: '',
     descripcion: '',
@@ -1839,7 +1839,7 @@ export function ModalRegistrarHallazgo({
         // Reset form
         setFormData({
           titulo: '',
-          categoria: 'critico',
+          categoria: 'borrador',
           tipo: 'no-conformidad',
           area: '',
           descripcion: '',
@@ -1890,9 +1890,11 @@ export function ModalRegistrarHallazgo({
               onChange={(e) => handleChange('categoria', e.target.value)}
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
             >
+              <option value="borrador">Por clasificar</option>
+              <option value="leve">Leve</option>
+              <option value="moderado">Moderado</option>
+              <option value="grave">Grave</option>
               <option value="critico">Crítico</option>
-              <option value="controversia">Controversia</option>
-              <option value="borrador">Borrador</option>
             </select>
           </div>
           <div>

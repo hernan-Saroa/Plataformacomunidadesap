@@ -82,13 +82,13 @@ const getBrowserGatewayUrl = (): string | null => {
 
   const { protocol, hostname, origin } = window.location;
 
-  // En desarrollo local, el shell corre en 3000 y el API Gateway en 4000.
-  if (ENV === 'development' || isLoopbackHost(hostname)) {
-    return `${protocol}//${hostname}:4000`;
+  if (hostname.endsWith('.trycloudflare.com')) {
+    return `${origin.replace(/\/$/, '')}/services`;
   }
 
-  if (hostname.endsWith('.trycloudflare.com')) {
-    return origin.replace(/\/$/, '');
+  // En desarrollo local, el shell corre en 3000 y el API Gateway en 4000.
+  if (ENV === 'development' && isLoopbackHost(hostname)) {
+    return '/services';
   }
 
   return `${origin.replace(/\/$/, '')}/services`;
@@ -121,6 +121,14 @@ const getMetaConfiguredUrl = (metaName: string): string | undefined => {
 };
 
 export const getApiGatewayBaseUrl = (): string => {
+  // Priorizar resolución por navegador si no estamos en localhost/loopback (ej. túnel de Cloudflare)
+  if (typeof window !== 'undefined' && window.location?.hostname && !isLoopbackHost(window.location.hostname)) {
+    const browserUrl = getBrowserGatewayUrl();
+    if (browserUrl) {
+      return browserUrl;
+    }
+  }
+
   const configuredUrl = VITE_API_URL ? normalizeConfiguredGatewayUrl(VITE_API_URL) : undefined;
   if (configuredUrl) {
     return configuredUrl;
