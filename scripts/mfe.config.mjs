@@ -41,7 +41,9 @@ export function getRemoteDefinitions(mode = 'serve') {
   return Object.fromEntries(
     remoteApps.map((app) => [
       app.federationName,
-      getRemoteEntryPath(app.appDir),
+      mode === 'serve'
+        ? `http://localhost:${app.devPort}${getRemoteEntryPath(app.appDir)}`
+        : getRemoteEntryPath(app.appDir),
     ]),
   );
 }

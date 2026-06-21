@@ -33,7 +33,7 @@ import { toast } from 'sonner';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
 import { motion } from 'motion/react';
 import { auditoriasApi, configuracionesProfesionalesOCIApi } from '../services/api';
-import { controlInternoService, type EvaluacionProceso } from '../../../services/api/controlInternoService';
+import { controlInternoService, type EvaluacionProceso } from '../../../../services/api/controlInternoService';
 import { cargarTiposAuditoria } from '../services/tiposAuditoriaService';
 
 // ═════════════════════════════════════════════════════════════════════════
