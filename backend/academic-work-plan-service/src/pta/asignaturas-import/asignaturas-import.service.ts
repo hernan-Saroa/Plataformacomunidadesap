@@ -376,7 +376,7 @@ export class AsignaturasImportService {
       const dummyCount = new ImportCountDto();
 
       // 6. Cargar PROGRAMAS (solo nuevos y modificados)
-      const dbProgramasMap = await this.loadProgramas(queryRunner, [...newProgs, ...modifiedProgs], dummyCount);
+      const dbProgramasMap = await this.loadProgramas(queryRunner, [...newProgs, ...modifiedProgs], dummyCount, periodId);
       const programasMapBase = new Map<string, string>();
       for (const p of existingProgramas) {
         programasMapBase.set(p.nombre.toLowerCase().trim(), p.id);
@@ -661,6 +661,7 @@ export class AsignaturasImportService {
     queryRunner: QueryRunner,
     rawProgramas: ProgramaRow[],
     countDto: ImportCountDto,
+    periodId: string,
   ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
 
@@ -680,10 +681,13 @@ export class AsignaturasImportService {
         else facId = '1';
       }
 
+      // Se asigna id_periodo_academico = período de la importación. En re-importaciones
+      // se usa COALESCE para conservar el período propio que ya tenga el programa
+      // (no se "mueve" un programa que ya pertenece a otro período).
       const SQL = `
-        INSERT INTO academic_work_plan.programa (
-          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO academic_work_plan.programa AS p (
+          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo, id_periodo_academico
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (codigo) DO UPDATE SET
           nombre = EXCLUDED.nombre,
           nombre_excel = EXCLUDED.nombre_excel,
@@ -693,7 +697,8 @@ export class AsignaturasImportService {
           modalidad = EXCLUDED.modalidad,
           horas_base_por_credito = EXCLUDED.horas_base_por_credito,
           horas_pregrado_central = EXCLUDED.horas_pregrado_central,
-          activo = EXCLUDED.activo
+          activo = EXCLUDED.activo,
+          id_periodo_academico = COALESCE(p.id_periodo_academico, EXCLUDED.id_periodo_academico)
         RETURNING id;
       `;
       const rows = await queryRunner.query(SQL, [
@@ -707,6 +712,7 @@ export class AsignaturasImportService {
         p.horas_base_por_credito,
         p.horas_pregrado_central,
         p.activo === false || p.activo === 0 || String(p.activo).toLowerCase().trim() === 'false' || String(p.activo).toLowerCase().trim() === 'no' || String(p.activo).toLowerCase().trim() === 'inactivo' ? false : true,
+        periodId,
       ]);
 
       const insertedId = rows[0].id;
