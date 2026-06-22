@@ -9,7 +9,11 @@ import {
   Search, Globe
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useImportAsignaturas, ImportResult } from '../hooks/useImportAsignaturas';
+import {
+  useImportAsignaturas,
+  ImportResult,
+  type EstructuraImportStatus,
+} from '../hooks/useImportAsignaturas';
 import { downloadCatalogImportTemplate } from '../utils/catalogImportTemplate';
 
 interface ImportarAsignaturasProps {
@@ -41,11 +45,8 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
   // Prerequisite
   const [isEstructuraReady, setIsEstructuraReady] = useState<boolean | null>(null);
   const [checkingEstructura, setCheckingEstructura] = useState(false);
-  const [estructuraStatus, setEstructuraStatus] = useState<{
-    direcciones_territoriales: number;
-    cetaps: number;
-    message?: string;
-  } | null>(null);
+  const [estructuraStatus, setEstructuraStatus] =
+    useState<EstructuraImportStatus | null>(null);
 
   // Master-Detail State
   const [selectedProgramaCode, setSelectedProgramaCode] = useState<string | null>(null);
@@ -263,19 +264,64 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
           >
             {/* Prerequisite warning */}
             {isEstructuraReady !== true && !checkingEstructura && (
-              <div className="bg-white border border-red-200 rounded-2xl shadow-sm overflow-hidden mb-5">
-                <div className="px-6 py-4 flex items-center gap-3 bg-red-50/30 border-b border-red-100">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-                    <AlertCircle className="w-4 h-4 text-red-500" />
+              <div
+                className={`bg-white rounded-2xl shadow-sm overflow-hidden mb-5 border ${
+                  estructuraStatus?.hasExistingStructure
+                    ? 'border-amber-200'
+                    : 'border-red-200'
+                }`}
+              >
+                <div
+                  className={`px-6 py-4 flex items-center gap-3 border-b ${
+                    estructuraStatus?.hasExistingStructure
+                      ? 'bg-amber-50/40 border-amber-100'
+                      : 'bg-red-50/30 border-red-100'
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      estructuraStatus?.hasExistingStructure
+                        ? 'bg-amber-100'
+                        : 'bg-red-100'
+                    }`}
+                  >
+                    <AlertCircle
+                      className={`w-4 h-4 ${
+                        estructuraStatus?.hasExistingStructure
+                          ? 'text-amber-600'
+                          : 'text-red-500'
+                      }`}
+                    />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-gray-900 text-sm">Prerrequisito no cumplido</h4>
+                    <h4 className="font-bold text-gray-900 text-sm">
+                      {estructuraStatus?.hasExistingStructure
+                        ? 'Estructura existente pendiente de sincronización'
+                        : 'Prerrequisito no cumplido'}
+                    </h4>
+                    {estructuraStatus?.hasExistingStructure && (
+                      <p className="text-[11px] text-gray-600">
+                        Estructura Organizacional registra{' '}
+                        {estructuraStatus.seccionales_existentes} seccionales y{' '}
+                        {estructuraStatus.sedes_existentes} sedes. Estos registros
+                        no se han perdido; falta sincronizarlos con el catálogo
+                        geográfico oficial.
+                      </p>
+                    )}
                     <p className="text-[11px] text-gray-500">
                       Vaya a Estructura Organizacional → Importar y cargue primero la Estructura Geográfica.
-                      {estructuraStatus && ` Estado actual: ${estructuraStatus.direcciones_territoriales}/17 DT y ${estructuraStatus.cetaps}/290 CETAP.`}
+                      {estructuraStatus && ` Estado del catálogo oficial: ${estructuraStatus.direcciones_territoriales}/17 DT y ${estructuraStatus.cetaps}/290 CETAP.`}
                     </p>
                     {estructuraStatus?.message && (
-                      <p className="text-[10px] text-red-500 mt-1">{estructuraStatus.message}</p>
+                      <p
+                        className={`text-[10px] mt-1 ${
+                          estructuraStatus.hasExistingStructure
+                            ? 'text-amber-700'
+                            : 'text-red-500'
+                        }`}
+                      >
+                        {estructuraStatus.message}
+                      </p>
                     )}
                   </div>
                 </div>

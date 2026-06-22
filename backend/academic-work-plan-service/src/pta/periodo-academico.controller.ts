@@ -301,6 +301,13 @@ export class PeriodoAcademicoController {
       INNER JOIN academic_work_plan.programa p ON o.id_programa = p.id
       LEFT JOIN academic_work_plan.asignatura a ON a.id_programa = p.id AND a.activa = TRUE
       WHERE o.id_periodo_academico = $1 AND o.activa = TRUE
+        AND NOT EXISTS (
+          SELECT 1
+            FROM academic_work_plan.periodo_cetap override
+           WHERE override.id_periodo_academico = o.id_periodo_academico
+             AND override.id_cetap = o.id_cetap
+             AND override.activo = FALSE
+        )
       GROUP BY p.id, p.codigo, p.nombre
       ORDER BY p.nombre
     `;
@@ -317,6 +324,13 @@ export class PeriodoAcademicoController {
       INNER JOIN academic_work_plan.cetap c ON o.id_cetap = c.id
       INNER JOIN academic_work_plan.direccion_territorial dt ON c.id_direccion_territorial = dt.id
       WHERE o.id_periodo_academico = $1 AND o.activa = TRUE
+        AND NOT EXISTS (
+          SELECT 1
+            FROM academic_work_plan.periodo_cetap override
+           WHERE override.id_periodo_academico = o.id_periodo_academico
+             AND override.id_cetap = o.id_cetap
+             AND override.activo = FALSE
+        )
       GROUP BY c.id, c.codigo, c.nombre, dt.nombre
       ORDER BY c.nombre
     `;

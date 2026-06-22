@@ -1,17 +1,66 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { EstructuraExcelParserService } from './parsers/estructura-excel-parser.service';
 import { GeograficoValidator } from './validators/geografico.validator';
 import { ImportGeograficoResultDto } from './dto/import-geografico-result.dto';
 
+interface LegacySyncPlan {
+  seccionalByDtCode: Map<string, any | null>;
+  sedeByCetapCode: Map<string, any | null>;
+  summary: ImportGeograficoResultDto['sincronizacion_legacy'];
+  errors: string[];
+}
+
 @Injectable()
 export class EstructuraImportService {
   private readonly logger = new Logger(EstructuraImportService.name);
+  private readonly legacyTerritorialAliases: Record<string, string[]> = {
+    SC: ['SC', 'SCENT'],
+    'DT-001': ['ANT'],
+    'DT-002': ['ATL'],
+    'DT-003': ['BCS', 'BOL'],
+    'DT-004': ['BOY'],
+    'DT-005': ['CAL'],
+    'DT-006': ['CAU'],
+    'DT-007': ['CHO'],
+    'DT-008': ['CUN'],
+    'DT-009': ['HUI'],
+    'DT-010': ['MET'],
+    'DT-011': ['NAR'],
+    'DT-012': ['NSA', 'NDS'],
+    'DT-013': ['RIS'],
+    'DT-014': ['SAN'],
+    'DT-015': ['TOL'],
+    'DT-016': ['VAL'],
+  };
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly excelParser: EstructuraExcelParserService,
   ) {}
+
+  getTemplateBuffer(): Buffer {
+    const fileName =
+      '03062026 - CARGA_1_TERRITORIALES_CETAPS_DATOS.xlsx';
+    const candidates = [
+      process.env.ESTRUCTURA_GEOGRAFICA_TEMPLATE_PATH,
+      path.resolve(process.cwd(), 'Plantillas', fileName),
+      path.resolve(process.cwd(), '..', '..', 'Plantillas', fileName),
+      path.resolve(__dirname, '..', '..', '..', '..', 'Plantillas', fileName),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    const templatePath = candidates.find((candidate) =>
+      fs.existsSync(candidate),
+    );
+    if (!templatePath) {
+      throw new BadRequestException(
+        'La plantilla institucional de estructura geográfica no está disponible en este despliegue.',
+      );
+    }
+    return fs.readFileSync(templatePath);
+  }
 
   async importGeografico(
     buffer: Buffer,
@@ -89,6 +138,45 @@ export class EstructuraImportService {
       cetapsToProcess = cetaps;
     }
 
+    const legacyPlan = await this.buildLegacySyncPlan(
+      dtToProcess,
+      cetapsToProcess,
+    );
+    result.sincronizacion_legacy = legacyPlan.summary;
+    const periodSync = await this.analyzePeriodSync(periodo);
+    (result as any).sincronizacion_periodo = periodSync;
+
+    if (legacyPlan.errors.length > 0 || periodSync.error) {
+      result.success = false;
+      result.preview_territoriales = dtToProcess;
+      result.preview_cetaps = cetapsToProcess;
+      result.tiempo_ms = Date.now() - startTime;
+      result.errores.push(
+        ...legacyPlan.errors.map((message) => ({
+          hoja: 'SINCRONIZACION_LEGACY',
+          mensaje: message,
+          severity: 'error' as const,
+        })),
+      );
+      if (periodSync.error) {
+        result.errores.push({
+          hoja: 'PERIODO_ACADEMICO',
+          mensaje: periodSync.error,
+          severity: 'error',
+        });
+      }
+
+      if (!dryRun) {
+        throw new BadRequestException({
+          success: false,
+          message:
+            'La estructura nueva es válida, pero existen ambigüedades en la estructura organizacional actual.',
+          errores: result.errores,
+        });
+      }
+      return result;
+    }
+
     // Calcular indicadores
     const cetapsPorTipo: Record<string, number> = {};
     const cetapsPorDt: Record<string, number> = {};
@@ -157,7 +245,19 @@ export class EstructuraImportService {
       }
     }
 
-    const allIdentical = (identicalDts.length > 0 || identicalCetaps.length > 0) && newDts.length === 0 && newCetaps.length === 0 && modifiedDts.length === 0 && modifiedCetaps.length === 0;
+    const legacyHasChanges =
+      legacyPlan.summary.seccionales.creadas > 0 ||
+      legacyPlan.summary.seccionales.actualizadas > 0 ||
+      legacyPlan.summary.sedes.creadas > 0 ||
+      legacyPlan.summary.sedes.actualizadas > 0;
+    const allIdentical =
+      (identicalDts.length > 0 || identicalCetaps.length > 0) &&
+      newDts.length === 0 &&
+      newCetaps.length === 0 &&
+      modifiedDts.length === 0 &&
+      modifiedCetaps.length === 0 &&
+      !legacyHasChanges &&
+      !periodSync.required;
 
     // Populate result counts
     result.carga.direcciones_territoriales.creados = newDts.length;
@@ -220,6 +320,10 @@ export class EstructuraImportService {
     let cetapUpdatedCount = 0;
 
     try {
+      await queryRunner.query(
+        `SELECT pg_advisory_xact_lock(hashtext('estructura-geografica-import'))`,
+      );
+
       // a. Insertar/Actualizar Direcciones Territoriales (solo nuevos y modificados)
       for (const dt of dtsToUpsert) {
         const isNew = !existingDtMap.has(dt.codigo_dt);
@@ -242,19 +346,43 @@ export class EstructuraImportService {
           dt.orden_visualizacion,
           dt.activo
         ]);
-        
-        // Sync to auth.seccionales
-        const existingSec = await queryRunner.query('SELECT id_seccional FROM auth.seccionales WHERE cod_seccional = $1 LIMIT 1', [dt.codigo_dt]);
-        if (existingSec.length > 0) {
-          await queryRunner.query('UPDATE auth.seccionales SET nom_seccional = $1, usu_actualizacion = $2, fec_ult_act = CURRENT_TIMESTAMP WHERE id_seccional = $3', [dt.nombre_dt, 'sistema', existingSec[0].id_seccional]);
-        } else {
-          const maxSec = await queryRunner.query('SELECT MAX(id_seccional) as max_id FROM auth.seccionales');
-          const nextSecId = (parseInt(maxSec[0]?.max_id) || 0) + 1;
-          await queryRunner.query('INSERT INTO auth.seccionales (id_seccional, cod_seccional, nom_seccional, usu_creacion) VALUES ($1, $2, $3, $4)', [nextSecId, dt.codigo_dt, dt.nombre_dt, 'sistema']);
-        }
 
         if (isNew) dtCreatedCount++;
         else dtUpdatedCount++;
+      }
+
+      const legacySeccionalIdByDt = new Map<string, string>();
+      let nextSeccionalId = await this.getNextLegacyId(
+        queryRunner,
+        'auth.seccionales',
+        'id_seccional',
+      );
+
+      for (const dt of dtToProcess) {
+        const matched = legacyPlan.seccionalByDtCode.get(dt.codigo_dt);
+        let idSeccional: string;
+        if (matched) {
+          idSeccional = String(matched.id_seccional);
+          await queryRunner.query(
+            `UPDATE auth.seccionales
+             SET cod_seccional = $1,
+                 nom_seccional = $2,
+                 usu_actualizacion = 'sistema',
+                 fec_ult_act = CURRENT_DATE
+             WHERE id_seccional = $3`,
+            [dt.codigo_dt, this.formatLegacyTerritorialName(dt.nombre_dt), idSeccional],
+          );
+        } else {
+          idSeccional = String(nextSeccionalId++);
+          await queryRunner.query(
+            `INSERT INTO auth.seccionales (
+               id_seccional, cod_seccional, nom_seccional,
+               fec_creacion, usu_creacion
+             ) VALUES ($1, $2, $3, CURRENT_DATE, 'sistema')`,
+            [idSeccional, dt.codigo_dt, this.formatLegacyTerritorialName(dt.nombre_dt)],
+          );
+        }
+        legacySeccionalIdByDt.set(dt.codigo_dt, idSeccional);
       }
 
       // Obtener los IDs de DTs insertadas/actualizadas para mapear
@@ -298,65 +426,162 @@ export class EstructuraImportService {
           c.activo
         ]);
 
-        // Find auth.seccionales ID
-        const secRows = await queryRunner.query('SELECT id_seccional FROM auth.seccionales WHERE cod_seccional = $1 LIMIT 1', [c.codigo_dt]);
-        const idSeccional = secRows.length > 0 ? secRows[0].id_seccional : null;
-        
-        // Sync to auth.sedes
-        const sedeAct = c.activo ? 'ACTIVO' : 'INACTIVO';
-        const existingSede = await queryRunner.query('SELECT id_sede FROM auth.sedes WHERE cod_sede = $1 LIMIT 1', [c.codigo_cetap]);
-        if (existingSede.length > 0) {
-          await queryRunner.query('UPDATE auth.sedes SET nom_sede = $1, id_seccional = $2, sede_act = $3, usu_actualizacion = $4, fec_ult_act = CURRENT_TIMESTAMP WHERE id_sede = $5', [c.nombre_cetap, idSeccional, sedeAct, 'sistema', existingSede[0].id_sede]);
-        } else {
-          const maxSede = await queryRunner.query('SELECT MAX(id_sede) as max_id FROM auth.sedes');
-          const nextSedeId = (parseInt(maxSede[0]?.max_id) || 0) + 1;
-          await queryRunner.query('INSERT INTO auth.sedes (id_sede, cod_sede, nom_sede, id_seccional, id_empresa, id_geopolitica, sede_act, usu_creacion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [nextSedeId, c.codigo_cetap, c.nombre_cetap, idSeccional, 1, 172, sedeAct, 'sistema']);
-        }
-
         if (!existingCetapMap.has(c.codigo_cetap)) cetapCreatedCount++;
         else cetapUpdatedCount++;
       }
 
+      let nextSedeId = await this.getNextLegacyId(
+        queryRunner,
+        'auth.sedes',
+        'id_sede',
+      );
+
+      for (const c of cetapsToProcess) {
+        const idSeccional = legacySeccionalIdByDt.get(c.codigo_dt);
+        if (!idSeccional) {
+          throw new Error(
+            `No se pudo resolver la territorial ${c.codigo_dt} para el CETAP ${c.codigo_cetap}.`,
+          );
+        }
+
+        const matched = legacyPlan.sedeByCetapCode.get(c.codigo_cetap);
+        const sedeAct = c.activo ? 'ACTIVO' : 'INACTIVO';
+        let idSede: string;
+        if (matched) {
+          idSede = String(matched.id_sede);
+          const oldCode = String(matched.cod_sede || '').trim();
+          await queryRunner.query(
+            `UPDATE auth.sedes
+             SET cod_sede = $1,
+                 nom_sede = $2,
+                 id_seccional = $3,
+                 sede_act = $4,
+                 num_latitud = $5,
+                 num_longitud = $6,
+                 cod_atributo = COALESCE(
+                   NULLIF(BTRIM(cod_atributo), ''),
+                   NULLIF($7, '')
+                 ),
+                 usu_actualizacion = 'sistema',
+                 fec_ult_act = CURRENT_DATE
+             WHERE id_sede = $8`,
+            [
+              c.codigo_cetap,
+              c.nombre_cetap,
+              idSeccional,
+              sedeAct,
+              c.latitud,
+              c.longitud,
+              oldCode && oldCode !== c.codigo_cetap
+                ? oldCode.slice(0, 10)
+                : '',
+              idSede,
+            ],
+          );
+        } else {
+          idSede = String(nextSedeId++);
+          await queryRunner.query(
+            `INSERT INTO auth.sedes (
+               id_sede, id_empresa, cod_sede, nom_sede,
+               id_geopolitica, id_seccional, sede_act,
+               num_latitud, num_longitud, fec_creacion, usu_creacion
+             ) VALUES ($1, 1, $2, $3, 172, $4, $5, $6, $7, CURRENT_DATE, 'sistema')`,
+            [
+              idSede,
+              c.codigo_cetap,
+              c.nombre_cetap,
+              idSeccional,
+              sedeAct,
+              c.latitud,
+              c.longitud,
+            ],
+          );
+        }
+
+        await queryRunner.query(
+          `INSERT INTO auth.sede_cetap_mapping (
+             id_sede, id_cetap, origen, created_at, updated_at
+           )
+           SELECT $1, cetap.id, 'official', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+             FROM academic_work_plan.cetap cetap
+            WHERE cetap.codigo = $2
+           ON CONFLICT (id_sede)
+           DO UPDATE SET
+             id_cetap = EXCLUDED.id_cetap,
+             origen = 'official',
+             updated_at = CURRENT_TIMESTAMP`,
+          [idSede, c.codigo_cetap],
+        );
+      }
+
       // Sincronizar con el periodo académico si fue proporcionado
       if (periodo) {
-        await queryRunner.query('SAVEPOINT periodo_sync');
-        try {
-          const periodRows = await queryRunner.query(
-            'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1', [periodo]
+        const periodRows = await queryRunner.query(
+          'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
+          [periodo],
+        );
+        if (periodRows.length === 0) {
+          throw new Error(
+            `El periodo académico "${periodo}" no existe. No se realizó ningún cambio.`,
           );
-          if (periodRows.length > 0) {
-            const periodId = periodRows[0].id;
-
-            // Asociar todos los CETAPs activos al periodo
-            const allCetaps = await queryRunner.query('SELECT id, codigo FROM academic_work_plan.cetap WHERE activo = true');
-            for (const cetap of allCetaps) {
-              await queryRunner.query(
-                `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
-                 VALUES ($1, $2, TRUE)
-                 ON CONFLICT (id_periodo_academico, id_cetap) DO UPDATE SET activo = TRUE`,
-                [periodId, cetap.id]
-              );
-            }
-
-            // Desactivar CETAPs que ya no están activos en este periodo
-            const activeCetapIds = allCetaps.map((c: any) => c.id);
-            if (activeCetapIds.length > 0) {
-              await queryRunner.query(
-                `UPDATE academic_work_plan.periodo_cetap SET activo = FALSE
-                 WHERE id_periodo_academico = $1 AND id_cetap NOT IN (${activeCetapIds.map((_: any, i: number) => '$' + (i + 2)).join(',')})`,
-                [periodId, ...activeCetapIds]
-              );
-            }
-
-            this.logger.log(`Sincronizados ${allCetaps.length} CETAPs activos con periodo ${periodo}`);
-          } else {
-            this.logger.warn(`Periodo "${periodo}" no encontrado. Se omite sincronización.`);
-          }
-          await queryRunner.query('RELEASE SAVEPOINT periodo_sync');
-        } catch (periodoError: any) {
-          await queryRunner.query('ROLLBACK TO SAVEPOINT periodo_sync');
-          this.logger.warn(`Error sincronizando periodo "${periodo}": ${periodoError.message}. Importación continúa.`);
         }
+        const periodId = periodRows[0].id;
+        const allCetaps = await queryRunner.query(
+          'SELECT id FROM academic_work_plan.cetap WHERE activo = TRUE',
+        );
+        const activeCetapIds = allCetaps.map((cetap: any) => cetap.id);
+
+        for (const cetapId of activeCetapIds) {
+          await queryRunner.query(
+            `INSERT INTO academic_work_plan.periodo_cetap (
+               id_periodo_academico, id_cetap, activo
+             ) VALUES ($1, $2, TRUE)
+             ON CONFLICT (id_periodo_academico, id_cetap)
+             DO UPDATE SET activo = TRUE`,
+            [periodId, cetapId],
+          );
+        }
+
+        if (activeCetapIds.length > 0) {
+          await queryRunner.query(
+            `UPDATE academic_work_plan.periodo_cetap
+             SET activo = FALSE
+             WHERE id_periodo_academico = $1
+               AND id_cetap <> ALL($2::bigint[])`,
+            [periodId, activeCetapIds],
+          );
+        }
+      }
+
+      const postValidation = await queryRunner.query(
+        `SELECT
+           (SELECT COUNT(DISTINCT codigo)
+              FROM academic_work_plan.direccion_territorial
+             WHERE codigo = ANY($1::text[])) AS catalog_dts,
+           (SELECT COUNT(DISTINCT codigo)
+              FROM academic_work_plan.cetap
+             WHERE codigo = ANY($2::text[])) AS catalog_cetaps,
+           (SELECT COUNT(DISTINCT cod_seccional)
+              FROM auth.seccionales
+             WHERE cod_seccional = ANY($1::text[])) AS legacy_dts,
+           (SELECT COUNT(DISTINCT cod_sede)
+              FROM auth.sedes
+             WHERE cod_sede = ANY($2::text[])) AS legacy_cetaps`,
+        [
+          dtToProcess.map((dt) => dt.codigo_dt),
+          cetapsToProcess.map((cetap) => cetap.codigo_cetap),
+        ],
+      );
+      const post = postValidation[0] || {};
+      if (
+        Number(post.catalog_dts) !== dtToProcess.length ||
+        Number(post.catalog_cetaps) !== cetapsToProcess.length ||
+        Number(post.legacy_dts) !== dtToProcess.length ||
+        Number(post.legacy_cetaps) !== cetapsToProcess.length
+      ) {
+        throw new Error(
+          'La verificación final de sincronización no coincidió con el archivo. Se revirtieron todos los cambios.',
+        );
       }
 
       await queryRunner.commitTransaction();
@@ -382,6 +607,313 @@ export class EstructuraImportService {
     return result;
   }
 
+  private async analyzePeriodSync(
+    periodo?: string,
+  ): Promise<{
+    periodo: string | null;
+    required: boolean;
+    activos_catalogo: number;
+    activos_periodo: number;
+    error?: string;
+  }> {
+    if (!periodo) {
+      return {
+        periodo: null,
+        required: false,
+        activos_catalogo: 0,
+        activos_periodo: 0,
+      };
+    }
+
+    const rows = await this.dataSource.query(
+      `SELECT
+         p.id,
+         (SELECT COUNT(*)
+            FROM academic_work_plan.cetap c
+           WHERE c.activo = TRUE) AS activos_catalogo,
+         (SELECT COUNT(*)
+            FROM academic_work_plan.periodo_cetap pc
+            INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
+           WHERE pc.id_periodo_academico = p.id
+             AND pc.activo = TRUE
+             AND c.activo = TRUE) AS activos_periodo,
+         (SELECT COUNT(*)
+            FROM academic_work_plan.periodo_cetap pc
+            INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
+           WHERE pc.id_periodo_academico = p.id
+             AND pc.activo = TRUE
+             AND c.activo = FALSE) AS activos_incorrectos
+       FROM academic_work_plan.periodo_academico p
+       WHERE p.codigo = $1
+       LIMIT 1`,
+      [periodo],
+    );
+
+    if (rows.length === 0) {
+      return {
+        periodo,
+        required: false,
+        activos_catalogo: 0,
+        activos_periodo: 0,
+        error: `El periodo académico "${periodo}" no existe.`,
+      };
+    }
+
+    const activosCatalogo = Number(rows[0].activos_catalogo || 0);
+    const activosPeriodo = Number(rows[0].activos_periodo || 0);
+    const activosIncorrectos = Number(rows[0].activos_incorrectos || 0);
+    return {
+      periodo,
+      required:
+        activosCatalogo !== activosPeriodo || activosIncorrectos > 0,
+      activos_catalogo: activosCatalogo,
+      activos_periodo: activosPeriodo,
+    };
+  }
+
+  private async buildLegacySyncPlan(
+    territoriales: any[],
+    cetaps: any[],
+  ): Promise<LegacySyncPlan> {
+    const seccionales = await this.dataSource.query(
+      `SELECT id_seccional, cod_seccional, nom_seccional
+         FROM auth.seccionales`,
+    );
+    const sedes = await this.dataSource.query(
+      `SELECT id_sede, cod_sede, nom_sede, id_seccional,
+              sede_act, num_latitud, num_longitud
+         FROM auth.sedes`,
+    );
+
+    const seccionalByDtCode = new Map<string, any | null>();
+    const sedeByCetapCode = new Map<string, any | null>();
+    const errors: string[] = [];
+    const selectedSeccionalIds = new Set<string>();
+
+    const bySecCode = new Map<string, any>();
+    for (const seccional of seccionales) {
+      const code = String(seccional.cod_seccional || '').trim().toUpperCase();
+      if (code) bySecCode.set(code, seccional);
+    }
+
+    let secCreated = 0;
+    let secUpdated = 0;
+    let secUnchanged = 0;
+
+    for (const dt of territoriales) {
+      const code = dt.codigo_dt.toUpperCase();
+      const aliases = [
+        code,
+        ...(this.legacyTerritorialAliases[code] || []),
+      ];
+      let matched: any | null = null;
+
+      for (const alias of aliases) {
+        const candidate = bySecCode.get(alias.toUpperCase());
+        if (
+          candidate &&
+          !selectedSeccionalIds.has(String(candidate.id_seccional))
+        ) {
+          matched = candidate;
+          break;
+        }
+      }
+
+      if (!matched) {
+        const candidates = seccionales.filter(
+          (row: any) =>
+            !selectedSeccionalIds.has(String(row.id_seccional)) &&
+            this.normalizeLegacyName(row.nom_seccional) ===
+              this.normalizeLegacyName(dt.nombre_dt),
+        );
+        if (candidates.length === 1) {
+          matched = candidates[0];
+        } else if (candidates.length > 1) {
+          errors.push(
+            `La territorial ${dt.codigo_dt} (${dt.nombre_dt}) coincide con varias seccionales existentes.`,
+          );
+        }
+      }
+
+      seccionalByDtCode.set(dt.codigo_dt, matched);
+      if (!matched) {
+        secCreated++;
+        continue;
+      }
+
+      selectedSeccionalIds.add(String(matched.id_seccional));
+      const expectedName = this.formatLegacyTerritorialName(dt.nombre_dt);
+      if (
+        String(matched.cod_seccional || '').trim() !== dt.codigo_dt ||
+        String(matched.nom_seccional || '').trim() !== expectedName
+      ) {
+        secUpdated++;
+      } else {
+        secUnchanged++;
+      }
+    }
+
+    const sedesByCode = new Map<string, any>();
+    for (const sede of sedes) {
+      const code = String(sede.cod_sede || '').trim().toUpperCase();
+      if (code) sedesByCode.set(code, sede);
+    }
+
+    const selectedSedeIds = new Set<string>();
+    let sedeCreated = 0;
+    let sedeUpdated = 0;
+    let sedeUnchanged = 0;
+
+    for (const cetap of cetaps) {
+      const targetSec = seccionalByDtCode.get(cetap.codigo_dt);
+      const targetSecId = targetSec
+        ? String(targetSec.id_seccional)
+        : `NEW:${cetap.codigo_dt}`;
+      let matched = sedesByCode.get(cetap.codigo_cetap.toUpperCase()) || null;
+
+      if (matched && selectedSedeIds.has(String(matched.id_sede))) {
+        errors.push(
+          `El código ${cetap.codigo_cetap} apunta a una sede ya utilizada por otra fila.`,
+        );
+        matched = null;
+      }
+
+      if (!matched && targetSec) {
+        const expectedName = this.normalizeLegacySedeName(
+          cetap.nombre_cetap,
+        );
+        const candidates = sedes.filter(
+          (row: any) =>
+            String(row.id_seccional) === targetSecId &&
+            !selectedSedeIds.has(String(row.id_sede)) &&
+            this.normalizeLegacySedeName(row.nom_sede) === expectedName,
+        );
+
+        if (candidates.length === 1) {
+          matched = candidates[0];
+        } else if (candidates.length > 1) {
+          errors.push(
+            `El CETAP ${cetap.codigo_cetap} (${cetap.nombre_cetap}) coincide con varias sedes existentes.`,
+          );
+        } else if (cetap.tipo === 'sede_central') {
+          const centralCandidates = sedes.filter(
+            (row: any) =>
+              String(row.id_seccional) === targetSecId &&
+              !selectedSedeIds.has(String(row.id_sede)) &&
+              /central|principal/.test(
+                this.normalizeLegacySedeName(row.nom_sede),
+              ),
+          );
+          if (centralCandidates.length === 1) {
+            matched = centralCandidates[0];
+          }
+        }
+      }
+
+      sedeByCetapCode.set(cetap.codigo_cetap, matched);
+      if (!matched) {
+        sedeCreated++;
+        continue;
+      }
+
+      selectedSedeIds.add(String(matched.id_sede));
+      const expectedActive = cetap.activo ? 'ACTIVO' : 'INACTIVO';
+      if (
+        String(matched.cod_sede || '').trim() !== cetap.codigo_cetap ||
+        String(matched.nom_sede || '').trim() !== cetap.nombre_cetap ||
+        String(matched.id_seccional) !== targetSecId ||
+        !this.sameLegacyStatus(matched.sede_act, expectedActive) ||
+        !this.sameNullableNumber(matched.num_latitud, cetap.latitud) ||
+        !this.sameNullableNumber(matched.num_longitud, cetap.longitud)
+      ) {
+        sedeUpdated++;
+      } else {
+        sedeUnchanged++;
+      }
+    }
+
+    return {
+      seccionalByDtCode,
+      sedeByCetapCode,
+      errors,
+      summary: {
+        seccionales: {
+          creadas: secCreated,
+          actualizadas: secUpdated,
+          sin_cambios: secUnchanged,
+        },
+        sedes: {
+          creadas: sedeCreated,
+          actualizadas: sedeUpdated,
+          sin_cambios: sedeUnchanged,
+        },
+        registros_legacy_conservados: {
+          seccionales: Math.max(
+            0,
+            seccionales.length - (secUpdated + secUnchanged),
+          ),
+          sedes: Math.max(0, sedes.length - (sedeUpdated + sedeUnchanged)),
+        },
+      },
+    };
+  }
+
+  private normalizeLegacyName(value: unknown): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/^seccional\s+/, '')
+      .replace(/^territorial\s+/, '')
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  private normalizeLegacySedeName(value: unknown): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/^cetap\s+/, '')
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  private formatLegacyTerritorialName(name: string): string {
+    if (name === 'SEDE_CENTRAL') return 'Sede Central';
+    return name
+      .toLocaleLowerCase('es-CO')
+      .replace(/(^|\s)\p{L}/gu, (letter) => letter.toLocaleUpperCase('es-CO'));
+  }
+
+  private sameLegacyStatus(current: unknown, expected: string): boolean {
+    const normalized = String(current || '').trim().toUpperCase();
+    if (expected === 'ACTIVO') {
+      return normalized === 'ACTIVO' || normalized === 'ACTIVA';
+    }
+    return normalized === 'INACTIVO' || normalized === 'INACTIVA';
+  }
+
+  private sameNullableNumber(left: unknown, right: unknown): boolean {
+    if (
+      (left === null || left === undefined || left === '') &&
+      (right === null || right === undefined || right === '')
+    ) {
+      return true;
+    }
+    return Number(left) === Number(right);
+  }
+
+  private async getNextLegacyId(
+    queryRunner: any,
+    table: string,
+    column: string,
+  ): Promise<number> {
+    const rows = await queryRunner.query(
+      `SELECT COALESCE(MAX(${column}), 0) + 1 AS next_id FROM ${table}`,
+    );
+    return Number(rows[0]?.next_id || 1);
+  }
+
   // Helper: comparar campos y retornar diferencias
   private diffFields(existing: any, incoming: any, type: 'dt' | 'cetap'): string[] {
     const diffs: string[] = [];
@@ -402,16 +934,38 @@ export class EstructuraImportService {
   async getStatus() {
     const counts = await this.dataSource.query(`
       SELECT 
-        (SELECT COUNT(*) FROM academic_work_plan.direccion_territorial) AS dts,
-        (SELECT COUNT(*) FROM academic_work_plan.cetap) AS cetaps
+        (SELECT COUNT(*)
+           FROM academic_work_plan.direccion_territorial
+          WHERE codigo = 'SC' OR codigo ~ '^DT-[0-9]{3}$') AS dts,
+        (SELECT COUNT(*)
+           FROM academic_work_plan.cetap
+          WHERE codigo ~ '^CET-[0-9]{4}$') AS cetaps,
+        (SELECT COUNT(*) FROM auth.seccionales) AS seccionales,
+        (SELECT COUNT(*) FROM auth.sedes) AS sedes
     `);
 
     const stats = counts[0] || {};
+    const direccionesTerritoriales = parseInt(stats.dts || 0, 10);
+    const cetaps = parseInt(stats.cetaps || 0, 10);
+    const seccionalesExistentes = parseInt(stats.seccionales || 0, 10);
+    const sedesExistentes = parseInt(stats.sedes || 0, 10);
+    const isReady = direccionesTerritoriales >= 17 && cetaps >= 290;
+    const hasExistingStructure =
+      seccionalesExistentes > 0 || sedesExistentes > 0;
+
     return {
       success: true,
-      direcciones_territoriales: parseInt(stats.dts || 0, 10),
-      cetaps: parseInt(stats.cetaps || 0, 10),
-      isReady: parseInt(stats.dts || 0, 10) >= 17 && parseInt(stats.cetaps || 0, 10) >= 290
+      direcciones_territoriales: direccionesTerritoriales,
+      cetaps,
+      seccionales_existentes: seccionalesExistentes,
+      sedes_existentes: sedesExistentes,
+      hasExistingStructure,
+      requiresSynchronization: hasExistingStructure && !isReady,
+      isReady,
+      message:
+        hasExistingStructure && !isReady
+          ? `La Estructura Organizacional sí contiene ${seccionalesExistentes} seccionales y ${sedesExistentes} sedes, pero el catálogo geográfico oficial todavía no está sincronizado.`
+          : undefined,
     };
   }
 }

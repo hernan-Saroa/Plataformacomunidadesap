@@ -108,6 +108,20 @@ export const estructuraService = {
     return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
   },
 
+  async obtenerEstadoSedesPeriodo(periodoCodigo: string): Promise<{
+    data: {
+      periodoCodigo: string;
+      idSedesActivas: number[];
+      totalActivas: number;
+    };
+  }> {
+    return apiClient.get(
+      `${SERVICE_PREFIX}/estructura-organizacional/periodo/${encodeURIComponent(periodoCodigo)}/sedes-estado`,
+      undefined,
+      { retries: 0 },
+    );
+  },
+
   // ============================================
   // ESTADÍSTICAS
   // ============================================
