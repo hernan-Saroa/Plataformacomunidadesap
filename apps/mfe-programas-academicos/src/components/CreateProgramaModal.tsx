@@ -24,10 +24,13 @@ interface CreateProgramaModalProps {
   onClose: () => void;
   programaToEdit?: ProgramaAcademico | null;
   onSuccess?: () => void;
+  /** Código del período activo/seleccionado (ej. "2026-2"). El programa creado quedará vinculado a él. */
+  periodoAcademico?: string;
 }
 
-export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: CreateProgramaModalProps) {
+export function CreateProgramaModal({ onClose, programaToEdit, onSuccess, periodoAcademico }: CreateProgramaModalProps) {
   const isEditMode = !!programaToEdit;
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estados del formulario
   const [formData, setFormData] = useState({
@@ -98,10 +101,16 @@ export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: Crea
           estado: formData.estado,
         };
 
+        setIsSubmitting(true);
         if (isEditMode && programaToEdit) {
-          await apiClient.put(`/auth/api/v1/programas-academicos/${programaToEdit.id}`, programaData);
+          await apiClient.put(`/auth/api/v1/programas-academicos/${programaToEdit.id}`, programaData, { retries: 0 });
         } else {
-          await apiClient.post('/auth/api/v1/programas-academicos', programaData);
+          // Al crear, se vincula el programa al período seleccionado para que solo
+          // sea visible en ese período.
+          const createData = periodoAcademico
+            ? { ...programaData, periodoAcademico }
+            : programaData;
+          await apiClient.post('/auth/api/v1/programas-academicos', createData, { retries: 0 });
         }
 
         const action = isEditMode ? 'actualizado' : 'creado';
@@ -114,8 +123,10 @@ export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: Crea
       } catch (error) {
         console.error('Error saving programa:', error);
         toast.error('Error al guardar el programa', {
-          description: 'Por favor, inténtalo de nuevo'
+          description: error instanceof Error ? error.message : 'Por favor, inténtalo de nuevo'
         });
+      } finally {
+        setIsSubmitting(false);
       }
     }
   };
@@ -212,10 +223,8 @@ export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: Crea
                         onChange={(e) => handleChange('estado', e.target.value)}
                         className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
                       >
-                        <option value="Activo">Activo</option>
-                        <option value="Inactivo">Inactivo</option>
-                        <option value="En Trámite">En Trámite</option>
-                        <option value="Suspendido">Suspendido</option>
+                        <option value="ACTIVO">Activo</option>
+                        <option value="INACTIVO">Inactivo</option>
                       </select>
                     </div>
                   </div>
@@ -413,10 +422,11 @@ export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: Crea
               ) : (
                 <button
                   onClick={handleSubmit}
-                  className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Save className="w-4 h-4" />
-                  {isEditMode ? 'Guardar Cambios' : 'Crear Programa'}
+                  {isSubmitting ? 'Guardando...' : isEditMode ? 'Guardar Cambios' : 'Crear Programa'}
                 </button>
               )}
             </div>

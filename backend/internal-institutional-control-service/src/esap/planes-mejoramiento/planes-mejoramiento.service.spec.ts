@@ -424,8 +424,8 @@ describe('PlanesMejoramientoService — lógica de negocio pura', () => {
     });
 
     it('devuelve PROGRAMADA cuando no tiene fecha fin', () => {
-      const accion = { porcentajeAvance: 0, fechaFin: null };
-      expect(service.testDeterminarEstadoAccionReal(accion)).toBe(
+      const accion = { porcentajeAvance: 0, fechaFin: undefined };
+      expect(service.testDeterminarEstadoAccionReal(accion as any)).toBe(
         AccionCorrectivaEstado.PROGRAMADA,
       );
     });

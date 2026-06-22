@@ -8,13 +8,13 @@ export class ProgramaAcademico {
   @Column({ type: 'varchar', length: 20, unique: true })
   codigo: string;
 
-  @Column({ type: 'varchar', length: 100, unique: true })
+  @Column({ type: 'varchar', length: 100 })
   nombre: string;
 
-  @Column({ name: 'nombre_excel', type: 'varchar', length: 100, unique: true })
+  @Column({ name: 'nombre_excel', type: 'varchar', length: 100 })
   nombreExcel: string;
 
-  @Column({ name: 'nombre_corto', type: 'varchar', length: 30, unique: true })
+  @Column({ name: 'nombre_corto', type: 'varchar', length: 30 })
   nombreCorto: string;
 
   @Column({ name: 'id_facultad', type: 'bigint' })

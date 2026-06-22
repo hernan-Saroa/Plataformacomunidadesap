@@ -453,7 +453,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [ptaRules, setPtaRules] = useState<any>(null);
 
   // Form data
-  const [periodo, setPeriodo] = useState('2025-2');
+  const [periodo, setPeriodo] = useState('2026-1');
   const [dedicacion, setDedicacion] = useState('Tiempo Completo');
   const [tipoVinculacion, setTipoVinculacion] = useState('CARRERA_003');
   const [semanasVinculacion, setSemanasVinculacion] = useState(20);
@@ -1376,15 +1376,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     savingRef.current = true;
     if (!silent) { autoSaveCountdownRef.current = 120; setAutoSaveCountdown(120); }
 
-    // Validación mínima docencia: al menos 1 asignatura
-    if (enviar && asignaturas.length === 0) {
-      toast.error('Debe incluir al menos una asignatura de docencia.');
+    // Validación mínima docencia: al menos 1 asignatura con catálogo seleccionado
+    const _tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+    const _asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
+    if (enviar && !_tieneTotalidad && _asignaturasValidas.length === 0) {
+      toast.error(asignaturas.length > 0
+        ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
+        : 'Debe incluir al menos una asignatura de docencia.');
       setSaving(false);
       return;
     }
 
     // Validación: al menos una asignatura con mínimo 3 créditos
-    if (enviar && !asignaturas.some(a => (a.creditos || 0) >= 3)) {
+    if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
       setSaving(false);
       return;
@@ -1397,12 +1401,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Validación de límites de horas
-    if (enviar && totalHoras < horasAProgramar) {
-      toast.error(`Aún faltan ${horasAProgramar - totalHoras}h por programar para el mínimo requerido (${horasAProgramar}h).`);
-      setSaving(false);
-      return;
-    }
+    // Validación de límites de horas — solo bloquear si se excede el tope
+    // (el caso < horasAProgramar se maneja en validateEnvioDocente con modal de confirmación)
     if (enviar && totalHoras > horasAProgramar) {
       toast.error(`Te has excedido en ${totalHoras - horasAProgramar}h programables. Verifica tu Plan.`);
       setSaving(false);
@@ -1472,9 +1472,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
         : undefined,
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
-      extension_actividades: extActividades.filter(e => e.actividad_id && e.actividad_id !== ''),
-      complementarias: complementarias.filter(c => c.actividad_id && c.actividad_id !== ''),
-      academico_admin: academicoAdmin.filter(c => c.actividad_id && c.actividad_id !== ''),
+      extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || e.horas_ejecutadas > 0))),
+      complementarias: complementarias.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
+      academico_admin: academicoAdmin.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       observaciones_docente: observacionesDocente,
       _reenvio: isReenvio || undefined,
     };
@@ -1583,16 +1583,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const validateEnvioDocente = useCallback(() => {
     const tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
 
-    if (!tieneTotalidad && asignaturas.length === 0) {
-      toast.error('Debe incluir al menos una asignatura de docencia.');
+    const asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
+    if (!tieneTotalidad && asignaturasValidas.length === 0) {
+      toast.error(asignaturas.length > 0
+        ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
+        : 'Debe incluir al menos una asignatura de docencia.');
       return false;
     }
-    if (!tieneTotalidad && !asignaturas.some(a => (a.creditos || 0) >= 3)) {
+    if (!tieneTotalidad && !asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
       return false;
     }
     if (!tieneTotalidad && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
-      const hDocenciaTotal = asignaturas.reduce((t, a) => t + (a.total_horas || 0), 0);
+      const hDocenciaTotal = asignaturasValidas.reduce((t, a) => t + (a.total_horas || 0), 0);
       if (hDocenciaTotal < horasAProgramar * 0.5) {
         toast.error('Los profesores Ocasionales, Visitantes y Especiales deben dedicar al menos el 50% de su PTA a docencia.');
         return false;

@@ -61,6 +61,9 @@ export class AsignaturaEntity {
   @Column({ name: 'horas_fijas_pta', type: 'int', nullable: true })
   horasFijasPta: number | null;
 
+  @Column({ name: 'tipo_asignatura', type: 'varchar', length: 30, default: 'teorica' })
+  tipoAsignatura: string;
+
   @Column({ name: 'tipo_excepcion', type: 'varchar', length: 40, nullable: true })
   tipoExcepcion: string | null; // 'seminario_enfasis' | 'opciones_grado_ap' | 'seminario_opciones_apt'
 

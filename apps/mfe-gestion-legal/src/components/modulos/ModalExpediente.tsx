@@ -1230,7 +1230,26 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const handleGuardarActuacion = async (data: any, file?: File) => {
     try {
       const id = expediente.uuid || expediente.id;
-      
+
+      // La firma de la actuación se exige EN la etapa que requiere "Aprobación para entrar"
+      // (colActual). Desde la etapa anterior solo se envía a aprobación con "Avanzar Etapa".
+      // Si la etapa actual no requiere aprobación, la actuación queda como entrada directa.
+      const requiereAprobacionEtapa = requiereAprobacion;
+
+      const metadata: Record<string, any> = {
+        documentosAsociados: data.documentosAsociados
+      };
+
+      if (requiereAprobacionEtapa && colActual) {
+        metadata.estadoAutorizacion = 'PENDIENTE';
+        metadata.aprobacionTipo = colActual.aprobacionTipo;
+        if (colActual.aprobacionTipo === 'rol') {
+          metadata.aprobacionRol = colActual.aprobacionRol;
+        } else if (colActual.aprobacionTipo === 'usuario') {
+          metadata.aprobacionUsuario = colActual.aprobacionUsuario;
+        }
+      }
+
       const actuacionData = {
         expedienteId: id,
         tipoActuacion: data.tipo,
@@ -1241,18 +1260,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         observaciones: data.observaciones,
         file: file,
         documentosAsociados: data.documentosAsociados,
-        // Al crear, la marcamos como pendiente de autorización para el flujo Kanban
-        metadata: {
-          estadoAutorizacion: 'PENDIENTE',
-          aprobacionTipo: 'rol',
-          aprobacionRol: 'SUPER_ADMIN', // o APROBADOR_KANBAN
-          documentosAsociados: data.documentosAsociados
-        }
+        metadata
       };
 
       await legalService.createActuacion(actuacionData);
 
-      toast.success('⚖️ Actuación registrada (Pendiente de Autorización)');
+      toast.success(requiereAprobacionEtapa
+        ? '⚖️ Actuación registrada (Pendiente de Autorización)'
+        : '⚖️ Actuación registrada');
       
       loadActuaciones(id);
       setModalRegistrarActuacionAbierto(false);
@@ -1770,10 +1785,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent 
-          hideCloseButton 
+        <DialogContent
+          hideCloseButton
           className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
           style={{ width: '60vw', maxWidth: '60vw' }}
+          // Mientras el visor de documentos está abierto (otro Dialog hermano portaleado a body),
+          // un clic dentro de él se interpreta como "clic-fuera" de este modal y lo cerraría,
+          // arrastrando consigo al visor (vuelve al Kanban). Bloqueamos el cierre por
+          // clic-fuera/Escape solo en ese caso; el cierre explícito (X/Cerrar) sigue funcionando.
+          onPointerDownOutside={(e) => { if (visorAbierto || docParaVisor) e.preventDefault(); }}
+          onInteractOutside={(e) => { if (visorAbierto || docParaVisor) e.preventDefault(); }}
+          onEscapeKeyDown={(e) => { if (visorAbierto || docParaVisor) e.preventDefault(); }}
         >
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">
@@ -2159,10 +2181,22 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           } else {
                             display = String(v);
                           }
+                          // Texto largo: se muestra apilado a todo el ancho, alineado a la
+                          // izquierda y respetando saltos de línea, en lugar de comprimirlo
+                          // en la columna derecha (que rompía palabras y se veía mal).
+                          const esTextoLargo = (c.tipo === 'texto' || c.tipo === 'lista') && display.length > 60;
+                          if (esTextoLargo) {
+                            return (
+                              <div key={c.id} className="py-2 border-b border-gray-100 last:border-0 md:col-span-2">
+                                <span className="text-xs font-semibold text-gray-500 block mb-1">{c.nombre}</span>
+                                <p className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">{display}</p>
+                              </div>
+                            );
+                          }
                           return (
-                            <div key={c.id} className="flex items-start justify-between py-2 border-b border-gray-100 last:border-0">
+                            <div key={c.id} className="flex items-start justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
                               <span className="text-xs text-gray-500 flex-shrink-0">{c.nombre}:</span>
-                              <span className="text-sm font-bold text-gray-900 text-right ml-2 break-all">{display}</span>
+                              <span className="text-sm font-bold text-gray-900 text-right break-words min-w-0">{display}</span>
                             </div>
                           );
                         })}
@@ -2576,6 +2610,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   onReloadExpediente={() => loadActuaciones(String(expediente.uuid || expediente.id))}
                   onViewDocument={handleVerDocumento}
                   onAutoAdvanceStage={handleAutoAdvanceStage}
+                  aprobacionEtapaActual={requiereAprobacion && colActual ? {
+                    aprobacionTipo: colActual.aprobacionTipo,
+                    aprobacionRol: colActual.aprobacionRol,
+                    aprobacionUsuario: colActual.aprobacionUsuario,
+                    nombreEtapa: colActual.nombre
+                  } : null}
                   onSendEmail={(initialData) => {
                     setEmailInitialData(initialData);
                     setModalNuevaComunicacionOpen(true);
@@ -3033,6 +3073,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         radicado={expediente.radicado}
         documentosDelExpediente={documentos}
         isApprovalMode={modoAprobacion}
+        abogadoEncargadoId={expediente.abogadoSustanciador}
+        abogadoEncargadoNombre={expediente.abogadoAsignado || expediente.abogadoResponsable}
       />
       <ModalProgramarAudiencia
         isOpen={modalProgramarAudienciaAbierto}

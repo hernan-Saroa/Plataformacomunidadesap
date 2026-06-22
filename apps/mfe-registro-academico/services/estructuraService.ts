@@ -58,6 +58,12 @@ export interface DetallePeriodoAcademico {
   cetaps: PeriodoCetap[];
 }
 
+export interface EstadoSedesPeriodo {
+  periodoCodigo: string;
+  idSedesActivas: number[];
+  totalActivas: number;
+}
+
 // DTOs para crear/actualizar
 export interface CreateSeccionalData {
   codSeccional?: string;
@@ -126,6 +132,16 @@ export const estructuraService = {
 
   async obtenerDetallePeriodo(id: string): Promise<DetallePeriodoAcademico> {
     return apiClient.get<DetallePeriodoAcademico>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
+  },
+
+  async obtenerEstadoSedesPeriodo(periodoCodigo: string): Promise<{
+    data: EstadoSedesPeriodo;
+  }> {
+    return apiClient.get(
+      `${SERVICE_PREFIX}/estructura-organizacional/periodo/${encodeURIComponent(periodoCodigo)}/sedes-estado`,
+      undefined,
+      { retries: 0 },
+    );
   },
 
   // ============================================

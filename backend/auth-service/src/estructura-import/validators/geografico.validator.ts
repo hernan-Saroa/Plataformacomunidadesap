@@ -49,13 +49,13 @@ export class GeograficoValidator {
       });
     }
 
-    // G2. CETAPS tiene al menos 288 filas
-    if (cetaps.length < 288) {
+    // G2. El catálogo geográfico oficial 2026 contiene 290 CETAP.
+    if (cetaps.length < 290) {
       warnings.push({
         hoja: 'CETAPS',
-        mensaje: `Solo hay ${cetaps.length} CETAPs. Se esperan al menos 288.`,
+        mensaje: `Solo hay ${cetaps.length} CETAPs. Se esperan al menos 290.`,
         datoErrado: `${cetaps.length} filas`,
-        valorEsperado: 'Al menos 288 filas',
+        valorEsperado: 'Al menos 290 filas',
         severity: 'warning'
       });
     }

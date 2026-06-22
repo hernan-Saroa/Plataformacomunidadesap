@@ -11,7 +11,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { toast } from 'sonner';
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -1,11 +1,12 @@
 import { IsString, IsOptional, IsNumber, MaxLength, IsEmail, IsBoolean, IsArray, IsNotEmpty } from 'class-validator';
+import { Type } from 'class-transformer';
 
 // ==================== SECCIONAL DTOs ====================
 
 export class CreateSeccionalDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de seccional no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de seccional no puede exceder 20 caracteres' })
   codSeccional?: string;
 
   @IsString()
@@ -17,6 +18,10 @@ export class CreateSeccionalDto {
   ordenVisualizacion?: number;
 
   @IsOptional()
+  @IsNumber()
+  idUbiSeccional?: number;
+
+  @IsOptional()
   @IsBoolean()
   activo?: boolean;
 }
@@ -24,7 +29,7 @@ export class CreateSeccionalDto {
 export class UpdateSeccionalDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de seccional no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de seccional no puede exceder 20 caracteres' })
   codSeccional?: string;
 
   @IsOptional()
@@ -37,6 +42,10 @@ export class UpdateSeccionalDto {
   ordenVisualizacion?: number;
 
   @IsOptional()
+  @IsNumber()
+  idUbiSeccional?: number;
+
+  @IsOptional()
   @IsBoolean()
   activo?: boolean;
 }
@@ -46,7 +55,7 @@ export class UpdateSeccionalDto {
 export class CreateSedeDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de sede no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de sede no puede exceder 20 caracteres' })
   codSede?: string;
 
   @IsString()
@@ -56,6 +65,10 @@ export class CreateSedeDto {
   @IsOptional()
   @IsNumber()
   idSeccional?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idGeopolitica?: number;
 
   @IsOptional()
   @IsString()
@@ -78,7 +91,7 @@ export class CreateSedeDto {
 export class UpdateSedeDto {
   @IsOptional()
   @IsString()
-  @MaxLength(5, { message: 'El código de sede no puede exceder 5 caracteres' })
+  @MaxLength(20, { message: 'El código de sede no puede exceder 20 caracteres' })
   codSede?: string;
 
   @IsOptional()
@@ -89,6 +102,10 @@ export class UpdateSedeDto {
   @IsOptional()
   @IsNumber()
   idSeccional?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idGeopolitica?: number;
 
   @IsOptional()
   @IsString()
@@ -122,4 +139,31 @@ export class AsignarUsuariosDto {
   @IsString()
   @IsOptional()
   cetapId?: string;
+}
+
+export class ToggleSedePeriodStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  periodoCodigo: string;
+
+  @IsBoolean()
+  activo: boolean;
+}
+
+export class BulkToggleSedePeriodStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  periodoCodigo: string;
+
+  @IsBoolean()
+  activo: boolean;
+
+  // Opcional: si se omite, aplica a TODAS las sedes del catálogo.
+  // @Type fuerza la conversión de cada elemento a número (los ids llegan como
+  // string porque la columna id_sede es bigint).
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsNumber({}, { each: true })
+  idSedes?: number[];
 }

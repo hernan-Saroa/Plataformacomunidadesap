@@ -33,20 +33,31 @@ const backendServices = [
 
 function checkService(service) {
   return new Promise((resolve) => {
-    const req = http.get(
-      { hostname: '127.0.0.1', port: service.port, path: service.path, timeout: 3000 },
-      (res) => {
-        res.resume();
-        resolve({ ...service, status: 'OK', httpCode: res.statusCode });
-      }
-    );
-    req.on('error', (err) => {
-      resolve({ ...service, status: 'FAIL', error: err.code || err.message });
-    });
-    req.on('timeout', () => {
-      req.destroy();
-      resolve({ ...service, status: 'FAIL', error: 'TIMEOUT' });
-    });
+    function tryHost(host) {
+      const req = http.get(
+        { hostname: host, port: service.port, path: service.path, timeout: 1500 },
+        (res) => {
+          res.resume();
+          resolve({ ...service, status: 'OK', httpCode: res.statusCode });
+        }
+      );
+      req.on('error', (err) => {
+        if (host === 'localhost') {
+          tryHost('127.0.0.1');
+        } else {
+          resolve({ ...service, status: 'FAIL', error: err.code || err.message });
+        }
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        if (host === 'localhost') {
+          tryHost('127.0.0.1');
+        } else {
+          resolve({ ...service, status: 'FAIL', error: 'TIMEOUT' });
+        }
+      });
+    }
+    tryHost('localhost');
   });
 }
 

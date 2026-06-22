@@ -96,17 +96,17 @@ export class DocumentoService {
                 modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
             }
 
-            try {
-                await this.legalNotifications.notifyDocumentoSubido({
-                    modulo,
-                    radicado: expediente.radicado,
-                    procesoId: expediente.id,
-                    nombreDocumento: saved.archivoNombreOriginal || saved.nombre,
-                    subidoPor: saved.subidoPor || 'Sistema',
-                });
-            } catch (e: any) {
-                console.error('[DocumentoService.crear] notify falló:', e?.message);
-            }
+            // Notificación en segundo plano: no debe bloquear la subida del documento.
+            // (Si el notifications-service está lento, antes esto sumaba ~3s por documento.)
+            void this.legalNotifications.notifyDocumentoSubido({
+                modulo,
+                radicado: expediente.radicado,
+                procesoId: expediente.id,
+                nombreDocumento: saved.archivoNombreOriginal || saved.nombre,
+                subidoPor: saved.subidoPor || 'Sistema',
+            }).catch((e: any) => {
+                console.error('[DocumentoService.crear] notify falló (no bloqueante):', e?.message);
+            });
         }
 
         return saved;

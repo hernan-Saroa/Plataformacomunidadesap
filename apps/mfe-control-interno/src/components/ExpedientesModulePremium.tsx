@@ -29,7 +29,7 @@ import {
 import { toast } from 'sonner';
 
 // Servicio API
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 import { getServiceUrl, API_MODE } from '../../../config/environment';
 import { notificationsService } from '../../../services/api/notificationsService';

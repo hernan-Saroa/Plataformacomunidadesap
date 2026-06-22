@@ -314,7 +314,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   }, [allTiposProcesos, tableroSeleccionado]);
 
   const [pasoActual, setPasoActual] = useState(1);
-  const totalPasos = 7;
   const lastTipoProcesoRef = useRef<string>('');
 
   const [formData, setFormData] = useState<NuevaDemandaData>({
@@ -372,6 +371,51 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       if (configured !== undefined) return configured;
     }
     return defaultRequired;
+  };
+
+  // ¿El paso tiene al menos un campo adicional configurado?
+  const pasoTieneCamposAdicionales = (stepNum: number): boolean =>
+    !!activeTipoProceso?.camposAdicionalesConfig?.some(c => (c.paso || 1) === stepNum);
+
+  // Determina si un paso del wizard tiene contenido visible. Los pasos 5 (Juzgado)
+  // y 7 (Detalles) solo contienen campos del sistema configurables; si todos se
+  // ocultan desde configuración (y no hay campos adicionales en ese paso), el paso
+  // debe omitirse por completo del flujo en lugar de mostrar un espacio vacío.
+  const pasoTieneContenido = (stepNum: number): boolean => {
+    switch (stepNum) {
+      case 5:
+        return isFieldVisible('juzgadoTribunal', true)
+          || isFieldVisible('departamentoCiudad', true)
+          || pasoTieneCamposAdicionales(5);
+      case 7:
+        return isFieldVisible('pretensiones', true)
+          || isFieldVisible('hechos', true)
+          || isFieldVisible('observaciones', true)
+          || pasoTieneCamposAdicionales(7);
+      default:
+        // Pasos 1-4 y 6 siempre tienen campos fijos o gestión de actores.
+        return true;
+    }
+  };
+
+  // Lista ordenada de los pasos realmente visibles en el flujo actual. La navegación,
+  // el breadcrumb, el progreso y la numeración se calculan sobre esta lista para que
+  // los pasos ocultos desaparezcan por completo y los activos se reorganicen de forma continua.
+  const pasosActivos = [1, 2, 3, 4, 5, 6, 7].filter(pasoTieneContenido);
+  const totalPasosActivos = pasosActivos.length;
+  const indicePasoActual = pasosActivos.indexOf(pasoActual);
+  const esPrimerPaso = indicePasoActual <= 0;
+  const esUltimoPaso = indicePasoActual === totalPasosActivos - 1;
+
+  // Etiquetas cortas para el breadcrumb, indexadas por número de paso.
+  const ETIQUETAS_PASO: Record<number, string> = {
+    1: 'Proceso',
+    2: 'Demandantes',
+    3: 'Demandados',
+    4: 'Otros',
+    5: 'Juzgado',
+    6: 'Fechas',
+    7: 'Detalles',
   };
 
   const renderCamposAdicionales = (stepNum: number) => {
@@ -1578,12 +1622,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   const siguiente = () => {
     if (validarPasoActual()) {
-      setPasoActual(prev => Math.min(prev + 1, totalPasos));
+      const siguientePaso = pasosActivos[indicePasoActual + 1];
+      if (siguientePaso !== undefined) setPasoActual(siguientePaso);
     }
   };
 
   const anterior = () => {
-    setPasoActual(prev => Math.max(prev - 1, 1));
+    const pasoPrevio = pasosActivos[indicePasoActual - 1];
+    if (pasoPrevio !== undefined) setPasoActual(pasoPrevio);
   };
 
   const handleSubmit = async () => {
@@ -1726,11 +1772,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     onClose();
   };
 
-  const porcentajeProgreso = (pasoActual / totalPasos) * 100;
+  const porcentajeProgreso = totalPasosActivos > 0 ? ((indicePasoActual + 1) / totalPasosActivos) * 100 : 0;
 
   const getBadgesPorPaso = () => {
     const badges: Array<{ texto: string; color: 'azul' | 'verde' | 'rojo' }> = [
-      { texto: `Paso ${pasoActual} de ${totalPasos}`, color: 'azul' },
+      { texto: `Paso ${indicePasoActual + 1} de ${totalPasosActivos}`, color: 'azul' },
       { texto: `${Math.round(porcentajeProgreso)}% Completado`, color: 'verde' }
     ];
     return badges;
@@ -1749,7 +1795,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
             <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
           <DialogDescription className="sr-only">
-            Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
+            Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {indicePasoActual + 1} de {totalPasosActivos}
           </DialogDescription>
 
           {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
@@ -1779,32 +1825,28 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             />
           </div>
 
-          {/* Breadcrumb de pasos */}
+          {/* Breadcrumb de pasos (solo los pasos activos, renumerados de forma continua) */}
           <div className="flex items-center justify-between mt-3 mb-2 text-xs">
-            {[
-              { num: 1, label: 'Proceso' },
-              { num: 2, label: 'Demandantes' },
-              { num: 3, label: 'Demandados' },
-              { num: 4, label: 'Otros' },
-              { num: 5, label: 'Juzgado' },
-              { num: 6, label: 'Fechas' },
-              { num: 7, label: 'Detalles' }
-            ].map((paso) => (
-              <div key={paso.num} className="flex flex-col items-center">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${pasoActual === paso.num
-                  ? 'bg-blue-600 text-white'
-                  : pasoActual > paso.num
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-500'
-                  }`}>
-                  {pasoActual > paso.num ? <Check className="w-4 h-4" /> : paso.num}
+            {pasosActivos.map((num, idx) => {
+              const esActual = pasoActual === num;
+              const completado = indicePasoActual > idx;
+              return (
+                <div key={num} className="flex flex-col items-center">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${esActual
+                    ? 'bg-blue-600 text-white'
+                    : completado
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-200 text-gray-500'
+                    }`}>
+                    {completado ? <Check className="w-4 h-4" /> : idx + 1}
+                  </div>
+                  <span className={`text-[10px] mt-1 ${esActual ? 'text-blue-600 font-bold' : 'text-gray-500'
+                    }`}>
+                    {ETIQUETAS_PASO[num]}
+                  </span>
                 </div>
-                <span className={`text-[10px] mt-1 ${pasoActual === paso.num ? 'text-blue-600 font-bold' : 'text-gray-500'
-                  }`}>
-                  {paso.label}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -1834,7 +1876,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         placeholder="Ej: 66001233300020260012300"
                         value={formData.numeroRadicado}
                         maxLength={23}
-                        className={erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                        className={`bg-white ${erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                         onChange={(e) => {
                           // Solo permitir dígitos, máximo 23
                           const valor = e.target.value.replace(/[^0-9]/g, '').slice(0, 23);
@@ -1987,7 +2029,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             inputMode="numeric"
                             placeholder="0"
                             value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
-                            className={erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                            className={`bg-white ${erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                             onChange={(e) => {
                               const raw = e.target.value.replace(/[^0-9]/g, '');
                               // Si está vacío, poner 0
@@ -3130,7 +3172,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
           </p>
           <div className="flex gap-3">
-            {pasoActual > 1 && (
+            {!esPrimerPaso && (
               <Button
                 type="button"
                 variant="outline"
@@ -3152,7 +3194,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
               Cancelar
             </Button>
 
-            {pasoActual < totalPasos ? (
+            {!esUltimoPaso ? (
               <Button
                 type="button"
                 onClick={siguiente}

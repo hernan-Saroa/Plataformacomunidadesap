@@ -50,7 +50,7 @@ import {
 import { VisorEvidenciaPlanAnualModal } from './VisorEvidenciaPlanAnualModal';
 import { configuracionesProfesionalesOCIApi } from './services/api';
 // Servicio para vinculación de auditorías con Rol 4
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { apiClient } from '../../../services/api/apiClient';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';

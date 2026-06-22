@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Archive,
   Award,
+  BarChart3,
   BookOpen,
   Building2,
   Calendar,
@@ -47,13 +48,18 @@ import {
   Info,
   Lightbulb,
   Mail,
+  MapPin,
   MessageSquare,
+  Plus,
   Send,
+  Sparkles,
+  Target,
   Trash2,
   TrendingUp,
   Upload,
   User,
   Users,
+  UserPlus,
   X
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -351,12 +357,12 @@ function filtrarPestanasPorEstado(
 /**
  * Modal expediente: sin animación fade-in (evita quedar en opacity 0) y centrado real.
  */
-/** Tamaño fijo en escritorio: ~860×920 (más alto que ancho) */
+/** World-class: 60vw wide, 95vh tall – maximizes usable space */
 const ESTILO_MODAL_EXPEDIENTE: CSSProperties = {
-  width: 'min(94vw, 940px)',
-  maxWidth: 940,
-  height: 'min(90dvh, 920px)',
-  maxHeight: '90vh',
+  width: '60vw',
+  maxWidth: '60vw',
+  height: '95vh',
+  maxHeight: '95vh',
   minHeight: 480,
   display: 'flex',
   flexDirection: 'column',
@@ -365,7 +371,8 @@ const ESTILO_MODAL_EXPEDIENTE: CSSProperties = {
 
 /** Complementa size="expediente" del Dialog */
 const CLASE_MODAL_EXPEDIENTE = [
-  'gap-0 p-0 flex flex-col h-full min-h-0 overflow-hidden',
+  '!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh]',
+  'gap-0 p-0 flex flex-col min-h-0 overflow-hidden rounded-xl shadow-2xl border-0',
   'bg-white text-gray-900 opacity-100',
   'animate-none data-[state=open]:animate-none data-[state=closed]:animate-none',
   'data-[state=open]:opacity-100 data-[state=open]:zoom-in-100',
@@ -1577,73 +1584,86 @@ export function ExpedienteAuditoriaCompleto({
           {auditoria && (
             <>
               {/* ═════════════════════════════════════════════════════════════════
-            HEADER GRADIENTE - SEGÚN ESTÁNDAR WIZARD WORLD CLASS
+            HEADER WORLD-CLASS — Fondo blanco limpio (estilo ModalHeaderClean)
             ═════════════════════════════════════════════════════════════════ */}
-              <div className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 sm:px-6 py-3 sm:py-4">
+              <div className="shrink-0 bg-white border-b border-gray-200 px-6 sm:px-8 py-5">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      {/* Icono con glassmorphism - SEGÚN ESTÁNDAR */}
-                      <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                        <FileText className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-4 mb-3">
+                      {/* Icono con borde suave */}
+                      <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 shadow-sm">
+                        <FileText className="w-6 h-6" />
                       </div>
-                      <div>
-                        {/* Título - SEGÚN ESTÁNDAR: text-xl font-black */}
-                        <h2 className="text-xl font-black text-white">
-                          Expediente de Auditoría
-                        </h2>
-                        {/* Subtítulo - SEGÚN ESTÁNDAR: text-sm text-blue-100 */}
-                        <p className="text-sm text-blue-100">
-                          {auditoria.codigo} · {auditoria.nombre}
+                      <div className="flex-1">
+                        {/* Título: text-2xl font-black */}
+                        <div className="flex items-center gap-3">
+                          <h2 className="text-2xl font-black text-gray-900 tracking-tight">
+                            {auditoria.codigo} · {auditoria.nombre}
+                          </h2>
                           {refreshing && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-blue-200">
-                              <Activity className="w-3 h-3 animate-spin" />
-                              sincronizando…
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold animate-pulse border border-blue-100">
+                              <Activity className="w-3.5 h-3.5" />
+                              Sincronizando
                             </span>
                           )}
+                        </div>
+                        <p className="text-sm text-gray-500 font-medium mt-1">
+                          Expediente de Auditoría
                         </p>
                       </div>
                     </div>
 
-                    {/* BADGES INFORMATIVOS - SEGÚN ESTÁNDAR: Mínimo 2-3 badges */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className="bg-white/20 text-white font-bold border border-white/30">
-                        <Building2 className="w-3 h-3 mr-1" />
+                    {/* Barra de progreso inline + Badges outline */}
+                    <div className="flex flex-wrap items-center gap-3 mt-1">
+                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-full pl-3 pr-4 py-1.5 shadow-sm">
+                        <div className="text-xs font-black text-gray-700">Progreso</div>
+                        <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-blue-600 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${auditoria.progreso.general}%` }}
+                            transition={{ duration: 0.8 }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-blue-700">{auditoria.progreso.general}%</span>
+                      </div>
+
+                      <Badge variant="outline" className="bg-white border-gray-200 text-gray-700 font-bold py-1.5 px-3">
+                        <Building2 className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
                         {auditoria.areaAuditable}
                       </Badge>
-                      <Badge className="bg-white text-blue-700 font-bold">
-                        {auditoria.progreso.general}% completado
-                      </Badge>
-                      <Badge className="bg-green-500 text-white font-bold">
-                        <FileText className="w-3 h-3 mr-1" />
+                      <Badge variant="outline" className="bg-green-50 border-green-200 text-green-700 font-bold py-1.5 px-3">
+                        <FileText className="w-3.5 h-3.5 mr-1.5" />
                         {documentos.length} documentos
                       </Badge>
                       {auditoria.estadisticas.totalHallazgos > 0 && (
-                        <Badge className="bg-red-500 text-white font-bold">
-                          <AlertCircle className="w-3 h-3 mr-1" />
+                        <Badge variant="outline" className="bg-red-50 border-red-200 text-red-700 font-bold py-1.5 px-3">
+                          <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
                           {auditoria.estadisticas.totalHallazgos} hallazgos
                         </Badge>
                       )}
                     </div>
                   </div>
 
-                  {/* BOTÓN CERRAR - SEGÚN ESTÁNDAR: variant="ghost" hover:bg-white/20 */}
-                  <Button
-                    onClick={onClose}
-                    variant="ghost"
-                    size="sm"
-                    className="ml-4 text-white hover:bg-white/20"
-                  >
-                    <X className="w-5 h-5" />
-                  </Button>
+                  <div className="flex flex-col items-end gap-2 ml-4">
+                    {/* BOTÓN CERRAR - Minimalista hover bg-gray-100 */}
+                    <Button
+                      onClick={onClose}
+                      variant="ghost"
+                      size="icon"
+                      className="text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full w-8 h-8"
+                    >
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               {/* ═════════════════════════════════════════════════════════════════
-            TABS PERSONALIZADOS (No está en estándar, pero se mantiene)
+            TABS WORLD CLASS - Pill style con bg-gray-100
             ═════════════════════════════════════════════════════════════════ */}
-              <div className="shrink-0 border-b bg-gray-50">
-                <div className="flex flex-wrap sm:flex-nowrap justify-start items-end gap-x-1 gap-y-0 overflow-x-auto px-4 sm:px-6 scrollbar-hide">
+              <div className="shrink-0 border-b border-gray-100 bg-white px-6 sm:px-8 py-3">
+                <div className="flex justify-start items-center p-1 bg-gray-100 rounded-xl overflow-x-auto scrollbar-hide shadow-inner gap-1">
                   {pestanasVisibles.map((pestana) => {
                     const Icon = pestana.icon;
                     const isActive = activeTab === pestana.id;
@@ -1654,17 +1674,17 @@ export function ExpedienteAuditoriaCompleto({
                         type="button"
                         onClick={() => setActiveTab(pestana.id)}
                         className={`
-                    shrink-0 flex items-center gap-2 px-3 sm:px-4 py-3 border-b-2 transition-all whitespace-nowrap text-sm
-                    ${isActive
-                            ? 'border-blue-600 text-blue-700 font-bold bg-white'
-                            : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900 hover:bg-white/60'
+                          shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg transition-all whitespace-nowrap text-sm font-semibold
+                          ${isActive
+                            ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
                           }
-                  `}
+                        `}
                       >
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
-                        <span className="text-sm">{pestana.label}</span>
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                        <span>{pestana.label}</span>
                         {pestana.id === 'documentacion' && documentos.length > 0 && (
-                          <Badge className="ml-1 bg-blue-100 text-blue-700 text-xs font-bold">
+                          <Badge className={`ml-1.5 text-[10px] px-1.5 py-0 min-w-[20px] ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
                             {documentos.length}
                           </Badge>
                         )}
@@ -1677,7 +1697,7 @@ export function ExpedienteAuditoriaCompleto({
               {/* ═════════════════════════════════════════════════════════════════
             CONTENIDO PRINCIPAL - SEGÚN ESTÁNDAR: flex-1 overflow-y-auto
             ═════════════════════════════════════════════════════════════════ */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-4 sm:px-6 py-3 sm:py-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-6 sm:px-8 py-5 sm:py-6 bg-gray-50/30">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeTab}
@@ -1806,231 +1826,844 @@ export function ExpedienteAuditoriaCompleto({
 // TABS INDIVIDUALES
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: boolean }) {
+function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; readOnly?: boolean; onReload?: () => void }) {
+  const iniciales = (nombre: string) => {
+    const parts = (nombre || '').split(' ').filter(Boolean);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : (parts[0]?.[0] || '?').toUpperCase();
+  };
+
+  // â•â•â• EDICIÍ“N INLINE â•â•â•
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editData, setEditData] = useState({
+    nombre: auditoria.nombre || '',
+    descripcion: auditoria.descripcion || '',
+    alcance: auditoria.alcance || '',
+    metodologia: auditoria.metodologia || '',
+    presupuestoEstimado: auditoria.presupuestoEstimado || '',
+    observacionesAdicionales: auditoria.observacionesAdicionales || '',
+    objetivos: auditoria.objetivos || [],
+    criteriosAuditoria: auditoria.criteriosAuditoria || [],
+    normatividadAplicable: auditoria.normatividadAplicable || [],
+    riesgosIdentificados: auditoria.riesgosIdentificados || [],
+    controlesAplicar: auditoria.controlesAplicar || [],
+    areaAuditable: auditoria.areaAuditable || '',
+    procesoAuditado: auditoria.procesoNombre || '', // mapped to procesoNombre in UI
+    territorial: auditoria.territorial || '',
+    tipo: auditoria.tipo || '',
+    nivelRiesgo: auditoria.nivelRiesgo || '',
+    responsableAreaNombre: auditoria.responsableAreaNombre || '',
+    responsableAreaCargo: auditoria.responsableAreaCargo || '',
+    responsableAreaEmail: auditoria.responsableAreaEmail || '',
+  });
+  const [newItem, setNewItem] = useState<Record<string, string>>({});
+
+  const handleFieldChange = (field: string, value: string) => {
+    setEditData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddToArray = (field: string) => {
+    const val = (newItem[field] || '').trim();
+    if (!val) return;
+    setEditData(prev => ({
+      ...prev,
+      [field]: [...(prev[field as keyof typeof prev] as string[] || []), val],
+    }));
+    setNewItem(prev => ({ ...prev, [field]: '' }));
+  };
+
+  const handleRemoveFromArray = (field: string, index: number) => {
+    setEditData(prev => ({
+      ...prev,
+      [field]: (prev[field as keyof typeof prev] as string[]).filter((_: string, i: number) => i !== index),
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await controlInternoService.updateAuditoria(auditoria.id, editData);
+      toast.success('âœ… AuditorÍ­a actualizada', { description: 'Los cambios fueron guardados exitosamente' });
+      setIsEditing(false);
+      if (onReload) onReload();
+    } catch (err) {
+      console.error('Error guardando:', err);
+      toast.error('Error al guardar cambios');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditData({
+      nombre: auditoria.nombre || '',
+      descripcion: auditoria.descripcion || '',
+      alcance: auditoria.alcance || '',
+      metodologia: auditoria.metodologia || '',
+      presupuestoEstimado: auditoria.presupuestoEstimado || '',
+      observacionesAdicionales: auditoria.observacionesAdicionales || '',
+      objetivos: auditoria.objetivos || [],
+      criteriosAuditoria: auditoria.criteriosAuditoria || [],
+      normatividadAplicable: auditoria.normatividadAplicable || [],
+      riesgosIdentificados: auditoria.riesgosIdentificados || [],
+      controlesAplicar: auditoria.controlesAplicar || [],
+      areaAuditable: auditoria.areaAuditable || '',
+      procesoAuditado: auditoria.procesoNombre || '',
+      territorial: auditoria.territorial || '',
+      tipo: auditoria.tipo || '',
+      nivelRiesgo: auditoria.nivelRiesgo || '',
+      responsableAreaNombre: auditoria.responsableAreaNombre || '',
+      responsableAreaCargo: auditoria.responsableAreaCargo || '',
+      responsableAreaEmail: auditoria.responsableAreaEmail || '',
+    });
+    setIsEditing(false);
+  };
+
+  // â•â•â• REASIGNAR AUDITOR â•â•â•
+  const [showReasignar, setShowReasignar] = useState(false);
+  const [profesionales, setProfesionales] = useState<any[]>([]);
+  const [selectedProfId, setSelectedProfId] = useState('');
+  const [reasignando, setReasignando] = useState(false);
+
+  const cargarProfesionales = async () => {
+    try {
+      const data = await configuracionesProfesionalesOCIApi.getProfesionalesOCI();
+      const arr = Array.isArray(data) ? data : (data as any)?.data || [];
+      const limpios = arr
+        .map((p: any) => {
+          const nombre = p.nombreCompleto ||
+            (p.persona ? `${p.persona.nombre || ''} ${p.persona.apellido || ''}`.trim() : '') ||
+            p.nombre || '';
+          return {
+            ...p,
+            _nombre: nombre,
+            _cargo: p.cargo || p.rol || 'Profesional OCI',
+            _email: p.email || p.persona?.email || '',
+          };
+        })
+        .filter((p: any) => {
+          const n = p._nombre.trim();
+          return n && n !== 'Sin nombre' && n.length > 2;
+        });
+      setProfesionales(limpios);
+    } catch {
+      toast.error('No se pudieron cargar profesionales');
+    }
+  };
+
+  const handleReasignar = async () => {
+    if (!selectedProfId) return;
+    setReasignando(true);
+    try {
+      const prof = profesionales.find((p: any) => String(p.id) === selectedProfId);
+      const nombre = prof?._nombre || 'Auditor';
+      const email = prof?._email || '';
+
+      await controlInternoService.updateAuditoria(auditoria.id, {
+        auditorLiderId: selectedProfId,
+        auditorLider: nombre,
+        auditorLiderEmail: email,
+      });
+
+      toast.success('✅ Auditor Líder reasignado', {
+        description: `Asignado a ${nombre}`,
+      });
+      setShowReasignar(false);
+      if (onReload) onReload();
+    } catch (err) {
+      console.error('Error reasignando auditor:', err);
+      toast.error('Error al reasignar auditor');
+    } finally {
+      setReasignando(false);
+    }
+  };
+
+  // ═══ GESTIONAR EQUIPO AUDITOR ═══
+  const [showReasignarEquipo, setShowReasignarEquipo] = useState(false);
+  const [selectedEquipoProfId, setSelectedEquipoProfId] = useState('');
+  const [reasignandoEquipo, setReasignandoEquipo] = useState(false);
+
+  const handleAgregarEquipo = async () => {
+    if (!selectedEquipoProfId) return;
+    setReasignandoEquipo(true);
+    try {
+      const prof = profesionales.find((p: any) => String(p.id) === selectedEquipoProfId);
+      const nombre = prof?._nombre || 'Auditor';
+      const cargo = prof?._cargo || 'Auditor';
+      
+      const nuevoMiembro = {
+        id: String(prof?.id || Date.now()),
+        nombre: nombre,
+        rol: cargo
+      };
+      
+      const nuevoEquipo = [...auditoria.equipoAuditores, nuevoMiembro];
+
+      await controlInternoService.updateAuditoria(auditoria.id, {
+        equipoAuditores: nuevoEquipo
+      });
+
+      toast.success('✅ Auditor agregado al equipo', {
+        description: `Se agregó a ${nombre}`,
+      });
+      setShowReasignarEquipo(false);
+      setSelectedEquipoProfId('');
+      if (onReload) onReload();
+    } catch (err) {
+      console.error('Error agregando al equipo:', err);
+      toast.error('Error al agregar al equipo');
+    } finally {
+      setReasignandoEquipo(false);
+    }
+  };
+
+  const avanceTemporal = auditoria.cronograma.duracionDias > 0
+    ? Math.min(100, Math.round((auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100))
+    : 0;
+
+  // Helper para renderizar un campo editable de texto
+  const renderEditableField = (label: string, field: string, value: string, multiline = false) => (
+    <div className={`flex ${multiline ? 'flex-col gap-1' : 'items-center justify-between'} py-2 border-b border-gray-50`}>
+      <span className="text-xs text-gray-500 shrink-0">{label}</span>
+      {isEditing ? (
+        multiline ? (
+          <textarea
+            className="text-xs text-gray-900 w-full border border-gray-200 rounded-md px-2.5 py-2 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 resize-none bg-white"
+            rows={3}
+            value={editData[field as keyof typeof editData] as string || ''}
+            onChange={(e) => handleFieldChange(field, e.target.value)}
+          />
+        ) : (
+          <input
+            className="text-xs font-bold text-gray-900 text-right border border-gray-200 rounded-md px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 max-w-[60%] bg-white"
+            value={editData[field as keyof typeof editData] as string || ''}
+            onChange={(e) => handleFieldChange(field, e.target.value)}
+          />
+        )
+      ) : (
+        <span className={`text-xs font-bold text-gray-900 ${multiline ? '' : 'text-right max-w-[60%] truncate'}`}>
+          {value || <span className="text-gray-300 italic font-normal">Sin definir</span>}
+        </span>
+      )}
+    </div>
+  );
+
+  // Helper para renderizar un array editable con chips
+  const renderEditableArray = (label: string, field: string, items: string[], color: string) => (
+    <div className="py-3 border-b border-gray-50">
+      <p className="text-xs text-gray-500 mb-2">{label}</p>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {items.length > 0 ? items.map((item, i) => (
+          <span key={i} className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full ${color}`}>
+            {item}
+            {isEditing && (
+              <button type="button" onClick={() => handleRemoveFromArray(field, i)} className="ml-0.5 hover:text-red-600">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </span>
+        )) : (
+          <span className="text-xs text-gray-300 italic">Sin registros</span>
+        )}
+      </div>
+      {isEditing && (
+        <div className="flex items-center gap-1.5">
+          <input
+            className="flex-1 text-xs border border-gray-200 rounded-md px-2.5 py-1.5 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-white"
+            placeholder={`Agregar ${label.toLowerCase()}...`}
+            value={newItem[field] || ''}
+            onChange={(e) => setNewItem(prev => ({ ...prev, [field]: e.target.value }))}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddToArray(field)}
+          />
+          <Button size="sm" variant="outline" onClick={() => handleAddToArray(field)} className="h-7 px-2 text-xs">+</Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      {/* Resumen ejecutivo */}
-      <Card className="p-4 border-l-4 border-l-blue-600">
-        <div className="flex items-start justify-between mb-3">
-          <h3 className="text-sm font-bold text-gray-900">Resumen Ejecutivo</h3>
+
+      {/* --- BARRA DE ACCIONES (Editar/Guardar) --- */}
+      {!readOnly && (
+        <div className="flex items-center justify-end gap-2">
+          {isEditing ? (
+            <>
+              <Button size="sm" variant="outline" onClick={handleCancel} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}
+                className="bg-green-600 hover:bg-green-700 text-white gap-1.5">
+                {saving ? (
+                  <><span className="animate-spin">⏳</span> Guardando...</>
+                ) : (
+                  <><CheckCircle className="w-3.5 h-3.5" /> Guardar Cambios</>
+                )}
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}
+              className="gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50">
+              <Edit2 className="w-3.5 h-3.5" /> Editar Auditoría
+            </Button>
+          )}
         </div>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs font-bold text-gray-700 mb-0.5">Código</p>
-              <p className="text-sm font-bold text-gray-900">{auditoria.codigo}</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-gray-700 mb-0.5">Área Auditable</p>
-              <p className="text-sm font-bold text-gray-900">{auditoria.areaAuditable}</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-gray-700 mb-0.5">Tipo</p>
-              <Badge className="bg-blue-100 text-blue-700 font-bold">{auditoria.tipo}</Badge>
+      {/* ——————— RESUMEN EJECUTIVO (full width, 5 cols) ——————— */}
+      <Card className="p-5 bg-gradient-to-r from-blue-50/50 to-indigo-50/30 border border-blue-200">
+        <h3 className="text-xs font-black text-blue-800 mb-4 flex items-center gap-2 tracking-wider uppercase">
+          <Sparkles className="w-4 h-4 text-blue-600" />
+          Resumen Ejecutivo
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+          <div>
+            <p className="text-[11px] text-gray-500 mb-1 font-medium">Territorial</p>
+            <p className="text-sm font-bold text-gray-900">{auditoria.territorial || auditoria.sede || '—'}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-500 mb-1 font-medium">Tipo de Auditoría</p>
+            <p className="text-sm font-bold text-gray-900">{auditoria.tipo}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-500 mb-1 font-medium">Periodo</p>
+            <p className="text-sm font-bold text-gray-900">
+              {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+              {' â€” '}
+              {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-500 mb-1 font-medium">Nivel de Riesgo</p>
+            <Badge
+              variant="outline"
+              className={`font-bold text-xs border-2 ${
+                auditoria.nivelRiesgo === 'Alto' ? 'border-red-400 text-red-700 bg-red-50' :
+                auditoria.nivelRiesgo === 'Medio' ? 'border-amber-400 text-amber-700 bg-amber-50' :
+                auditoria.nivelRiesgo === 'Bajo' ? 'border-green-400 text-green-700 bg-green-50' :
+                'border-gray-200 text-gray-500 bg-gray-50'
+              }`}
+            >
+              {auditoria.nivelRiesgo || 'No evaluado'}
+            </Badge>
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-500 mb-1 font-medium">Avance General</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black" style={{
+                color: auditoria.progreso.general >= 80 ? '#16a34a' : auditoria.progreso.general >= 40 ? '#2563eb' : '#d97706',
+              }}>{auditoria.progreso.general}%</span>
+              <div className="flex-1 h-2.5 bg-white/80 rounded-full overflow-hidden border border-gray-200">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{
+                    background: auditoria.progreso.general >= 80 ? '#22c55e' : auditoria.progreso.general >= 40 ? '#3b82f6' : '#f59e0b',
+                  }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${auditoria.progreso.general}%` }}
+                  transition={{ duration: 0.6 }}
+                />
+              </div>
             </div>
           </div>
+        </div>
+      </Card>
 
-          <div>
-            <p className="text-xs font-bold text-gray-700 mb-2">Responsable del Área Auditada</p>
-            <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-              <div className="flex items-center gap-2 mb-2">
-                <User className="w-4 h-4 text-blue-600" />
-                <p className="text-sm font-bold text-gray-900">{auditoria.responsableArea.nombre}</p>
+      {/* â•â•â•â•â•â•â• FILA 1: Datos + Auditor + Cronograma (3 cols) â•â•â•â•â•â•â• */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* COL 1: Datos del Proceso */}
+        <Card className="p-5 flex flex-col">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <FileText className="w-4 h-4 text-blue-600" />
+            Datos del Proceso
+          </h4>
+          <div className="space-y-0 flex-1">
+            {[
+              { label: 'Código', value: auditoria.codigo },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-xs text-gray-500">{item.label}</span>
+                <span className="text-sm font-bold text-gray-900 text-right max-w-[60%] truncate">{item.value}</span>
               </div>
-              <p className="text-xs text-gray-600 mb-2">{auditoria.responsableArea.cargo}</p>
-              <div className="flex items-center gap-1 text-xs text-gray-600">
+            ))}
+            {renderEditableField('Nombre', 'nombre', auditoria.nombre)}
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">ÍÁrea Auditable</span>
+              <span className="text-sm font-bold text-gray-900 text-right max-w-[60%] truncate">{auditoria.areaAuditable}</span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">Proceso Auditado</span>
+              <span className="text-sm font-bold text-gray-900 text-right max-w-[60%] truncate">{auditoria.procesoNombre}</span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">Territorial</span>
+              <span className="text-sm font-bold text-gray-900 text-right flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-gray-400" />
+                {auditoria.territorial || 'â€”'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">Tipo de AuditorÍ­a</span>
+              <span className="text-sm font-bold text-gray-900">{auditoria.tipo}</span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">Duración</span>
+              <span className="text-sm font-bold text-gray-900">{auditoria.cronograma.duracionDias} dÍ­as ({auditoria.cronograma.diasTranscurridos} transcurridos)</span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100">
+              <span className="text-xs text-gray-500">Estado</span>
+              <Badge style={{ background: '#003DA5', color: '#fff' }} className="text-xs font-bold">
+                {auditoria.estado.charAt(0).toUpperCase() + auditoria.estado.slice(1)}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-xs text-gray-500">Nivel de Riesgo</span>
+              <Badge
+                variant="outline"
+                className={`font-bold text-xs border-2 ${
+                  auditoria.nivelRiesgo === 'Alto' ? 'border-red-400 text-red-700 bg-red-50' :
+                  auditoria.nivelRiesgo === 'Medio' ? 'border-amber-400 text-amber-700 bg-amber-50' :
+                  'border-green-400 text-green-700 bg-green-50'
+                }`}
+              >
+                {auditoria.nivelRiesgo || 'No evaluado'}
+              </Badge>
+            </div>
+            {renderEditableField('Presupuesto Estimado', 'presupuestoEstimado', auditoria.presupuestoEstimado || '')}
+          </div>
+
+          {/* Responsable */}
+          <div className="mt-auto pt-4 border-t border-gray-200">
+            <p className="text-[11px] text-gray-400 font-bold tracking-wider uppercase mb-2">Responsable del Írea Auditada</p>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
+                {iniciales(auditoria.responsableArea.nombre)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-black text-gray-900 truncate">{auditoria.responsableArea.nombre}</p>
+                <p className="text-xs text-gray-500">{auditoria.responsableArea.cargo}</p>
+              </div>
+            </div>
+            <div className="ml-[46px] space-y-0.5">
+              <p className="text-xs text-gray-400 flex items-center gap-1">
                 <Mail className="w-3 h-3" />
-                <span>{auditoria.responsableArea.email}</span>
-              </div>
+                {auditoria.responsableArea.email}
+              </p>
+              {auditoria.responsableArea.telefono && (
+                <p className="text-xs text-gray-400 flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  {auditoria.responsableArea.telefono}
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        {/* COL 2: Auditor LÍ­der + Equipo */}
+        <Card className="p-5 flex flex-col">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <Award className="w-4 h-4 text-purple-600" />
+            Auditor LÍ­der Asignado
+          </h4>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+              style={{ background: 'linear-gradient(135deg, #3b82f6, #6366f1)', color: '#fff' }}>
+              {iniciales(auditoria.auditorLider.nombre)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-gray-900 truncate">{auditoria.auditorLider.nombre}</p>
+              <p className="text-xs text-gray-500">Auditor LÍ­der â€” OCI</p>
+              <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                <Mail className="w-3 h-3" />
+                {auditoria.auditorLider.email}
+              </p>
             </div>
           </div>
 
-          <div>
-            <p className="text-xs font-bold text-gray-700 mb-2">Equipo Auditor</p>
-            <div className="space-y-2">
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
-                <div className="flex items-center gap-1 mb-1">
-                  <Award className="w-3 h-3 text-purple-600" />
-                  <span className="text-xs text-purple-700 font-bold">Líder</span>
+          {/* Equipo */}
+          <p className="text-[11px] text-gray-400 font-bold tracking-wider uppercase mb-3">
+            Equipo Auditor ({auditoria.equipoAuditores.length})
+          </p>
+          <div className="space-y-2 flex-1 overflow-y-auto max-h-[180px]">
+            {auditoria.equipoAuditores.map((m) => (
+              <div key={m.id} className="flex items-center gap-2 py-1.5">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                  style={{ background: '#F3F4F6', color: '#6B7280' }}>
+                  {iniciales(m.nombre)}
                 </div>
-                <p className="text-sm font-bold text-gray-900">{auditoria.auditorLider.nombre}</p>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-gray-900 truncate">{m.nombre}</p>
+                  <p className="text-[11px] text-gray-400">{m.rol}</p>
+                </div>
               </div>
-              {auditoria.equipoAuditores.map((a) => (
-                <div key={a.id} className="bg-gray-50 rounded-lg p-2 border">
-                  <p className="text-sm font-bold text-gray-900">{a.nombre}</p>
-                  <p className="text-xs text-gray-600">{a.rol}</p>
+            ))}
+          </div>
+
+          {/* Reasignar Lider y Gestionar Equipo */}
+          <div className="mt-auto pt-4 border-t border-gray-200 space-y-2">
+            {/* Lider */}
+            {showReasignar ? (
+              <div className="space-y-2">
+                <select
+                  className="w-full text-xs border border-gray-200 rounded-md px-2.5 py-2 bg-white focus:ring-2 focus:ring-blue-500/30"
+                  value={selectedProfId}
+                  onChange={(e) => setSelectedProfId(e.target.value)}
+                >
+                  <option value="">Seleccionar profesional...</option>
+                  {profesionales.map((p: any) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p._nombre} — {p._cargo}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" className="flex-1 text-xs h-8" onClick={() => setShowReasignar(false)}>Cancelar</Button>
+                  <Button size="sm" className="flex-1 text-xs h-8 bg-blue-600 text-white" onClick={handleReasignar} disabled={!selectedProfId || reasignando}>
+                    {reasignando ? 'Reasignando...' : 'Confirmar'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5 text-xs"
+                onClick={() => { cargarProfesionales(); setShowReasignar(true); setShowReasignarEquipo(false); }}
+                disabled={readOnly}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Reasignar Auditor Líder
+              </Button>
+            )}
+
+            {/* Equipo */}
+            {showReasignarEquipo ? (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <select
+                  className="w-full text-xs border border-gray-200 rounded-md px-2.5 py-2 bg-white focus:ring-2 focus:ring-blue-500/30"
+                  value={selectedEquipoProfId}
+                  onChange={(e) => setSelectedEquipoProfId(e.target.value)}
+                >
+                  <option value="">Seleccionar para el equipo...</option>
+                  {profesionales.map((p: any) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p._nombre} — {p._cargo}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" className="flex-1 text-xs h-8" onClick={() => setShowReasignarEquipo(false)}>Cancelar</Button>
+                  <Button size="sm" className="flex-1 text-xs h-8 bg-blue-600 text-white" onClick={handleAgregarEquipo} disabled={!selectedEquipoProfId || reasignandoEquipo}>
+                    {reasignandoEquipo ? 'Agregando...' : 'Agregar al equipo'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5 text-xs border-dashed"
+                onClick={() => { cargarProfesionales(); setShowReasignarEquipo(true); setShowReasignar(false); }}
+                disabled={readOnly}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Agregar al Equipo
+              </Button>
+            )}
+          </div>
+        </Card>
+
+        {/* COL 3: Cronograma y Progreso */}
+        <Card className="p-5 flex flex-col">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <Calendar className="w-4 h-4 text-green-600" />
+            Cronograma y Progreso
+          </h4>
+
+          {/* Fechas */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="text-center p-3 bg-blue-50/60 rounded-lg border border-blue-100">
+              <p className="text-[10px] text-gray-400 font-medium mb-1">Inicio</p>
+              <p className="text-xs font-black text-gray-900">
+                {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-purple-50/60 rounded-lg border border-purple-100">
+              <p className="text-[10px] text-gray-400 font-medium mb-1">Fin Estimado</p>
+              <p className="text-xs font-black text-gray-900">
+                {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+
+          {/* Avance temporal */}
+          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 mb-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-gray-500 font-medium">Avance temporal</span>
+              <span className="text-xs font-black text-gray-900">{avanceTemporal}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${avanceTemporal}%` }}
+                transition={{ duration: 0.6 }}
+              />
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1.5">
+              {auditoria.cronograma.diasTranscurridos} de {auditoria.cronograma.duracionDias} dÍ­as transcurridos
+            </p>
+          </div>
+
+          {/* Progreso por fases */}
+          <div className="flex-1">
+            <p className="text-[11px] text-gray-400 font-bold tracking-wider uppercase mb-3">Progreso por Fases</p>
+            <div className="space-y-3">
+              {[
+                { label: 'Planeación', value: auditoria.progreso.planeacion, color: '#8b5cf6', icon: FileSearch },
+                { label: 'Ejecución', value: auditoria.progreso.ejecucion, color: '#f59e0b', icon: ClipboardCheck },
+                { label: 'Comunicación', value: auditoria.progreso.comunicacion, color: '#22c55e', icon: Send },
+              ].map((fase) => (
+                <div key={fase.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-600 flex items-center gap-1.5">
+                      <fase.icon className="w-3 h-3" style={{ color: fase.color }} />
+                      {fase.label}
+                    </span>
+                    <span className="text-xs font-black text-gray-900">{fase.value}%</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ background: fase.color }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${fase.value}%` }}
+                      transition={{ duration: 0.5 }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      </Card>
 
-      {/* Cronograma */}
-      <Card className="p-4 border-l-4 border-l-purple-600">
-        <h3 className="text-sm font-bold text-gray-900 mb-3">Cronograma y Plazos</h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-            <div className="flex items-center gap-1 mb-1">
-              <Calendar className="w-4 h-4 text-blue-600" />
-              <span className="text-xs font-bold text-gray-700">Inicio</span>
+          {/* Mini stats inline */}
+          <div className="mt-auto pt-4 border-t border-gray-100 grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-lg font-black text-red-600">{auditoria.estadisticas.totalHallazgos}</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase">Hallazgos</p>
             </div>
-            <p className="text-sm font-bold text-gray-900">
-              {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO')}
-            </p>
-          </div>
-
-          <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-            <div className="flex items-center gap-1 mb-1">
-              <Calendar className="w-4 h-4 text-purple-600" />
-              <span className="text-xs font-bold text-gray-700">Fin Estimado</span>
+            <div>
+              <p className="text-lg font-black text-blue-600">{auditoria.estadisticas.documentosCargados}</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase">Docs</p>
             </div>
-            <p className="text-sm font-bold text-gray-900">
-              {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO')}
-            </p>
-          </div>
-
-          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-            <div className="flex items-center gap-1 mb-1">
-              <Clock className="w-4 h-4 text-amber-600" />
-              <span className="text-xs font-bold text-gray-700">Duración</span>
-            </div>
-            <p className="text-sm font-bold text-gray-900">{auditoria.cronograma.duracionDias} días</p>
-          </div>
-
-          <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-            <div className="flex items-center gap-1 mb-1">
-              <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="text-xs font-bold text-gray-700">Transcurridos</span>
-            </div>
-            <p className="text-sm font-bold text-gray-900">
-              {auditoria.cronograma.diasTranscurridos} / {auditoria.cronograma.duracionDias}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-gray-50 rounded-lg p-3 border">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-gray-700">Avance temporal</span>
-            <span className="text-xs font-bold text-gray-900">
-              {Math.round((auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100)}%
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <motion.div
-              className="h-full bg-linear-to-r from-blue-500 to-purple-600 rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${(auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100}%` }}
-              transition={{ duration: 0.6 }}
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card className="p-4 border-l-4 border-l-red-600 bg-red-50">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-gray-700">Hallazgos</span>
-            <AlertCircle className="w-5 h-5 text-red-600" />
-          </div>
-          <p className="text-3xl font-black text-gray-900 mb-2">{auditoria.estadisticas.totalHallazgos}</p>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-red-700 font-bold">Críticos</span>
-              <span className="font-bold">{auditoria.estadisticas.hallazgosCriticos}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-orange-600 font-bold">Mayores</span>
-              <span className="font-bold">{auditoria.estadisticas.hallazgosMayores}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-yellow-600 font-bold">Menores</span>
-              <span className="font-bold">{auditoria.estadisticas.hallazgosMenores}</span>
+            <div>
+              <p className="text-lg font-black text-green-600">{auditoria.estadisticas.notificacionesEnviadas}</p>
+              <p className="text-[9px] text-gray-400 font-bold uppercase">Notif.</p>
             </div>
           </div>
-        </Card>
-
-        <Card className="p-4 border-l-4 border-l-blue-600 bg-blue-50">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-gray-700">Documentos</span>
-            <FileText className="w-5 h-5 text-blue-600" />
-          </div>
-          <p className="text-3xl font-black text-gray-900 mb-1">{auditoria.estadisticas.documentosCargados}</p>
-          <p className="text-xs text-blue-700 font-bold">archivos en expediente</p>
-        </Card>
-
-        <Card className="p-4 border-l-4 border-l-green-600 bg-green-50">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-gray-700">Notificaciones</span>
-            <Send className="w-5 h-5 text-green-600" />
-          </div>
-          <p className="text-3xl font-black text-gray-900 mb-1">{auditoria.estadisticas.notificacionesEnviadas}</p>
-          <p className="text-xs text-green-700 font-bold">enviadas</p>
         </Card>
       </div>
 
-      {/* Progreso por fases */}
-      <Card className="p-4 border-l-4 border-l-indigo-600">
-        <h3 className="text-sm font-bold text-gray-900 mb-3">Progreso por Fases</h3>
-        <div className="space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <FileSearch className="w-4 h-4 text-purple-600" />
-                <span className="text-xs font-bold text-gray-700">Planeación</span>
+      {/* â•â•â•â•â•â•â• FILA 2: Descripción + Alcance y MetodologÍ­a (2 cols) â•â•â•â•â•â•â• */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {/* Descripción + Observaciones */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            Descripción y Observaciones
+          </h4>
+          {renderEditableField('Descripción', 'descripcion', auditoria.descripcion || '', true)}
+          {renderEditableField('Observaciones Adicionales', 'observacionesAdicionales', auditoria.observacionesAdicionales || '', true)}
+        </Card>
+
+        {/* Alcance y MetodologÍ­a */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <Target className="w-4 h-4 text-emerald-600" />
+            Alcance y MetodologÍ­a
+          </h4>
+          {renderEditableField('Alcance', 'alcance', auditoria.alcance || '', true)}
+          {renderEditableField('MetodologÍ­a', 'metodologia', auditoria.metodologia || '', true)}
+          {renderEditableField('Calificación de Riesgo', 'calificacionRiesgo', auditoria.calificacionRiesgo || '')}
+        </Card>
+      </div>
+
+      {/* â•â•â•â•â•â•â• FILA 3: Objetivos + Criterios + Normatividad (3 cols) â•â•â•â•â•â•â• */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* Objetivos */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-3 flex items-center gap-2 tracking-wider uppercase">
+            <Flag className="w-4 h-4 text-blue-600" />
+            Objetivos ({(isEditing ? editData.objetivos : auditoria.objetivos)?.length || 0})
+          </h4>
+          {renderEditableArray('Objetivos de la AuditorÍ­a', 'objetivos', isEditing ? editData.objetivos : auditoria.objetivos || [], 'bg-blue-50 text-blue-700')}
+        </Card>
+
+        {/* Criterios */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-3 flex items-center gap-2 tracking-wider uppercase">
+            <CheckSquare className="w-4 h-4 text-purple-600" />
+            Criterios ({(isEditing ? editData.criteriosAuditoria : auditoria.criteriosAuditoria)?.length || 0})
+          </h4>
+          {renderEditableArray('Criterios de AuditorÍ­a', 'criteriosAuditoria', isEditing ? editData.criteriosAuditoria : auditoria.criteriosAuditoria || [], 'bg-purple-50 text-purple-700')}
+        </Card>
+
+        {/* Normatividad */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-3 flex items-center gap-2 tracking-wider uppercase">
+            <BookOpen className="w-4 h-4 text-amber-600" />
+            Normatividad ({(isEditing ? editData.normatividadAplicable : auditoria.normatividadAplicable)?.length || 0})
+          </h4>
+          {renderEditableArray('Normatividad Aplicable', 'normatividadAplicable', isEditing ? editData.normatividadAplicable : auditoria.normatividadAplicable || [], 'bg-amber-50 text-amber-700')}
+        </Card>
+      </div>
+
+      {/* â•â•â•â•â•â•â• FILA 4: Riesgos + Controles (2 cols) â•â•â•â•â•â•â• */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {/* Riesgos */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-3 flex items-center gap-2 tracking-wider uppercase">
+            <AlertCircle className="w-4 h-4 text-red-600" />
+            Riesgos Identificados ({(isEditing ? editData.riesgosIdentificados : auditoria.riesgosIdentificados)?.length || 0})
+          </h4>
+          {renderEditableArray('Riesgos', 'riesgosIdentificados', isEditing ? editData.riesgosIdentificados : auditoria.riesgosIdentificados || [], 'bg-red-50 text-red-700')}
+        </Card>
+
+        {/* Controles */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-3 flex items-center gap-2 tracking-wider uppercase">
+            <Activity className="w-4 h-4 text-green-600" />
+            Controles a Aplicar ({(isEditing ? editData.controlesAplicar : auditoria.controlesAplicar)?.length || 0})
+          </h4>
+          {renderEditableArray('Controles', 'controlesAplicar', isEditing ? editData.controlesAplicar : auditoria.controlesAplicar || [], 'bg-green-50 text-green-700')}
+        </Card>
+      </div>
+
+      {/* â•â•â•â•â•â•â• FILA 5: Fechas Clave + EstadÍ­sticas + Metadata (3 cols) â•â•â•â•â•â•â• */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* Fechas Clave y Hitos */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <Clock className="w-4 h-4 text-amber-600" />
+            Fechas Clave e Hitos
+          </h4>
+          <div className="space-y-0">
+            {[
+              { label: 'Creación AuditorÍ­a', date: auditoria.cronograma.fechaCreacion },
+              { label: 'Inicio Planeación', date: auditoria.fechasClave.planeacionInicio },
+              { label: 'Fin Planeación', date: auditoria.fechasClave.planeacionFin },
+              { label: 'Inicio Ejecución', date: auditoria.fechasClave.ejecucionInicio },
+              { label: 'Fin Ejecución', date: auditoria.fechasClave.ejecucionFin },
+              { label: 'Inicio Comunicación', date: auditoria.fechasClave.comunicacionInicio },
+              { label: 'Fin Comunicación', date: auditoria.fechasClave.comunicacionFin },
+              { label: 'Informe Preliminar', date: auditoria.fechasClave.informePreliminar },
+              { label: 'Informe Final', date: auditoria.fechasClave.informeFinal },
+              { label: 'Fecha Fin Real', date: auditoria.cronograma.fechaFinReal },
+            ].map((item, i, arr) => (
+              <div key={item.label} className={`flex items-center justify-between py-2 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                <span className="text-xs text-gray-500">{item.label}</span>
+                <span className={`text-xs font-bold ${item.date ? 'text-gray-900' : 'text-gray-300'}`}>
+                  {item.date
+                    ? new Date(item.date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                    : 'Pendiente'
+                  }
+                </span>
               </div>
-              <span className="text-xs font-bold text-gray-900">{auditoria.progreso.planeacion}%</span>
+            ))}
+          </div>
+        </Card>
+
+        {/* EstadÍ­sticas Detalladas */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <BarChart3 className="w-4 h-4 text-red-600" />
+            EstadÍ­sticas de Hallazgos
+          </h4>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="text-center p-3 bg-red-50/60 rounded-lg border border-red-100">
+              <p className="text-2xl font-black text-red-600">{auditoria.estadisticas.totalHallazgos}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Total Hallazgos</p>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <motion.div
-                className="h-full bg-purple-600 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${auditoria.progreso.planeacion}%` }}
-                transition={{ duration: 0.5 }}
-              />
+            <div className="text-center p-3 bg-blue-50/60 rounded-lg border border-blue-100">
+              <p className="text-2xl font-black text-blue-600">{auditoria.estadisticas.documentosCargados}</p>
+              <p className="text-[10px] text-gray-500 font-bold uppercase">Documentos</p>
             </div>
+          </div>
+          <div className="space-y-0">
+            {[
+              { label: 'Hallazgos CrÍ­ticos', value: auditoria.estadisticas.hallazgosCriticos, color: 'text-red-600 bg-red-50' },
+              { label: 'Hallazgos Mayores', value: auditoria.estadisticas.hallazgosMayores, color: 'text-amber-600 bg-amber-50' },
+              { label: 'Hallazgos Menores', value: auditoria.estadisticas.hallazgosMenores, color: 'text-blue-600 bg-blue-50' },
+              { label: 'Notificaciones Enviadas', value: auditoria.estadisticas.notificacionesEnviadas, color: 'text-green-600 bg-green-50' },
+            ].map((item, i, arr) => (
+              <div key={item.label} className={`flex items-center justify-between py-2 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                <span className="text-xs text-gray-600">{item.label}</span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${item.color}`}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Metadata del Registro */}
+        <Card className="p-5">
+          <h4 className="text-xs font-black text-gray-500 mb-4 flex items-center gap-2 tracking-wider uppercase">
+            <Info className="w-4 h-4 text-gray-500" />
+            Metadata del Registro
+          </h4>
+          <div className="space-y-0">
+            {[
+              { label: 'Creado por', value: auditoria.metadata.creadoPor },
+              { label: 'Fecha de Creación', value: new Date(auditoria.metadata.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+              { label: 'Íšltima Modificación', value: new Date(auditoria.metadata.ultimaModificacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+              { label: 'Modificado por', value: auditoria.metadata.modificadoPor },
+              { label: 'Versión', value: `v${auditoria.metadata.version}` },
+              { label: 'ID Interno', value: auditoria.id },
+            ].map((item, i, arr) => (
+              <div key={item.label} className={`flex items-center justify-between py-2 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                <span className="text-xs text-gray-500">{item.label}</span>
+                <span className="text-xs font-bold text-gray-900 text-right max-w-[60%] truncate">
+                  {item.value}
+                </span>
+              </div>
+            ))}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
+          {/* Checklist status */}
+          {auditoria.checklistCompletados && Object.keys(auditoria.checklistCompletados).length > 0 && (
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <p className="text-[11px] text-gray-400 font-bold tracking-wider uppercase mb-2">Actividades Completadas</p>
               <div className="flex items-center gap-2">
-                <ClipboardCheck className="w-4 h-4 text-amber-600" />
-                <span className="text-xs font-bold text-gray-700">Ejecución</span>
+                <span className="text-sm font-black text-green-600">
+                  {Object.values(auditoria.checklistCompletados).filter(Boolean).length}
+                </span>
+                <span className="text-xs text-gray-400">de</span>
+                <span className="text-sm font-black text-gray-700">
+                  {Object.keys(auditoria.checklistCompletados).length}
+                </span>
+                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden ml-2">
+                  <div
+                    className="h-full rounded-full bg-green-500"
+                    style={{
+                      width: `${Math.round((Object.values(auditoria.checklistCompletados).filter(Boolean).length / Math.max(1, Object.keys(auditoria.checklistCompletados).length)) * 100)}%`,
+                    }}
+                  />
+                </div>
               </div>
-              <span className="text-xs font-bold text-gray-900">{auditoria.progreso.ejecucion}%</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <motion.div
-                className="h-full bg-amber-600 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${auditoria.progreso.ejecucion}%` }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-green-600" />
-                <span className="text-xs font-bold text-gray-700">Comunicación</span>
-              </div>
-              <span className="text-xs font-bold text-gray-900">{auditoria.progreso.comunicacion}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <motion.div
-                className="h-full bg-green-600 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${auditoria.progreso.comunicacion}%` }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-              />
-            </div>
-          </div>
-        </div>
-      </Card>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

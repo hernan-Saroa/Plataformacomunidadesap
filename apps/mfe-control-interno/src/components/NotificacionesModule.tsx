@@ -44,7 +44,7 @@ import {
   History, TrendingUp, MessageSquare, Calendar, Sparkles, Loader2, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { notificationsService } from '../../../services/api/notificationsService';
 import { rolesService, SystemRole } from '../../../services/api/roles.service';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';

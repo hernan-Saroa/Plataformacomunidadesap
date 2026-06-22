@@ -506,20 +506,25 @@ export class HallazgosService {
    */
   async aceptar(id: string): Promise<Hallazgo> {
     const hallazgo = await this.findOne(id);
-    if (hallazgo.estado !== HallazgoEstado.NOTIFICADO) {
+    
+    const isFirstTime = hallazgo.estado === HallazgoEstado.NOTIFICADO;
+    const isEnControversiaTurnoAuditado = hallazgo.estado === HallazgoEstado.EN_CONTROVERSIA && (hallazgo as any).controversiaTurno === 'auditado';
+
+    if (!isFirstTime && !isEnControversiaTurnoAuditado) {
       throw new BadRequestException(
-        `Solo se puede aceptar un hallazgo en estado "notificado". Estado actual: ${hallazgo.estado}`,
+        `Solo se puede aceptar un hallazgo en estado "notificado" o en controversia cuando es su turno. Estado actual: ${hallazgo.estado}`,
       );
     }
 
     hallazgo.estado = HallazgoEstado.ACEPTADO;
+    (hallazgo as any).controversiaTurno = null; // Cierra la controversia
     const actualizado = await this.hallazgoRepository.save(hallazgo);
 
     await this.registrarHistorial(
       hallazgo.auditoriaId,
       TipoEvento.HALLAZGO,
-      'Hallazgo aceptado',
-      `El área auditada aceptó el hallazgo ${hallazgo.codigo}`,
+      'Hallazgo/controversia aceptada',
+      `El área auditada aceptó el hallazgo/controversia del hallazgo ${hallazgo.codigo}`,
     );
 
     try {
@@ -541,9 +546,13 @@ export class HallazgosService {
     documentoNombre: string,
   ): Promise<Hallazgo> {
     const hallazgo = await this.findOne(id);
-    if (hallazgo.estado !== HallazgoEstado.NOTIFICADO) {
+    
+    const isFirstTime = hallazgo.estado === HallazgoEstado.NOTIFICADO;
+    const isEnControversiaTurnoAuditado = hallazgo.estado === HallazgoEstado.EN_CONTROVERSIA && (hallazgo as any).controversiaTurno === 'auditado';
+
+    if (!isFirstTime && !isEnControversiaTurnoAuditado) {
       throw new BadRequestException(
-        `Solo se puede presentar controversia sobre un hallazgo en estado "notificado". Estado actual: ${hallazgo.estado}`,
+        `Solo se puede presentar controversia sobre un hallazgo en estado "notificado" o cuando es el turno del auditado. Estado actual: ${hallazgo.estado}`,
       );
     }
 
@@ -551,19 +560,44 @@ export class HallazgosService {
       throw new BadRequestException('Los argumentos técnicos son obligatorios');
     }
 
-    (hallazgo as any).argumentosControversia = argumentos.trim();
-    (hallazgo as any).observacionesControversia = argumentos.trim(); // Compatibilidad
+    const hoyStr = new Date().toLocaleDateString('es-CO');
+    const nuevosArgumentos = argumentos.trim();
+    
+    // Append to observations history if it's a reply
+    if (!isFirstTime) {
+      (hallazgo as any).observacionesControversia = (hallazgo as any).observacionesControversia 
+        ? `${(hallazgo as any).observacionesControversia}\n\n[Auditado - ${hoyStr}]: ${nuevosArgumentos}`
+        : `[Auditado - ${hoyStr}]: ${nuevosArgumentos}`;
+    } else {
+      (hallazgo as any).observacionesControversia = nuevosArgumentos;
+    }
+
+    (hallazgo as any).argumentosControversia = nuevosArgumentos; // Último argumento
     (hallazgo as any).documentoControversiaUrl = documentoId; // ID para URL de descarga
     (hallazgo as any).documentoControversiaNombre = documentoNombre;
+    (hallazgo as any).controversiaTurno = 'auditor';
     hallazgo.estado = HallazgoEstado.EN_CONTROVERSIA;
 
     const actualizado = await this.hallazgoRepository.save(hallazgo);
 
+    // Reset response time of the audit (fechaInicioComunicacion = today)
+    if (hallazgo.auditoriaId) {
+      try {
+        const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+        if (auditoria) {
+          auditoria.fechaInicioComunicacion = new Date();
+          await this.auditoriaRepository.save(auditoria);
+        }
+      } catch (err: any) {
+        console.error('[HallazgosService] Error reseteando fechaInicioComunicacion en la auditoria:', err.message);
+      }
+    }
+
     await this.registrarHistorial(
       hallazgo.auditoriaId,
       TipoEvento.HALLAZGO,
-      'Controversia presentada',
-      `El área auditada presentó controversia sobre el hallazgo ${hallazgo.codigo}`,
+      'Controversia presentada/devuelta con observaciones',
+      `El área auditada presentó/devolvió controversia sobre el hallazgo ${hallazgo.codigo}`,
     );
 
     try {
@@ -576,11 +610,11 @@ export class HallazgosService {
   }
 
   /**
-   * Auditor toma decisión sobre controversia: ratificado | modificado | retirado
+   * Auditor toma decisión sobre controversia: ratificado | modificado | retirado | devolver
    */
   async decisionAuditor(
     id: string,
-    tipoDecision: 'ratificado' | 'modificado' | 'retirado',
+    tipoDecision: 'ratificado' | 'modificado' | 'retirado' | 'devolver',
     fundamentacionTecnica: string,
     auditorId?: number,
   ): Promise<Hallazgo> {
@@ -592,60 +626,86 @@ export class HallazgosService {
     }
 
     if (!fundamentacionTecnica || !fundamentacionTecnica.trim()) {
-      throw new BadRequestException('La fundamentación técnica es obligatoria');
+      throw new BadRequestException('La fundamentación técnica/observación es obligatoria');
     }
 
-    const estadoMap = {
-      ratificado: HallazgoEstado.RATIFICADO,
-      modificado: HallazgoEstado.MODIFICADO,
-      retirado: HallazgoEstado.RETIRADO,
-    };
+    const hoyStr = new Date().toLocaleDateString('es-CO');
+    const observaciones = fundamentacionTecnica.trim();
 
-    (hallazgo as any).decisionAuditor = tipoDecision;
-    (hallazgo as any).fundamentacionTecnica = fundamentacionTecnica.trim();
-    (hallazgo as any).fechaDecision = new Date();
-    (hallazgo as any).auditorDecisionId = auditorId ?? 1;
-    hallazgo.estado = estadoMap[tipoDecision];
+    if (tipoDecision === 'devolver') {
+      (hallazgo as any).controversiaTurno = 'auditado';
+      (hallazgo as any).fundamentacionTecnica = observaciones;
+      (hallazgo as any).observacionesControversia = (hallazgo as any).observacionesControversia
+        ? `${(hallazgo as any).observacionesControversia}\n\n[Auditor - ${hoyStr}]: ${observaciones}`
+        : `[Auditor - ${hoyStr}]: ${observaciones}`;
+      
+      // Reset response time of the audit (fechaInicioComunicacion = today)
+      if (hallazgo.auditoriaId) {
+        try {
+          const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+          if (auditoria) {
+            auditoria.fechaInicioComunicacion = new Date();
+            await this.auditoriaRepository.save(auditoria);
+          }
+        } catch (err: any) {
+          console.error('[HallazgosService] Error reseteando fechaInicioComunicacion en la auditoria:', err.message);
+        }
+      }
+    } else {
+      const estadoMap = {
+        ratificado: HallazgoEstado.RATIFICADO,
+        modificado: HallazgoEstado.MODIFICADO,
+        retirado: HallazgoEstado.RETIRADO,
+      };
+
+      (hallazgo as any).decisionAuditor = tipoDecision;
+      (hallazgo as any).fundamentacionTecnica = observaciones;
+      (hallazgo as any).fechaDecision = new Date();
+      (hallazgo as any).auditorDecisionId = auditorId ?? 1;
+      (hallazgo as any).controversiaTurno = null; // Cierra la controversia
+      hallazgo.estado = estadoMap[tipoDecision];
+    }
 
     const actualizado = await this.hallazgoRepository.save(hallazgo);
 
     await this.registrarHistorial(
       hallazgo.auditoriaId,
       TipoEvento.HALLAZGO,
-      `Decisión del auditor: ${tipoDecision}`,
-      `El auditor ${tipoDecision} el hallazgo ${hallazgo.codigo}. Fundamentación: ${fundamentacionTecnica.substring(0, 100)}...`,
+      tipoDecision === 'devolver' ? 'Controversia devuelta con observaciones' : `Decisión del auditor: ${tipoDecision}`,
+      tipoDecision === 'devolver'
+        ? `El auditor devolvió el hallazgo ${hallazgo.codigo} con observaciones: ${observaciones.substring(0, 100)}...`
+        : `El auditor ${tipoDecision} el hallazgo ${hallazgo.codigo}. Fundamentación: ${observaciones.substring(0, 100)}...`,
     );
 
     try {
       if (hallazgo.auditoriaId) {
-      const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
-      if (auditoria?.responsableAreaEmail) {
-        const etiquetaDecision =
-          tipoDecision === 'ratificado'
-            ? 'ratificado (se mantiene el hallazgo)'
-            : tipoDecision === 'modificado'
-              ? 'modificado'
-              : 'retirado';
-        await this.notificacionesService.notificarAuditadoPortal({
-          responsableAreaEmail: auditoria.responsableAreaEmail,
-          responsableAreaNombre: auditoria.responsableAreaNombre,
-          auditoriaId: auditoria.id,
-          auditoriaCodigo: auditoria.codigo,
-          auditoriaNombre: auditoria.nombre,
-          tipoNotificacion: TipoNotificacion.OTRO,
-          titulo: `Decisión sobre su controversia — ${hallazgo.codigo}`,
-          mensaje:
-            `Usted presentó controversia sobre el hallazgo "${hallazgo.titulo || hallazgo.codigo}". ` +
-            `La OCI ha ${etiquetaDecision} el hallazgo en la auditoría ${auditoria.codigo}. ` +
-            `Revise la fundamentación en el portal.`,
-          prioridad: PrioridadNotificacion.ALTA,
-          metadata: {
-            hallazgoId: hallazgo.id,
-            decision: tipoDecision,
-            quienPresentoControversia: 'area_auditada',
-          },
-        });
-      }
+        const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+        if (auditoria?.responsableAreaEmail) {
+          const tituloNotif = tipoDecision === 'devolver'
+            ? `Observaciones sobre su controversia — ${hallazgo.codigo}`
+            : `Decisión sobre su controversia — ${hallazgo.codigo}`;
+          
+          const mensajeNotif = tipoDecision === 'devolver'
+            ? `El auditor ha devuelto con observaciones el hallazgo "${hallazgo.titulo || hallazgo.codigo}" en la auditoría ${auditoria.codigo}. Revise en el portal y responda.`
+            : `La OCI ha ${tipoDecision === 'ratificado' ? 'ratificado' : tipoDecision === 'modificado' ? 'modificado' : 'retirado'} el hallazgo "${hallazgo.titulo || hallazgo.codigo}" en la auditoría ${auditoria.codigo}.`;
+
+          await this.notificacionesService.notificarAuditadoPortal({
+            responsableAreaEmail: auditoria.responsableAreaEmail,
+            responsableAreaNombre: auditoria.responsableAreaNombre,
+            auditoriaId: auditoria.id,
+            auditoriaCodigo: auditoria.codigo,
+            auditoriaNombre: auditoria.nombre,
+            tipoNotificacion: TipoNotificacion.OTRO,
+            titulo: tituloNotif,
+            mensaje: mensajeNotif,
+            prioridad: PrioridadNotificacion.ALTA,
+            metadata: {
+              hallazgoId: hallazgo.id,
+              decision: tipoDecision,
+              quienPresentoControversia: 'auditor',
+            },
+          });
+        }
       }
     } catch (notifErr) {
       console.error('[HallazgosService] Error notificando decisión al auditado:', notifErr.message);
@@ -695,7 +755,7 @@ export class HallazgosService {
         const n = pendientes.length;
         const mensajeHallazgos =
           n > 0
-            ? `Se notificaron ${n} hallazgo(s). Tiene 10 días hábiles para aceptar cada uno o presentar controversia con documento adjunto.`
+            ? `Se notificaron ${n} hallazgo(s). Tiene 5 días hábiles para aceptar cada uno o presentar controversia con documento adjunto.`
             : todos > 0
               ? `Los hallazgos de esta auditoría ya estaban en trámite. Revise el estado en el portal.`
               : `No hay hallazgos registrados aún; el área será informada cuando se publiquen.`;
@@ -714,11 +774,11 @@ export class HallazgosService {
           metadata: {
             hallazgosNotificados: n,
             totalHallazgos: todos,
-            plazoDiasHabiles: 10,
+            plazoDiasHabiles: 5,
           },
         });
       }
-    } catch (notifErr) {
+    } catch (notifErr: any) {
       console.error('[HallazgosService] Error notificando informe preliminar al auditado:', notifErr.message);
     }
 

@@ -9,7 +9,12 @@ import {
   Search, Globe
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useImportAsignaturas, ImportResult } from '../hooks/useImportAsignaturas';
+import {
+  useImportAsignaturas,
+  ImportResult,
+  type EstructuraImportStatus,
+} from '../hooks/useImportAsignaturas';
+import { downloadCatalogImportTemplate } from '../utils/catalogImportTemplate';
 
 interface ImportarAsignaturasProps {
   onBack: () => void;
@@ -20,7 +25,15 @@ interface ImportarAsignaturasProps {
 type WizardStep = 'upload' | 'validate' | 'importing';
 
 export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }: ImportarAsignaturasProps) {
-  const { uploadCatalog, getPeriodos, checkEstructuraStatus, loading, result, error } = useImportAsignaturas();
+  const {
+    uploadCatalog,
+    getPeriodos,
+    checkEstructuraStatus,
+    resetImportState,
+    loading,
+    result,
+    error,
+  } = useImportAsignaturas();
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [periodo, setPeriodo] = useState(initialPeriodo || '2025-2');
@@ -30,8 +43,13 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
   const [periodoActivo, setPeriodoActivo] = useState<any | null>(null);
 
   // Prerequisite
-  const [isEstructuraReady, setIsEstructuraReady] = useState<boolean | null>(null);
+  // La carga del catálogo NO se bloquea por el estado de la estructura geográfica.
+  // El backend valida el contenido del archivo (incluida la Matriz Oferta) al
+  // importar y reporta los errores en el preview, así que aquí siempre se permite subir.
+  const [isEstructuraReady, setIsEstructuraReady] = useState<boolean | null>(true);
   const [checkingEstructura, setCheckingEstructura] = useState(false);
+  const [estructuraStatus, setEstructuraStatus] =
+    useState<EstructuraImportStatus | null>(null);
 
   // Master-Detail State
   const [selectedProgramaCode, setSelectedProgramaCode] = useState<string | null>(null);
@@ -59,12 +77,12 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
 
         const [data, statusRes] = await Promise.all([
           getPeriodos(),
-          checkEstructuraStatus().catch(() => ({ data: { isReady: false } }))
+          checkEstructuraStatus()
         ]);
 
-        if (statusRes?.data) {
-          setIsEstructuraReady(statusRes.data.isReady);
-        }
+        // Se conserva el estado solo como información; ya no bloquea la carga.
+        setIsEstructuraReady(true);
+        setEstructuraStatus(statusRes);
 
         if (data && Array.isArray(data)) {
           const activo = data.find((p: any) => p.estado === 'en_curso');
@@ -88,29 +106,35 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
 
   // ─── Handlers ───
   const handleDrag = (e: React.DragEvent) => {
-    if (isEstructuraReady === false) return;
     e.preventDefault();
     e.stopPropagation();
+    if (isEstructuraReady !== true) return;
     if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
     else if (e.type === 'dragleave') setDragActive(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    if (isEstructuraReady === false) return;
     e.preventDefault(); e.stopPropagation(); setDragActive(false);
+    if (isEstructuraReady !== true) return;
     if (e.dataTransfer.files?.[0]) {
       const f = e.dataTransfer.files[0];
       const ext = f.name.split('.').pop()?.toLowerCase();
-      if (['xlsx', 'xls', 'csv'].includes(ext || '')) {
+      if (['xlsx', 'xls'].includes(ext || '')) {
         setFile(f); handleImportar(true, f);
-      } else { toast.error('Archivo no soportado. Use .xlsx, .xls o .csv'); }
+      } else { toast.error('Archivo no soportado. Use .xlsx o .xls'); }
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isEstructuraReady === false) return;
+    if (isEstructuraReady !== true) return;
     if (e.target.files?.[0]) {
       const f = e.target.files[0];
+      const ext = f.name.split('.').pop()?.toLowerCase();
+      if (!['xlsx', 'xls'].includes(ext || '')) {
+        toast.error('Archivo no soportado. Use .xlsx o .xls');
+        e.target.value = '';
+        return;
+      }
       setFile(f); handleImportar(true, f);
     }
   };
@@ -134,13 +158,23 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
 
   const resetState = () => {
     setFile(null);
-    // Reset hook state by triggering a re-render
-    window.location.reload();
+    setSelectedProgramaCode(null);
+    setSearchPrograma('');
+    setActiveTab('asignaturas');
+    resetImportState();
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleDownloadTemplate = () => {
-    toast.info('Descargando plantilla...', { description: 'La plantilla Excel se está descargando.' });
-    // TODO: implement actual template download
+  const handleDownloadTemplate = async () => {
+    try {
+      await downloadCatalogImportTemplate();
+      toast.success('Plantilla descargada', {
+        description: 'Incluye las tres hojas requeridas y un registro de ejemplo.',
+      });
+    } catch (downloadError) {
+      console.error('Error descargando la plantilla:', downloadError);
+      toast.error('No se pudo generar la plantilla Excel.');
+    }
   };
 
   // ─── Computed ───
@@ -233,21 +267,72 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
             transition={{ duration: 0.25 }}
           >
             {/* Prerequisite warning */}
-            {isEstructuraReady === false && (
-              <div className="bg-white border border-red-200 rounded-2xl shadow-sm overflow-hidden mb-5">
-                <div className="px-6 py-4 flex items-center gap-3 bg-red-50/30 border-b border-red-100">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-                    <AlertCircle className="w-4 h-4 text-red-500" />
+            {isEstructuraReady !== true && !checkingEstructura && (
+              <div
+                className={`bg-white rounded-2xl shadow-sm overflow-hidden mb-5 border ${
+                  estructuraStatus?.hasExistingStructure
+                    ? 'border-amber-200'
+                    : 'border-red-200'
+                }`}
+              >
+                <div
+                  className={`px-6 py-4 flex items-center gap-3 border-b ${
+                    estructuraStatus?.hasExistingStructure
+                      ? 'bg-amber-50/40 border-amber-100'
+                      : 'bg-red-50/30 border-red-100'
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      estructuraStatus?.hasExistingStructure
+                        ? 'bg-amber-100'
+                        : 'bg-red-100'
+                    }`}
+                  >
+                    <AlertCircle
+                      className={`w-4 h-4 ${
+                        estructuraStatus?.hasExistingStructure
+                          ? 'text-amber-600'
+                          : 'text-red-500'
+                      }`}
+                    />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-gray-900 text-sm">Prerrequisito no cumplido</h4>
-                    <p className="text-[11px] text-gray-500">Debe importar la Estructura Geográfica antes del Catálogo de Asignaturas.</p>
+                    <h4 className="font-bold text-gray-900 text-sm">
+                      {estructuraStatus?.hasExistingStructure
+                        ? 'Estructura existente pendiente de sincronización'
+                        : 'Prerrequisito no cumplido'}
+                    </h4>
+                    {estructuraStatus?.hasExistingStructure && (
+                      <p className="text-[11px] text-gray-600">
+                        Estructura Organizacional registra{' '}
+                        {estructuraStatus.seccionales_existentes} seccionales y{' '}
+                        {estructuraStatus.sedes_existentes} sedes. Estos registros
+                        no se han perdido; falta sincronizarlos con el catálogo
+                        geográfico oficial.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-gray-500">
+                      Vaya a Estructura Organizacional → Importar y cargue primero la Estructura Geográfica.
+                      {estructuraStatus && ` Estado del catálogo oficial: ${estructuraStatus.direcciones_territoriales}/17 DT y ${estructuraStatus.cetaps}/290 CETAP.`}
+                    </p>
+                    {estructuraStatus?.message && (
+                      <p
+                        className={`text-[10px] mt-1 ${
+                          estructuraStatus.hasExistingStructure
+                            ? 'text-amber-700'
+                            : 'text-red-500'
+                        }`}
+                      >
+                        {estructuraStatus.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            <div className={`bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden ${isEstructuraReady === false ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                 {/* Left: Drop Zone */}
                 <div className="p-8 flex flex-col items-center justify-center border-r border-gray-50">
@@ -256,16 +341,18 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
                     onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => isEstructuraReady === true && fileInputRef.current?.click()}
                     className={`w-full max-w-sm border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 group ${
-                      dragActive
+                      isEstructuraReady !== true
+                        ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                        : dragActive
                         ? 'border-[#003DA5] bg-blue-50/60 scale-[0.98]'
                         : file
                         ? 'border-emerald-300 bg-emerald-50/30'
                         : 'border-gray-200 hover:border-[#003DA5]/40 hover:bg-gray-50/50'
                     }`}
                   >
-                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls,.csv" className="hidden" />
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls" className="hidden" />
                     {file ? (
                       <>
                         <div className="w-14 h-14 mx-auto mb-3 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-200/60">
@@ -286,9 +373,17 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                         <div className="w-14 h-14 mx-auto mb-3 bg-gray-50 text-gray-400 rounded-2xl flex items-center justify-center border border-gray-200/60 group-hover:text-[#003DA5] group-hover:bg-blue-50 group-hover:border-[#003DA5]/20 transition-all">
                           <Upload className="w-7 h-7" />
                         </div>
-                        <p className="font-semibold text-gray-700 text-sm">Arrastra tu archivo aquí</p>
-                        <p className="text-[11px] text-gray-400 mt-1">o haz clic para seleccionar</p>
-                        <p className="text-[10px] text-gray-300 mt-2">.xlsx · .xls · .csv</p>
+                        <p className="font-semibold text-gray-700 text-sm">
+                          {checkingEstructura ? 'Verificando estructura geográfica...' :
+                            isEstructuraReady === true ? 'Arrastra tu archivo aquí' :
+                            'Carga bloqueada hasta completar la estructura geográfica'}
+                        </p>
+                        {isEstructuraReady === true && (
+                          <>
+                            <p className="text-[11px] text-gray-400 mt-1">o haz clic para seleccionar</p>
+                            <p className="text-[10px] text-gray-300 mt-2">.xlsx · .xls</p>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -421,6 +516,24 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
+                </div>
+              ) : (result as any).blocked_reason === 'ESTRUCTURA_GEOGRAFICA_INCOMPLETA' ? (
+                <div className="px-8 py-5 flex items-center justify-between gap-4 flex-wrap bg-red-50/40 border-b border-red-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-sm">Falta la estructura geográfica</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        El Excel es legible, pero no se puede importar ningún programa porque sus CETAP todavía no existen en la plataforma.
+                        Cargue primero las direcciones territoriales y CETAP, y luego vuelva a validar este mismo archivo.
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={resetState} className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-white transition-all">
+                    Volver a cargar
+                  </button>
                 </div>
               ) : result?.success && !hasErrors ? (
                 <div className="px-8 py-5 flex items-center justify-between gap-4 flex-wrap bg-emerald-50/30 border-b border-emerald-100">

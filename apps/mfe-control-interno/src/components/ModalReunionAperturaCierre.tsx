@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { Button } from '@esap-mfe/shared-ui/button';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { auditoriasApi } from './services/api';
 import { toast } from 'sonner';
 import {

@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import controlInternoService from '../../../../services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { auditoriaCoincideVigenciaPlan } from './useAuditoriasKanban';
 import { toast } from 'sonner';
 import {

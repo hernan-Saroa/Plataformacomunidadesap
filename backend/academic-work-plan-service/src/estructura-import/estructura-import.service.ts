@@ -121,8 +121,8 @@ export class EstructuraImportService {
   }
 
   private parseCetaps(raw: any[], dts: any[]) {
-    if (raw.length !== 288) {
-      throw new BadRequestException(`C1: Se esperaban 288 CETAPs, se encontraron ${raw.length}`);
+    if (raw.length !== 290) {
+      throw new BadRequestException(`C1: Se esperaban 290 CETAPs, se encontraron ${raw.length}`);
     }
 
     const codigos = new Set();

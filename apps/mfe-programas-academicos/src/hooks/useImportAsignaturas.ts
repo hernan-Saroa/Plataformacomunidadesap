@@ -34,11 +34,30 @@ export interface ImportResult {
   relaciones_cruzadas?: any[];
 }
 
+export interface EstructuraImportStatus {
+  success: boolean;
+  direcciones_territoriales: number;
+  cetaps: number;
+  seccionales_existentes: number;
+  sedes_existentes: number;
+  hasExistingStructure: boolean;
+  requiresSynchronization: boolean;
+  isReady: boolean;
+  message?: string;
+}
+
 export function useImportAsignaturas() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const resetImportState = useCallback(() => {
+    setLoading(false);
+    setProgress(0);
+    setResult(null);
+    setError(null);
+  }, []);
 
   const uploadCatalog = useCallback(async (file: File, dryRun: boolean, periodoCodigo = '2025-2', omitErrors = false) => {
     setLoading(true);
@@ -109,7 +128,13 @@ export function useImportAsignaturas() {
     }
   }, []);
 
-  const updatePeriodo = useCallback(async (id: string, data: { fechaInicio?: string; fechaFin?: string; estado?: string }) => {
+  const updatePeriodo = useCallback(async (id: string, data: {
+    anio?: number;
+    semestre?: number;
+    fechaInicio?: string;
+    fechaFin?: string;
+    estado?: string;
+  }) => {
     setLoading(true);
     setError(null);
     try {
@@ -117,6 +142,21 @@ export function useImportAsignaturas() {
       return res;
     } catch (err: any) {
       setError(err.message || 'Error al actualizar el periodo académico');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const deletePeriodo = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      return await apiClient.delete<any>(`/pta/api/v1/periodos-academicos/${id}`, {
+        retries: 0,
+      });
+    } catch (err: any) {
+      setError(err.message || 'Error al eliminar el periodo académico');
       throw err;
     } finally {
       setLoading(false);
@@ -139,12 +179,23 @@ export function useImportAsignaturas() {
 
   const checkEstructuraStatus = useCallback(async () => {
     try {
-      const res = await apiClient.get<any>(`/auth/api/v1/estructura-import/status`);
+      const res = await apiClient.get<EstructuraImportStatus>(`/auth/api/v1/estructura-import/status`, {
+        retries: 0,
+      });
       return res;
     } catch (err: any) {
-      console.warn('Could not check estructura status, assuming true:', err.message);
-      // Return a dummy success to avoid blocking the UI if endpoint is not available
-      return { data: { isReady: true } };
+      console.warn('No se pudo verificar la estructura geográfica:', err.message);
+      return {
+        success: false,
+        direcciones_territoriales: 0,
+        cetaps: 0,
+        seccionales_existentes: 0,
+        sedes_existentes: 0,
+        hasExistingStructure: false,
+        requiresSynchronization: false,
+        isReady: false,
+        message: err.message || 'No se pudo verificar la estructura geográfica.',
+      };
     }
   }, []);
 
@@ -153,11 +204,13 @@ export function useImportAsignaturas() {
     progress,
     result,
     error,
+    resetImportState,
     uploadCatalog,
     getLastImport,
     getPeriodos,
     createPeriodo,
     updatePeriodo,
+    deletePeriodo,
     getPeriodoDetalle,
     checkEstructuraStatus,
   };

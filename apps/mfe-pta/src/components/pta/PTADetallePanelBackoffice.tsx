@@ -1455,36 +1455,130 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     );
   };
 
-  // ── Timeline de trazabilidad del proceso (reutilizado en el tab Trazabilidad) ──
-  // Muestra cada transición de estado; las que tienen snapshot son clickeables y
-  // abren el reporte versionado R-XX correspondiente.
+  // ── Timeline de trazabilidad del proceso ──
+  // Muestra cambios de estado PTA + aprobaciones individuales de componentes, ordenados por fecha.
   const renderHistorialTimeline = () => {
-    if (historialEstados.length === 0) {
+    const COMP_LABELS: Record<string, string> = {
+      academica: 'Docencia', investigacion: 'Investigación',
+      ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
+      ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
+      ext_secciones: 'Ext. Secciones', complementarias: 'Complementarias',
+      academicas_admin: 'Acad. Admin.',
+    };
+
+    // Unificar eventos: cambios de estado + aprobaciones de componentes (solo manuales)
+    type TimelineEvent =
+      | { kind: 'estado'; date: Date; data: any; idx: number }
+      | { kind: 'componente'; date: Date; data: any };
+
+    const estadoEvents: TimelineEvent[] = historialEstados.map((h: any, i: number) => ({
+      kind: 'estado' as const,
+      date: h.createdAt ? new Date(h.createdAt) : new Date(0),
+      data: h,
+      idx: i,
+    }));
+
+    const compEvents: TimelineEvent[] = componentesAprobacion
+      .filter(c => c.estado !== 'pendiente' && c.aprobadorNombre !== 'Sistema' && c.fechaAprobacion)
+      .map(c => ({
+        kind: 'componente' as const,
+        date: new Date(c.fechaAprobacion),
+        data: c,
+      }));
+
+    const allEvents = [...estadoEvents, ...compEvents].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    if (allEvents.length === 0) {
       return (
         <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: '0.78rem' }}>
           Sin transiciones registradas.
         </div>
       );
     }
-    const displayOrder = [...historialEstados].reverse();
+
     const snapshotNums = new Map<string, number>();
     let reporteNum = 1;
-    displayOrder.forEach((s: any, i: number) => {
+    historialEstados.slice().reverse().forEach((s: any, i: number) => {
       if (s.snapshotPta && typeof s.snapshotPta === 'object') {
         snapshotNums.set(s.id || String(i), reporteNum++);
       }
     });
+
     return (
       <div style={{ position: 'relative', marginTop: 10 }}>
         <div style={{ position: 'absolute', top: 14, bottom: 14, left: 15, width: 2, background: '#E0E7FF', borderRadius: 1 }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {displayOrder.map((step: any, idx: number) => {
+          {allEvents.map((event, idx) => {
             const isLatest = idx === 0;
+
+            if (event.kind === 'componente') {
+              const c = event.data;
+              const isAprobado = c.estado === 'aprobado';
+              const dotColor = isAprobado ? '#10B981' : '#EF4444';
+              const badgeBg = isAprobado ? '#D1FAE5' : '#FEE2E2';
+              const badgeColor = isAprobado ? '#065F46' : '#991B1B';
+              return (
+                <motion.div
+                  key={`comp-${c.componente}-${idx}`}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.04 }}
+                  style={{
+                    display: 'flex', gap: 14, position: 'relative', zIndex: 1,
+                    padding: '9px 12px', borderRadius: 10, marginLeft: 0,
+                    background: isLatest ? badgeBg : 'transparent',
+                    border: isLatest ? `1px solid ${dotColor}30` : '1px solid transparent',
+                  }}
+                >
+                  <div style={{
+                    width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                    background: isLatest ? dotColor : 'white',
+                    border: `2.5px solid ${isLatest ? dotColor : '#CBD5E1'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {isAprobado
+                      ? <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />
+                      : <RotateCcw style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />}
+                  </div>
+                  <div style={{ flex: 1, paddingTop: 2, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+                      <span style={{ padding: '1px 6px', borderRadius: 5, background: badgeBg, color: badgeColor, fontSize: '0.65rem', fontWeight: 700, border: `1px solid ${dotColor}30` }}>
+                        {isAprobado ? '✓ Aprobado' : '↩ Devuelto'}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#374151' }}>
+                        {COMP_LABELS[c.componente] || c.componente}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.67rem', color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Calendar style={{ width: 10, height: 10, color: '#9CA3AF' }} />
+                      {event.date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      <Clock style={{ width: 10, height: 10, color: '#9CA3AF', marginLeft: 3 }} />
+                      <span style={{ color: '#374151', fontWeight: 600 }}>
+                        {event.date.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </span>
+                    </div>
+                    {c.aprobadorNombre && (
+                      <span style={{ fontSize: '0.63rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3, marginTop: 3 }}>
+                        <Users style={{ width: 9, height: 9 }} /> {c.aprobadorNombre}{c.aprobadorRol ? ` — ${c.aprobadorRol}` : ''}
+                      </span>
+                    )}
+                    {c.comentarios && (
+                      <p style={{ fontSize: '0.7rem', color: '#64748B', margin: '4px 0 0', padding: '4px 7px', background: '#F8FAFC', borderRadius: 5, border: '1px solid #E2E8F0', fontStyle: 'italic' }}>
+                        "{c.comentarios}"
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            }
+
+            // estado event
+            const step = event.data;
             const hsc = getStatusConfig(step.estadoNuevo || '');
             const date = step.createdAt ? new Date(step.createdAt) : null;
             const snap = step.snapshotPta;
             const hasSnapshot = snap && typeof snap === 'object';
-            const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(idx)) : null;
+            const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(event.idx)) : null;
             return (
               <motion.div
                 key={step.id || idx}
