@@ -363,9 +363,15 @@ export function SeccionPlantillasAutosUnificada({
                   return a.orden - b.orden;
                 })
                 .map((tipo) => {
-                  const etapa = ETAPAS_PROCESO[tipo.etapa];
-                  if (!etapa) return null;
-                  
+                  const etapaKey = tipo.etapa as keyof typeof ETAPAS_PROCESO;
+                  const etapa = ETAPAS_PROCESO[etapaKey] ?? {
+                    nombre: tipo.etapa || 'Sin etapa',
+                    descripcion: '',
+                    color: '#6B7280',
+                    icon: FileText,
+                    orden: 999,
+                  };
+
                   const Icon = etapa.icon;
                   const plantillasActivas = tipo.plantilla ? 1 : 0;
                   const expandido = tipoExpandido === tipo.id;
@@ -631,7 +637,7 @@ export function SeccionPlantillasAutosUnificada({
                 <div className="flex-1 min-w-0 mr-3">
                   <h3 className="text-lg font-bold text-gray-900 truncate">{vistaDetalles.nombre}</h3>
                   <p className="text-sm text-gray-600 mt-0.5 truncate">
-                    {ETAPAS_PROCESO[vistaDetalles.etapa].nombre}
+                    {(ETAPAS_PROCESO[vistaDetalles.etapa as keyof typeof ETAPAS_PROCESO])?.nombre ?? vistaDetalles.etapa ?? 'Sin etapa'}
                   </p>
                 </div>
                 <button
