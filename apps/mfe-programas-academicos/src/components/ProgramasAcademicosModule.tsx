@@ -991,16 +991,6 @@ export function ProgramasAcademicosModule() {
           )}
       </motion.div>
 
-      {/* Modal para Crear/Editar Programa */}
-      {showCreateModal && (
-        <CreateProgramaModal
-          onClose={handleCloseModal}
-          programaToEdit={programaToEdit}
-          periodoAcademico={periodoActivoCodigoPA}
-          onSuccess={() => setRefreshTrigger(prev => prev + 1)}
-        />
-      )}
-
       {/* Dialog para Eliminar Programa */}
       <ConfirmationDialog
         open={!!programaToDelete}
@@ -1014,6 +1004,17 @@ export function ProgramasAcademicosModule() {
       />
       </>
       )}
+
+      {/* Modal para Crear/Editar Programa (disponible en todas las vistas) */}
+      {showCreateModal && (
+        <CreateProgramaModal
+          onClose={handleCloseModal}
+          programaToEdit={programaToEdit}
+          periodoAcademico={periodoActivoCodigoPA}
+          onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+        />
+      )}
+
       {/* Modal para ver CETAPs */}
       {selectedProgramaForCetaps && (
         <ProgramCetapsModal
