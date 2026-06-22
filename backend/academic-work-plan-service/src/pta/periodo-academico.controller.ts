@@ -350,7 +350,39 @@ export class PeriodoAcademicoController {
       ORDER BY c.nombre
     `;
 
-    let programs = [];
+    // Programas creados directamente para este período (migración 359).
+    // Se consultan aparte y se combinan con los provenientes de ofertas para
+    // que el detalle del período muestre también los programas creados en él
+    // aunque todavía no tengan oferta/CETAP asignado. Si la columna no existe
+    // (migración no aplicada), el catch deja la lista vacía y no afecta nada.
+    //
+    // Además, si el período consultado es el ACTIVO (en_curso), se incluyen los
+    // programas heredados/sin período propio y sin ofertas, que viven en el
+    // período activo (mismo criterio que el listado de programas).
+    const periodoActivo = period.estado === 'en_curso';
+    const programsPropiosQuery = `
+      SELECT
+        p.id,
+        p.codigo,
+        p.nombre,
+        0::int AS "activeCetaps",
+        COUNT(DISTINCT a.id)::int AS "subjectsCount"
+      FROM academic_work_plan.programa p
+      LEFT JOIN academic_work_plan.asignatura a ON a.id_programa = p.id AND a.activa = TRUE
+      WHERE p.id_periodo_academico = $1
+        ${periodoActivo ? `OR (
+          p.id_periodo_academico IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM academic_work_plan.oferta_cetap_programa o2
+            WHERE o2.id_programa = p.id AND o2.activa = TRUE
+          )
+        )` : ''}
+      GROUP BY p.id, p.codigo, p.nombre
+      ORDER BY p.nombre
+    `;
+
+    let programs: any[] = [];
+    let programsPropios: any[] = [];
     let cetapsOfertas = [];
     let cetapsPeriodo = [];
 
@@ -358,6 +390,36 @@ export class PeriodoAcademicoController {
       programs = await this.repo.query(programsQuery, [id]);
     } catch (e) {
       console.warn('Error querying programs for period:', e.message);
+    }
+
+    try {
+      programsPropios = await this.repo.query(programsPropiosQuery, [id]);
+    } catch (e) {
+      console.warn('Error querying owned programs for period:', e.message);
+    }
+
+    // Combinar ambas fuentes por id de programa (la oferta conserva activeCetaps reales).
+    if (programsPropios.length > 0) {
+      const programsById = new Map<string, any>();
+      [...programsPropios, ...programs].forEach((prog: any) => {
+        const key = String(prog.id);
+        const current = programsById.get(key);
+        programsById.set(key, {
+          ...current,
+          ...prog,
+          activeCetaps: Math.max(
+            Number(current?.activeCetaps || 0),
+            Number(prog.activeCetaps || 0),
+          ),
+          subjectsCount: Math.max(
+            Number(current?.subjectsCount || 0),
+            Number(prog.subjectsCount || 0),
+          ),
+        });
+      });
+      programs = Array.from(programsById.values()).sort((a: any, b: any) =>
+        String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'),
+      );
     }
 
     try {

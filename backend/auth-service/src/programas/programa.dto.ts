@@ -75,6 +75,12 @@ export class CreateProgramaDto {
   @IsOptional()
   @IsString()
   estado?: string;
+
+  // Código del período académico (ej. "2026-2") al que queda vinculado el
+  // programa al crearse. Si se envía, el programa solo será visible en ese período.
+  @IsOptional()
+  @IsString()
+  periodoAcademico?: string;
 }
 
 export class UpdateProgramaDto {

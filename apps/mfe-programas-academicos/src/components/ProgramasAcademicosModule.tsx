@@ -110,14 +110,10 @@ export function ProgramasAcademicosModule() {
         const data = Array.isArray(res) ? res : [];
         const sorted = sortPeriodsByCreation(data);
         setPeriodosPA(sorted);
-        const savedPeriodCode = localStorage.getItem(PROGRAMAS_PERIOD_STORAGE_KEY) || '';
-        const savedPeriod = sorted.find(
-          (period: any) => getPeriodCode(period) === savedPeriodCode,
-        );
+        // Al llegar a la página, el selector SIEMPRE inicia en el período activo
+        // (en_curso), sin importar cuál se haya visualizado antes.
         const active = sorted.find((p: any) => p.estado === 'en_curso') || sorted[0];
-        setPeriodoSeleccionadoPA(
-          getPeriodCode(savedPeriod || active),
-        );
+        setPeriodoSeleccionadoPA(getPeriodCode(active));
       } catch {
         setPeriodosPA([]);
         setPeriodoSeleccionadoPA('');
@@ -1000,20 +996,21 @@ export function ProgramasAcademicosModule() {
         <CreateProgramaModal
           onClose={handleCloseModal}
           programaToEdit={programaToEdit}
+          periodoAcademico={periodoActivoCodigoPA}
           onSuccess={() => setRefreshTrigger(prev => prev + 1)}
         />
       )}
 
       {/* Dialog para Eliminar Programa */}
       <ConfirmationDialog
-        isOpen={!!programaToDelete}
+        open={!!programaToDelete}
         title="Eliminar Programa"
-        message={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
+        description={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
         confirmText="Eliminar"
         cancelText="Cancelar"
-        type="danger"
+        variant="danger"
         onConfirm={confirmDelete}
-        onCancel={() => setProgramaToDelete(null)}
+        onClose={() => setProgramaToDelete(null)}
       />
       </>
       )}

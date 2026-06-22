@@ -43,7 +43,10 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
   const [periodoActivo, setPeriodoActivo] = useState<any | null>(null);
 
   // Prerequisite
-  const [isEstructuraReady, setIsEstructuraReady] = useState<boolean | null>(null);
+  // La carga del catálogo NO se bloquea por el estado de la estructura geográfica.
+  // El backend valida el contenido del archivo (incluida la Matriz Oferta) al
+  // importar y reporta los errores en el preview, así que aquí siempre se permite subir.
+  const [isEstructuraReady, setIsEstructuraReady] = useState<boolean | null>(true);
   const [checkingEstructura, setCheckingEstructura] = useState(false);
   const [estructuraStatus, setEstructuraStatus] =
     useState<EstructuraImportStatus | null>(null);
@@ -77,7 +80,8 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
           checkEstructuraStatus()
         ]);
 
-        setIsEstructuraReady(statusRes.isReady);
+        // Se conserva el estado solo como información; ya no bloquea la carga.
+        setIsEstructuraReady(true);
         setEstructuraStatus(statusRes);
 
         if (data && Array.isArray(data)) {

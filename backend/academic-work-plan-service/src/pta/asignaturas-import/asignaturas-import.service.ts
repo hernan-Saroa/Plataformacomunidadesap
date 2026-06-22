@@ -484,22 +484,66 @@ export class AsignaturasImportService {
    * Obtiene el reporte de la última carga ejecutada consultando la base de datos.
    */
   async getLastImport(periodo: string = '2025-2'): Promise<any> {
-    const counts = await this.dataSource.query(`
-      SELECT
-        (SELECT COUNT(DISTINCT ocp.id_programa)
-         FROM academic_work_plan.oferta_cetap_programa ocp
-         WHERE ocp.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS programas,
-        (SELECT COUNT(*)
-         FROM academic_work_plan.asignatura a
-         WHERE a.id_programa IN (
-           SELECT DISTINCT ocp2.id_programa
-           FROM academic_work_plan.oferta_cetap_programa ocp2
-           WHERE ocp2.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)
-         )) AS asignaturas,
-        (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas
-    `, [periodo]);
+    let stats: any = {};
+    try {
+      // Conteo REAL del período (mismo criterio que el listado y el detalle):
+      // un programa pertenece al período si tiene oferta activa en él, si fue
+      // creado para él (id_periodo_academico), o —solo en el período activo—
+      // si no tiene período propio ni ofertas.
+      const counts = await this.dataSource.query(`
+        WITH per AS (
+          SELECT id, (estado = 'en_curso') AS activo
+          FROM academic_work_plan.periodo_academico
+          WHERE codigo = $1
+          LIMIT 1
+        ),
+        progs AS (
+          SELECT p.id
+          FROM academic_work_plan.programa p
+          CROSS JOIN per
+          WHERE EXISTS (
+                  SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+                  WHERE ocp.id_programa = p.id AND ocp.activa = TRUE
+                    AND ocp.id_periodo_academico = per.id
+                )
+             OR p.id_periodo_academico = per.id
+             OR (
+                  per.activo
+                  AND p.id_periodo_academico IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM academic_work_plan.oferta_cetap_programa o
+                    WHERE o.id_programa = p.id AND o.activa = TRUE
+                  )
+                )
+        )
+        SELECT
+          (SELECT COUNT(*) FROM progs) AS programas,
+          (SELECT COUNT(*) FROM academic_work_plan.asignatura a
+            WHERE a.id_programa IN (SELECT id FROM progs) AND a.activa = TRUE) AS asignaturas,
+          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa
+            WHERE id_periodo_academico = (SELECT id FROM per)) AS ofertas
+      `, [periodo]);
+      stats = counts[0] || {};
+    } catch (e) {
+      // Respaldo si la columna id_periodo_academico no existe (migración no aplicada):
+      // conteo basado solo en ofertas, como antes.
+      const counts = await this.dataSource.query(`
+        SELECT
+          (SELECT COUNT(DISTINCT ocp.id_programa)
+           FROM academic_work_plan.oferta_cetap_programa ocp
+           WHERE ocp.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS programas,
+          (SELECT COUNT(*)
+           FROM academic_work_plan.asignatura a
+           WHERE a.id_programa IN (
+             SELECT DISTINCT ocp2.id_programa
+             FROM academic_work_plan.oferta_cetap_programa ocp2
+             WHERE ocp2.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)
+           )) AS asignaturas,
+          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas
+      `, [periodo]);
+      stats = counts[0] || {};
+    }
 
-    const stats = counts[0] || {};
     return {
       success: true,
       periodo,
