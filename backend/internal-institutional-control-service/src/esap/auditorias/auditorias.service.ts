@@ -186,9 +186,9 @@ export class AuditoriasService {
       // Si no tiene el formato esperado, intentar parsearlo
       const parsed = new Date(date);
       if (!isNaN(parsed.getTime())) {
-        const year = parsed.getFullYear();
-        const month = String(parsed.getMonth() + 1).padStart(2, '0');
-        const day = String(parsed.getDate()).padStart(2, '0');
+        const year = parsed.getUTCFullYear();
+        const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getUTCDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       }
       return date; // Fallback: devolver el string original
@@ -196,9 +196,9 @@ export class AuditoriasService {
     
     // Si es un objeto Date
     if (date instanceof Date && !isNaN(date.getTime())) {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     }
     
@@ -303,6 +303,21 @@ export class AuditoriasService {
     // Esto asegura coherencia en Kanban, Expediente, Wizard y Programa Anual.
     if (!serialized.responsableAreaNombre && serialized.responsable && serialized.responsable !== 'Por asignar') {
       serialized.responsableAreaNombre = serialized.responsable;
+    }
+
+    // ✅ TRADUCIR UUID a Nombres
+    if (serialized.responsableAreaNombre && this.isValidUUID(serialized.responsableAreaNombre)) {
+        const nombre = namesMap?.get(serialized.responsableAreaNombre.toLowerCase());
+        if (nombre) {
+            serialized.responsableAreaNombre = nombre;
+        }
+    }
+    
+    if (serialized.responsable && this.isValidUUID(serialized.responsable)) {
+        const nombre = namesMap?.get(serialized.responsable.toLowerCase());
+        if (nombre) {
+            serialized.responsable = nombre;
+        }
     }
 
     return serialized;
@@ -503,6 +518,8 @@ export class AuditoriasService {
       aud.equipoAuditores?.forEach(eq => {
         if (eq.personaId) personaIds.add(String(eq.personaId));
       });
+      if (aud.responsable && this.isValidUUID(aud.responsable)) personaIds.add(String(aud.responsable));
+      if (aud.responsableAreaNombre && this.isValidUUID(aud.responsableAreaNombre)) personaIds.add(String(aud.responsableAreaNombre));
     });
 
     const namesMap = await this.getPersonasNames(Array.from(personaIds));
@@ -849,6 +866,32 @@ export class AuditoriasService {
     if (auditorAsignado) {
       serialized.auditorAsignado = auditorAsignado;
     }
+
+    // Obtener fechas e información del Plan Anual si está vinculada
+    let planAnualInicio: string | null = null;
+    let planAnualFin: string | null = null;
+    let planAnualAñoVal: number | null = null;
+
+    if (auditoria.planAnualId) {
+      try {
+        const planAnual = await this.auditoriaRepository.query(
+          `SELECT fecha_inicio, fecha_fin, ano FROM control_interno.plan_anual_5_roles WHERE id = $1`,
+          [auditoria.planAnualId]
+        );
+        if (planAnual && planAnual.length > 0 && planAnual[0]) {
+          const p = planAnual[0];
+          planAnualInicio = p.fecha_inicio ? this.serializeDate(p.fecha_inicio) : null;
+          planAnualFin = p.fecha_fin ? this.serializeDate(p.fecha_fin) : null;
+          planAnualAñoVal = p.ano;
+        }
+      } catch (error) {
+        console.error(`Error al obtener plan anual ${auditoria.planAnualId}:`, error);
+      }
+    }
+
+    serialized.planAnualInicio = planAnualInicio;
+    serialized.planAnualFin = planAnualFin;
+    serialized.planAnualAñoVal = planAnualAñoVal;
 
     return serialized;
   }
@@ -3787,11 +3830,21 @@ export class AuditoriasService {
         return [];
       }
 
-      return profesionalesOCIG.map((p: any) => ({
+      // Filter out professionals whose name could not be resolved
+      const conNombre = profesionalesOCIG.filter((p: any) => {
+        const nombre = (p.nombre || '').trim();
+        return nombre && nombre !== 'Sin Nombre' && nombre !== 'Usuario Sin Nombre';
+      });
+
+      if (conNombre.length < profesionalesOCIG.length) {
+        console.warn(`[obtenerPersonasDisponibles] ${profesionalesOCIG.length - conNombre.length} profesional(es) OCIG sin nombre resuelto (se ocultan del dropdown)`);
+      }
+
+      return conNombre.map((p: any) => ({
         id: String(p.idTercero),
-        idPersona: Number(p.idTercero),
-        nombre: p.nombre || 'Usuario Sin Nombre',
-        iniciales: this.getIniciales(p.nombre || 'US'),
+        idPersona: p.idTercero,
+        nombre: p.nombre,
+        iniciales: this.getIniciales(p.nombre || 'NN'),
         tipoIdentificacion: 'CC',
         numeroIdentificacion: p.identificacion || '',
         email: p.email || '',

@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Upload, Download, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 
 const getDocumentosBaseUrl = () => {

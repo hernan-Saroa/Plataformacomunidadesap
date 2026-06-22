@@ -31,6 +31,7 @@ export interface CreateSeccionalData {
   codSeccional?: string;
   nomSeccional: string;
   ordenVisualizacion?: number;
+  idUbiSeccional?: number;
   activo?: boolean;
 }
 
@@ -38,6 +39,7 @@ export interface UpdateSeccionalData {
   codSeccional?: string;
   nomSeccional?: string;
   ordenVisualizacion?: number;
+  idUbiSeccional?: number;
   activo?: boolean;
 }
 
@@ -45,6 +47,7 @@ export interface CreateSedeData {
   codSede?: string;
   nomSede: string;
   idSeccional?: number;
+  idGeopolitica?: number;
   tipo?: string;
   latitud?: number;
   longitud?: number;
@@ -55,6 +58,7 @@ export interface UpdateSedeData {
   codSede?: string;
   nomSede?: string;
   idSeccional?: number;
+  idGeopolitica?: number;
   tipo?: string;
   latitud?: number;
   longitud?: number;
@@ -306,6 +310,14 @@ export const estructuraService = {
     return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
   },
 
+  /**
+   * Marca un periodo académico como activo (estado "en_curso") en todo el sistema.
+   * El backend archiva automáticamente los demás periodos.
+   */
+  async marcarPeriodoActivo(id: string): Promise<any> {
+    return apiClient.patch<any>(`/pta/api/v1/periodos-academicos/${id}`, { estado: 'en_curso' });
+  },
+
   async importarEstructura(file: File, dryRun: boolean, skipInvalid: boolean = false, periodo?: string): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
@@ -315,8 +327,47 @@ export const estructuraService = {
       url += `&periodo=${encodeURIComponent(periodo)}`;
     }
 
-    // No forzar Content-Type — el navegador lo setea automáticamente con el boundary correcto para FormData
-    return apiClient.post<any>(url, formData);
+    return apiClient.upload<any>(url, formData);
+  },
+
+  async descargarPlantillaEstructura(): Promise<Blob> {
+    return apiClient.getBlob(
+      `${SERVICE_PREFIX}/estructura-import/template`,
+      undefined,
+      { retries: 0 },
+    );
+  },
+
+  async obtenerEstadoSedesPeriodo(periodoCodigo: string): Promise<{
+    data: {
+      periodoCodigo: string;
+      idSedesActivas: number[];
+      totalActivas: number;
+    };
+  }> {
+    return apiClient.get(
+      `${SERVICE_PREFIX}/estructura-organizacional/periodo/${encodeURIComponent(periodoCodigo)}/sedes-estado`,
+      undefined,
+      { retries: 0 },
+    );
+  },
+
+  async toggleSedePeriodStatus(idSede: number, periodoCodigo: string, activo: boolean): Promise<any> {
+    return apiClient.patch<any>(`${SERVICE_PREFIX}/estructura-organizacional/sedes/${idSede}/periodo`, {
+      periodoCodigo,
+      activo,
+    });
+  },
+
+  /**
+   * Activa/desactiva en bloque varias sedes (o todas si se omite idSedes) en un periodo.
+   */
+  async bulkToggleSedePeriodStatus(periodoCodigo: string, activo: boolean, idSedes?: number[]): Promise<any> {
+    return apiClient.patch<any>(`${SERVICE_PREFIX}/estructura-organizacional/periodo/sedes-bulk`, {
+      periodoCodigo,
+      activo,
+      idSedes,
+    });
   },
 };
 

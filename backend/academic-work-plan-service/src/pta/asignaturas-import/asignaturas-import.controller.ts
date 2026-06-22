@@ -12,7 +12,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AsignaturasImportService } from './asignaturas-import.service';
-import { ExcelParserService } from './parsers/excel-parser.service';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 
@@ -33,23 +32,6 @@ export class AsignaturasImportController {
   ) {
     if (!file) {
       throw new BadRequestException('Se requiere un archivo Excel en el campo "file".');
-    }
-
-    // PRERREQUISITO: Verificar que la estructura geográfica esté cargada
-    try {
-      const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-      const response = await fetch(`${authUrl}/estructura-import/status`);
-      if (response.ok) {
-        const statusData = await response.json();
-        if (!statusData.isReady) {
-          throw new BadRequestException(
-            `Prerrequisito fallido: La estructura geográfica no está completa. Faltan DTs o CETAPs. (DTs: ${statusData.direcciones_territoriales}/17, CETAPs: ${statusData.cetaps}/288)`
-          );
-        }
-      }
-    } catch (e: any) {
-      if (e instanceof BadRequestException) throw e;
-      console.warn(`No se pudo verificar el estado de la estructura geográfica: ${e.message}`);
     }
 
     const dryRun = dryRunQuery === 'true';

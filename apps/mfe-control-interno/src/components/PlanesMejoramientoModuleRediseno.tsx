@@ -44,7 +44,7 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
-import { controlInternoService } from '../../services/api/controlInternoService';
+import { controlInternoService } from '../../../services/api/controlInternoService';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 

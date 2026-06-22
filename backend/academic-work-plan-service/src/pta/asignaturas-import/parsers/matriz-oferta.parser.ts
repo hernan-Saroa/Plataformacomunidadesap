@@ -3,19 +3,21 @@ import * as xlsx from 'xlsx';
 
 export interface OfertaMatrizResult {
   codigo_cetap: string;
+  nombre_cetap: string;
+  codigo_dt: string;
   nombre_dt: string;
-  programas_ofertados: string[]; // Códigos de programa (PRO-001, PRO-002, etc.)
+  programas_ofertados: string[];
+}
+
+export interface MatrizOfertaParseResult {
+  ofertas: OfertaMatrizResult[];
+  programCodes: string[];
 }
 
 export class MatrizOfertaParser {
-  /**
-   * Extrae la grilla de CETAPs vs Programas de la hoja MATRIZ_OFERTA
-   * @param workbook Libro de Excel
-   * @returns Array de objetos indicando en qué programas se ofertan por cada CETAP
-   */
-  static parse(workbook: xlsx.WorkBook): OfertaMatrizResult[] {
-    const sheetName = workbook.SheetNames.find((name) =>
-      name.toUpperCase() === 'MATRIZ_OFERTA'
+  static parse(workbook: xlsx.WorkBook): MatrizOfertaParseResult {
+    const sheetName = workbook.SheetNames.find(
+      (name) => name.toUpperCase() === 'MATRIZ_OFERTA',
     );
 
     if (!sheetName) {
@@ -23,56 +25,143 @@ export class MatrizOfertaParser {
     }
 
     const sheet = workbook.Sheets[sheetName];
-    // sheet_to_json con header: 1 devuelve un array de arrays (filas y columnas crudas)
-    const rows = xlsx.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null });
+    const rows = xlsx.utils.sheet_to_json<any[]>(sheet, {
+      header: 1,
+      defval: null,
+    });
 
-    if (rows.length < 3) {
-      throw new BadRequestException('La hoja MATRIZ_OFERTA no tiene la estructura correcta (mínimo 3 filas esperadas).');
+    if (rows.length < 2) {
+      throw new BadRequestException(
+        'La hoja MATRIZ_OFERTA debe contener encabezados y al menos una fila de datos.',
+      );
     }
 
-    // Fila 0: Contiene los códigos de programas desde la columna 4 (índice 4) en adelante.
-    // Ejemplo: [ 'codigo_cetap', 'nombre_cetap', 'codigo_dt', 'nombre_dt', 'PRO-001', 'PRO-002', ... ]
-    const headerRow = rows[0];
-    
-    // Identificar las columnas de programas
-    const programColumns: { colIndex: number; codigo_programa: string }[] = [];
+    const headerRow = rows[0].map((value) => String(value ?? '').trim());
+    const requiredBaseHeaders = [
+      'codigo_cetap',
+      'nombre_cetap',
+      'codigo_dt',
+      'nombre_dt',
+    ];
+    const actualBaseHeaders = headerRow
+      .slice(0, 4)
+      .map((value) => value.toLowerCase());
+
+    if (
+      requiredBaseHeaders.some(
+        (header, index) => actualBaseHeaders[index] !== header,
+      )
+    ) {
+      throw new BadRequestException(
+        `La hoja MATRIZ_OFERTA debe iniciar con estas columnas y en este orden: ${requiredBaseHeaders.join(', ')}.`,
+      );
+    }
+
+    const programColumns: {
+      colIndex: number;
+      codigo_programa: string;
+    }[] = [];
+    const programCodes = new Set<string>();
+
     for (let col = 4; col < headerRow.length; col++) {
-      const val = headerRow[col];
-      if (val && String(val).trim().startsWith('PRO-')) {
-        programColumns.push({
-          colIndex: col,
-          codigo_programa: String(val).trim(),
-        });
+      const code = headerRow[col];
+      if (!code) continue;
+      if (!code.toUpperCase().startsWith('PRO-')) {
+        throw new BadRequestException(
+          `MATRIZ_OFERTA: la columna ${col + 1} debe contener un código de programa que inicie por "PRO-"; se recibió "${code}".`,
+        );
       }
+
+      const normalizedCode = code.toUpperCase();
+      if (programCodes.has(normalizedCode)) {
+        throw new BadRequestException(
+          `MATRIZ_OFERTA: el programa "${code}" aparece en más de una columna.`,
+        );
+      }
+
+      programCodes.add(normalizedCode);
+      programColumns.push({ colIndex: col, codigo_programa: code });
     }
 
-    const result: OfertaMatrizResult[] = [];
+    if (programColumns.length === 0) {
+      throw new BadRequestException(
+        'MATRIZ_OFERTA debe incluir al menos una columna de programa después de nombre_dt.',
+      );
+    }
 
-    // Fila 1 en adelante: CETAPs
+    const ofertas: OfertaMatrizResult[] = [];
+    const seenCetaps = new Set<string>();
+
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
+      const isCompletelyBlank = row.every(
+        (value) => value === null || String(value).trim() === '',
+      );
+      if (isCompletelyBlank) continue;
+
       const codigo_cetap = row[0] ? String(row[0]).trim() : '';
+      const nombre_cetap = row[1] ? String(row[1]).trim() : '';
+      const codigo_dt = row[2] ? String(row[2]).trim() : '';
       const nombre_dt = row[3] ? String(row[3]).trim() : '';
-      
-      // Si no hay código de cetap o es un separador (ej: ━━ SEDE_CENTRAL ━━), lo omitimos
-      if (!codigo_cetap || !codigo_cetap.startsWith('CET-')) continue;
+
+      if (!codigo_cetap) {
+        throw new BadRequestException(
+          `MATRIZ_OFERTA: falta codigo_cetap en la fila ${i + 1}.`,
+        );
+      }
+      if (!/^CET-[A-Z0-9-]+$/i.test(codigo_cetap)) {
+        throw new BadRequestException(
+          `MATRIZ_OFERTA: el código "${codigo_cetap}" de la fila ${i + 1} no tiene un formato CET- válido.`,
+        );
+      }
+
+      const normalizedCetap = codigo_cetap.toUpperCase();
+      if (seenCetaps.has(normalizedCetap)) {
+        throw new BadRequestException(
+          `MATRIZ_OFERTA: el CETAP "${codigo_cetap}" está duplicado.`,
+        );
+      }
+      seenCetaps.add(normalizedCetap);
+
+      if (!nombre_cetap || !codigo_dt || !nombre_dt) {
+        throw new BadRequestException(
+          `MATRIZ_OFERTA: la fila ${i + 1} debe incluir nombre_cetap, codigo_dt y nombre_dt.`,
+        );
+      }
 
       const programas_ofertados: string[] = [];
-
-      for (const progCol of programColumns) {
-        const cellValue = row[progCol.colIndex];
-        if (cellValue && String(cellValue).trim().toUpperCase() === 'X') {
-          programas_ofertados.push(progCol.codigo_programa);
+      for (const programColumn of programColumns) {
+        const cellValue = row[programColumn.colIndex];
+        const marker = String(cellValue ?? '').trim().toUpperCase();
+        if (marker === 'X') {
+          programas_ofertados.push(programColumn.codigo_programa);
+        } else if (marker !== '') {
+          throw new BadRequestException(
+            `MATRIZ_OFERTA: la celda de la fila ${i + 1} para ${programColumn.codigo_programa} debe estar vacía o contener "X"; se recibió "${cellValue}".`,
+          );
         }
       }
 
-      result.push({
+      ofertas.push({
         codigo_cetap,
+        nombre_cetap,
+        codigo_dt,
         nombre_dt,
         programas_ofertados,
       });
     }
 
-    return result;
+    if (ofertas.length === 0) {
+      throw new BadRequestException(
+        'MATRIZ_OFERTA no contiene filas de CETAP válidas.',
+      );
+    }
+
+    return {
+      ofertas,
+      programCodes: programColumns.map(
+        (column) => column.codigo_programa,
+      ),
+    };
   }
 }

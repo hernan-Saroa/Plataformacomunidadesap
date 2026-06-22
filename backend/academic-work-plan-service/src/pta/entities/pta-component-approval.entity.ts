@@ -15,8 +15,8 @@ export class PtaComponentApprovalEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // PlanTrabajoAcademico.id es TEXT, por eso pta_id es text (no uuid).
-  @Column({ name: 'pta_id', type: 'text' })
+  // PlanTrabajoAcademico.id es UUID, por lo que pta_id debe ser uuid.
+  @Column({ name: 'pta_id', type: 'uuid' })
   ptaId: string;
 
   @Column({ name: 'componente', type: 'varchar', length: 100 })

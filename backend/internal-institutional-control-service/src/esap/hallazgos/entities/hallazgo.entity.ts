@@ -10,9 +10,12 @@ import {
 import { Auditoria } from '../../auditorias/entities/auditoria.entity';
 
 export enum HallazgoCategoria {
+  LEVE = 'leve',
+  MODERADO = 'moderado',
+  GRAVE = 'grave',
   CRITICO = 'critico',
-  CONTROVERSIA = 'controversia',
-  BORRADOR = 'borrador',
+  BORRADOR = 'borrador', // Por clasificar
+  CONTROVERSIA = 'controversia', // Conservado para compatibilidad con registros antiguos
 }
 
 export enum HallazgoEstado {
@@ -118,6 +121,10 @@ export class Hallazgo {
   /** Nombre del archivo adjunto de controversia */
   @Column({ name: 'documento_controversia_nombre', type: 'varchar', length: 255, nullable: true })
   documentoControversiaNombre?: string;
+
+  /** Turno de respuesta de la controversia: auditor | auditado */
+  @Column({ name: 'controversia_turno', type: 'varchar', length: 50, nullable: true })
+  controversiaTurno?: 'auditor' | 'auditado' | null;
 
   /** Decisión del auditor: ratificado | modificado | retirado */
   @Column({ name: 'decision_auditor', type: 'varchar', length: 50, nullable: true })

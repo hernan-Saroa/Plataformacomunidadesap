@@ -73,6 +73,8 @@ export interface TipoDocumentoRequerido {
   icono?: string;
   completado: boolean;
   documento?: CarpetaDocumento | null;
+  /** true cuando el tipo está asociado a la carpeta de un docente específico (no es general). */
+  esEspecifico?: boolean;
 }
 
 export interface PersonaInfo {
@@ -343,6 +345,14 @@ function TipoDocCard({ tipo, docs, onUpload, onUploadDirect, onSelectDoc }: {
           position: 'absolute', top: -4, right: -4, width: 12, height: 12,
           background: '#EF4444', borderRadius: '50%', border: '2px solid white', zIndex: 10,
         }} title="Requerido" />
+      )}
+
+      {tipo.esEspecifico && (
+        <div style={{
+          position: 'absolute', top: -7, left: 8, padding: '1px 7px', borderRadius: 6, zIndex: 10,
+          background: '#7C3AED', color: '#fff', fontSize: 8.5, fontWeight: 800, letterSpacing: '0.02em',
+          border: '1.5px solid white', textTransform: 'uppercase',
+        }} title="Documento específico para este docente (no general)">Específico</div>
       )}
 
       {hasDoc && latestDoc ? (

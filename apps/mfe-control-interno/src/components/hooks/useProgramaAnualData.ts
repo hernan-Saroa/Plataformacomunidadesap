@@ -13,7 +13,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useKanbanConfig } from '../context/KanbanConfigContext';

@@ -11,7 +11,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { toast } from 'sonner';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -279,6 +279,13 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     supervisorAsignado: (auditoria as any).supervisorAsignado || (auditoria as any).supervisor,
     // ✅ Fecha de última modificación (sirve como "fecha de cambio de etapa")
     updatedAt: auditoria.updatedAt,
+    // ✅ Propagar responsables para Excel/UI
+    responsableAreaNombre: (auditoria as any).responsableAreaNombre,
+    responsableAreaCargo: (auditoria as any).responsableAreaCargo,
+    responsableAreaEmail: (auditoria as any).responsableAreaEmail,
+    responsable: (auditoria as any).responsable,
+    responsables: (auditoria as any).responsables,
+    responsableArea: (auditoria as any).responsableArea,
   };
 }
 
@@ -318,6 +325,14 @@ export interface AuditoriaUI {
   supervisorAsignado?: string;
   /** Fecha última modificación del backend (útil como fecha de corte de cambio de etapa Kanban) */
   updatedAt?: string;
+
+  // ✅ Responsables del área auditada
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
+  responsable?: string;
+  responsables?: any;
+  responsableArea?: any;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
