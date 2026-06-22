@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { controlInternoService } from '../../../../services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { auditoresApi } from './plan-anual/api';
 
 // ═══════════════════════════════════════════════════════════════════════════

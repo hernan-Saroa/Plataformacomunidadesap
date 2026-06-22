@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Like, Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
+import { EntityManager, Like, QueryFailedError, Repository } from 'typeorm';
 import { ProgramaAcademico } from './programa.entity';
 import { Asignatura } from './asignatura.entity';
 import { CreateProgramaDto, UpdateProgramaDto } from './programa.dto';
@@ -18,6 +25,8 @@ export interface ProgramasFiltroDto {
 
 @Injectable()
 export class ProgramasService {
+  private readonly logger = new Logger(ProgramasService.name);
+
   constructor(
     @InjectRepository(ProgramaAcademico)
     private readonly programaRepo: Repository<ProgramaAcademico>,
@@ -75,12 +84,20 @@ export class ProgramasService {
     if (search) qb.andWhere('p.nombre ILIKE :search', { search: `%${search}%` });
 
     if (filtros.periodoAcademico) {
-      qb.andWhere(`EXISTS (
-        SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
-        JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
-        WHERE ocp.id_programa = p.id
-          AND ocp.activa = TRUE
-          AND pa.codigo = :periodo
+      qb.andWhere(`(
+        EXISTS (
+          SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+          JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
+          WHERE ocp.id_programa = p.id
+            AND ocp.activa = TRUE
+            AND pa.codigo = :periodo
+        )
+        OR NOT EXISTS (
+          SELECT 1
+          FROM academic_work_plan.oferta_cetap_programa ocp_any
+          WHERE ocp_any.id_programa = p.id
+            AND ocp_any.activa = TRUE
+        )
       )`, { periodo: filtros.periodoAcademico });
     }
 
@@ -94,9 +111,24 @@ export class ProgramasService {
 
     const nivelFormacionMap: Record<string, string> = {
       pregrado: 'Pregrado',
+      tecnico_profesional: 'Técnico Profesional',
+      tecnologico: 'Tecnológico',
       especializacion: 'Especialización',
       maestria: 'Maestría',
+      doctorado: 'Doctorado',
     };
+
+    const facultadRows = data.length > 0
+      ? await this.programaRepo.query(
+          `SELECT id, nombre
+           FROM academic_work_plan.facultad
+           WHERE id = ANY($1::bigint[])`,
+          [data.map((programa) => programa.idFacultad)],
+        )
+      : [];
+    const facultadesPorId = new Map(
+      facultadRows.map((facultad: any) => [String(facultad.id), facultad.nombre]),
+    );
 
     // Enrich data with calculated plan de estudios stats and compatibility fields
     const enrichedData = await Promise.all(
@@ -128,7 +160,7 @@ export class ProgramasService {
           cetapParams
         );
 
-        let sedeLabel = 'Sede Central';
+        let sedeLabel = 'Sin oferta asignada';
         if (cetapsRes && cetapsRes.length > 0) {
           if (cetapsRes.length === 1) {
             sedeLabel = cetapsRes[0].nombre;
@@ -166,7 +198,7 @@ export class ProgramasService {
           duracion: 10,
           creditos: parseInt(asignaturasStats?.creditos_plan || '0'),
           sede: sedeLabel,
-          facultad: programa.tipo === 'pregrado' ? 'Pregrado' : 'Postgrados',
+          facultad: facultadesPorId.get(String(programa.idFacultad)) || 'Sin facultad',
           totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
           creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
           estudiantesActivos: cetapsList.reduce((acc: number, c: any) => acc + (c.estudiantes || 0), 0),
@@ -209,8 +241,11 @@ export class ProgramasService {
 
     const nivelFormacionMap: Record<string, string> = {
       pregrado: 'Pregrado',
+      tecnico_profesional: 'Técnico Profesional',
+      tecnologico: 'Tecnológico',
       especializacion: 'Especialización',
       maestria: 'Maestría',
+      doctorado: 'Doctorado',
     };
 
     const cetapsRes = await this.programaRepo.query(
@@ -223,7 +258,7 @@ export class ProgramasService {
       [programa.id]
     );
 
-    let sedeLabel = 'Sede Central';
+    let sedeLabel = 'Sin oferta asignada';
     if (cetapsRes && cetapsRes.length > 0) {
       if (cetapsRes.length === 1) {
         sedeLabel = cetapsRes[0].nombre;
@@ -231,6 +266,11 @@ export class ProgramasService {
         sedeLabel = `${cetapsRes[0].nombre} y ${cetapsRes.length - 1} CETAPs más`;
       }
     }
+
+    const facultadRows = await this.programaRepo.query(
+      'SELECT nombre FROM academic_work_plan.facultad WHERE id = $1 LIMIT 1',
+      [programa.idFacultad],
+    );
 
     return {
       ...programa,
@@ -240,7 +280,7 @@ export class ProgramasService {
       duracion: 10,
       creditos: parseInt(asignaturasStats?.creditos_plan || '0'),
       sede: sedeLabel,
-      facultad: programa.tipo === 'pregrado' ? 'Pregrado' : 'Postgrados',
+      facultad: facultadRows[0]?.nombre || 'Sin facultad',
       totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
       creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
       estudiantesActivos: cetapsRes ? cetapsRes.reduce((acc: number, c: any) => acc + (parseInt(c.cupos_estimados) || 0), 0) : 0,
@@ -251,42 +291,48 @@ export class ProgramasService {
   }
 
   async crearPrograma(dto: CreateProgramaDto): Promise<ProgramaAcademico> {
-    // Ensure default faculty exists or use '1'
-    let idFacultad = '1';
-    try {
-      const dbFaculties = await this.programaRepo.query('SELECT id FROM academic_work_plan.facultad LIMIT 1');
-      if (dbFaculties && dbFaculties.length > 0) {
-        idFacultad = dbFaculties[0].id.toString();
-      } else {
-        const insertRes = await this.programaRepo.query(
-          "INSERT INTO academic_work_plan.facultad (codigo, nombre, activo) VALUES ('DEF', 'Facultad Defecto', true) RETURNING id"
-        );
-        idFacultad = insertRes[0].id.toString();
-      }
-    } catch (e) {
-      console.warn('Error fetching/creating default facultad, using "1"', e);
+    const codigo = dto.codigo?.trim().toUpperCase();
+    const nombre = dto.nombre?.trim();
+
+    if (!codigo || !nombre) {
+      throw new BadRequestException('El código y el nombre del programa son obligatorios.');
     }
 
-    const randomSuffix = Math.random().toString(36).substring(2, 6);
-    const levelLower = (dto.nivelFormacion || '').toLowerCase();
-    const tipo = levelLower.includes('maes') ? 'maestria' : levelLower.includes('esp') ? 'especializacion' : 'pregrado';
-    const modLower = (dto.modalidad || '').toLowerCase();
-    const modalidad = modLower.includes('dist') ? 'distancia' : modLower.includes('mix') ? 'mixto' : 'presencial';
+    const existente = await this.programaRepo.query(
+      `SELECT id
+       FROM academic_work_plan.programa
+       WHERE LOWER(codigo) = LOWER($1)
+       LIMIT 1`,
+      [codigo],
+    );
 
-    const programa = this.programaRepo.create({
-      codigo: dto.codigo,
-      nombre: dto.nombre,
-      nombreExcel: `${dto.nombre.substring(0, 90)}_${randomSuffix}`,
-      nombreCorto: `${dto.nombre.substring(0, 24)}_${randomSuffix}`,
-      idFacultad,
-      tipo,
-      modalidad,
-      horasBasePorCredito: dto.horasBasePorCredito ?? 16,
-      horasPregradoCentral: dto.horasPregradoCentral ?? null,
-      activo: dto.estado !== 'INACTIVO',
-    });
+    if (existente.length > 0) {
+      throw new ConflictException(`Ya existe un programa con el código ${codigo}.`);
+    }
 
-    return await this.programaRepo.save(programa);
+    try {
+      return await this.programaRepo.manager.transaction(async (manager) => {
+        const idFacultad = await this.resolverFacultad(manager, dto.facultad);
+        const suffix = randomUUID().replace(/-/g, '').slice(0, 8);
+
+        const programa = manager.create(ProgramaAcademico, {
+          codigo,
+          nombre,
+          nombreExcel: `${nombre.substring(0, 91)}_${suffix}`,
+          nombreCorto: `${nombre.substring(0, 21)}_${suffix}`,
+          idFacultad,
+          tipo: this.mapearTipoPrograma(dto.nivelFormacion),
+          modalidad: this.mapearModalidad(dto.modalidad),
+          horasBasePorCredito: dto.horasBasePorCredito ?? 16,
+          horasPregradoCentral: dto.horasPregradoCentral ?? null,
+          activo: this.mapearEstadoActivo(dto.estado),
+        });
+
+        return manager.save(programa);
+      });
+    } catch (error) {
+      this.rethrowProgramaError(error, codigo);
+    }
   }
 
   async actualizarPrograma(id: string, dto: UpdateProgramaDto): Promise<ProgramaAcademico> {
@@ -295,23 +341,198 @@ export class ProgramasService {
       throw new NotFoundException(`Programa con ID ${id} no encontrado`);
     }
 
-    if (dto.codigo) programa.codigo = dto.codigo;
-    if (dto.nombre) programa.nombre = dto.nombre;
+    if (dto.codigo) {
+      const codigo = dto.codigo.trim().toUpperCase();
+      const duplicado = await this.programaRepo.query(
+        `SELECT id
+         FROM academic_work_plan.programa
+         WHERE LOWER(codigo) = LOWER($1) AND id <> $2
+         LIMIT 1`,
+        [codigo, id],
+      );
+      if (duplicado.length > 0) {
+        throw new ConflictException(`Ya existe un programa con el código ${codigo}.`);
+      }
+      programa.codigo = codigo;
+    }
+    if (dto.nombre) programa.nombre = dto.nombre.trim();
     if (dto.nivelFormacion) {
-      const levelLower = dto.nivelFormacion.toLowerCase();
-      programa.tipo = levelLower.includes('maes') ? 'maestria' : levelLower.includes('esp') ? 'especializacion' : 'pregrado';
+      programa.tipo = this.mapearTipoPrograma(dto.nivelFormacion);
     }
     if (dto.modalidad) {
-      const modLower = dto.modalidad.toLowerCase();
-      programa.modalidad = modLower.includes('dist') ? 'distancia' : modLower.includes('mix') ? 'mixto' : 'presencial';
+      programa.modalidad = this.mapearModalidad(dto.modalidad);
     }
     if (dto.horasBasePorCredito !== undefined) programa.horasBasePorCredito = dto.horasBasePorCredito;
     if (dto.horasPregradoCentral !== undefined) programa.horasPregradoCentral = dto.horasPregradoCentral;
     if (dto.estado) {
-      programa.activo = dto.estado !== 'INACTIVO';
+      programa.activo = this.mapearEstadoActivo(dto.estado);
     }
 
-    return await this.programaRepo.save(programa);
+    try {
+      if (dto.facultad) {
+        programa.idFacultad = await this.programaRepo.manager.transaction(
+          (manager) => this.resolverFacultad(manager, dto.facultad),
+        );
+      }
+      return await this.programaRepo.save(programa);
+    } catch (error) {
+      this.rethrowProgramaError(error, programa.codigo);
+    }
+  }
+
+  private normalizarTexto(value?: string): string {
+    return (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private mapearTipoPrograma(nivelFormacion?: string): string {
+    const nivel = this.normalizarTexto(nivelFormacion);
+    if (nivel.includes('doctor')) return 'doctorado';
+    if (nivel.includes('maestr')) return 'maestria';
+    if (nivel.includes('especial')) return 'especializacion';
+    if (nivel.includes('tecnolog')) return 'tecnologico';
+    if (nivel.includes('tecnico')) return 'tecnico_profesional';
+    return 'pregrado';
+  }
+
+  private mapearModalidad(modalidad?: string): string {
+    const valor = this.normalizarTexto(modalidad);
+    if (valor.includes('dist')) return 'distancia';
+    if (valor.includes('mix')) return 'mixto';
+    return 'presencial';
+  }
+
+  private mapearEstadoActivo(estado?: string): boolean {
+    return this.normalizarTexto(estado || 'activo') === 'activo';
+  }
+
+  private crearCodigoFacultad(nombre: string, intento = 0): string {
+    const base = nombre
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 14) || 'GENERAL';
+    const suffix = intento > 0 ? `-${intento}` : '';
+    return `FAC-${base}`.slice(0, 20 - suffix.length) + suffix;
+  }
+
+  private async resolverFacultad(
+    manager: EntityManager,
+    facultadIngresada?: string,
+  ): Promise<string> {
+    const nombre = facultadIngresada?.trim();
+
+    if (nombre) {
+      const existente = await manager.query(
+        `SELECT id
+         FROM academic_work_plan.facultad
+         WHERE LOWER(nombre) = LOWER($1) OR LOWER(codigo) = LOWER($1)
+         LIMIT 1`,
+        [nombre],
+      );
+      if (existente.length > 0) {
+        return String(existente[0].id);
+      }
+
+      for (let intento = 0; intento < 20; intento += 1) {
+        try {
+          const creada = await manager.query(
+            `INSERT INTO academic_work_plan.facultad (codigo, nombre, activo)
+             VALUES ($1, $2, TRUE)
+             ON CONFLICT DO NOTHING
+             RETURNING id`,
+            [this.crearCodigoFacultad(nombre, intento), nombre],
+          );
+          if (creada.length > 0) {
+            return String(creada[0].id);
+          }
+
+          const creadaConcurrentemente = await manager.query(
+            `SELECT id
+             FROM academic_work_plan.facultad
+             WHERE LOWER(nombre) = LOWER($1)
+             LIMIT 1`,
+            [nombre],
+          );
+          if (creadaConcurrentemente.length > 0) {
+            return String(creadaConcurrentemente[0].id);
+          }
+        } catch (error) {
+          throw error;
+        }
+      }
+
+      throw new ConflictException('No fue posible generar un código único para la facultad.');
+    }
+
+    const primeraFacultad = await manager.query(
+      `SELECT id
+       FROM academic_work_plan.facultad
+       WHERE activo = TRUE
+       ORDER BY id
+       LIMIT 1`,
+    );
+    if (primeraFacultad.length > 0) {
+      return String(primeraFacultad[0].id);
+    }
+
+    const facultadDefecto = await manager.query(
+      `INSERT INTO academic_work_plan.facultad (codigo, nombre, activo)
+       VALUES ('DEF', 'Facultad por definir', TRUE)
+       ON CONFLICT (codigo) DO UPDATE SET activo = TRUE
+       RETURNING id`,
+    );
+    return String(facultadDefecto[0].id);
+  }
+
+  private rethrowProgramaError(error: unknown, codigo: string): never {
+    if (error instanceof BadRequestException || error instanceof ConflictException) {
+      throw error;
+    }
+
+    if (error instanceof QueryFailedError) {
+      const driverError = error.driverError as {
+        code?: string;
+        column?: string;
+        constraint?: string;
+        detail?: string;
+      };
+      this.logger.error(
+        `Error guardando programa ${codigo}. PostgreSQL code=${driverError.code || 'unknown'} constraint=${driverError.constraint || 'none'} column=${driverError.column || 'none'} detail=${driverError.detail || error.message}`,
+      );
+
+      if (driverError.code === '23505') {
+        throw new ConflictException(`Ya existe un programa con el código ${codigo}.`);
+      }
+      if (driverError.code === '23503') {
+        throw new BadRequestException('La facultad seleccionada no existe.');
+      }
+      if (driverError.code === '23502') {
+        throw new BadRequestException(
+          `Falta un dato obligatorio${driverError.column ? `: ${driverError.column}` : ''}.`,
+        );
+      }
+      if (driverError.code === '22001') {
+        throw new BadRequestException(
+          `Uno de los datos supera la longitud permitida${driverError.column ? `: ${driverError.column}` : ''}.`,
+        );
+      }
+      if (driverError.code === '23514') {
+        throw new BadRequestException('El nivel de formación o la modalidad no son válidos.');
+      }
+      if (driverError.code === '42P01' || driverError.code === '42703') {
+        throw new BadRequestException(
+          'La base de datos de programas académicos no está actualizada.',
+        );
+      }
+    }
+
+    throw error;
   }
 
   async eliminarPrograma(id: string): Promise<void> {
@@ -335,8 +556,6 @@ export class ProgramasService {
       ])
       .getRawMany();
 
-    console.log('RAW ASIGNATURA 0:', asignaturas[0]);
-
     return asignaturas.map(a => ({
       ...a,
       id: a.id,
@@ -353,7 +572,7 @@ export class ProgramasService {
       programaId: a.id_programa,
       semestre: String(a.id_ubicacion_semestral || 1),
       horas: (a.creditos || 3) * 48,
-      tipo: a.tipo_excepcion || 'obligatoria',
+      tipo: a.tipo_asignatura || 'teorica',
       nucleoTematico: a.nucleo_nombre || 'Sin definir',
     }));
   }
@@ -364,102 +583,287 @@ export class ProgramasService {
       throw new NotFoundException('Programa académico no encontrado');
     }
 
-    // Ensure default faculty exists or use '1'
-    let idFacultad = '1';
-    try {
-      const dbFaculties = await this.programaRepo.query('SELECT id FROM academic_work_plan.facultad LIMIT 1');
-      if (dbFaculties && dbFaculties.length > 0) {
-        idFacultad = dbFaculties[0].id.toString();
-      }
-    } catch (e) {
-      console.warn('Error fetching default facultad', e);
+    if (!Array.isArray(asignaturas)) {
+      throw new BadRequestException('La lista de asignaturas es obligatoria.');
     }
 
-    // Ensure default nucleo tematico exists for the program
-    let idNucleo = '1';
     try {
-      const dbNucleos = await this.programaRepo.query(
-        'SELECT id FROM academic_work_plan.nucleo_tematico WHERE id_programa = $1 LIMIT 1',
-        [programaId]
-      );
-      if (dbNucleos && dbNucleos.length > 0) {
-        idNucleo = dbNucleos[0].id.toString();
-      } else {
-        const insertRes = await this.programaRepo.query(
-          "INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, id_programa, activo) VALUES ($1, $2, $3, true) RETURNING id",
-          [`NUC_${programa.codigo}`, `Núcleo ${programa.nombre}`, programaId]
+      await this.programaRepo.manager.transaction(async (manager) => {
+        const asignaturaRepo = manager.getRepository(Asignatura);
+        const existentes = await asignaturaRepo.find({ where: { programaId } });
+        const existentesPorId = new Map(
+          existentes.map((asignatura) => [asignatura.id, asignatura]),
         );
-        idNucleo = insertRes[0].id.toString();
-      }
-    } catch (e) {
-      console.warn('Error fetching/creating default nucleo_tematico', e);
-    }
+        const enviadosIds = new Set<string>();
+        const codigosPayload = new Set<string>();
 
-    const existentes = await this.asignaturaRepo.find({ where: { programaId } });
-    const existentesIds = new Set(existentes.map(a => a.id));
-    const enviadosIds = new Set(asignaturas.map(a => a.id).filter(id => id && !id.startsWith('asig-')));
+        for (let index = 0; index < asignaturas.length; index += 1) {
+          const data = asignaturas[index] || {};
+          const numeroFila = index + 1;
+          const id = String(data.id || '');
+          const esNueva = !id || id.startsWith('asig-');
+          const nombre = String(data.nombre || '').trim();
+          const codigo = String(data.codigo || '').trim().toUpperCase()
+            || this.crearCodigoAsignatura();
+          const creditos = Number(data.creditos);
+          const semestre = Number(data.semestre || data.semestreId || 1);
 
-    for (const existente of existentes) {
-      if (!enviadosIds.has(existente.id)) {
-        await this.asignaturaRepo.remove(existente);
-      }
-    }
-
-    for (const asigData of asignaturas) {
-      const { id, ...data } = asigData;
-
-      const semNum = data.semestre ? parseInt(data.semestre, 10) : 1;
-      // Ensure we have a valid ubicacion_semestral ID
-      let semestreId = semNum;
-      if (semNum > 0) {
-        try {
-          const dbSem = await this.programaRepo.query(
-            'SELECT id FROM academic_work_plan.ubicacion_semestral WHERE id = $1 LIMIT 1',
-            [semNum]
-          );
-          if (!dbSem || dbSem.length === 0) {
-            // Seed a default one if not exists
-            await this.programaRepo.query(
-              `INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden)
-               VALUES ($1, $2, $3, $4, $1) ON CONFLICT DO NOTHING`,
-              [semNum, `SEM_${semNum}`, `Semestre ${semNum}`, programa.tipo === 'pregrado' ? 'pregrado' : 'posgrado']
+          if (!nombre) {
+            throw new BadRequestException(
+              `La asignatura ${numeroFila} no tiene nombre.`,
             );
           }
-        } catch (e) {
-          console.warn('Error checking/seeding ubicacion_semestral', e);
+          if (nombre.length > 200) {
+            throw new BadRequestException(
+              `El nombre de la asignatura "${nombre}" supera los 200 caracteres.`,
+            );
+          }
+          if (codigo.length > 20) {
+            throw new BadRequestException(
+              `El código "${codigo}" supera los 20 caracteres permitidos.`,
+            );
+          }
+          if (!Number.isInteger(creditos) || creditos < 1 || creditos > 20) {
+            throw new BadRequestException(
+              `Los créditos de "${nombre}" deben ser un número entero entre 1 y 20.`,
+            );
+          }
+          if (!Number.isInteger(semestre) || semestre < 1 || semestre > 16) {
+            throw new BadRequestException(
+              `El semestre de "${nombre}" debe estar entre 1 y 16.`,
+            );
+          }
+
+          const codigoNormalizado = codigo.toLowerCase();
+          if (codigosPayload.has(codigoNormalizado)) {
+            throw new ConflictException(
+              `El código de asignatura ${codigo} está repetido en el plan de estudios.`,
+            );
+          }
+          codigosPayload.add(codigoNormalizado);
+
+          if (!esNueva) {
+            if (!existentesPorId.has(id)) {
+              throw new BadRequestException(
+                `La asignatura con ID ${id} no pertenece a este programa.`,
+              );
+            }
+            enviadosIds.add(id);
+          }
+
+          await this.asegurarSemestre(
+            manager,
+            semestre,
+            programa.tipo === 'pregrado'
+              || programa.tipo === 'tecnico_profesional'
+              || programa.tipo === 'tecnologico'
+              ? 'pregrado'
+              : 'posgrado',
+          );
+
+          const nucleoTematicoId = await this.resolverNucleoTematico(
+            manager,
+            programaId,
+            data.nucleoTematicoId,
+            data.nucleoTematico,
+          );
+          const tipoExcepcion = this.mapearTipoExcepcion(
+            data.tipoExcepcion ?? data.tipo_excepcion,
+          );
+          const asignaturaData = {
+            programaId,
+            nombre,
+            codigo,
+            creditos,
+            semestreId: semestre,
+            nucleoTematicoId,
+            facultadId: programa.idFacultad,
+            modalidad: this.mapearModalidadAsignatura(data.modalidad),
+            tipoAsignatura: this.mapearTipoAsignatura(data.tipo),
+            tipoExcepcion,
+            horasFijasPta: this.horasFijasPorExcepcion(tipoExcepcion),
+            activa: data.activa !== false,
+          };
+
+          if (esNueva) {
+            await asignaturaRepo.save(asignaturaRepo.create(asignaturaData));
+          } else {
+            await asignaturaRepo.update(id, asignaturaData);
+          }
         }
-      }
 
-      const modStr = (data.modalidad || '').toLowerCase();
-      let modalidad = 'sin_definir';
-      if (modStr.includes('presencial')) modalidad = 'presencial';
-      else if (modStr.includes('distancia')) modalidad = 'distancia';
-      else if (modStr.includes('virtual')) modalidad = 'virtual';
-      else if (modStr.includes('mixto') || modStr.includes('hibrid')) modalidad = 'mixto';
+        const idsAEliminar = existentes
+          .filter((asignatura) => !enviadosIds.has(asignatura.id))
+          .map((asignatura) => asignatura.id);
+        if (idsAEliminar.length > 0) {
+          await asignaturaRepo.delete(idsAEliminar);
+        }
+      });
 
-      const asignaturaData = {
-        programaId,
-        nombre: data.nombre,
-        codigo: data.codigo || `ASIG_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-        creditos: data.creditos || 3,
-        semestreId,
-        nucleoTematicoId: idNucleo,
-        facultadId: idFacultad,
-        modalidad,
-        tipoExcepcion: data.tipo && data.tipo !== 'obligatoria' ? data.tipo : null,
-        horasFijasPta: data.horas || null,
-        activa: true,
-      };
+      return this.obtenerAsignaturasPrograma(programaId);
+    } catch (error) {
+      this.rethrowAsignaturasError(error);
+    }
+  }
 
-      if (id && !id.startsWith('asig-')) {
-        await this.asignaturaRepo.update(id, asignaturaData);
-      } else {
-        const nuevaAsignatura = this.asignaturaRepo.create(asignaturaData);
-        await this.asignaturaRepo.save(nuevaAsignatura);
+  private crearCodigoAsignatura(): string {
+    return `ASG-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+  }
+
+  private async asegurarSemestre(
+    manager: EntityManager,
+    semestre: number,
+    tipoPrograma: 'pregrado' | 'posgrado',
+  ): Promise<void> {
+    await manager.query(
+      `INSERT INTO academic_work_plan.ubicacion_semestral
+         (id, codigo, etiqueta, tipo_programa, orden)
+       VALUES ($1, $2, $3, $4, $1)
+       ON CONFLICT (id) DO NOTHING`,
+      [semestre, `SEM_${semestre}`, `Semestre ${semestre}`, tipoPrograma],
+    );
+  }
+
+  private async resolverNucleoTematico(
+    manager: EntityManager,
+    programaId: string,
+    nucleoId?: string,
+    nucleoNombre?: string,
+  ): Promise<string> {
+    if (nucleoId && /^\d+$/.test(String(nucleoId))) {
+      const existentePorId = await manager.query(
+        `SELECT id
+         FROM academic_work_plan.nucleo_tematico
+         WHERE id = $1 AND id_programa = $2 AND activo = TRUE
+         LIMIT 1`,
+        [nucleoId, programaId],
+      );
+      if (existentePorId.length > 0) {
+        return String(existentePorId[0].id);
       }
     }
 
-    return this.obtenerAsignaturasPrograma(programaId);
+    const nombre = String(nucleoNombre || 'General').trim() || 'General';
+    if (nombre.length > 100) {
+      throw new BadRequestException(
+        `El núcleo temático "${nombre}" supera los 100 caracteres.`,
+      );
+    }
+
+    const existentePorNombre = await manager.query(
+      `SELECT id
+       FROM academic_work_plan.nucleo_tematico
+       WHERE LOWER(nombre) = LOWER($1)
+         AND id_programa = $2
+         AND activo = TRUE
+       LIMIT 1`,
+      [nombre, programaId],
+    );
+    if (existentePorNombre.length > 0) {
+      return String(existentePorNombre[0].id);
+    }
+
+    const creado = await manager.query(
+      `INSERT INTO academic_work_plan.nucleo_tematico
+         (codigo, nombre, id_programa, activo)
+       VALUES ($1, $2, $3, TRUE)
+       RETURNING id`,
+      [
+        `NUC-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`,
+        nombre,
+        programaId,
+      ],
+    );
+    return String(creado[0].id);
+  }
+
+  private mapearModalidadAsignatura(value?: string): string {
+    const modalidad = this.normalizarTexto(value);
+    if (modalidad.includes('noche')) return 'presencial_noche';
+    if (modalidad.includes('dia') || modalidad.includes('diurna')) return 'presencial_dia';
+    if (modalidad.includes('presencial')) return 'presencial';
+    if (modalidad.includes('virtual')) return 'virtual';
+    if (modalidad.includes('distancia')) return 'distancia';
+    if (modalidad.includes('mixt') || modalidad.includes('hibrid')) return 'mixta';
+    return 'sin_definir';
+  }
+
+  private mapearTipoAsignatura(value?: string): string {
+    const tipo = this.normalizarTexto(value);
+    const permitidos = ['teorica', 'practica', 'taller', 'seminario', 'laboratorio'];
+    return permitidos.includes(tipo) ? tipo : 'teorica';
+  }
+
+  private mapearTipoExcepcion(value?: string): string | null {
+    const tipo = this.normalizarTexto(value).replace(/\s+/g, '_');
+    const permitidos = [
+      'seminario_enfasis',
+      'opciones_grado_ap',
+      'seminario_opciones_apt',
+    ];
+    return permitidos.includes(tipo) ? tipo : null;
+  }
+
+  private horasFijasPorExcepcion(tipoExcepcion: string | null): number | null {
+    if (tipoExcepcion === 'seminario_enfasis') return 384;
+    if (tipoExcepcion === 'opciones_grado_ap') return 20;
+    if (tipoExcepcion === 'seminario_opciones_apt') return 144;
+    return null;
+  }
+
+  private rethrowAsignaturasError(error: unknown): never {
+    if (
+      error instanceof BadRequestException
+      || error instanceof ConflictException
+      || error instanceof NotFoundException
+    ) {
+      throw error;
+    }
+
+    if (error instanceof QueryFailedError) {
+      const driverError = error.driverError as {
+        code?: string;
+        column?: string;
+        constraint?: string;
+        detail?: string;
+      };
+      this.logger.error(
+        `Error guardando plan de estudios. PostgreSQL code=${driverError.code || 'unknown'} constraint=${driverError.constraint || 'none'} column=${driverError.column || 'none'} detail=${driverError.detail || error.message}`,
+      );
+
+      if (driverError.code === '23505') {
+        throw new ConflictException(
+          'Ya existe otra asignatura con el mismo código. Cada código debe ser único.',
+        );
+      }
+      if (driverError.code === '23503') {
+        throw new BadRequestException(
+          'El programa, semestre, núcleo temático o facultad seleccionados no existen.',
+        );
+      }
+      if (driverError.code === '23514') {
+        throw new BadRequestException(
+          'Una asignatura tiene créditos, modalidad, tipo o configuración PTA no válidos.',
+        );
+      }
+      if (driverError.code === '23502') {
+        throw new BadRequestException(
+          `Falta un dato obligatorio de la asignatura${driverError.column ? `: ${driverError.column}` : ''}.`,
+        );
+      }
+      if (driverError.code === '22001') {
+        throw new BadRequestException(
+          `Un dato de la asignatura supera la longitud permitida${driverError.column ? `: ${driverError.column}` : ''}.`,
+        );
+      }
+      if (driverError.code === '42703') {
+        throw new BadRequestException(
+          'La base de datos requiere la migración de tipos de asignatura.',
+        );
+      }
+    }
+
+    throw error;
   }
 
   async actualizarCuposCetap(programaId: string, ofertaId: string, cupos: number) {

@@ -42,7 +42,8 @@ export class AsignaturasService {
       ...a,
       semestre: String(a.semestreId || 1),
       horas: (a.creditos || 3) * 48,
-      tipo: a.tipoExcepcion || 'obligatoria',
+      tipo: a.tipoAsignatura || 'teorica',
+      tipoExcepcion: a.tipoExcepcion || null,
       nucleoTematico: 'Núcleo Temático',
     }));
 

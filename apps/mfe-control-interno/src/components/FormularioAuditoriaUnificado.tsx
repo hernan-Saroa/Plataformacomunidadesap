@@ -41,7 +41,7 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
-import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
+import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../services/api/controlInternoService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';

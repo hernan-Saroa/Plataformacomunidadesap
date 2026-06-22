@@ -411,7 +411,7 @@ export class EstructuraImportService {
       success: true,
       direcciones_territoriales: parseInt(stats.dts || 0, 10),
       cetaps: parseInt(stats.cetaps || 0, 10),
-      isReady: parseInt(stats.dts || 0, 10) >= 17 && parseInt(stats.cetaps || 0, 10) >= 288
+      isReady: parseInt(stats.dts || 0, 10) >= 17 && parseInt(stats.cetaps || 0, 10) >= 290
     };
   }
 }

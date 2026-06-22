@@ -55,10 +55,19 @@ export class AsignaturasImportService {
     const startTime = Date.now();
 
     // PASO 1 - Parsear el Excel
-    const { asignaturas: rawAsignaturas, programas: rawProgramas, matrizOferta } = this.excelParser.parseExcel(buffer);
+    const {
+      asignaturas: rawAsignaturas,
+      programas: rawProgramas,
+      matrizOferta,
+      matrizProgramCodes,
+    } = this.excelParser.parseExcel(buffer);
 
     // PASO 2 - Reglas de validación pre-insert
-    const preInsertReport = ImportValidator.validarPreInsert(rawAsignaturas, rawProgramas);
+    const preInsertReport = ImportValidator.validarPreInsert(
+      rawAsignaturas,
+      rawProgramas,
+      matrizProgramCodes,
+    );
     if (!preInsertReport.isValid) {
       throw new BadRequestException({
         success: false,
@@ -74,7 +83,10 @@ export class AsignaturasImportService {
     const result = new ImportResultDto();
     result.dry_run = dryRun;
     result.periodo = periodCodigo;
-    result.advertencias = [...circularWarnings];
+    result.advertencias = [
+      ...preInsertReport.warnings,
+      ...circularWarnings,
+    ];
 
     // Obtener CETAPs y catálogos de la BD para validación estricta y comparación de duplicados
     const dbCetaps = await this.dataSource.query('SELECT id, codigo FROM academic_work_plan.cetap');
@@ -253,15 +265,49 @@ export class AsignaturasImportService {
         }
       }
     } else {
-      newOfertasCount = ofertasCount;
+      newOfertasCount = matrizOferta.reduce(
+        (count, row) =>
+          validCetapsMap.has(row.codigo_cetap.toLowerCase().trim())
+            ? count + row.programas_ofertados.length
+            : count,
+        0,
+      );
     }
     result.carga.ofertas_cetap_programa.creados = newOfertasCount;
     result.carga.ofertas_cetap_programa.actualizados = 0;
     result.carga.ofertas_cetap_programa.omitidos = existingOfertasCount;
 
-    result.carga.cetaps.creados = cetapsSet.size;
+    const missingCetapCodes = [...cetapsSet].filter(
+      (code) => !validCetapsMap.has(code.toLowerCase().trim()),
+    );
+    const validCetapCount = cetapsSet.size - missingCetapCodes.length;
+    const validOffersCount = matrizOferta.reduce(
+      (count, row) =>
+        validCetapsMap.has(row.codigo_cetap.toLowerCase().trim())
+          ? count + row.programas_ofertados.length
+          : count,
+      0,
+    );
+
+    result.carga.cetaps.creados = validCetapCount;
     result.carga.cetaps.actualizados = 0;
-    result.carga.cetaps.omitidos = 0;
+    result.carga.cetaps.omitidos = missingCetapCodes.length;
+
+    if (missingCetapCodes.length > 0) {
+      const examples = missingCetapCodes.slice(0, 10).join(', ');
+      result.errores.push(
+        `La estructura geográfica no contiene ${missingCetapCodes.length} CETAP del archivo. ` +
+          `Ejemplos: ${examples}${missingCetapCodes.length > 10 ? ', ...' : ''}. ` +
+          'Importe o actualice primero la estructura geográfica.',
+      );
+    }
+    if (validOffersCount === 0) {
+      (result as any).blocked_reason =
+        'ESTRUCTURA_GEOGRAFICA_INCOMPLETA';
+      result.errores.push(
+        'No existe ninguna oferta territorial válida para importar porque los CETAP de MATRIZ_OFERTA no están cargados.',
+      );
+    }
 
     // Resumen detallado de duplicados
     (result as any).analisis_duplicados = {
@@ -278,7 +324,11 @@ export class AsignaturasImportService {
     // allIdentical sólo bloquea si además no hay ofertas nuevas para ESTE periodo.
     // Si los programas/asignaturas ya existen pero es un periodo nuevo, las
     // oferta_cetap_programa todavía deben crearse para el nuevo periodo.
-    if (allIdentical && newOfertasCount === 0) {
+    if (
+      allIdentical &&
+      newOfertasCount === 0 &&
+      result.errores.length === 0
+    ) {
       (result as any).blocked_reason = 'ALL_IDENTICAL';
       result.success = true; // El archivo es válido, pero no hay nada nuevo
       result.tiempo_ms = Date.now() - startTime;
@@ -288,9 +338,27 @@ export class AsignaturasImportService {
 
     if (dryRun) {
       this.calculateIndicators(rawAsignaturas, rawProgramas, matrizOferta, result);
-      result.success = true;
+      result.success = result.errores.length === 0;
       result.tiempo_ms = Date.now() - startTime;
       return result;
+    }
+
+    if (result.errores.length > 0 && !omitErrors) {
+      throw new BadRequestException({
+        success: false,
+        message:
+          'La importación no puede continuar hasta corregir los errores de validación.',
+        errors: result.errores,
+      });
+    }
+
+    if (validOffersCount === 0) {
+      throw new BadRequestException({
+        success: false,
+        message:
+          'La importación no puede continuar sin al menos una oferta territorial válida.',
+        errors: result.errores,
+      });
     }
 
     // PASO 4 - Iniciar transacción manual
@@ -897,8 +965,10 @@ export class AsignaturasImportService {
           
           if (!isValidCetap) {
             pRelation.valido = false;
-            pRelation.errores.push(`El CETAP ${m.codigo_cetap} no existe en la base de datos.`);
-            result.errores.push(`Programa ${progOfertado} intenta ofertarse en CETAP inexistente: ${m.codigo_cetap}`);
+            const relationError = `El CETAP ${m.codigo_cetap} no existe en la base de datos.`;
+            if (!pRelation.errores.includes(relationError)) {
+              pRelation.errores.push(relationError);
+            }
             if (!omitErrors) {
               validOfertados.push(progOfertado);
             }

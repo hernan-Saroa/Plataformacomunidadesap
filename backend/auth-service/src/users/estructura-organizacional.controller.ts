@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Query,
@@ -19,6 +20,7 @@ import {
   CreateSedeDto,
   UpdateSedeDto,
   AsignarUsuariosDto,
+  ToggleSedePeriodStatusDto,
 } from './estructura-organizacional.dto';
 
 @Controller('estructura-organizacional')
@@ -136,6 +138,19 @@ export class EstructuraOrganizacionalController {
   async updateSede(@Param('id') id: string, @Body() dto: UpdateSedeDto) {
     const sede = await this.estructuraService.updateSede(Number(id), dto);
     return { data: sede, message: 'Sede actualizada exitosamente' };
+  }
+
+  @Patch('sedes/:id/periodo')
+  async toggleSedePeriodStatus(
+    @Param('id') id: string,
+    @Body() dto: ToggleSedePeriodStatusDto,
+  ) {
+    const res = await this.estructuraService.toggleSedePeriodStatus(
+      Number(id),
+      dto.periodoCodigo,
+      dto.activo,
+    );
+    return { data: res, message: 'Estado de la sede en el periodo actualizado exitosamente' };
   }
 
   @Delete('sedes/:id')

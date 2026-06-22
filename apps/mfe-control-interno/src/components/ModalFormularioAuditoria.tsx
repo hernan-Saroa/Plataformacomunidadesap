@@ -33,7 +33,7 @@ import {
   type AuditoriaFormData,
   type ValidationError
 } from '../../../utils/validation';
-import { controlInternoService, type EvaluacionProceso } from '../../../services/api/controlInternoService';
+import { controlInternoService, type EvaluacionProceso } from '../services/api/controlInternoService';
 
 // ============ TIPOS ============
 

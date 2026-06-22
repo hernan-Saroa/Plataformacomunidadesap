@@ -626,6 +626,62 @@ export class EstructuraOrganizacionalService {
         }
       }
 
+      // 1. Cargar e indexar seccionales
+      const dbSeccionales = await queryRunner.query('SELECT id_seccional, cod_seccional, nom_seccional FROM auth.seccionales');
+      const existingSecMapByCode = new Map<string, any>();
+      const existingSecMapByName = new Map<string, any>();
+      for (const s of dbSeccionales) {
+        if (s.cod_seccional) {
+          existingSecMapByCode.set(s.cod_seccional.trim(), s);
+        }
+        existingSecMapByName.set(normalizeText(s.nom_seccional), s);
+      }
+
+      // 2. Cargar e indexar DTs
+      const dbDTs = await queryRunner.query('SELECT id, codigo, nombre, nombre_normalizado FROM academic_work_plan.direccion_territorial');
+      const existingDTMapByCode = new Map<string, any>();
+      const existingDTMapByName = new Map<string, any>();
+      for (const dt of dbDTs) {
+        if (dt.codigo) {
+          existingDTMapByCode.set(dt.codigo.trim(), dt);
+        }
+        existingDTMapByName.set(dt.nombre_normalizado || normalizeText(dt.nombre), dt);
+      }
+
+      // Helper para limpiar el nombre de las sedes (quitar "cetap ")
+      const cleanSedeName = (name: string): string => {
+        if (!name) return '';
+        let cleaned = name.toLowerCase().trim();
+        if (cleaned.startsWith('cetap ')) {
+          cleaned = cleaned.substring(6).trim();
+        }
+        return normalizeText(cleaned);
+      };
+
+      // 3. Cargar e indexar sedes
+      const dbSedes = await queryRunner.query('SELECT id_sede, cod_sede, nom_sede, id_seccional FROM auth.sedes');
+      const existingSedeMapByCode = new Map<string, any>();
+      const existingSedeMapByNameAndSec = new Map<string, any>();
+      for (const s of dbSedes) {
+        if (s.cod_sede) {
+          existingSedeMapByCode.set(s.cod_sede.trim(), s);
+        }
+        const nameKey = `${cleanSedeName(s.nom_sede)}_${s.id_seccional}`;
+        existingSedeMapByNameAndSec.set(nameKey, s);
+      }
+
+      // 4. Cargar e indexar cetaps
+      const dbCetaps = await queryRunner.query('SELECT id, codigo, nombre, nombre_normalizado, id_direccion_territorial FROM academic_work_plan.cetap');
+      const existingCetapMapByCode = new Map<string, any>();
+      const existingCetapMapByNameAndDT = new Map<string, any>();
+      for (const c of dbCetaps) {
+        if (c.codigo) {
+          existingCetapMapByCode.set(c.codigo.trim(), c);
+        }
+        const key = `${c.nombre_normalizado || normalizeText(c.nombre)}_${c.id_direccion_territorial}`;
+        existingCetapMapByNameAndDT.set(key, c);
+      }
+
       const processedSedeIds = new Set<string>();
 
       for (let idx = 0; idx < normalizedRows.length; idx++) {
@@ -646,12 +702,6 @@ export class EstructuraOrganizacionalService {
           continue;
         }
 
-        let seccionalId: string;
-        const existingSec = await queryRunner.query(
-          'SELECT id_seccional FROM auth.seccionales WHERE cod_seccional = $1 LIMIT 1',
-          [codSeccional]
-        );
-
         let deptoGeoId: number | null = null;
         if (departamento) {
           const normDepto = normalizeText(departamento);
@@ -663,13 +713,30 @@ export class EstructuraOrganizacionalService {
           }
         }
 
-        if (existingSec.length > 0) {
-          seccionalId = existingSec[0].id_seccional;
+        let seccionalId: string;
+        let matchedSec = existingSecMapByCode.get(codSeccional);
+        if (!matchedSec) {
+          matchedSec = existingSecMapByName.get(normalizeText(nomSeccional));
+          if (matchedSec) {
+            await queryRunner.query(
+              'UPDATE auth.seccionales SET cod_seccional = $1, nom_seccional = $2, id_ubi_seccional = COALESCE($3, id_ubi_seccional), fec_ult_act = CURRENT_DATE WHERE id_seccional = $4',
+              [codSeccional, nomSeccional, deptoGeoId, matchedSec.id_seccional]
+            );
+            seccionalesActualizadas++;
+            matchedSec.cod_seccional = codSeccional;
+            matchedSec.nom_seccional = nomSeccional;
+            existingSecMapByCode.set(codSeccional, matchedSec);
+          }
+        } else {
           await queryRunner.query(
             'UPDATE auth.seccionales SET nom_seccional = $1, id_ubi_seccional = COALESCE($2, id_ubi_seccional), fec_ult_act = CURRENT_DATE WHERE id_seccional = $3',
-            [nomSeccional, deptoGeoId, seccionalId]
+            [nomSeccional, deptoGeoId, matchedSec.id_seccional]
           );
           seccionalesActualizadas++;
+        }
+
+        if (matchedSec) {
+          seccionalId = matchedSec.id_seccional;
         } else {
           const maxSec = await queryRunner.query('SELECT MAX(id_seccional) as max_id FROM auth.seccionales');
           const nextSecId = (parseInt(maxSec[0]?.max_id) || 0) + 1;
@@ -680,39 +747,53 @@ export class EstructuraOrganizacionalService {
             [seccionalId, codSeccional, nomSeccional, deptoGeoId]
           );
           seccionalesCreadas++;
+
+          const newSec = { id_seccional: seccionalId, cod_seccional: codSeccional, nom_seccional: nomSeccional };
+          existingSecMapByCode.set(codSeccional, newSec);
+          existingSecMapByName.set(normalizeText(nomSeccional), newSec);
         }
 
         const normSecName = nomSeccional.toUpperCase().replace(/\s+/g, '_');
         const normSecNameLower = normalizeText(nomSeccional);
-        const existingDT = await queryRunner.query(
-          'SELECT id FROM academic_work_plan.direccion_territorial WHERE codigo = $1 LIMIT 1',
-          [codSeccional]
-        );
 
         let dtDbId: string;
-        if (existingDT.length > 0) {
-          dtDbId = existingDT[0].id;
+        let matchedDT = existingDTMapByCode.get(codSeccional);
+        if (!matchedDT) {
+          matchedDT = existingDTMapByName.get(normSecNameLower);
+          if (matchedDT) {
+            await queryRunner.query(
+              'UPDATE academic_work_plan.direccion_territorial SET codigo = $1, nombre = $2, nombre_normalizado = $3, activo = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+              [codSeccional, normSecName, normSecNameLower, matchedDT.id]
+            );
+            matchedDT.codigo = codSeccional;
+            matchedDT.nombre = normSecName;
+            matchedDT.nombre_normalizado = normSecNameLower;
+            existingDTMapByCode.set(codSeccional, matchedDT);
+          }
+        } else {
           await queryRunner.query(
             'UPDATE academic_work_plan.direccion_territorial SET nombre = $1, nombre_normalizado = $2, activo = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-            [normSecName, normSecNameLower, dtDbId]
+            [normSecName, normSecNameLower, matchedDT.id]
           );
+        }
+
+        if (matchedDT) {
+          dtDbId = matchedDT.id;
         } else {
           const dtRows = await queryRunner.query(
             'INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, activo, orden_visualizacion) VALUES ($1, $2, $3, TRUE, 999) RETURNING id',
             [codSeccional, normSecName, normSecNameLower]
           );
           dtDbId = dtRows[0].id;
+
+          const newDT = { id: dtDbId, codigo: codSeccional, nombre: normSecName, nombre_normalizado: normSecNameLower };
+          existingDTMapByCode.set(codSeccional, newDT);
+          existingDTMapByName.set(normSecNameLower, newDT);
         }
 
         if (!codSede || !nomSede) {
           continue;
         }
-
-        let sedeId: string;
-        const existingSede = await queryRunner.query(
-          'SELECT id_sede FROM auth.sedes WHERE cod_sede = $1 LIMIT 1',
-          [codSede]
-        );
 
         let cityGeoId: number | null = null;
         if (municipio && deptoGeoId) {
@@ -736,8 +817,41 @@ export class EstructuraOrganizacionalService {
         const capacidadEstudiantes = inputCapEst !== undefined && inputCapEst !== null && inputCapEst !== '' ? parseInt(inputCapEst, 10) : null;
         const capacidadDocentes = inputCapDoc !== undefined && inputCapDoc !== null && inputCapDoc !== '' ? parseInt(inputCapDoc, 10) : null;
 
-        if (existingSede.length > 0) {
-          sedeId = existingSede[0].id_sede;
+        let sedeId: string;
+        let matchedSede = existingSedeMapByCode.get(codSede);
+        if (!matchedSede) {
+          const nameKey = `${cleanSedeName(nomSede)}_${seccionalId}`;
+          matchedSede = existingSedeMapByNameAndSec.get(nameKey);
+          if (matchedSede) {
+            await queryRunner.query(
+              `UPDATE auth.sedes 
+               SET cod_sede = $1,
+                   nom_sede = $2, 
+                   id_seccional = $3, 
+                   id_geopolitica = COALESCE($4, id_geopolitica), 
+                   fec_ult_act = CURRENT_DATE, 
+                   sede_act = $5,
+                   capacidad_estudiantes = COALESCE($6, capacidad_estudiantes),
+                   capacidad_docentes = COALESCE($7, capacidad_docentes)
+               WHERE id_sede = $8`,
+              [
+                codSede,
+                nomSede,
+                seccionalId,
+                cityGeoId,
+                isRowActive ? 'ACTIVA' : 'INACTIVA',
+                capacidadEstudiantes,
+                capacidadDocentes,
+                matchedSede.id_sede
+              ]
+            );
+            sedesActualizadas++;
+            matchedSede.cod_sede = codSede;
+            matchedSede.nom_sede = nomSede;
+            matchedSede.id_seccional = seccionalId;
+            existingSedeMapByCode.set(codSede, matchedSede);
+          }
+        } else {
           await queryRunner.query(
             `UPDATE auth.sedes 
              SET nom_sede = $1, 
@@ -755,10 +869,14 @@ export class EstructuraOrganizacionalService {
               isRowActive ? 'ACTIVA' : 'INACTIVA',
               capacidadEstudiantes,
               capacidadDocentes,
-              sedeId
+              matchedSede.id_sede
             ]
           );
           sedesActualizadas++;
+        }
+
+        if (matchedSede) {
+          sedeId = matchedSede.id_sede;
         } else {
           const maxSede = await queryRunner.query('SELECT MAX(id_sede) as max_id FROM auth.sedes');
           const nextSedeId = (parseInt(maxSede[0]?.max_id) || 0) + 1;
@@ -770,6 +888,7 @@ export class EstructuraOrganizacionalService {
           await queryRunner.query(
             `INSERT INTO auth.sedes (
               id_sede, 
+              id_empresa,
               cod_sede, 
               nom_sede, 
               id_seccional, 
@@ -778,7 +897,7 @@ export class EstructuraOrganizacionalService {
               sede_act, 
               capacidad_estudiantes, 
               capacidad_docentes
-             ) VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, $6, $7, $8)`,
+             ) VALUES ($1, 1, $2, $3, $4, $5, CURRENT_DATE, $6, $7, $8)`,
             [
               sedeId,
               codSede,
@@ -791,27 +910,49 @@ export class EstructuraOrganizacionalService {
             ]
           );
           sedesCreadas++;
+
+          const newSede = { id_sede: sedeId, cod_sede: codSede, nom_sede: nomSede, id_seccional: seccionalId };
+          existingSedeMapByCode.set(codSede, newSede);
+          existingSedeMapByNameAndSec.set(`${cleanSedeName(nomSede)}_${seccionalId}`, newSede);
         }
 
         const normSedeNameLower = normalizeText(nomSede);
-        const existingCetap = await queryRunner.query(
-          'SELECT id FROM academic_work_plan.cetap WHERE codigo = $1 LIMIT 1',
-          [codSede]
-        );
 
         let cetapDbId: string;
-        if (existingCetap.length > 0) {
-          cetapDbId = existingCetap[0].id;
+        let matchedCetap = existingCetapMapByCode.get(codSede);
+        if (!matchedCetap) {
+          const key = `${normSedeNameLower}_${dtDbId}`;
+          matchedCetap = existingCetapMapByNameAndDT.get(key);
+          if (matchedCetap) {
+            await queryRunner.query(
+              'UPDATE academic_work_plan.cetap SET codigo = $1, nombre = $2, nombre_normalizado = $3, id_direccion_territorial = $4, activo = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6',
+              [codSede, nomSede, normSedeNameLower, dtDbId, isRowActive, matchedCetap.id]
+            );
+            matchedCetap.codigo = codSede;
+            matchedCetap.nombre = nomSede;
+            matchedCetap.nombre_normalizado = normSedeNameLower;
+            matchedCetap.id_direccion_territorial = dtDbId;
+            existingCetapMapByCode.set(codSede, matchedCetap);
+          }
+        } else {
           await queryRunner.query(
             'UPDATE academic_work_plan.cetap SET nombre = $1, nombre_normalizado = $2, id_direccion_territorial = $3, activo = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5',
-            [nomSede, normSedeNameLower, dtDbId, isRowActive, cetapDbId]
+            [nomSede, normSedeNameLower, dtDbId, isRowActive, matchedCetap.id]
           );
+        }
+
+        if (matchedCetap) {
+          cetapDbId = matchedCetap.id;
         } else {
           const cetapRows = await queryRunner.query(
             'INSERT INTO academic_work_plan.cetap (codigo, nombre, nombre_normalizado, id_direccion_territorial, tipo, activo) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
             [codSede, nomSede, normSedeNameLower, dtDbId, codSeccional === 'SCENT' ? 'sede_central' : 'cetap', isRowActive]
           );
           cetapDbId = cetapRows[0].id;
+
+          const newCetap = { id: cetapDbId, codigo: codSede, nombre: nomSede, nombre_normalizado: normSedeNameLower, id_direccion_territorial: dtDbId };
+          existingCetapMapByCode.set(codSede, newCetap);
+          existingCetapMapByNameAndDT.set(`${normSedeNameLower}_${dtDbId}`, newCetap);
         }
 
         processedSedeIds.add(cetapDbId);
@@ -988,6 +1129,63 @@ export class EstructuraOrganizacionalService {
         success: false,
         actualizados: 0,
       };
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async toggleSedePeriodStatus(idSede: number, periodoCodigo: string, activo: boolean): Promise<any> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const sede = await queryRunner.manager.findOne(Sede, { where: { idSede } });
+      if (!sede) {
+        throw new NotFoundException(`Sede con ID ${idSede} no encontrada`);
+      }
+
+      // Buscar CETAP por código o nombre normalizado en academic_work_plan
+      const cleanName = sede.nomSede.toLowerCase().replace(/^cetap\s+/, '').trim();
+      const normNameLower = cleanName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+
+      const cetapRes = await queryRunner.query(
+        `SELECT id FROM academic_work_plan.cetap 
+         WHERE codigo = $1 OR nombre_normalizado = $2 LIMIT 1`,
+        [sede.codSede, normNameLower]
+      );
+      if (!cetapRes || cetapRes.length === 0) {
+        throw new NotFoundException(`CETAP correspondiente no encontrada en plan académico`);
+      }
+      const idCetap = cetapRes[0].id;
+
+      // Buscar ID del periodo por código
+      const periodRes = await queryRunner.query(
+        `SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1`,
+        [periodoCodigo]
+      );
+      if (!periodRes || periodRes.length === 0) {
+        throw new NotFoundException(`Periodo académico con código ${periodoCodigo} no encontrado`);
+      }
+      const idPeriodo = periodRes[0].id;
+
+      // Insertar o actualizar en academic_work_plan.periodo_cetap
+      await queryRunner.query(
+        `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo, created_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT ON CONSTRAINT uq_periodo_cetap_periodo_cetap
+         DO UPDATE SET activo = EXCLUDED.activo`,
+        [idPeriodo, idCetap, activo]
+      );
+
+      await queryRunner.commitTransaction();
+      return { success: true, idSede, idCetap, idPeriodo, activo };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
     } finally {
       await queryRunner.release();
     }
