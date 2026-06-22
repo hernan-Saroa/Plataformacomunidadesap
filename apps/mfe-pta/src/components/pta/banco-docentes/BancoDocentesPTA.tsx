@@ -191,12 +191,17 @@ export function BancoDocentesPTA() {
         territorial: statsFilterTerritorial || undefined,
         dedicacion: statsFilterDedicacion || undefined,
         estado: statsFilterEstado || undefined,
-        periodoCarga: filterPeriodo || undefined,
+        // Usar el filtro de periodo PROPIO de las estadísticas (statsFilterPeriodo),
+        // no el del listado (filterPeriodo). El del listado se auto-setea al periodo
+        // activo y aplicaba un filtro "invisible" que dejaba los conteos en 0 porque
+        // los docentes no tienen periodoCarga igual al periodo activo. Vacío al inicio
+        // → sin filtro → cuenta todos. Esto además hace funcional el dropdown de stats.
+        periodoCarga: statsFilterPeriodo || undefined,
       });
       if (statsRes.success && statsRes.data) setStats(statsRes.data);
     } catch { /* silencioso */ }
     finally { setStatsLoading(false); }
-  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
+  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, statsFilterPeriodo]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 

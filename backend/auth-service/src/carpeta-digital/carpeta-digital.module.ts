@@ -4,6 +4,7 @@ import { Person } from '../users/person.entity';
 import { CarpetaDigitalController } from './carpeta-digital.controller';
 import { CarpetaDigital } from './carpeta-digital.entity';
 import { CarpetaDigitalService } from './carpeta-digital.service';
+import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { TipoDocumento } from './tipo-documento.entity';
 import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
 
@@ -17,7 +18,7 @@ import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
     ]),
   ],
   controllers: [CarpetaDigitalController],
-  providers: [CarpetaDigitalService],
-  exports: [CarpetaDigitalService],
+  providers: [CarpetaDigitalService, DocumentTypeValidatorService],
+  exports: [CarpetaDigitalService, DocumentTypeValidatorService],
 })
 export class CarpetaDigitalModule {}

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors, UseGuards, Logger } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
 import { extname } from 'path';
@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
+import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
 import { Public } from '../../auth/public.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -14,7 +15,12 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 @Controller(['banco-docentes', 'pta/banco-docentes'])
 @UseGuards(RolesGuard)
 export class BancoDocentesController {
-  constructor(private readonly service: BancoDocentesService) { }
+  private readonly logger = new Logger(BancoDocentesController.name);
+
+  constructor(
+    private readonly service: BancoDocentesService,
+    private readonly docTypeValidator: DocumentTypeValidatorService,
+  ) { }
 
   @Get()
   async list(
@@ -369,14 +375,34 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     try {
+      let validacionTipo: any = undefined;
       if (file) {
         body.nombreArchivo = file.originalname;
         const docenteId = id || 'desconocido';
         const docenteNombre = body.docenteNombre ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
         body.documentoCarpetaId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file.filename}`;
+
+        // Validación SOFT de tipo de documento: escanea el PDF y compara contra
+        // palabras clave derivadas del código de soporte (+ nombre/descripción si vienen).
+        // No bloquea la carga; adjunta el veredicto a la respuesta para avisar al usuario.
+        validacionTipo = await this.docTypeValidator.validate({
+          filePath: (file as any).path,
+          originalName: file.originalname,
+          soporteCode: body.tipoSoporte,
+          expectedName: body.tipoNombre,
+          expectedDescription: body.tipoDescripcion,
+        });
+        if (validacionTipo.validated && !validacionTipo.matched) {
+          this.logger.warn(`[RUND] Soporte "${body.tipoSoporte}" del docente ${id}: posible tipo incorrecto (${validacionTipo.reason})`);
+        }
       }
       const result = await this.service.vincularSoporte(id, bloque, body);
-      return { success: true, data: result };
+      // validacionTipo se EMBEBE en data porque el apiClient del shell desenvuelve
+      // {success, data} y descartaría cualquier campo hermano de data.
+      const data = (result && typeof result === 'object' && !Array.isArray(result))
+        ? { ...result, validacionTipo }
+        : { resultado: result, validacionTipo };
+      return { success: true, data };
     } catch (e: any) {
       return { success: false, error: e.message, stack: e.stack };
     }
