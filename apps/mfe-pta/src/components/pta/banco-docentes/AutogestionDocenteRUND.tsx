@@ -1,11 +1,59 @@
 import { useState, useEffect } from 'react';
-import { Mail, ShieldCheck, ChevronRight, CheckCircle, Save, Loader2, User, Briefcase, GraduationCap, FileText } from 'lucide-react';
+import { Mail, ShieldCheck, ChevronRight, CheckCircle, Save, Loader2, User, Briefcase, GraduationCap, FileText, Upload, X, Paperclip } from 'lucide-react';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { ESAPLogo } from '../../../../../shell/src/components/assets/ESAPLogo';
+import { vincularRundSoporte } from '../../../services/api/ptaApi';
+
+// Catálogo de soportes por bloque RUND (alineado con BancoDocentesService.CATALOGO_SOPORTE).
+// Se presenta un subconjunto curado con etiquetas amigables para la autogestión del docente.
+const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; label: string; required?: boolean }[] }[] = [
+  {
+    bloque: 'IDENTIDAD', label: 'Identidad',
+    tipos: [{ key: 'documento_identidad', label: 'Documento de identidad (cédula)', required: true }],
+  },
+  {
+    bloque: 'FORMACION', label: 'Formación Académica',
+    tipos: [
+      { key: 'diploma_pregrado', label: 'Diploma o acta de grado de pregrado', required: true },
+      { key: 'diploma_especializacion', label: 'Diploma de especialización' },
+      { key: 'diploma_maestria', label: 'Diploma de maestría' },
+      { key: 'diploma_doctorado', label: 'Diploma de doctorado' },
+      { key: 'convalidacion_men', label: 'Convalidación MEN (títulos del exterior)' },
+    ],
+  },
+  {
+    bloque: 'VINCULACION', label: 'Vinculación',
+    tipos: [
+      { key: 'acto_administrativo_vinculacion', label: 'Acto administrativo de vinculación' },
+      { key: 'contrato', label: 'Contrato' },
+    ],
+  },
+  {
+    bloque: 'ACADEMICO', label: 'Académico',
+    tipos: [
+      { key: 'certificacion_investigacion', label: 'Certificación de investigación' },
+      { key: 'acta_evaluacion_desempeno', label: 'Acta de evaluación de desempeño' },
+    ],
+  },
+];
+
+// IMPORTANTE: `Field` e `inputStyle` se definen a nivel de módulo (NO dentro del
+// componente). Si se definen dentro, cada `setForm` crea una nueva referencia de
+// `Field` y React desmonta/remonta los inputs → se pierde el foco tras cada tecla.
+const inputStyle = { padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' as const };
+
+const Field = ({ label, children, required }: any) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+      {label}{required && <span style={{ color: '#ef4444' }}> *</span>}
+    </label>
+    {children}
+  </div>
+);
 
 export function AutogestionDocenteRUND() {
   const [token, setToken] = useState<string | null>(null);
-  const [step, setStep] = useState<'TOKEN' | 'OTP' | 'FORM' | 'SUCCESS'>('TOKEN');
+  const [step, setStep] = useState<'TOKEN' | 'OTP' | 'FORM' | 'DOCUMENTOS' | 'SUCCESS'>('TOKEN');
   const [otp, setOtp] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,6 +63,9 @@ export function AutogestionDocenteRUND() {
   const [isExistingDocente, setIsExistingDocente] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(false);
+  // §Paso 2 — Soportes documentales retenidos en el cliente (key: `${bloque}__${tipoSoporte}`)
+  const [soporteFiles, setSoporteFiles] = useState<Record<string, File>>({});
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   // Form State
   const [form, setForm] = useState<any>({
@@ -31,7 +82,14 @@ export function AutogestionDocenteRUND() {
   });
 
   useEffect(() => {
-    // URL parameters no longer required as we now use email directly
+    // Prerellenar el correo desde el query param `email` (acceso desde la vista docente).
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const emailParam = params.get('email');
+      if (emailParam) setEmail(emailParam);
+      const tokenParam = params.get('token');
+      if (tokenParam) setToken(tokenParam);
+    } catch { /* noop */ }
   }, []);
 
   // §5.3.1 — Auto-save every 30 seconds when on FORM step
@@ -134,14 +192,11 @@ export function AutogestionDocenteRUND() {
 
   const checkExistingDocente = async (sToken: string) => {
     try {
-      // The backend returns the invitation with correoInstitucional
-      const draftRes = await apiClient.get(`/pta/api/v1/banco-docentes/drafts/${sToken}`);
-      const invEmail = draftRes.data?.data?.correoInstitucional || form.correoInstitucional;
-      if (!invEmail) return;
-
-      // Use the new public endpoint that returns the matched teacher using the OTP session token
+      // El endpoint me/:token resuelve el correo desde la invitación en el server,
+      // así que NO necesitamos un guard de correo aquí (antes retornaba temprano).
       const searchRes: any = await apiClient.get(`/pta/api/v1/banco-docentes/autogestion/me/${sToken}`);
-      const match = searchRes?.data || null;
+      // El controlador responde { success, data: match } → los campos están en data.data.
+      const match = searchRes?.data?.data || null;
 
       if (!match || Object.keys(match).length === 0) {
         console.warn("No data found for this user in the RUND.");
@@ -206,24 +261,78 @@ export function AutogestionDocenteRUND() {
     }
   };
 
-  const handleSubmitFinal = async () => {
+  // Paso datos → Paso documentos: valida los campos mínimos y avanza al adjunto de soportes.
+  const goToDocumentos = () => {
     if (!form.documento_identidad || !form.nombreCompleto || !form.terminosAceptados) {
       setError('Por favor completa todos los campos obligatorios y acepta los términos de Habeas Data.');
       return;
     }
+    setError(null);
+    setStep('DOCUMENTOS');
+  };
+
+  // Manejo de archivos retenidos por bloque/tipo (no se suben hasta el envío final).
+  const setSoporteFile = (bloque: string, tipo: string, file: File | null) => {
+    const key = `${bloque}__${tipo}`;
+    setSoporteFiles(prev => {
+      const next = { ...prev };
+      if (file) next[key] = file; else delete next[key];
+      return next;
+    });
+  };
+
+  // §Paso 2/3 — Envío final SUBMIT-FIRST:
+  //   1) submit/:token crea el docente (persona + usuario + rol, sin duplicar)
+  //   2) sube cada soporte retenido al bloque correspondiente usando el docenteId devuelto
+  //   3) asegura la Carpeta Digital y muestra el éxito
+  const handleFinalSubmit = async () => {
+    if (!form.terminosAceptados) {
+      setError('Debes aceptar los términos de Habeas Data antes de enviar.');
+      return;
+    }
     setLoading(true);
+    setError(null);
     try {
       const payload = {
         ...form,
         documentNumber: form.documento_identidad,
-        tipoVinculacion: 'OCASIONAL',
-        dedicacion: 'TC',
-        territorialNombre: 'Sede Central',
+        // El correo institucional se valida al pedir el OTP; si el docente no lo
+        // re-escribió en el form, usamos el del paso TOKEN como respaldo.
+        correoInstitucional: form.correoInstitucional || email,
+        tipoVinculacion: form.tipoVinculacion || 'OCASIONAL',
+        dedicacion: form.dedicacion || 'TC',
+        territorialNombre: form.territorialNombre || 'Sede Central',
         canal_origen: 'AUTOGESTION', // §5.7 — Auditoría del canal
       };
-      await apiClient.post(`/pta/api/v1/banco-docentes/submit/${sessionToken}`, payload);
+      const res: any = await apiClient.post(`/pta/api/v1/banco-docentes/submit/${sessionToken}`, payload);
+      // El endpoint responde { success, data: { docenteId, personaId, ... } }
+      const docenteId = res?.data?.data?.docenteId || res?.data?.docenteId || res?.docenteId;
+      const personaId = res?.data?.data?.personaId || res?.data?.personaId || res?.personaId;
+
+      // Subir los soportes adjuntos al docente recién creado/actualizado.
+      const entries = Object.entries(soporteFiles);
+      if (docenteId && entries.length > 0) {
+        let done = 0;
+        for (const [key, file] of entries) {
+          const [bloque, tipoSoporte] = key.split('__');
+          setUploadProgress(`Subiendo documentos (${done + 1}/${entries.length})…`);
+          const up = await vincularRundSoporte(docenteId, bloque, { tipoSoporte, cargadoPor: form.correoInstitucional || email }, file);
+          if (!(up as any)?.success) {
+            console.warn('[RUND] Falló la carga de un soporte', key, up);
+          }
+          done++;
+        }
+        setUploadProgress(null);
+      }
+
+      // §4 — Asegurar la creación de la Carpeta Digital (es lazy; la disparamos explícitamente).
+      if (personaId) {
+        try { await apiClient.get(`/auth/api/v1/carpeta-digital/persona/${personaId}`); } catch { /* noop */ }
+      }
+
       setStep('SUCCESS');
     } catch (err: any) {
+      setUploadProgress(null);
       setError(err.response?.data?.message || 'Error al enviar el formulario.');
     } finally {
       setLoading(false);
@@ -232,22 +341,12 @@ export function AutogestionDocenteRUND() {
 
   const set = (key: string) => (e: any) => setForm({ ...form, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
-  const Field = ({ label, children, required }: any) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
-        {label}{required && <span style={{ color: '#ef4444' }}> *</span>}
-      </label>
-      {children}
-    </div>
-  );
-
-  const inputStyle = { padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' as const };
-
   // Step config for stepper
   const STEPS = [
     { key: 'TOKEN', label: 'Verificar Correo', icon: Mail, desc: 'Validar tu invitación' },
     { key: 'OTP', label: 'Código de Seguridad', icon: ShieldCheck, desc: 'Confirmar tu identidad' },
     { key: 'FORM', label: 'Completar Datos', icon: FileText, desc: 'Diligenciar tu información' },
+    { key: 'DOCUMENTOS', label: 'Adjuntar Documentos', icon: Upload, desc: 'Cargar tus soportes' },
     { key: 'SUCCESS', label: 'Enviado', icon: CheckCircle, desc: 'Registro completado' },
   ];
   const currentStepIndex = STEPS.findIndex(s => s.key === step);
@@ -702,24 +801,113 @@ export function AutogestionDocenteRUND() {
                   <Save size={16} /> {draftSaved ? '¡Guardado!' : 'Guardar borrador'}
                 </button>
                 <button
-                  onClick={handleSubmitFinal}
+                  onClick={goToDocumentos}
                   disabled={loading || !form.terminosAceptados}
                   style={{
                     padding: '12px 28px',
-                    background: form.terminosAceptados ? 'linear-gradient(135deg, #059669, #10b981)' : '#94a3b8',
+                    background: form.terminosAceptados ? 'linear-gradient(135deg, #1e40af, #2563eb)' : '#94a3b8',
                     color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: '0.9rem',
                     cursor: form.terminosAceptados ? 'pointer' : 'not-allowed',
                     display: 'flex', alignItems: 'center', gap: 8,
-                    boxShadow: form.terminosAceptados ? '0 4px 14px rgba(16,185,129,0.3)' : 'none',
+                    boxShadow: form.terminosAceptados ? '0 4px 14px rgba(37,99,235,0.3)' : 'none',
                   }}>
-                  {loading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
-                  Enviar mi Información
+                  Continuar a Documentos <ChevronRight size={18} />
                 </button>
               </div>
             </div>
           )}
 
-          {/* ═══════════════ STEP 4: SUCCESS ═══════════════ */}
+          {/* ═══════════════ STEP 4: DOCUMENTOS ═══════════════ */}
+          {step === 'DOCUMENTOS' && (
+            <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Upload size={16} color="#2563EB" />
+                  </div>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a', fontWeight: 700 }}>Adjunta tus Documentos de Soporte</h2>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5 }}>
+                      Carga los documentos que respaldan tu información. Formatos: PDF, JPG o PNG. Los marcados con <span style={{ color: '#ef4444' }}>*</span> son recomendados.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: '24px 32px', maxHeight: '60vh', overflowY: 'auto' }}>
+                {error && <div style={{ padding: '12px 16px', background: '#fef2f2', color: '#dc2626', borderRadius: 8, marginBottom: 20, fontSize: '0.85rem', border: '1px solid #fecaca' }}>{error}</div>}
+
+                {SOPORTES_CATALOGO.map(grupo => (
+                  <div key={grupo.bloque} style={{ marginBottom: 24 }}>
+                    <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#0f172a', fontWeight: 700 }}>{grupo.label}</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {grupo.tipos.map(tipo => {
+                        const key = `${grupo.bloque}__${tipo.key}`;
+                        const file = soporteFiles[key];
+                        return (
+                          <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: file ? '#f0fdf4' : '#f8fafc', border: `1px solid ${file ? '#bbf7d0' : '#e2e8f0'}`, borderRadius: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                              <Paperclip size={16} color={file ? '#16a34a' : '#94a3b8'} style={{ flexShrink: 0 }} />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
+                                  {tipo.label}{tipo.required && <span style={{ color: '#ef4444' }}> *</span>}
+                                </div>
+                                {file && <div style={{ fontSize: '0.72rem', color: '#16a34a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>}
+                              </div>
+                            </div>
+                            <div style={{ flexShrink: 0 }}>
+                              {file ? (
+                                <button onClick={() => setSoporteFile(grupo.bloque, tipo.key, null)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#fff', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
+                                  <X size={14} /> Quitar
+                                </button>
+                              ) : (
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: '#fff', color: '#1e40af', border: '1px solid #93c5fd', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
+                                  <Upload size={14} /> Adjuntar
+                                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={(e) => setSoporteFile(grupo.bloque, tipo.key, e.target.files?.[0] || null)} />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                <div style={{ padding: '12px 16px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', fontSize: '0.78rem', color: '#1e40af', lineHeight: 1.5 }}>
+                  💡 Puedes enviar ahora con los documentos que tengas; los faltantes podrán cargarse luego durante la validación. La ESAP revisará tus soportes.
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '16px 32px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  onClick={() => { setError(null); setStep('FORM'); }}
+                  disabled={loading}
+                  style={{ padding: '10px 20px', background: 'transparent', color: '#475569', border: '1.5px solid #cbd5e1', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Volver a Datos
+                </button>
+                <button
+                  onClick={handleFinalSubmit}
+                  disabled={loading}
+                  style={{
+                    padding: '12px 28px',
+                    background: loading ? '#94a3b8' : 'linear-gradient(135deg, #059669, #10b981)',
+                    color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: '0.9rem',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    boxShadow: loading ? 'none' : '0 4px 14px rgba(16,185,129,0.3)',
+                  }}>
+                  {loading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                  {loading ? (uploadProgress || 'Enviando…') : 'Enviar mi Información'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════ STEP 5: SUCCESS ═══════════════ */}
           {step === 'SUCCESS' && (
             <div style={{ maxWidth: 560, margin: '0 auto' }}>
               <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', overflow: 'hidden', textAlign: 'center' }}>
