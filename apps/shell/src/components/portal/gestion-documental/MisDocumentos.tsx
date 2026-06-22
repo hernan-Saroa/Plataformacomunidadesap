@@ -194,6 +194,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
           icono: tipo.icono || 'file-text',
           completado: !!matchedDoc,
           documento: matchedDoc || null,
+          esEspecifico: !!(tipo.carpeta_digital_id || tipo.carpetaDigitalId),
         };
       });
       setTiposDocumentos(tiposChecklist);
@@ -275,8 +276,44 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
     }
   };
 
+  const abrirAutogestionRund = () => {
+    const correo = persona.email || '';
+    const url = `/autogestion/docentes${correo ? `?email=${encodeURIComponent(correo)}` : ''}`;
+    window.open(url, '_blank', 'noopener');
+  };
+
   return (
     <div>
+      {/* ═══ BANNER ACCESO RUND (autogestión) ═══ */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+        padding: '16px 20px', marginBottom: 16, borderRadius: 14,
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)', color: '#fff',
+        boxShadow: '0 4px 16px rgba(37,99,235,0.25)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FileCheck style={{ width: 22, height: 22, color: '#fff' }} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '0.01em' }}>Actualiza tu RUND</div>
+            <div style={{ fontSize: 12.5, opacity: 0.9, lineHeight: 1.4 }}>
+              Gestiona tus datos y carga tus documentos del Registro Único Nacional Docente.
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={abrirAutogestionRund}
+          style={{
+            padding: '10px 18px', borderRadius: 10, border: 'none', cursor: 'pointer',
+            background: '#fff', color: '#1e40af', fontWeight: 700, fontSize: 13,
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          }}
+        >
+          Ir a mi RUND <span aria-hidden>→</span>
+        </button>
+      </div>
+
       {/* ═══ UNIFIED SHARED VIEW ═══ */}
       <CarpetaDigitalSharedView
         personaId={syncedPersonaId}
