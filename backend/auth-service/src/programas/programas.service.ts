@@ -34,6 +34,28 @@ export class ProgramasService {
     private readonly asignaturaRepo: Repository<Asignatura>,
   ) {}
 
+  // Cache de existencia de la columna programa.id_periodo_academico (migración 359).
+  // Permite que el servicio funcione igual que antes mientras la migración no se ejecute.
+  private programaPeriodoColumn: boolean | null = null;
+
+  private async hasProgramaPeriodoColumn(): Promise<boolean> {
+    if (this.programaPeriodoColumn !== null) return this.programaPeriodoColumn;
+    try {
+      const rows = await this.programaRepo.query(
+        `SELECT 1
+           FROM information_schema.columns
+          WHERE table_schema = 'academic_work_plan'
+            AND table_name = 'programa'
+            AND column_name = 'id_periodo_academico'
+          LIMIT 1`,
+      );
+      this.programaPeriodoColumn = Array.isArray(rows) && rows.length > 0;
+    } catch {
+      this.programaPeriodoColumn = false;
+    }
+    return this.programaPeriodoColumn;
+  }
+
   async listarProgramas(filtros: ProgramasFiltroDto) {
     const {
       search,
@@ -84,21 +106,60 @@ export class ProgramasService {
     if (search) qb.andWhere('p.nombre ILIKE :search', { search: `%${search}%` });
 
     if (filtros.periodoAcademico) {
-      qb.andWhere(`(
-        EXISTS (
-          SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
-          JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
-          WHERE ocp.id_programa = p.id
-            AND ocp.activa = TRUE
-            AND pa.codigo = :periodo
-        )
-        OR NOT EXISTS (
-          SELECT 1
-          FROM academic_work_plan.oferta_cetap_programa ocp_any
-          WHERE ocp_any.id_programa = p.id
-            AND ocp_any.activa = TRUE
-        )
-      )`, { periodo: filtros.periodoAcademico });
+      const tienePeriodoColumna = await this.hasProgramaPeriodoColumn();
+      if (tienePeriodoColumna) {
+        // Con la migración 359 aplicada: un programa pertenece a un período si
+        //  (a) tiene una oferta activa en ese período, o
+        //  (b) fue creado para ese período (id_periodo_academico), o
+        //  (c) es un programa heredado/sin período propio y sin ofertas: en ese
+        //      caso solo se muestra en el período ACTIVO (en_curso), nunca en los
+        //      demás. Así un programa no aparece en períodos a los que no pertenece.
+        qb.andWhere(`(
+          EXISTS (
+            SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+            JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
+            WHERE ocp.id_programa = p.id
+              AND ocp.activa = TRUE
+              AND pa.codigo = :periodo
+          )
+          OR p.id_periodo_academico = (
+            SELECT pa2.id FROM academic_work_plan.periodo_academico pa2
+            WHERE pa2.codigo = :periodo
+            LIMIT 1
+          )
+          OR (
+            p.id_periodo_academico IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM academic_work_plan.oferta_cetap_programa ocp_any
+              WHERE ocp_any.id_programa = p.id
+                AND ocp_any.activa = TRUE
+            )
+            AND EXISTS (
+              SELECT 1 FROM academic_work_plan.periodo_academico pa3
+              WHERE pa3.codigo = :periodo
+                AND pa3.estado = 'en_curso'
+            )
+          )
+        )`, { periodo: filtros.periodoAcademico });
+      } else {
+        // Sin la migración aún: comportamiento original (no rompe el listado).
+        qb.andWhere(`(
+          EXISTS (
+            SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+            JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
+            WHERE ocp.id_programa = p.id
+              AND ocp.activa = TRUE
+              AND pa.codigo = :periodo
+          )
+          OR NOT EXISTS (
+            SELECT 1
+            FROM academic_work_plan.oferta_cetap_programa ocp_any
+            WHERE ocp_any.id_programa = p.id
+              AND ocp_any.activa = TRUE
+          )
+        )`, { periodo: filtros.periodoAcademico });
+      }
     }
 
     qb.orderBy('p.nombre', 'ASC');
@@ -328,7 +389,39 @@ export class ProgramasService {
           activo: this.mapearEstadoActivo(dto.estado),
         });
 
-        return manager.save(programa);
+        const guardado = await manager.save(programa);
+
+        // Regla de negocio: un programa SIEMPRE se crea para el período ACTIVO
+        // (en_curso), sin importar qué período se esté visualizando en el filtro.
+        // Para crear en otro período hay que activarlo primero en Períodos.
+        // Se hace por SQL directo para no depender de la columna en la entidad:
+        // si la migración aún no se aplicó, simplemente no se asocia y nada se rompe.
+        if (await this.hasProgramaPeriodoColumn()) {
+          const periodosActivos = await manager.query(
+            `SELECT codigo
+               FROM academic_work_plan.periodo_academico
+              WHERE estado = 'en_curso'
+              ORDER BY anio DESC, semestre DESC
+              LIMIT 1`,
+          );
+          // Si no hay período activo, se respeta el código recibido (compatibilidad).
+          const codigoPeriodo =
+            periodosActivos.length > 0
+              ? periodosActivos[0].codigo
+              : dto.periodoAcademico?.trim();
+          if (codigoPeriodo) {
+            await manager.query(
+              `UPDATE academic_work_plan.programa
+                  SET id_periodo_academico = pa.id
+                 FROM academic_work_plan.periodo_academico pa
+                WHERE academic_work_plan.programa.id = $1
+                  AND pa.codigo = $2`,
+              [guardado.id, codigoPeriodo],
+            );
+          }
+        }
+
+        return guardado;
       });
     } catch (error) {
       this.rethrowProgramaError(error, codigo);
@@ -540,7 +633,45 @@ export class ProgramasService {
     if (!programa) {
       throw new NotFoundException(`Programa con ID ${id} no encontrado`);
     }
-    await this.programaRepo.remove(programa);
+
+    try {
+      // Se elimina dentro de una transacción quitando primero las dependencias
+      // que apuntan al programa, en orden de FK:
+      //   1) oferta_cetap_programa  -> programa
+      //   2) asignatura             -> programa y nucleo_tematico
+      //   3) nucleo_tematico        -> programa  (tras borrar sus asignaturas)
+      //   4) programa
+      // Si algo más en uso referencia estos datos, la transacción se revierte
+      // completa: no queda ningún borrado parcial.
+      await this.programaRepo.manager.transaction(async (manager) => {
+        await manager.query(
+          `DELETE FROM academic_work_plan.oferta_cetap_programa WHERE id_programa = $1`,
+          [id],
+        );
+        await manager.query(
+          `DELETE FROM academic_work_plan.asignatura WHERE id_programa = $1`,
+          [id],
+        );
+        await manager.query(
+          `DELETE FROM academic_work_plan.nucleo_tematico WHERE id_programa = $1`,
+          [id],
+        );
+        await manager.query(
+          `DELETE FROM academic_work_plan.programa WHERE id = $1`,
+          [id],
+        );
+      });
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        const code = (error.driverError as { code?: string })?.code;
+        if (code === '23503') {
+          throw new ConflictException(
+            'No se puede eliminar el programa porque tiene información académica en uso (planes de trabajo o registros asociados).',
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async obtenerAsignaturasPrograma(programaId: string) {
