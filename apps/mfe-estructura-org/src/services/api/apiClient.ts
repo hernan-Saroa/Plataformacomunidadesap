@@ -235,7 +235,26 @@ export class ApiClient {
         } else {
           try {
             const errorResponse = JSON.parse(xhr.responseText);
-            reject(new Error(errorResponse.message || `Error ${xhr.status}: ${xhr.statusText}`));
+            const nested = typeof errorResponse.message === 'object' && errorResponse.message
+              ? errorResponse.message
+              : errorResponse;
+            const mainMessage = typeof nested.message === 'string'
+              ? nested.message
+              : typeof errorResponse.message === 'string'
+                ? errorResponse.message
+                : `Error ${xhr.status}: ${xhr.statusText}`;
+            const details = [
+              ...(Array.isArray(nested.errores) ? nested.errores : []),
+              ...(Array.isArray(nested.errors) ? nested.errors : []),
+            ].map((detail: any) =>
+              typeof detail === 'string' ? detail : detail?.mensaje,
+            ).filter(Boolean);
+            const uploadError: any = new Error(
+              details.length > 0 ? `${mainMessage} ${details.join(' ')}` : mainMessage,
+            );
+            uploadError.status = xhr.status;
+            uploadError.response = { data: nested };
+            reject(uploadError);
           } catch {
             reject(new Error(`Error ${xhr.status}: ${xhr.statusText}`));
           }
@@ -257,6 +276,7 @@ export class ApiClient {
       });
 
       xhr.open('POST', url);
+      xhr.withCredentials = true;
 
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {

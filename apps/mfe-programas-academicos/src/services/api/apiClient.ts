@@ -120,6 +120,7 @@ export class ApiClient {
     return this.request<T>(url, {
       method: 'POST',
       body: isFormData ? data : JSON.stringify(data),
+      retries: 0,
       ...customConfig,
     });
   }
@@ -138,6 +139,7 @@ export class ApiClient {
     return this.request<T>(url, {
       method: 'PUT',
       body: isFormData ? data : JSON.stringify(data),
+      retries: 0,
       ...customConfig,
     });
   }
@@ -156,6 +158,7 @@ export class ApiClient {
     return this.request<T>(url, {
       method: 'PATCH',
       body: isFormData ? data : JSON.stringify(data),
+      retries: 0,
       ...customConfig,
     });
   }
@@ -168,7 +171,7 @@ export class ApiClient {
     customConfig?: RequestConfig
   ): Promise<T> {
     const url = this.buildURL(endpoint);
-    return this.request<T>(url, { method: 'DELETE', ...customConfig });
+    return this.request<T>(url, { method: 'DELETE', retries: 0, ...customConfig });
   }
 
   /**
@@ -235,7 +238,24 @@ export class ApiClient {
         } else {
           try {
             const errorResponse = JSON.parse(xhr.responseText);
-            reject(new Error(errorResponse.message || `Error ${xhr.status}: ${xhr.statusText}`));
+            const nested = typeof errorResponse.message === 'object' && errorResponse.message
+              ? errorResponse.message
+              : errorResponse;
+            const mainMessage = typeof nested.message === 'string'
+              ? nested.message
+              : typeof errorResponse.message === 'string'
+                ? errorResponse.message
+                : `Error ${xhr.status}: ${xhr.statusText}`;
+            const details = [
+              ...(Array.isArray(nested.errors) ? nested.errors : []),
+              ...(Array.isArray(nested.errores) ? nested.errores : []),
+            ];
+            const uploadError: any = new Error(
+              details.length > 0 ? `${mainMessage} ${details.join(' ')}` : mainMessage,
+            );
+            uploadError.status = xhr.status;
+            uploadError.response = { data: errorResponse };
+            reject(uploadError);
           } catch {
             reject(new Error(`Error ${xhr.status}: ${xhr.statusText}`));
           }

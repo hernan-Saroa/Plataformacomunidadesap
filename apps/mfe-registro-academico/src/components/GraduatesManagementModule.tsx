@@ -113,6 +113,27 @@ type GraduateRow = {
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
+const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
+  // El periodo ACTIVO (en_curso) es el autoritativo para los consumidores:
+  // sus territoriales/sedes/programas son los "correctos" que ven los demás
+  // microservicios. Solo si no hay ninguno en curso se respeta el último
+  // seleccionado y, como último recurso, el más reciente.
+  const activo = periods.find((period) => period?.estado === 'en_curso');
+  if (activo) return activo;
+  const savedPeriodCode = localStorage.getItem(storageKey) || '';
+  return (
+    periods.find((period) => getPeriodCode(period) === savedPeriodCode) ||
+    periods[0] ||
+    null
+  );
+};
 const getPeriodCreationTime = (period: any) => {
   const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
   const timestamp = value ? new Date(value).getTime() : Number.NaN;
@@ -151,6 +172,7 @@ export function GraduatesManagementModule() {
   const [programasCatalog, setProgramasCatalog] = useState<string[]>([]);
   const [estructuraPeriodoCatalogo, setEstructuraPeriodoCatalogo] = useState('');
   const [programasPeriodoCatalogo, setProgramasPeriodoCatalogo] = useState('');
+  const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
@@ -802,6 +824,28 @@ export function GraduatesManagementModule() {
   };
 
   useEffect(() => {
+    const refreshCatalogs = () => {
+      setCatalogRefreshToken((current) => current + 1);
+    };
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === ESTRUCTURA_PERIOD_STORAGE_KEY ||
+        event.key === PROGRAMAS_PERIOD_STORAGE_KEY
+      ) {
+        refreshCatalogs();
+      }
+    };
+
+    window.addEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
 
     const loadProgramCatalog = async (periodoAcademico: string) => {
@@ -860,49 +904,40 @@ export function GraduatesManagementModule() {
         const periodos = Array.isArray(periodosResponse)
           ? sortPeriodsByCreation(periodosResponse)
           : [];
-        const latestPeriod = periodos[0] || null;
+        const periodoEstructura = resolveCatalogPeriod(
+          periodos,
+          ESTRUCTURA_PERIOD_STORAGE_KEY,
+        );
+        const periodoProgramas = resolveCatalogPeriod(
+          periodos,
+          PROGRAMAS_PERIOD_STORAGE_KEY,
+        );
+        const codigoPeriodoEstructura = getPeriodCode(periodoEstructura);
+        const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
 
-        const periodoEstructura = latestPeriod;
-        const periodoProgramas = latestPeriod;
-
-        if (periodoEstructura?.codigo) {
-          localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodoEstructura.codigo);
-        }
-        if (periodoProgramas?.codigo) {
-          localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoProgramas.codigo);
-        }
-
-        const [detalleEstructura, programasCatalogResponse] = await Promise.all([
+        const [estadoEstructura, programasCatalogResponse] = await Promise.all([
           periodoEstructura
-            ? estructuraService.obtenerDetallePeriodo(periodoEstructura.id).catch((error) => {
+            ? estructuraService.obtenerEstadoSedesPeriodo(codigoPeriodoEstructura).catch((error) => {
                 console.warn(
-                  `No se pudo cargar la estructura del periodo ${periodoEstructura.codigo}:`,
+                  `No se pudo cargar la estructura del periodo ${codigoPeriodoEstructura}:`,
                   error,
                 );
                 return null;
               })
             : Promise.resolve(null),
           periodoProgramas
-            ? loadProgramCatalog(periodoProgramas.codigo)
+            ? loadProgramCatalog(codigoPeriodoProgramas)
             : Promise.resolve([]),
         ]);
 
-        const cetapsPeriodo = detalleEstructura?.cetaps ?? [];
-        const codigosCetapPeriodo = new Set(
-          cetapsPeriodo.map((cetap) => normalizeKey(cetap.codigo)),
-        );
-        const nombresCetapPeriodo = new Set(
-          cetapsPeriodo.map((cetap) => normalizeKey(cetap.nombre)),
-        );
-        const territorialesPeriodo = new Set(
-          cetapsPeriodo.map((cetap) => normalizeKey(cetap.dtNombre)),
+        const estadoSedes = (estadoEstructura as any)?.data || estadoEstructura;
+        const idsSedesActivas = new Set<number>(
+          (estadoSedes?.idSedesActivas || []).map((id: unknown) => Number(id)),
         );
 
         const estructuraSedes = periodoEstructura
           ? estructuraSedesMaestras.filter(
-              (sede) =>
-                codigosCetapPeriodo.has(normalizeKey(sede.codSede)) ||
-                nombresCetapPeriodo.has(normalizeKey(sede.nomSede)),
+              (sede) => idsSedesActivas.has(Number(sede.idSede)),
             )
           : [];
         const idsSeccionalesPeriodo = new Set(
@@ -912,9 +947,7 @@ export function GraduatesManagementModule() {
         );
         const estructuraSeccionales = periodoEstructura
           ? estructuraSeccionalesMaestras.filter(
-              (seccional) =>
-                idsSeccionalesPeriodo.has(seccional.idSeccional) ||
-                territorialesPeriodo.has(normalizeKey(seccional.nomSeccional)),
+              (seccional) => idsSeccionalesPeriodo.has(seccional.idSeccional),
             )
           : [];
 
@@ -922,8 +955,8 @@ export function GraduatesManagementModule() {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
           setProgramasCatalog(programasCatalogResponse);
-          setEstructuraPeriodoCatalogo(periodoEstructura?.codigo || '');
-          setProgramasPeriodoCatalogo(periodoProgramas?.codigo || '');
+          setEstructuraPeriodoCatalogo(codigoPeriodoEstructura);
+          setProgramasPeriodoCatalogo(codigoPeriodoProgramas);
         }
 
         const seccionalByName = new Map<string, Seccional>();
@@ -1063,7 +1096,7 @@ export function GraduatesManagementModule() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [catalogRefreshToken]);
 
   const graduatesOnly = useMemo(() => graduates, [graduates]);
   const totalQueuedFiles = filesModalItems.length + filesUploadQueue.length;
@@ -1321,13 +1354,16 @@ export function GraduatesManagementModule() {
       !!selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey);
     const baseOptions = hasSelectedTerritorialCatalog
       ? sedesByTerritorial.get(selectedTerritorialKey) || []
-      : sedesOptions;
+      : [];
+
+    // Los graduados integrados pueden conservar una territorial/sede externa al
+    // catálogo vigente. En ese caso se mantiene únicamente su sede actual; no se
+    // mezclan todas las sedes del catálogo ni se obliga al usuario a reemplazarla.
     return uniqueSortedText([editForm.location, ...baseOptions]);
   }, [
     editForm.location,
     editForm.territorial,
     sedesByTerritorial,
-    sedesOptions,
     normalizeKey,
   ]);
 

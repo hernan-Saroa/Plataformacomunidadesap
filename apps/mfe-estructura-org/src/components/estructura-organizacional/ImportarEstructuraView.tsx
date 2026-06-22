@@ -74,35 +74,45 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
     if (e.dataTransfer.files?.[0]) {
       const f = e.dataTransfer.files[0];
       const ext = f.name.split('.').pop()?.toLowerCase();
-      if (['xlsx', 'xls', 'csv'].includes(ext || '')) {
+      if (['xlsx', 'xls'].includes(ext || '')) {
         setFile(f); analyzeFile(f); handleImportar(true, f);
-      } else { toast.error('Archivo no soportado. Use .xlsx, .xls o .csv'); }
+      } else { toast.error('Archivo no soportado. Use .xlsx o .xls'); }
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const f = e.target.files[0];
+      const ext = f.name.split('.').pop()?.toLowerCase();
+      if (!['xlsx', 'xls'].includes(ext || '')) {
+        toast.error('Archivo no soportado. Use .xlsx o .xls');
+        e.target.value = '';
+        return;
+      }
       setFile(f); analyzeFile(f); handleImportar(true, f);
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const wb = XLSX.utils.book_new();
-    const wsDt = XLSX.utils.aoa_to_sheet([
-      ['codigo_dt', 'nombre_dt', 'nombre_normalizado', 'orden_visualizacion', 'activo'],
-      ['SC', 'SEDE_CENTRAL', 'sedecentral', 1, 'TRUE'],
-      ['DT-001', 'ANTIOQUIA', 'antioquia', 2, 'TRUE'],
-    ]);
-    XLSX.utils.book_append_sheet(wb, wsDt, 'DIRECCIONES_TERRITORIALES');
-    const wsCetaps = XLSX.utils.aoa_to_sheet([
-      ['codigo_cetap', 'nombre_cetap', 'nombre_normalizado', 'codigo_dt', 'nombre_dt', 'tipo', 'latitud', 'longitud', 'activo'],
-      ['CET-0288', 'Sede Central', 'sedecentral', 'SC', 'SEDE_CENTRAL', 'sede_central', '4,6486', '-74,0828', 'TRUE'],
-      ['CET-0001', 'OTRO', 'otro', 'SC', 'SEDE_CENTRAL', 'otro', '', '', 'TRUE'],
-      ['CET-0005', 'Amaga', 'amaga', 'DT-001', 'ANTIOQUIA', 'cetap', '', '', 'TRUE'],
-    ]);
-    XLSX.utils.book_append_sheet(wb, wsCetaps, 'CETAPS');
-    XLSX.writeFile(wb, 'Plantilla_Estructura_Geografica.xlsx');
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await estructuraService.descargarPlantillaEstructura();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Plantilla_Estructura_Geografica_ESAP.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success('Plantilla institucional descargada', {
+        description: 'Incluye 17 territoriales y 290 CETAP.',
+      });
+    } catch (downloadError) {
+      console.error('No se pudo descargar la plantilla institucional:', downloadError);
+      toast.error('No se pudo descargar la plantilla institucional', {
+        description: 'Verifique que el servicio de autenticación esté disponible e inténtelo nuevamente.',
+      });
+    }
   };
 
   const handleImportar = async (dryRun = true, fileToImport?: File, skipInvalid = false) => {
@@ -137,6 +147,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
     setFile(null); setResult(null); setError(null); setValidationErrors([]);
     setIsSimulated(false); setSelectedDtCode(null); setSearchTerm('');
     setCorrections({}); setShowCorrectionPanel(false); workbookRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleCorrectionChange = useCallback((key: string, value: string) => {
@@ -200,6 +211,13 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const identicalDts = result?.analisis_duplicados?.territoriales?.identicos || (isAllIdentical ? totalDts : 0);
   const identicalCetaps = result?.analisis_duplicados?.cetaps?.identicos || (isAllIdentical ? totalCetaps : 0);
   const allDuplicates = newDts === 0 && newCetaps === 0 && (updatedDts > 0 || updatedCetaps > 0);
+  const legacySync = result?.sincronizacion_legacy;
+  const legacyUpdates =
+    (legacySync?.seccionales?.actualizadas || 0) +
+    (legacySync?.sedes?.actualizadas || 0);
+  const legacyCreates =
+    (legacySync?.seccionales?.creadas || 0) +
+    (legacySync?.sedes?.creadas || 0);
 
   // ═══════════════════════════════ RENDER ═══════════════════════════════
   return (
@@ -306,7 +324,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                         : 'border-gray-200 hover:border-[#003DA5]/40 hover:bg-gray-50/50'
                     }`}
                   >
-                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls,.csv" className="hidden" />
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls" className="hidden" />
                     {file ? (
                       <>
                         <div className="w-14 h-14 mx-auto mb-3 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-200/60">
@@ -329,7 +347,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                         </div>
                         <p className="font-semibold text-gray-700 text-sm">Arrastra tu archivo aquí</p>
                         <p className="text-[11px] text-gray-400 mt-1">o haz clic para seleccionar</p>
-                        <p className="text-[10px] text-gray-300 mt-2">.xlsx · .xls · .csv</p>
+                        <p className="text-[10px] text-gray-300 mt-2">.xlsx · .xls</p>
                       </>
                     )}
                   </div>
@@ -491,6 +509,9 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                           ? `${updatedDts} territoriales y ${updatedCetaps} sedes ya están cargadas — se actualizarán`
                           : `${newDts} nuevos + ${updatedDts} existentes (territoriales) · ${newCetaps} nuevos + ${updatedCetaps} existentes (sedes)`
                         }
+                        {legacySync && (
+                          <> · Sincronización organizacional: {legacyUpdates} actualizaciones y {legacyCreates} creaciones, sin eliminar registros heredados.</>
+                        )}
                       </p>
                     </div>
                   </div>

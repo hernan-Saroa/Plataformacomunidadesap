@@ -380,7 +380,7 @@ export class PtaService {
       id: entity.id,
       docente_id: entity.docenteId,
       periodo: entity.periodo,
-      estado: entity.estado,
+      estado: entity.estado === 'BORRADOR' ? 'Borrador' : entity.estado,
       version: entity.version,
       horas_totales: horasTotal,
       // Aliases usados por la tabla del backoffice
@@ -870,6 +870,19 @@ export class PtaService {
           const algunaConCambios = pendientes.some(ap => ap.decision === 'aprobado_con_cambios');
           nuevoEstado = algunaConCambios ? 'REVISION_DOCENTE_N1' : 'Pendiente Decanatura';
         }
+      }
+    }
+
+    // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
+    if (nuevoEstado === 'PENDIENTE_APROBACION') {
+      const ds = existing.datosEstructurados as any || {};
+      const tieneTotalidad = Array.isArray(ds.academico_admin) &&
+        ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+      const horasActuales = existing.horasTotales || 0;
+      if (!tieneTotalidad && horasActuales === 0) {
+        throw new BadRequestException(
+          'El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobación.',
+        );
       }
     }
 
@@ -1976,38 +1989,31 @@ export class PtaService {
 
     const todosComponentes = Object.keys(horasPorComponente);
 
+    // Si todos los arrays están vacíos, probablemente hay un problema de datos
+    // (e.g. actividades filtradas incorrectamente al guardar). No auto-aprobar nada.
+    const totalActividades =
+      asignaturas.length + invActs.length + extActs.length + comp.length + acadAdmin.length;
+    const hayActividades = totalActividades > 0;
+
     if (list.length === 0) {
-      // Create all records, auto-approving those with 0h
+      // Auto-aprobar componentes con 0h SOLO si el PTA tiene datos estructurados.
+      // Si todos los arrays están vacíos, dejar todo como 'pendiente' para revisión manual.
       const items = todosComponentes.map(c => {
         const tieneHoras = horasPorComponente[c] > 0;
+        const autoAprobar = hayActividades && !tieneHoras;
         return this.ptaComponentApprovalRepo.create({
           ptaId,
           componente: c,
-          estado: tieneHoras ? 'pendiente' : 'aprobado',
-          ...(tieneHoras ? {} : {
+          estado: autoAprobar ? 'aprobado' : 'pendiente',
+          ...(autoAprobar ? {
             aprobadorNombre: 'Sistema',
             comentarios: 'Sin actividades — aprobación automática',
             fechaAprobacion: new Date(),
-          }),
+          } : {}),
         });
       });
       await this.ptaComponentApprovalRepo.save(items);
       return items;
-    }
-
-    // Auto-approve existing 'pendiente' records that have 0h (retroactive fix)
-    const toUpdate: typeof list = [];
-    for (const record of list) {
-      if (record.estado === 'pendiente' && horasPorComponente[record.componente] === 0) {
-        record.estado = 'aprobado';
-        record.aprobadorNombre = 'Sistema';
-        record.comentarios = 'Sin actividades — aprobación automática';
-        record.fechaAprobacion = new Date();
-        toUpdate.push(record);
-      }
-    }
-    if (toUpdate.length > 0) {
-      await this.ptaComponentApprovalRepo.save(toUpdate);
     }
 
     return list;

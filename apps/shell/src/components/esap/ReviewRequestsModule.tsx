@@ -53,6 +53,25 @@ import type { Seccional, Sede } from '../../services/api/types';
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
+const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
+  // El periodo ACTIVO (en_curso) es el autoritativo para los consumidores:
+  // sus territoriales/sedes/programas son los "correctos". Solo si no hay ninguno
+  // en curso se respeta el último seleccionado y, como último recurso, el más reciente.
+  const activo = periods.find((period) => period?.estado === 'en_curso');
+  if (activo) return activo;
+  const savedPeriodCode = localStorage.getItem(storageKey) || '';
+  return (
+    periods.find((period) => getPeriodCode(period) === savedPeriodCode) ||
+    periods[0] ||
+    null
+  );
+};
 const getPeriodCreationTime = (period: any) => {
   const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
   const timestamp = value ? new Date(value).getTime() : Number.NaN;
@@ -145,6 +164,7 @@ export function ReviewRequestsModule({
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
   const [sedesBySeccional, setSedesBySeccional] = useState<Record<string, string[]>>({});
+  const [structureCatalogNotice, setStructureCatalogNotice] = useState('');
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -348,28 +368,52 @@ export function ReviewRequestsModule({
   };
 
   const parseEstructuraCatalog = (source: unknown): { sedes: Sede[]; seccionales: Seccional[] } => {
-    if (!source || typeof source !== 'object') {
-      return { sedes: [], seccionales: [] };
-    }
+    let current: unknown = source;
 
-    const root = source as {
-      sedes?: unknown;
-      seccionales?: unknown;
-      data?: {
+    for (let depth = 0; depth < 5; depth += 1) {
+      if (!current || typeof current !== 'object') break;
+      const root = current as {
         sedes?: unknown;
         seccionales?: unknown;
+        data?: unknown;
       };
-    };
+      const sedes = getArrayFromUnknown<Sede>(root.sedes);
+      const seccionales = getArrayFromUnknown<Seccional>(root.seccionales);
 
-    const directSedes = getArrayFromUnknown<Sede>(root.sedes);
-    const directSeccionales = getArrayFromUnknown<Seccional>(root.seccionales);
-    const nestedSedes = getArrayFromUnknown<Sede>(root.data?.sedes);
-    const nestedSeccionales = getArrayFromUnknown<Seccional>(root.data?.seccionales);
+      if (sedes.length > 0 || seccionales.length > 0) {
+        return { sedes, seccionales };
+      }
+      current = root.data;
+    }
 
-    return {
-      sedes: directSedes.length ? directSedes : nestedSedes,
-      seccionales: directSeccionales.length ? directSeccionales : nestedSeccionales,
-    };
+    return { sedes: [], seccionales: [] };
+  };
+
+  const parseSedePeriodStatus = (source: unknown): {
+    idSedesActivas: number[];
+    available: boolean;
+  } => {
+    let current: unknown = source;
+
+    for (let depth = 0; depth < 5; depth += 1) {
+      if (!current || typeof current !== 'object') break;
+      const root = current as {
+        idSedesActivas?: unknown;
+        data?: unknown;
+      };
+
+      if (Array.isArray(root.idSedesActivas)) {
+        return {
+          idSedesActivas: root.idSedesActivas
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id)),
+          available: true,
+        };
+      }
+      current = root.data;
+    }
+
+    return { idSedesActivas: [], available: false };
   };
 
   // Funciones auxiliares
@@ -1043,9 +1087,7 @@ export function ReviewRequestsModule({
     const loadCatalogs = async () => {
       setIsLoadingCatalogs(true);
       setProgramasOptions([]);
-      setSeccionalesOptions([]);
-      setSeccionalBySede({});
-      setSedesBySeccional({});
+      setStructureCatalogNotice('');
       try {
         const [estructuraResponse, periodosResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
@@ -1059,24 +1101,24 @@ export function ReviewRequestsModule({
         const periodos = Array.isArray(periodosResponse)
           ? sortPeriodsByCreation(periodosResponse)
           : [];
-        const latestPeriod = periodos[0] || null;
-        const periodoEstructura = latestPeriod;
-        const periodoProgramas = latestPeriod;
-
-        if (periodoEstructura?.codigo) {
-          localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, periodoEstructura.codigo);
-        }
-        if (periodoProgramas?.codigo) {
-          localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoProgramas.codigo);
-        }
+        const periodoEstructura = resolveCatalogPeriod(
+          periodos,
+          ESTRUCTURA_PERIOD_STORAGE_KEY,
+        );
+        const periodoProgramas = resolveCatalogPeriod(
+          periodos,
+          PROGRAMAS_PERIOD_STORAGE_KEY,
+        );
+        const codigoPeriodoEstructura = getPeriodCode(periodoEstructura);
+        const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
 
         const loadProgramCatalog = async () => {
-          if (!periodoProgramas?.codigo) return [];
+          if (!codigoPeriodoProgramas) return [];
           const pageSize = 200;
           const firstPage = await programasService.listar({
             page: 1,
             limit: pageSize,
-            periodoAcademico: periodoProgramas.codigo,
+            periodoAcademico: codigoPeriodoProgramas,
           });
           const totalPages = Math.max(
             1,
@@ -1090,7 +1132,7 @@ export function ReviewRequestsModule({
                       .listar({
                         page: index + 2,
                         limit: pageSize,
-                        periodoAcademico: periodoProgramas.codigo,
+                        periodoAcademico: codigoPeriodoProgramas,
                       })
                       .catch((error) => {
                         console.warn(
@@ -1108,47 +1150,64 @@ export function ReviewRequestsModule({
             .filter(Boolean);
         };
 
-        const [detalleEstructura, programasCatalog] = await Promise.all([
-          periodoEstructura?.id
-            ? estructuraService.obtenerDetallePeriodo(periodoEstructura.id).catch(() => null)
-            : Promise.resolve(null),
+        const estadoEstructuraPromise: Promise<{
+          value: unknown;
+          error: unknown;
+        }> = codigoPeriodoEstructura
+          ? estructuraService
+              .obtenerEstadoSedesPeriodo(codigoPeriodoEstructura)
+              .then((value) => ({ value, error: null }))
+              .catch((error) => ({ value: null, error }))
+          : Promise.resolve({ value: null, error: null });
+
+        const [estadoEstructuraResult, programasCatalog] = await Promise.all([
+          estadoEstructuraPromise,
           loadProgramCatalog().catch((error) => {
             console.error('Error cargando programas del periodo:', error);
             return [];
           }),
         ]);
 
-        const cetapsPeriodo = Array.isArray(detalleEstructura?.cetaps)
-          ? detalleEstructura.cetaps
-          : [];
-        const codigosCetap = new Set(
-          cetapsPeriodo.map((cetap: any) => normalizeKey(cetap?.codigo)),
+        const estadoSedes = parseSedePeriodStatus(estadoEstructuraResult.value);
+        const idsSedesActivas = new Set<number>(
+          estadoSedes.idSedesActivas,
         );
-        const nombresCetap = new Set(
-          cetapsPeriodo.map((cetap: any) => normalizeKey(cetap?.nombre)),
-        );
-        const nombresTerritorial = new Set(
-          cetapsPeriodo.map((cetap: any) => normalizeKey(cetap?.dtNombre)),
-        );
-        const sedes = periodoEstructura
-          ? sedesMaestras.filter(
-              (sede) =>
-                codigosCetap.has(normalizeKey(sede?.codSede)) ||
-                nombresCetap.has(normalizeKey(sede?.nomSede)),
-            )
-          : [];
+
+        const useMasterCatalogFallback =
+          !!periodoEstructura && !estadoSedes.available;
+        const sedes = !periodoEstructura
+          ? []
+          : useMasterCatalogFallback
+            ? sedesMaestras
+            : sedesMaestras.filter(
+                (sede) => idsSedesActivas.has(Number(sede?.idSede)),
+              );
         const idsSeccionales = new Set(
           sedes
-            .map((sede) => sede.idSeccional)
-            .filter((id): id is number => typeof id === 'number'),
+            .map((sede) => Number(sede.idSeccional))
+            .filter((id) => Number.isFinite(id)),
         );
-        const seccionales = periodoEstructura
-          ? seccionalesMaestras.filter(
-              (seccional) =>
-                idsSeccionales.has(seccional.idSeccional) ||
-                nombresTerritorial.has(normalizeKey(seccional.nomSeccional)),
-            )
-          : [];
+        const seccionales = !periodoEstructura
+          ? []
+          : useMasterCatalogFallback
+            ? seccionalesMaestras
+            : seccionalesMaestras.filter(
+                (seccional) => idsSeccionales.has(Number(seccional.idSeccional)),
+              );
+
+        if (useMasterCatalogFallback) {
+          console.warn(
+            `No se pudo consultar la activación de sedes para ${codigoPeriodoEstructura}; se usará el catálogo maestro de Estructura Organizacional.`,
+            estadoEstructuraResult.error,
+          );
+          setStructureCatalogNotice(
+            `No fue posible consultar la activación del periodo ${codigoPeriodoEstructura}. Se muestra temporalmente el catálogo maestro de Estructura Organizacional.`,
+          );
+        } else if (periodoEstructura && sedes.length === 0) {
+          setStructureCatalogNotice(
+            `El periodo ${codigoPeriodoEstructura} no tiene territoriales o sedes activas en Estructura Organizacional.`,
+          );
+        }
 
         const seccionalesList = seccionales
           .map((seccional) => normalizeName(seccional?.nomSeccional))
@@ -1159,7 +1218,7 @@ export function ReviewRequestsModule({
           if (!seccional?.idSeccional) return;
           const name = normalizeName(seccional.nomSeccional);
           if (name) {
-            seccionalNameById.set(seccional.idSeccional, name);
+            seccionalNameById.set(Number(seccional.idSeccional), name);
           }
         });
 
@@ -1177,7 +1236,9 @@ export function ReviewRequestsModule({
           if (!sedeName) return;
           const seccionalName =
             normalizeName(sede?.seccional?.nomSeccional) ||
-            (sede?.idSeccional ? seccionalNameById.get(sede.idSeccional) || '' : '');
+            (sede?.idSeccional
+              ? seccionalNameById.get(Number(sede.idSeccional)) || ''
+              : '');
           if (seccionalName) {
             territorialMap[normalizeKey(sedeName)] = seccionalName;
             const seccionalKey = normalizeKey(seccionalName);
@@ -1206,6 +1267,11 @@ export function ReviewRequestsModule({
 
       } catch (error) {
         console.error('Error cargando catálogos de aprobación:', error);
+        if (isMounted) {
+          setStructureCatalogNotice(
+            'No se pudo actualizar el catálogo de Estructura Organizacional. Se conserva el último catálogo cargado; intenta nuevamente.',
+          );
+        }
       } finally {
         if (isMounted) {
           setIsLoadingCatalogs(false);
@@ -1865,16 +1931,8 @@ export function ReviewRequestsModule({
         toast.error('El email no tiene un formato válido');
         return;
       }
-      if (programasOptions.length === 0) {
-        toast.error('No hay programas disponibles para el periodo académico actual');
-        return;
-      }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
-        return;
-      }
-      if (programasOptions.length > 0 && !selectedProgramIsInCurrentCatalog) {
-        toast.error('Selecciona un programa disponible en el periodo académico actual');
         return;
       }
       if (selectedProgramAlreadyExists) {
@@ -1906,17 +1964,15 @@ export function ReviewRequestsModule({
         return;
       }
       const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
-      if (!hasCatalogKey(sedesBySeccional, selectedSeccionalKey)) {
-        toast.error('La territorial no está disponible en el periodo de estructura actual');
-        return;
-      }
-      const sedesForSelectedSeccional = hasCatalogKey(
+      const selectedSeccionalHasCatalog = hasCatalogKey(
         sedesBySeccional,
         selectedSeccionalKey,
-      )
+      );
+      const sedesForSelectedSeccional = selectedSeccionalHasCatalog
         ? sedesBySeccional[selectedSeccionalKey]
         : [];
       if (
+        selectedSeccionalHasCatalog &&
         sedesForSelectedSeccional.length > 0 &&
         !sedesForSelectedSeccional.some(
           (sede) => normalizeKey(sede) === normalizeKey(approvalForm.campus),
@@ -3512,10 +3568,7 @@ export function ReviewRequestsModule({
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
                       className={`review-approval-input w-full rounded-lg border-2 px-3 py-2 text-sm ${
-                        selectedProgramAlreadyExists ||
-                        (!!approvalForm.programName &&
-                          programasOptions.length > 0 &&
-                          !selectedProgramIsInCurrentCatalog)
+                        selectedProgramAlreadyExists
                           ? 'border-red-300 bg-red-50 focus:border-red-500'
                           : 'border-gray-300'
                       }`}
@@ -3533,11 +3586,11 @@ export function ReviewRequestsModule({
                         <option
                           key={programa}
                           value={programa}
-                          disabled={alreadyExists || !belongsToCurrentCatalog}
+                          disabled={alreadyExists}
                         >
                           {programa}
                           {alreadyExists ? ' (ya existe)' : ''}
-                          {!belongsToCurrentCatalog ? ' (fuera del periodo actual)' : ''}
+                          {!belongsToCurrentCatalog ? ' (dato integrado)' : ''}
                         </option>
                         );
                       })}
@@ -3550,8 +3603,8 @@ export function ReviewRequestsModule({
                     {!!approvalForm.programName &&
                       programasOptions.length > 0 &&
                       !selectedProgramIsInCurrentCatalog && (
-                        <p className="text-xs font-semibold leading-5 text-red-600">
-                          El programa guardado no está disponible en el periodo actual. Selecciona otro.
+                        <p className="text-xs leading-5 text-blue-700">
+                          Este programa proviene de una integración y puede conservarse sin reemplazarlo.
                         </p>
                       )}
                   </div>
@@ -3603,7 +3656,11 @@ export function ReviewRequestsModule({
                       disabled={isLoadingApprovalData || isLoadingCatalogs}
                     >
                       <option value="">
-                        {isLoadingCatalogs ? 'Cargando territoriales...' : 'Seleccionar territorial'}
+                        {isLoadingCatalogs
+                          ? 'Cargando territoriales...'
+                          : seccionalSelectOptions.length > 0
+                            ? 'Seleccionar territorial'
+                            : 'No hay territoriales disponibles'}
                       </option>
                       {seccionalSelectOptions.map((seccional) => (
                         <option key={seccional} value={seccional}>
@@ -3643,7 +3700,9 @@ export function ReviewRequestsModule({
                         {isLoadingCatalogs
                           ? 'Cargando sedes...'
                           : approvalForm.seccionalName
-                            ? 'Seleccionar sede'
+                            ? campusOptions.length > 0
+                              ? 'Seleccionar sede'
+                              : 'No hay sedes para esta territorial'
                             : 'Selecciona primero una territorial'}
                       </option>
                       {campusOptions.map((sede) => (
@@ -3653,6 +3712,11 @@ export function ReviewRequestsModule({
                       ))}
                     </select>
                   </div>
+                  {structureCatalogNotice && (
+                    <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                      {structureCatalogNotice}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3 border-t border-dashed border-gray-200 pt-3">

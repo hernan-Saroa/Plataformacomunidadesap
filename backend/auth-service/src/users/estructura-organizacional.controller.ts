@@ -21,6 +21,7 @@ import {
   UpdateSedeDto,
   AsignarUsuariosDto,
   ToggleSedePeriodStatusDto,
+  BulkToggleSedePeriodStatusDto,
 } from './estructura-organizacional.dto';
 
 @Controller('estructura-organizacional')
@@ -140,6 +141,15 @@ export class EstructuraOrganizacionalController {
     return { data: sede, message: 'Sede actualizada exitosamente' };
   }
 
+  @Get('periodo/:periodoCodigo/sedes-estado')
+  async getSedePeriodStatus(
+    @Param('periodoCodigo') periodoCodigo: string,
+  ) {
+    const status =
+      await this.estructuraService.getSedePeriodStatus(periodoCodigo);
+    return { data: status };
+  }
+
   @Patch('sedes/:id/periodo')
   async toggleSedePeriodStatus(
     @Param('id') id: string,
@@ -151,6 +161,17 @@ export class EstructuraOrganizacionalController {
       dto.activo,
     );
     return { data: res, message: 'Estado de la sede en el periodo actualizado exitosamente' };
+  }
+
+  // Activación/desactivación masiva por periodo (territorial completa o "todos")
+  @Patch('periodo/sedes-bulk')
+  async bulkToggleSedePeriodStatus(@Body() dto: BulkToggleSedePeriodStatusDto) {
+    const res = await this.estructuraService.bulkToggleSedePeriodStatus(
+      dto.periodoCodigo,
+      dto.activo,
+      dto.idSedes,
+    );
+    return { data: res, message: 'Estado de las sedes en el periodo actualizado exitosamente' };
   }
 
   @Delete('sedes/:id')

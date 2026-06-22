@@ -1,4 +1,5 @@
 import { IsString, IsOptional, IsNumber, MaxLength, IsEmail, IsBoolean, IsArray, IsNotEmpty } from 'class-validator';
+import { Type } from 'class-transformer';
 
 // ==================== SECCIONAL DTOs ====================
 
@@ -15,6 +16,10 @@ export class CreateSeccionalDto {
   @IsOptional()
   @IsNumber()
   ordenVisualizacion?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idUbiSeccional?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -37,6 +42,10 @@ export class UpdateSeccionalDto {
   ordenVisualizacion?: number;
 
   @IsOptional()
+  @IsNumber()
+  idUbiSeccional?: number;
+
+  @IsOptional()
   @IsBoolean()
   activo?: boolean;
 }
@@ -56,6 +65,10 @@ export class CreateSedeDto {
   @IsOptional()
   @IsNumber()
   idSeccional?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idGeopolitica?: number;
 
   @IsOptional()
   @IsString()
@@ -89,6 +102,10 @@ export class UpdateSedeDto {
   @IsOptional()
   @IsNumber()
   idSeccional?: number;
+
+  @IsOptional()
+  @IsNumber()
+  idGeopolitica?: number;
 
   @IsOptional()
   @IsString()
@@ -131,4 +148,22 @@ export class ToggleSedePeriodStatusDto {
 
   @IsBoolean()
   activo: boolean;
+}
+
+export class BulkToggleSedePeriodStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  periodoCodigo: string;
+
+  @IsBoolean()
+  activo: boolean;
+
+  // Opcional: si se omite, aplica a TODAS las sedes del catálogo.
+  // @Type fuerza la conversión de cada elemento a número (los ids llegan como
+  // string porque la columna id_sede es bigint).
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsNumber({}, { each: true })
+  idSedes?: number[];
 }

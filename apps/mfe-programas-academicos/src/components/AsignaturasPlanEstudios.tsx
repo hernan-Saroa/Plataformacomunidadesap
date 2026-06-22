@@ -234,6 +234,8 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const [dragState, setDragState] = useState<DragState>({ draggingId: null, overSemestre: null });
   const [ptaConfig, setPtaConfig] = useState<any>(null);
   const exportRef = useRef<HTMLDivElement>(null);
+  const draftRestoredRef = useRef(false);
+  const draftStorageKey = `esap.programas.plan-estudios.draft.${programaId}`;
 
   // Close export menu on outside click
   useEffect(() => {
@@ -282,7 +284,14 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     try {
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas?_cb=${Date.now()}`);
       const asignaturasData = (response || []).map((a: any) => {
-        const asig = { ...a, nucleoTematico: a.nucleoTematico || a.nucleo || 'General' };
+        const tipo = String(a.tipo || 'Teorica');
+        const modalidad = String(a.modalidad || 'Presencial');
+        const asig = {
+          ...a,
+          tipo: tipo.charAt(0).toUpperCase() + tipo.slice(1),
+          modalidad: modalidad.charAt(0).toUpperCase() + modalidad.slice(1),
+          nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
+        };
         // Override with dynamic calculated hrs if config exists
         const calculated = calculateHrsPta(asig.creditos);
         if (calculated !== null) {
@@ -290,31 +299,109 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
         }
         return asig;
       });
-      setAsignaturas(asignaturasData);
+
+      const savedDraft = sessionStorage.getItem(draftStorageKey);
+      let restoredDraft = false;
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft);
+          if (Array.isArray(draft)) {
+            setAsignaturas(draft);
+            setHasChanges(true);
+            restoredDraft = true;
+            if (!draftRestoredRef.current) {
+              toast.info('Borrador restaurado', {
+                description: 'Se recuperaron los cambios del plan que aún no habías guardado.',
+              });
+              draftRestoredRef.current = true;
+            }
+          }
+        } catch {
+          sessionStorage.removeItem(draftStorageKey);
+        }
+      }
+
+      if (!restoredDraft) {
+        setAsignaturas(asignaturasData);
+        setHasChanges(false);
+      }
     } catch (err: any) {
       toast.error('Error al cargar asignaturas', { description: 'No se pudieron cargar las asignaturas del programa' });
     }
     setLoading(false);
-  }, [programaId, calculateHrsPta]);
+  }, [programaId, calculateHrsPta, draftStorageKey]);
 
   useEffect(() => { loadAsignaturas(); }, [loadAsignaturas]);
 
+  useEffect(() => {
+    if (hasChanges) {
+      sessionStorage.setItem(draftStorageKey, JSON.stringify(asignaturas));
+    }
+  }, [asignaturas, draftStorageKey, hasChanges]);
+
   // Save all
   const handleSaveAll = async () => {
+    const invalidIndex = asignaturas.findIndex((asignatura) => {
+      const creditos = Number(asignatura.creditos);
+      const semestre = Number(asignatura.semestre);
+      return !asignatura.nombre?.trim()
+        || !Number.isInteger(creditos)
+        || creditos < 1
+        || creditos > 20
+        || !Number.isInteger(semestre)
+        || semestre < 1
+        || semestre > 16;
+    });
+    if (invalidIndex >= 0) {
+      toast.error('Revisa la asignatura antes de guardar', {
+        description: `La asignatura ${invalidIndex + 1} requiere nombre, créditos entre 1 y 20 y un semestre válido.`,
+      });
+      return;
+    }
+
+    const codigos = asignaturas
+      .map((asignatura) => asignatura.codigo?.trim().toLowerCase())
+      .filter(Boolean);
+    if (new Set(codigos).size !== codigos.length) {
+      toast.error('Códigos repetidos', {
+        description: 'Cada código de asignatura debe ser único dentro del plan.',
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       const response = await apiClient.post(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`, {
         asignaturas,
+      }, { retries: 0 });
+      const savedAssignments = (response || asignaturas).map((a: any) => {
+        const tipo = String(a.tipo || 'Teorica');
+        const modalidad = String(a.modalidad || 'Presencial');
+        const normalized = {
+          ...a,
+          tipo: tipo.charAt(0).toUpperCase() + tipo.slice(1),
+          modalidad: modalidad.charAt(0).toUpperCase() + modalidad.slice(1),
+          nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
+        };
+        const calculated = calculateHrsPta(normalized.creditos);
+        if (calculated !== null) {
+          normalized.horasFijasPta = calculated;
+        }
+        return normalized;
       });
-      setAsignaturas(response || asignaturas);
+      setAsignaturas(savedAssignments);
       setHasChanges(false);
+      sessionStorage.removeItem(draftStorageKey);
       toast.success('Plan de estudios guardado', {
         description: `${asignaturas.length} asignaturas sincronizadas con Oferta Academica (PTA)`,
       });
     } catch (err: any) {
-      toast.error('Error al guardar plan de estudios', { description: err.message });
+      toast.error('Error al guardar plan de estudios', {
+        description: err?.message || 'No fue posible guardar el plan de estudios.',
+      });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   // Add
@@ -748,7 +835,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                       const c = Number(e.target.value);
                       setNewAsig({ ...newAsig, creditos: c, horas: c * 48 });
                     }}
-                    min={0} max={10}
+                    min={1} max={20}
                     className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#003DA5]"
                   />
                 </div>
@@ -987,7 +1074,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                           {isEditing ? (
                             <input type="number" value={asig.creditos}
                               onChange={e => handleUpdate(asig.id, 'creditos', Number(e.target.value))}
-                              min={0} max={10}
+                              min={1} max={20}
                               className="w-12 h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50 text-center"
                             />
                           ) : (
@@ -1006,15 +1093,9 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-center">
-                          {isEditing ? (
-                            <input type="number" value={asig.horasFijasPta ?? ''}
-                              onChange={e => handleUpdate(asig.id, 'horasFijasPta', Number(e.target.value))}
-                              min={0}
-                              className="w-12 h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50 text-center"
-                            />
-                          ) : (
-                            <span className="text-[10px] font-bold text-orange-600">{asig.horasFijasPta ?? '-'}</span>
-                          )}
+                          <span className="text-[10px] font-bold text-orange-600">
+                            {asig.horasFijasPta ?? '-'}
+                          </span>
                         </td>
                         <td className="px-3 py-1.5">
                           {isEditing ? (

@@ -21,6 +21,14 @@ export class ImportGeograficoResultDto {
   /** Filas que se omitieron por errores */
   omitidas_territoriales: any[];
   omitidas_cetaps: any[];
+  sincronizacion_legacy: {
+    seccionales: { creadas: number; actualizadas: number; sin_cambios: number };
+    sedes: { creadas: number; actualizadas: number; sin_cambios: number };
+    registros_legacy_conservados: {
+      seccionales: number;
+      sedes: number;
+    };
+  };
 
   constructor() {
     this.success = false;
@@ -42,5 +50,10 @@ export class ImportGeograficoResultDto {
     this.preview_cetaps = [];
     this.omitidas_territoriales = [];
     this.omitidas_cetaps = [];
+    this.sincronizacion_legacy = {
+      seccionales: { creadas: 0, actualizadas: 0, sin_cambios: 0 },
+      sedes: { creadas: 0, actualizadas: 0, sin_cambios: 0 },
+      registros_legacy_conservados: { seccionales: 0, sedes: 0 },
+    };
   }
 }

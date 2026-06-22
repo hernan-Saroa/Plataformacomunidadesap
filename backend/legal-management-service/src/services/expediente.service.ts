@@ -330,10 +330,7 @@ export class ExpedienteService {
     async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<any[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
-        queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
         queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
-        queryBuilder.leftJoinAndSelect('expediente.procesosAnexados', 'procesosAnexados', "procesosAnexados.estadoArchivo = 'ACTIVO'");
-        queryBuilder.leftJoinAndSelect('procesosAnexados.actors', 'procesosAnexadosActors');
 
         // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
         queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
@@ -392,6 +389,48 @@ export class ExpedienteService {
 
         const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
 
+        const expedienteIds = entities.map((entity) => entity.id);
+        const anexadosPorPrincipal = new Map<string, any[]>();
+
+        if (expedienteIds.length > 0) {
+            const procesosAnexados = await this.expedienteRepository
+                .createQueryBuilder('anexado')
+                .leftJoinAndSelect('anexado.actors', 'actors')
+                .select([
+                    'anexado.id',
+                    'anexado.radicado',
+                    'anexado.jurisdiccion',
+                    'anexado.tipoProceso',
+                    'anexado.demandante',
+                    'anexado.demandado',
+                    'anexado.estado',
+                    'anexado.etapaProcesal',
+                    'anexado.procesoPrincipalId',
+                    'anexado.fechaRadicacion',
+                    'anexado.createdAt',
+                    'anexado.updatedAt',
+                    'actors.id',
+                    'actors.nombre',
+                    'actors.tipoPersona',
+                    'actors.identificacion',
+                    'actors.rol',
+                    'actors.cargo',
+                    'actors.email',
+                    'actors.telefono',
+                    'actors.direccion',
+                    'actors.apoderado',
+                ])
+                .where('anexado.procesoPrincipalId IN (:...expedienteIds)', { expedienteIds })
+                .andWhere("anexado.estadoArchivo = 'ACTIVO'")
+                .getMany();
+
+            for (const anexado of procesosAnexados) {
+                const key = anexado.procesoPrincipalId;
+                if (!anexadosPorPrincipal.has(key)) anexadosPorPrincipal.set(key, []);
+                anexadosPorPrincipal.get(key)!.push(anexado);
+            }
+        }
+
         // // Populate actuaciones manually
         // // Optimization: Fetch all needed actuaciones in one query
         // const ids = entities.map(e => e.id);
@@ -423,10 +462,27 @@ export class ExpedienteService {
             const count = rawRow ? Number(rawRow.conteo_docs) : 0;
             entity.documentosCount = count;
             if (!entity.actuaciones) entity.actuaciones = [];
+            const procesosAnexadosResumen = (anexadosPorPrincipal.get(entity.id) || []).map((anexado: any) => ({
+                id: anexado.id,
+                radicado: anexado.radicado,
+                jurisdiccion: anexado.jurisdiccion,
+                tipoProceso: anexado.tipoProceso,
+                demandante: anexado.demandante,
+                demandado: anexado.demandado,
+                estado: anexado.estado,
+                etapaProcesal: anexado.etapaProcesal,
+                procesoPrincipalId: anexado.procesoPrincipalId,
+                fechaRadicacion: anexado.fechaRadicacion,
+                createdAt: anexado.createdAt,
+                updatedAt: anexado.updatedAt,
+                actors: anexado.actors || [],
+            }));
+            delete (entity as any).evidencias;
             const abogadoId = entity.abogadoSustanciador || null;
             const abogadoAuth = abogadoId ? profesionalesMap.get(abogadoId) : undefined;
             return {
                 ...entity,
+                procesosAnexados: procesosAnexadosResumen,
                 abogadoAsignado: {
                     id: abogadoId,
                     nombre: abogadoAuth?.nombre ?? 'Sin asignar',
