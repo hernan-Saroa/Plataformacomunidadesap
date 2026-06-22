@@ -27,6 +27,12 @@ import { Permissions } from '@esap-mfe/shared-types';
 type TipoCreacion = 'seccional' | 'sede';
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
 const normalizeCatalogKey = (value?: string | null) =>
   String(value || '')
     .normalize('NFD')
@@ -66,14 +72,19 @@ export function EstructuraOrganizacionalModule() {
   const [subVista, setSubVista] = useState<'arbol' | 'lista'>('arbol');
   const [subVistaPeriodo, setSubVistaPeriodo] = useState<'arbol' | 'lista'>('arbol');
   const [filtroActivacion, setFiltroActivacion] = useState<'todos' | 'activos' | 'inactivos'>('todos');
-  const [activeSedesCodes, setActiveSedesCodes] = useState<Set<string>>(new Set());
-  const [activeSedesNames, setActiveSedesNames] = useState<Set<string>>(new Set());
+  // Ids de las sedes activas EN EL PERIODO seleccionado (exacto, por id de sede).
+  // Es la fuente de verdad por-periodo que devuelve el backend; evita el matching
+  // ambiguo por código/nombre que hacía que periodos distintos se vieran iguales.
+  const [activeSedeIds, setActiveSedeIds] = useState<Set<number>>(new Set());
+  const [activacionEnCurso, setActivacionEnCurso] = useState(false);
 
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>('sede');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showPeriodoDropdown, setShowPeriodoDropdown] = useState(false);
+  const [marcandoActivoId, setMarcandoActivoId] = useState<string | null>(null);
+  const [busquedaPeriodo, setBusquedaPeriodo] = useState('');
   const [editItem, setEditItem] = useState<Seccional | Sede | null>(null);
   const [showAsignarModal, setShowAsignarModal] = useState(false);
   const [sinTerritorial, setSinTerritorial] = useState(0);
@@ -100,8 +111,12 @@ export function EstructuraOrganizacionalModule() {
       const sorted = sortPeriodsByCreation(list);
       setPeriodos(sorted);
       if (sorted.length > 0) {
+        const savedPeriodCode = localStorage.getItem(ESTRUCTURA_PERIOD_STORAGE_KEY) || '';
+        const savedPeriod = sorted.find(
+          (item) => getPeriodCode(item) === savedPeriodCode,
+        );
         const actual = sorted.find(p => p.estado === 'en_curso');
-        setPeriodo(actual?.codigo || '');
+        setPeriodo(getPeriodCode(savedPeriod || actual || sorted[0]));
       } else {
         setPeriodo('');
       }
@@ -129,6 +144,45 @@ export function EstructuraOrganizacionalModule() {
     }
   }, [periodo]);
 
+  // Lista de periodos filtrada por el buscador del dropdown.
+  const periodosFiltrados = periodos.filter((p) => {
+    const q = busquedaPeriodo.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(p.codigo || '').toLowerCase().includes(q) ||
+      String(p.anio ?? '').toLowerCase().includes(q) ||
+      String(p.estado || '').toLowerCase().includes(q)
+    );
+  });
+
+  // Activa cualquier periodo (estado en_curso) en todo el sistema, directamente.
+  const handleActivarPeriodo = async (p: any) => {
+    if (!p || !p.id) {
+      toast.error('Periodo inválido');
+      return;
+    }
+    if (p.estado === 'en_curso') {
+      toast.info(`"${p.codigo}" ya es el periodo activo`);
+      return;
+    }
+    try {
+      setMarcandoActivoId(p.id);
+      await estructuraService.marcarPeriodoActivo(p.id);
+      toast.success(`Periodo "${p.codigo}" marcado como activo`);
+      setShowPeriodoDropdown(false);
+      setBusquedaPeriodo('');
+      // La vista debe seguir al periodo recién activado (no quedarse en el anterior).
+      localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, p.codigo);
+      await loadPeriodos();
+      setPeriodo(p.codigo);
+    } catch (error: any) {
+      console.error('Error marcando periodo activo:', error);
+      toast.error(error?.response?.data?.message || 'No se pudo marcar el periodo como activo');
+    } finally {
+      setMarcandoActivoId(null);
+    }
+  };
+
   const applyPeriodFilter = async () => {
     if (seccionalesOriginales.length === 0 && sedesOriginales.length === 0) return;
 
@@ -139,29 +193,21 @@ export function EstructuraOrganizacionalModule() {
     try {
       const p = periodos.find(x => x.codigo === periodo);
       if (!p || !p.id) {
-        setActiveSedesCodes(new Set());
-        setActiveSedesNames(new Set());
+        setActiveSedeIds(new Set());
         return;
       }
 
-      const detail = await estructuraService.obtenerDetallePeriodo(p.id);
-      if (detail && detail.cetaps) {
-        const codes = new Set<string>(
-          detail.cetaps.map((c: any) => normalizeCatalogKey(c.codigo)),
-        );
-        const names = new Set<string>(
-          detail.cetaps.map((c: any) => normalizeCatalogKey(c.nombre)),
-        );
-        setActiveSedesCodes(codes);
-        setActiveSedesNames(names);
-      } else {
-        setActiveSedesCodes(new Set());
-        setActiveSedesNames(new Set());
-      }
+      const response =
+        await estructuraService.obtenerEstadoSedesPeriodo(periodo);
+      const status = (response as any)?.data || response;
+      setActiveSedeIds(
+        new Set<number>(
+          (status?.idSedesActivas || []).map((id: unknown) => Number(id)),
+        ),
+      );
     } catch (err) {
       console.error('Error filtrando por periodo:', err);
-      setActiveSedesCodes(new Set());
-      setActiveSedesNames(new Set());
+      setActiveSedeIds(new Set());
     }
   };
 
@@ -169,12 +215,8 @@ export function EstructuraOrganizacionalModule() {
   const sedesFiltradas = filtroActivacion === 'todos'
     ? sedesOriginales
     : filtroActivacion === 'activos'
-      ? sedesOriginales.filter(s =>
-          activeSedesCodes.has(normalizeCatalogKey(s.codSede)) ||
-          activeSedesNames.has(normalizeCatalogKey(s.nomSede)))
-      : sedesOriginales.filter(s =>
-          !activeSedesCodes.has(normalizeCatalogKey(s.codSede)) &&
-          !activeSedesNames.has(normalizeCatalogKey(s.nomSede)));
+      ? sedesOriginales.filter(s => activeSedeIds.has(Number(s.idSede)))
+      : sedesOriginales.filter(s => !activeSedeIds.has(Number(s.idSede)));
 
   // Seccionales filtradas: solo mostrar seccionales que tengan al menos una sede en sedesFiltradas
   const seccionalesFiltradas = filtroActivacion === 'todos'
@@ -184,68 +226,143 @@ export function EstructuraOrganizacionalModule() {
         return sedesDeEstaSeccional.length > 0;
       });
 
-  // Toggle handler para activar/desactivar CETAP en periodo
+  // Toggle handler para activar/desactivar CETAP en periodo (persistente)
   const handleToggleSedePeriodStatus = async (idSede: number, activo: boolean) => {
+    if (activacionEnCurso) return;
     const sede = sedesOriginales.find(s => s.idSede === idSede);
     if (!sede) return;
-    const key = normalizeCatalogKey(sede.codSede);
-    const nameKey = normalizeCatalogKey(sede.nomSede);
+    if (!periodo) {
+      toast.error('Seleccione un periodo académico primero');
+      return;
+    }
+    // Snapshot para revertir si falla la petición
+    const prevIds = activeSedeIds;
+    setActivacionEnCurso(true);
 
-    // Actualización optimista local
-    setActiveSedesCodes(prev => {
+    // Actualización optimista local (por id de sede)
+    setActiveSedeIds(prev => {
       const next = new Set(prev);
-      if (activo) next.add(key); else next.delete(key);
+      if (activo) next.add(Number(idSede)); else next.delete(Number(idSede));
       return next;
     });
-    setActiveSedesNames(prev => {
-      const next = new Set(prev);
-      if (activo) next.add(nameKey); else next.delete(nameKey);
-      return next;
-    });
 
-    toast.success(activo ? `CETAP "${sede.nomSede}" activado en periodo` : `CETAP "${sede.nomSede}" desactivado en periodo`);
+    try {
+      await estructuraService.toggleSedePeriodStatus(idSede, periodo, activo);
+      await applyPeriodFilter();
+      toast.success(activo ? `CETAP "${sede.nomSede}" activado en ${periodo}` : `CETAP "${sede.nomSede}" desactivado en ${periodo}`);
+    } catch (error: any) {
+      setActiveSedeIds(prevIds);
+      console.error('Error actualizando estado del CETAP en periodo:', error);
+      toast.error(error?.response?.data?.message || 'No se pudo actualizar el estado del CETAP en el periodo');
+    } finally {
+      setActivacionEnCurso(false);
+    }
   };
 
-  // Acciones masivas
-  const handleActivarTodos = () => {
-    const codes = new Set(sedesOriginales.map(s => normalizeCatalogKey(s.codSede)));
-    const names = new Set(sedesOriginales.map(s => normalizeCatalogKey(s.nomSede)));
-    setActiveSedesCodes(codes);
-    setActiveSedesNames(names);
-    toast.success('Todos los CETAPs activados en periodo');
+  // Acciones masivas (persistentes)
+  const handleActivarTodos = async () => {
+    if (activacionEnCurso) return;
+    if (!periodo) {
+      toast.error('Seleccione un periodo académico primero');
+      return;
+    }
+    const prevIds = activeSedeIds;
+    setActivacionEnCurso(true);
+    setActiveSedeIds(new Set(sedesOriginales.map(s => Number(s.idSede))));
+    try {
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, true);
+      const n = res?.data?.actualizados ?? sedesOriginales.length;
+      const omitidos = res?.data?.omitidos ?? 0;
+      await applyPeriodFilter();
+      if (omitidos > 0) {
+        toast.warning(`${n} CETAPs activados y ${omitidos} omitidos`);
+        return;
+      }
+      toast.success(`${n} CETAPs activados en ${periodo}`);
+    } catch (error: any) {
+      setActiveSedeIds(prevIds);
+      console.error('Error activando todos los CETAPs:', error);
+      toast.error(error?.response?.data?.message || 'No se pudieron activar todos los CETAPs');
+    } finally {
+      setActivacionEnCurso(false);
+    }
   };
 
-  const handleDesactivarTodos = () => {
-    setActiveSedesCodes(new Set());
-    setActiveSedesNames(new Set());
-    toast.success('Todos los CETAPs desactivados en periodo');
+  const handleDesactivarTodos = async () => {
+    if (activacionEnCurso) return;
+    if (!periodo) {
+      toast.error('Seleccione un periodo académico primero');
+      return;
+    }
+    const prevIds = activeSedeIds;
+    setActivacionEnCurso(true);
+    setActiveSedeIds(new Set());
+    try {
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, false);
+      const n = res?.data?.actualizados ?? sedesOriginales.length;
+      const omitidos = res?.data?.omitidos ?? 0;
+      await applyPeriodFilter();
+      if (omitidos > 0) {
+        toast.warning(`${n} CETAPs desactivados y ${omitidos} omitidos`);
+        return;
+      }
+      toast.success(`Todos los CETAPs desactivados en ${periodo}`);
+    } catch (error: any) {
+      setActiveSedeIds(prevIds);
+      console.error('Error desactivando todos los CETAPs:', error);
+      toast.error(error?.response?.data?.message || 'No se pudieron desactivar todos los CETAPs');
+    } finally {
+      setActivacionEnCurso(false);
+    }
   };
 
-  // Toggle handler para activar/desactivar TODA una territorial en periodo
-  const handleToggleSeccionalPeriodStatus = (idSeccional: number, activo: boolean) => {
+  // Toggle handler para activar/desactivar TODA una territorial en periodo (persistente)
+  const handleToggleSeccionalPeriodStatus = async (idSeccional: number, activo: boolean) => {
+    if (activacionEnCurso) return;
+    if (!periodo) {
+      toast.error('Seleccione un periodo académico primero');
+      return;
+    }
     const sedesDeLaSeccional = sedesOriginales.filter(s => s.idSeccional === idSeccional);
     if (sedesDeLaSeccional.length === 0) return;
 
-    setActiveSedesCodes(prev => {
+    const prevIds = activeSedeIds;
+    setActivacionEnCurso(true);
+
+    setActiveSedeIds(prev => {
       const next = new Set(prev);
       sedesDeLaSeccional.forEach(sede => {
-        const key = normalizeCatalogKey(sede.codSede);
-        if (activo) next.add(key); else next.delete(key);
-      });
-      return next;
-    });
-    setActiveSedesNames(prev => {
-      const next = new Set(prev);
-      sedesDeLaSeccional.forEach(sede => {
-        const nameKey = normalizeCatalogKey(sede.nomSede);
-        if (activo) next.add(nameKey); else next.delete(nameKey);
+        const id = Number(sede.idSede);
+        if (activo) next.add(id); else next.delete(id);
       });
       return next;
     });
 
     const seccional = seccionalesOriginales.find(s => s.idSeccional === idSeccional);
     const nombre = seccional?.nomSeccional || 'Territorial';
-    toast.success(activo ? `Territorial "${nombre}" y sus ${sedesDeLaSeccional.length} CETAPs activados` : `Territorial "${nombre}" y sus ${sedesDeLaSeccional.length} CETAPs desactivados`);
+
+    try {
+      const idSedes = sedesDeLaSeccional
+        .map(s => Number(s.idSede))
+        .filter(n => Number.isFinite(n));
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, activo, idSedes);
+      const actualizados = res?.data?.actualizados ?? idSedes.length;
+      const omitidos = res?.data?.omitidos ?? 0;
+      await applyPeriodFilter();
+      if (omitidos > 0) {
+        toast.warning(
+          `Territorial "${nombre}": ${actualizados} CETAPs actualizados y ${omitidos} omitidos`,
+        );
+        return;
+      }
+      toast.success(activo ? `Territorial "${nombre}" y sus ${actualizados} CETAPs activados` : `Territorial "${nombre}" y sus ${actualizados} CETAPs desactivados`);
+    } catch (error: any) {
+      setActiveSedeIds(prevIds);
+      console.error('Error actualizando territorial en periodo:', error);
+      toast.error(error?.response?.data?.message || 'No se pudo actualizar la territorial en el periodo');
+    } finally {
+      setActivacionEnCurso(false);
+    }
   };
 
   const cargarDatos = async () => {
@@ -319,7 +436,73 @@ export function EstructuraOrganizacionalModule() {
   };
 
   const handleExportar = () => {
-    toast.success('Exportando estructura organizacional...');
+    try {
+      const seccionalesMap = new Map(seccionalesOriginales.map(s => [s.idSeccional, s]));
+
+      // Una fila por sede (CETAP), enlazada con su seccional
+      const rows = sedesOriginales.map(sede => {
+        const sec = sede.idSeccional ? seccionalesMap.get(sede.idSeccional) : undefined;
+        return {
+          'Seccional': sec?.nomSeccional ?? '',
+          'Codigo Seccional': sec?.codSeccional ?? '',
+          'CETAP / Sede': sede.nomSede ?? '',
+          'Codigo Sede': sede.codSede ?? '',
+          'Ubicacion': sede.geopolitica?.nomDivGeopolitica ?? '',
+          'Estado': sede.sedeAct ?? '',
+          'Capacidad Estudiantes': sede.capacidadEstudiantes ?? 0,
+          'Capacidad Docentes': sede.capacidadDocentes ?? 0,
+        };
+      });
+
+      // Incluir seccionales que aún no tienen sedes para no perderlas en el reporte
+      const seccionalesConSedes = new Set(sedesOriginales.map(s => s.idSeccional));
+      seccionalesOriginales
+        .filter(s => !seccionalesConSedes.has(s.idSeccional))
+        .forEach(sec => {
+          rows.push({
+            'Seccional': sec.nomSeccional ?? '',
+            'Codigo Seccional': sec.codSeccional ?? '',
+            'CETAP / Sede': '',
+            'Codigo Sede': '',
+            'Ubicacion': sec.ubicacion?.nomDivGeopolitica ?? '',
+            'Estado': '',
+            'Capacidad Estudiantes': 0,
+            'Capacidad Docentes': 0,
+          });
+        });
+
+      if (rows.length === 0) {
+        toast.error('No hay datos para exportar');
+        return;
+      }
+
+      const headers = Object.keys(rows[0]);
+      const escapar = (val: any) => {
+        const texto = String(val ?? '');
+        return /[",\n;]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+      };
+      const csv = [
+        headers.join(','),
+        ...rows.map(r => headers.map(h => escapar((r as Record<string, any>)[h])).join(',')),
+      ].join('\n');
+
+      // BOM UTF-8 para que Excel respete los acentos
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `estructura_organizacional_${new Date().toISOString().split('T')[0]}.csv`;
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Estructura exportada (${rows.length} registros)`);
+    } catch (error) {
+      console.error('Error exportando estructura organizacional:', error);
+      toast.error('Error al exportar la estructura organizacional');
+    }
   };
 
   const handleImportar = () => {
@@ -431,38 +614,83 @@ export function EstructuraOrganizacionalModule() {
                             transition={{ duration: 0.15, ease: 'easeOut' }}
                             className="absolute left-0 mt-2 w-64 bg-white backdrop-blur-2xl rounded-xl shadow-2xl border border-gray-200 p-1.5 z-50 ring-1 ring-black/5"
                           >
-                            <div className="px-3 py-1.5 mb-1">
+                            <div className="px-3 py-1.5 mb-1 flex items-center justify-between">
                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Periodos Académicos</p>
+                              <span className="text-[10px] text-gray-400">{periodos.length}</span>
                             </div>
-                            <div className="max-h-48 overflow-y-auto space-y-0.5">
-                              {periodos.map((p) => (
-                                <button
-                                  key={p.codigo}
-                                  onClick={() => { setPeriodo(p.codigo); setShowPeriodoDropdown(false); }}
-                                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all duration-150 ${
-                                    p.codigo === periodo
-                                      ? 'bg-[#003DA5] text-white shadow-sm'
-                                      : 'text-gray-700 hover:bg-gray-100'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2.5">
-                                    <div className={`w-2 h-2 rounded-full ${
-                                      p.estado === 'en_curso' ? 'bg-green-400' : p.estado === 'finalizado' ? 'bg-gray-300' : 'bg-amber-400'
-                                    }`} />
-                                    <span className="text-sm font-bold">{p.codigo}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    {p.estado === 'en_curso' && (
-                                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
-                                        p.codigo === periodo ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700'
-                                      }`}>Actual</span>
+
+                            {/* Buscador — útil cuando hay varios periodos */}
+                            {periodos.length > 4 && (
+                              <div className="px-1.5 mb-1.5">
+                                <div className="relative">
+                                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                  <input
+                                    type="text"
+                                    value={busquedaPeriodo}
+                                    onChange={(e) => setBusquedaPeriodo(e.target.value)}
+                                    placeholder="Buscar periodo..."
+                                    className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]/30"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="max-h-56 overflow-y-auto space-y-0.5">
+                              {periodosFiltrados.length === 0 ? (
+                                <div className="px-3 py-4 text-center text-xs text-gray-400">
+                                  No se encontraron periodos
+                                </div>
+                              ) : periodosFiltrados.map((p) => {
+                                const esActivo = p.estado === 'en_curso';
+                                const esSeleccionado = p.codigo === periodo;
+                                return (
+                                  <div
+                                    key={p.codigo}
+                                    className={`flex items-center gap-1 rounded-lg transition-all duration-150 ${
+                                      esSeleccionado ? 'bg-[#003DA5] text-white shadow-sm' : 'hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    <button
+                                      onClick={() => { setPeriodo(p.codigo); setShowPeriodoDropdown(false); setBusquedaPeriodo(''); }}
+                                      className="flex-1 flex items-center justify-between px-3 py-2.5 text-left min-w-0"
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className={`w-2 h-2 rounded-full shrink-0 ${
+                                          esActivo ? 'bg-green-400' : (p.estado === 'finalizado' || p.estado === 'cerrado') ? 'bg-gray-300' : 'bg-amber-400'
+                                        }`} />
+                                        <span className={`text-sm font-bold ${esSeleccionado ? 'text-white' : 'text-gray-700'}`}>{p.codigo}</span>
+                                        {esActivo && (
+                                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
+                                            esSeleccionado ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700'
+                                          }`}>Actual</span>
+                                        )}
+                                      </div>
+                                      {esSeleccionado && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+                                    </button>
+
+                                    {/* Botón Activar directo — solo si no es el periodo activo */}
+                                    {!esActivo && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleActivarPeriodo(p); }}
+                                        disabled={marcandoActivoId !== null}
+                                        className={`flex items-center gap-1 px-2.5 py-1 mr-1.5 rounded-md text-[11px] font-bold transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                          esSeleccionado
+                                            ? 'bg-white/20 text-white hover:bg-white/30'
+                                            : 'bg-[#003DA5]/10 text-[#003DA5] hover:bg-[#003DA5]/20'
+                                        }`}
+                                        title={`Marcar ${p.codigo} como el periodo activo del sistema`}
+                                      >
+                                        {marcandoActivoId === p.id ? (
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <CheckCircle2 className="w-3 h-3" />
+                                        )}
+                                        Activar
+                                      </button>
                                     )}
-                                    {p.codigo === periodo && (
-                                      <CheckCircle2 className="w-4 h-4" />
-                                    )}
                                   </div>
-                                </button>
-                              ))}
+                                );
+                              })}
                             </div>
                           </motion.div>
                         </>
@@ -611,14 +839,16 @@ export function EstructuraOrganizacionalModule() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleActivarTodos}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-white/15 hover:bg-white/25 rounded-lg transition-colors border border-white/20"
+                    disabled={activacionEnCurso}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-white/15 hover:bg-white/25 rounded-lg transition-colors border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <CheckCircle2 className="w-3 h-3" />
                     Activar Todos
                   </button>
                   <button
                     onClick={handleDesactivarTodos}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-white/15 hover:bg-white/25 rounded-lg transition-colors border border-white/20"
+                    disabled={activacionEnCurso}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-white/15 hover:bg-white/25 rounded-lg transition-colors border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <XCircle className="w-3 h-3" />
                     Desactivar Todos
@@ -712,8 +942,7 @@ export function EstructuraOrganizacionalModule() {
                 onEditarSede={(sede) => handleEditar('sede', sede)}
                 onEliminarSeccional={handleEliminarSeccional}
                 onEliminarSede={handleEliminarSede}
-                activeSedesCodes={new Set()}
-                activeSedesNames={new Set()}
+                activeSedeIds={new Set()}
                 periodo=""
                 onToggleActive={() => {}}
                 onToggleSeccionalActive={() => {}}
@@ -724,8 +953,7 @@ export function EstructuraOrganizacionalModule() {
                 busqueda={busqueda}
                 seccionales={seccionalesOriginales}
                 sedes={sedesOriginales}
-                activeSedesCodes={new Set()}
-                activeSedesNames={new Set()}
+                activeSedeIds={new Set()}
                 periodo=""
                 onToggleActive={() => {}}
                 onToggleSeccionalActive={() => {}}
@@ -743,8 +971,7 @@ export function EstructuraOrganizacionalModule() {
                 onEditarSede={() => {}}
                 onEliminarSeccional={() => Promise.resolve()}
                 onEliminarSede={() => Promise.resolve()}
-                activeSedesCodes={activeSedesCodes}
-                activeSedesNames={activeSedesNames}
+                activeSedeIds={activeSedeIds}
                 periodo={periodo}
                 onToggleActive={handleToggleSedePeriodStatus}
                 onToggleSeccionalActive={handleToggleSeccionalPeriodStatus}
@@ -755,8 +982,7 @@ export function EstructuraOrganizacionalModule() {
                 busqueda={busqueda}
                 seccionales={seccionalesFiltradas}
                 sedes={sedesFiltradas}
-                activeSedesCodes={activeSedesCodes}
-                activeSedesNames={activeSedesNames}
+                activeSedeIds={activeSedeIds}
                 periodo={periodo}
                 onToggleActive={handleToggleSedePeriodStatus}
                 onToggleSeccionalActive={handleToggleSeccionalPeriodStatus}
@@ -774,6 +1000,7 @@ export function EstructuraOrganizacionalModule() {
         onSuccess={cargarDatos}
         tipo={tipoCreacion}
         seccionales={seccionalesOriginales}
+        sedes={sedesOriginales}
         editItem={editItem}
       />
 
@@ -810,8 +1037,7 @@ interface VistaArbolProps {
   onEditarSede: (sede: Sede) => void;
   onEliminarSeccional: (seccional: Seccional) => void;
   onEliminarSede: (sede: Sede) => void;
-  activeSedesCodes: Set<string>;
-  activeSedesNames: Set<string>;
+  activeSedeIds: Set<number>;
   periodo: string;
   onToggleActive: (idSede: number, activo: boolean) => void;
   onToggleSeccionalActive: (idSeccional: number, activo: boolean) => void;
@@ -827,8 +1053,7 @@ function VistaArbolSeccionalesSedes({
   onEditarSede,
   onEliminarSeccional,
   onEliminarSede,
-  activeSedesCodes,
-  activeSedesNames,
+  activeSedeIds,
   periodo,
   onToggleActive,
   onToggleSeccionalActive,
@@ -894,8 +1119,7 @@ function VistaArbolSeccionalesSedes({
 
   const isSedeActiva = (sede: Sede) => {
     if (!periodo) return false;
-    return activeSedesCodes.has(normalizeCatalogKey(sede.codSede)) ||
-           activeSedesNames.has(normalizeCatalogKey(sede.nomSede));
+    return activeSedeIds.has(Number(sede.idSede));
   };
 
   const localActiveSedesCount = sedes.filter(isSedeActiva).length;
@@ -1238,8 +1462,7 @@ function VistaListaTerritorialesCetap({
   busqueda,
   seccionales,
   sedes,
-  activeSedesCodes,
-  activeSedesNames,
+  activeSedeIds,
   periodo,
   onToggleActive,
   onToggleSeccionalActive,
@@ -1248,8 +1471,7 @@ function VistaListaTerritorialesCetap({
   busqueda: string;
   seccionales: Seccional[];
   sedes: Sede[];
-  activeSedesCodes: Set<string>;
-  activeSedesNames: Set<string>;
+  activeSedeIds: Set<number>;
   periodo: string;
   onToggleActive: (idSede: number, activo: boolean) => void;
   onToggleSeccionalActive: (idSeccional: number, activo: boolean) => void;
@@ -1298,8 +1520,7 @@ function VistaListaTerritorialesCetap({
 
   const isSedeActiva = (sede: Sede) => {
     if (!periodo) return false;
-    return activeSedesCodes.has(normalizeCatalogKey(sede.codSede)) ||
-           activeSedesNames.has(normalizeCatalogKey(sede.nomSede));
+    return activeSedeIds.has(Number(sede.idSede));
   };
 
   const totalCetap = territorialesFiltradas.reduce((acc, item) => acc + item.sedes.length, 0);

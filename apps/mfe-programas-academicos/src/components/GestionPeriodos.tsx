@@ -518,7 +518,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                               ) : (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setPeriodoToActivate(p); }}
-                                  className="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-[11px] font-bold border border-green-200 transition-all flex items-center gap-1"
+                                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-[11px] font-bold border border-amber-200 transition-all flex items-center gap-1"
                                 >
                                   <CheckCircle2 className="w-3 h-3" />
                                   Activar

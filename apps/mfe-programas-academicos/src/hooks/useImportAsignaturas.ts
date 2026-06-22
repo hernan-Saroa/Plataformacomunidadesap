@@ -38,6 +38,10 @@ export interface EstructuraImportStatus {
   success: boolean;
   direcciones_territoriales: number;
   cetaps: number;
+  seccionales_existentes: number;
+  sedes_existentes: number;
+  hasExistingStructure: boolean;
+  requiresSynchronization: boolean;
   isReady: boolean;
   message?: string;
 }
@@ -185,6 +189,10 @@ export function useImportAsignaturas() {
         success: false,
         direcciones_territoriales: 0,
         cetaps: 0,
+        seccionales_existentes: 0,
+        sedes_existentes: 0,
+        hasExistingStructure: false,
+        requiresSynchronization: false,
         isReady: false,
         message: err.message || 'No se pudo verificar la estructura geográfica.',
       };

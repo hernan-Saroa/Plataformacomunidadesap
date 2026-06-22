@@ -32,7 +32,6 @@ import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PaginationPremium } from './shared/PaginationPremium';
 import { CreateProgramaModal } from './CreateProgramaModal';
 import { PlanesEstudioDashboard } from './PlanesEstudioDashboard';
-import { OfertaAsignaturasModule } from './OfertaAsignaturasModule';
 import { AsignaturasPlanEstudios } from './AsignaturasPlanEstudios';
 import { ImportarAsignaturas } from './ImportarAsignaturas';
 import { GestionPeriodos } from './GestionPeriodos';
@@ -47,6 +46,12 @@ import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../se
 type ProgramaAcademico = ProgramaAcademicoDTO;
 const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
 const getPeriodCreationTime = (period: any) => {
   const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
   const timestamp = value ? new Date(value).getTime() : Number.NaN;
@@ -82,7 +87,7 @@ export function ProgramasAcademicosModule() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
-  const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'oferta-asignaturas' | 'importar-asignaturas' | 'periodos-academicos'>('lista');
+  const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'importar-asignaturas' | 'periodos-academicos'>('lista');
   const [selectedProgramaForCetaps, setSelectedProgramaForCetaps] = useState<ProgramaAcademicoDTO | null>(null);
   const [selectedPeriodoForImport, setSelectedPeriodoForImport] = useState<string | undefined>(undefined);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -105,10 +110,10 @@ export function ProgramasAcademicosModule() {
         const data = Array.isArray(res) ? res : [];
         const sorted = sortPeriodsByCreation(data);
         setPeriodosPA(sorted);
+        // Al llegar a la página, el selector SIEMPRE inicia en el período activo
+        // (en_curso), sin importar cuál se haya visualizado antes.
         const active = sorted.find((p: any) => p.estado === 'en_curso') || sorted[0];
-        setPeriodoSeleccionadoPA(
-          active ? active.codigo || `${active.anio}-${active.semestre}` : '',
-        );
+        setPeriodoSeleccionadoPA(getPeriodCode(active));
       } catch {
         setPeriodosPA([]);
         setPeriodoSeleccionadoPA('');
@@ -489,14 +494,6 @@ export function ProgramasAcademicosModule() {
           transition={{ duration: 0.3 }}
         >
           <PlanesEstudioDashboard />
-        </motion.div>
-      ) : activeView === 'oferta-asignaturas' ? (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <OfertaAsignaturasModule onBack={() => setActiveView('lista')} />
         </motion.div>
       ) : activeView === 'importar-asignaturas' ? (
         <motion.div
@@ -999,20 +996,21 @@ export function ProgramasAcademicosModule() {
         <CreateProgramaModal
           onClose={handleCloseModal}
           programaToEdit={programaToEdit}
+          periodoAcademico={periodoActivoCodigoPA}
           onSuccess={() => setRefreshTrigger(prev => prev + 1)}
         />
       )}
 
       {/* Dialog para Eliminar Programa */}
       <ConfirmationDialog
-        isOpen={!!programaToDelete}
+        open={!!programaToDelete}
         title="Eliminar Programa"
-        message={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
+        description={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
         confirmText="Eliminar"
         cancelText="Cancelar"
-        type="danger"
+        variant="danger"
         onConfirm={confirmDelete}
-        onCancel={() => setProgramaToDelete(null)}
+        onClose={() => setProgramaToDelete(null)}
       />
       </>
       )}

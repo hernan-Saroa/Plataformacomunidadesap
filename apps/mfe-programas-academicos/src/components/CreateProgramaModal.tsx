@@ -24,9 +24,11 @@ interface CreateProgramaModalProps {
   onClose: () => void;
   programaToEdit?: ProgramaAcademico | null;
   onSuccess?: () => void;
+  /** Código del período activo/seleccionado (ej. "2026-2"). El programa creado quedará vinculado a él. */
+  periodoAcademico?: string;
 }
 
-export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: CreateProgramaModalProps) {
+export function CreateProgramaModal({ onClose, programaToEdit, onSuccess, periodoAcademico }: CreateProgramaModalProps) {
   const isEditMode = !!programaToEdit;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -103,7 +105,12 @@ export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: Crea
         if (isEditMode && programaToEdit) {
           await apiClient.put(`/auth/api/v1/programas-academicos/${programaToEdit.id}`, programaData, { retries: 0 });
         } else {
-          await apiClient.post('/auth/api/v1/programas-academicos', programaData, { retries: 0 });
+          // Al crear, se vincula el programa al período seleccionado para que solo
+          // sea visible en ese período.
+          const createData = periodoAcademico
+            ? { ...programaData, periodoAcademico }
+            : programaData;
+          await apiClient.post('/auth/api/v1/programas-academicos', createData, { retries: 0 });
         }
 
         const action = isEditMode ? 'actualizado' : 'creado';
