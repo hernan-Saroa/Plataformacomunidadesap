@@ -132,9 +132,9 @@ export function TableroInvitacionesRUND() {
     setLoading(true);
     try {
       const res = await apiClient.get('/pta/api/v1/pta/banco-docentes/invitaciones');
-      if (res.data?.success) {
-        setInvitaciones(res.data.data || []);
-      }
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+      setInvitaciones(list);
     } catch (err: any) {
       setError(err.message || 'Error al cargar invitaciones');
     } finally {

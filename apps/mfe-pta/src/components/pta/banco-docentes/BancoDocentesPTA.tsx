@@ -122,7 +122,6 @@ export function BancoDocentesPTA() {
 
   const hasPermission = (perm: string) => isSuperUserFallback || auth.hasPermission(perm);
   
-  console.log('[BancoDocentesPTA] AUTH:', { isSuperUser: auth.isSuperUser, isSuperUserFallback, email: auth.userEmail, role: auth.userRole, invite: hasPermission('banco-docentes.rund.invite'), import: hasPermission('banco-docentes.rund.import'), manage: hasPermission('banco-docentes.rund.manage') });
   const [tab, setTab] = useState<Tab>('listado');
   const [docentes, setDocentes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
