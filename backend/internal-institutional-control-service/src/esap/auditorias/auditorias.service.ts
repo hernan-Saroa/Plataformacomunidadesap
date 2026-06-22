@@ -305,6 +305,21 @@ export class AuditoriasService {
       serialized.responsableAreaNombre = serialized.responsable;
     }
 
+    // ✅ TRADUCIR UUID a Nombres
+    if (serialized.responsableAreaNombre && this.isValidUUID(serialized.responsableAreaNombre)) {
+        const nombre = namesMap?.get(serialized.responsableAreaNombre.toLowerCase());
+        if (nombre) {
+            serialized.responsableAreaNombre = nombre;
+        }
+    }
+    
+    if (serialized.responsable && this.isValidUUID(serialized.responsable)) {
+        const nombre = namesMap?.get(serialized.responsable.toLowerCase());
+        if (nombre) {
+            serialized.responsable = nombre;
+        }
+    }
+
     return serialized;
   }
 
@@ -503,6 +518,8 @@ export class AuditoriasService {
       aud.equipoAuditores?.forEach(eq => {
         if (eq.personaId) personaIds.add(String(eq.personaId));
       });
+      if (aud.responsable && this.isValidUUID(aud.responsable)) personaIds.add(String(aud.responsable));
+      if (aud.responsableAreaNombre && this.isValidUUID(aud.responsableAreaNombre)) personaIds.add(String(aud.responsableAreaNombre));
     });
 
     const namesMap = await this.getPersonasNames(Array.from(personaIds));
