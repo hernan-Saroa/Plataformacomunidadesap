@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { Actuacion } from '../entities/actuacion.entity';
 import { DecisionDisciplinaria } from '../entities/decision-disciplinaria.entity';
+import { Documento } from '../entities/documento.entity';
 import { ExcepcionProcesal } from '../entities/excepcion-procesal.entity';
 import { Expediente } from '../entities/expediente.entity';
 import { ConfigurationsService } from './configurations.service';
@@ -13,6 +14,7 @@ describe('ExpedienteService', () => {
     let service: ExpedienteService;
     let mockExpedienteRepo: any;
     let mockActuacionRepo: any;
+    let mockDocumentoRepo: any;
     let mockDecisionRepo: any;
     let mockExcepcionRepo: any;
     let mockDataSource: any;
@@ -25,9 +27,12 @@ describe('ExpedienteService', () => {
     beforeEach(async () => {
         queryBuilder = {
             leftJoinAndSelect: jest.fn().mockReturnThis(),
+            select: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
             andWhere: jest.fn().mockReturnThis(),
             addSelect: jest.fn().mockReturnThis(),
             orderBy: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue([]),
             getRawAndEntities: jest.fn(),
         };
         mockExpedienteRepo = {
@@ -43,6 +48,10 @@ describe('ExpedienteService', () => {
             find: jest.fn().mockResolvedValue([]),
             save: jest.fn((data) => Promise.resolve({ id: 'act-1', ...data })),
             create: jest.fn((data) => data),
+        };
+        mockDocumentoRepo = {
+            count: jest.fn(),
+            find: jest.fn(),
         };
         mockDecisionRepo = {
             find: jest.fn(),
@@ -69,6 +78,7 @@ describe('ExpedienteService', () => {
                 ExpedienteService,
                 { provide: getRepositoryToken(Expediente), useValue: mockExpedienteRepo },
                 { provide: getRepositoryToken(Actuacion), useValue: mockActuacionRepo },
+                { provide: getRepositoryToken(Documento), useValue: mockDocumentoRepo },
                 { provide: getRepositoryToken(DecisionDisciplinaria), useValue: mockDecisionRepo },
                 { provide: getRepositoryToken(ExcepcionProcesal), useValue: mockExcepcionRepo },
                 { provide: getDataSourceToken(), useValue: mockDataSource },
