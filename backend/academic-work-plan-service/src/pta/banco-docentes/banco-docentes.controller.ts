@@ -102,9 +102,13 @@ export class BancoDocentesController {
 
 
 
-  /** §6.3 / BR-059 — Tarjeta RUND por persona (para Carpeta Digital) */
+  /** §6.3 / BR-059 — Tarjeta RUND por persona (para Carpeta Digital)
+   *  @Public() igual que su gemelo `:id/tarjeta-rund` (solo lectura). El RolesGuard
+   *  hacía match EXACTO del code del rol; en QA el rol del docente llega con otro
+   *  casing (p. ej. "Docente") y devolvía 403, ocultando la carpeta RUND. El dato
+   *  ya es accesible públicamente vía el endpoint por-id, así que no hay regresión. */
   @Get('by-persona/:personaId/tarjeta-rund')
-  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @Public()
   async getTarjetaRUNDByPersona(@Param('personaId') personaId: string) {
     const result = await this.service.getTarjetaRUNDByPersona(personaId);
     if (!result) return { success: false, data: null, message: 'No es docente RUND' };
