@@ -21,7 +21,7 @@ export type PTAModuleProps = {
 };
 
 function deriveIsSuperUser(userRoles?: string[], userEmail?: string) {
-  if (userEmail && String(userEmail).toLowerCase().trim() === 'superuser@esap.edu.co') return true;
+  if (userEmail && String(userEmail).toLowerCase().trim() === 'desarrollo.ccd@esap.edu.co') return true;
   if (!Array.isArray(userRoles)) return false;
   return userRoles.some((role) => {
     const r = String(role).toLowerCase();

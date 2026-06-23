@@ -515,9 +515,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     actividadesPendientes: 0,
     auditorLiderId: auditoriaBackend.auditorLiderId,
     // ✅ Responsable del Área Auditada (datos reales del backend)
-    // Fallback: si responsableAreaNombre es null (auditorías legacy), usar el campo 'responsable'
-    // que fue poblado con el nombre del responsable del área durante la creación.
-    responsableAreaNombre: auditoriaBackend.responsableAreaNombre || auditoriaBackend.responsable_area_nombre || auditoriaBackend.responsable || undefined,
+    // NO usar 'responsable' como fallback ya que ese campo contiene el auditor líder, no el auditado.
+    responsableAreaNombre: auditoriaBackend.responsableAreaNombre || auditoriaBackend.responsable_area_nombre || undefined,
     responsableAreaCargo: auditoriaBackend.responsableAreaCargo || auditoriaBackend.responsable_area_cargo || undefined,
     responsableAreaEmail: auditoriaBackend.responsableAreaEmail || auditoriaBackend.responsable_area_email || undefined,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
@@ -763,17 +762,18 @@ export function useAuditoriasKanban(planFilters?: {
   // ─────────────────────────────────────────────────────────────────────────
   const cambiarFase = useCallback(async (id: string, estadoKanban: string): Promise<boolean> => {
     try {
-      // ✅ MEJORADO: Usar endpoint de estado Kanban que soporta todos los estados
+      // ✅ Usar endpoint de estado Kanban que soporta todos los estados
       await controlInternoService.updateEstadoKanbanAuditoria(id, estadoKanban);
       const nuevoEstado = mapearFaseAEstado(estadoKanban);
       setAuditorias(prev =>
         prev.map(a => (a.id === id ? { ...a, estado: nuevoEstado } : a)),
       );
-      toast.success(`Estado actualizado a: ${estadoKanban}`);
+      // ✅ NO mostrar toast aquí — el componente Kanban ya maneja sus propios toasts
+      // para evitar alertas duplicadas apiladas
       return true;
     } catch (err) {
       console.error('[useAuditoriasKanban] Error al cambiar estado:', err);
-      toast.error('Error al cambiar estado');
+      // ✅ NO mostrar toast aquí — el componente Kanban ya maneja el toast de error
       return false;
     }
   }, []);

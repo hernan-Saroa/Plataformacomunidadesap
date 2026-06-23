@@ -1202,7 +1202,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCerrar}>
-        <DialogContent hideCloseButton className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden" style={{ width: '80vw', maxWidth: '80vw' }}>
+        <DialogContent hideCloseButton className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col !p-0 overflow-hidden" style={{ width: '80vw', maxWidth: '80vw', top: '2.5vh', padding: 0 }}>
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">
             Proceso Disciplinario {proceso.id}

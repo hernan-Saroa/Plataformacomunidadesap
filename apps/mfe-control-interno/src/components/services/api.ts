@@ -203,7 +203,7 @@ export const auditoriasApi = {
     if (!q || q.trim().length < 2) {
       return { success: true, data: [] } as ApiResponse<any[]>;
     }
-    return apiRequest<any[]>(`/auditorias/auditados/search?q=${encodeURIComponent(q.trim())}`);
+    return apiRequest<any[]>(`/auditorias/personas/search?q=${encodeURIComponent(q.trim())}`);
   },
 
   /**
@@ -211,7 +211,7 @@ export const auditoriasApi = {
    * Excluye usuarios que tengan roles operativos de OCI en la BD (Gestión Personas).
    */
   getAllAuditados: async (limit = 50): Promise<ApiResponse<any[]>> => {
-    return apiRequest<any[]>(`/auditorias/auditados/all?limit=${limit}`);
+    return apiRequest<any[]>(`/auditorias/personas/all?limit=${limit}`);
   },
 
   /**

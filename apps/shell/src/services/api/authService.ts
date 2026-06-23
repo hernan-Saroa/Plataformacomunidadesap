@@ -419,6 +419,27 @@ class AuthService {
       email: u.email ?? u.person?.email ?? '',
     }));
   }
+
+  /**
+   * Obtener configuración de login (público, sin auth)
+   */
+  async getLoginSettings(): Promise<{ credentialLoginEnabled: boolean }> {
+    return apiClient.get<{ credentialLoginEnabled: boolean }>(
+      API_ENDPOINTS.AUTH.LOGIN_SETTINGS,
+      undefined,
+      { skipAuth: true },
+    );
+  }
+
+  /**
+   * Actualizar configuración de login (solo Super Admin)
+   */
+  async updateLoginSettings(data: { credentialLoginEnabled: boolean }): Promise<{ credentialLoginEnabled: boolean }> {
+    return apiClient.put<{ credentialLoginEnabled: boolean }>(
+      API_ENDPOINTS.AUTH.LOGIN_SETTINGS,
+      data,
+    );
+  }
 }
 
 // Tipo para profesionales/usuarios en asignación de procesos disciplinarios
