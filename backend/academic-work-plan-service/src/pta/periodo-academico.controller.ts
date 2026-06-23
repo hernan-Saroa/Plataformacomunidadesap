@@ -335,20 +335,12 @@ export class PeriodoAcademicoController {
       ORDER BY c.nombre
     `;
 
-    // Fallback: tabla periodo_cetap (relación directa sin programas, usada por importación geográfica)
-    const cetapsFromPeriodoCetap = `
-      SELECT 
-        c.id, 
-        c.codigo,
-        c.nombre, 
-        dt.nombre AS "dtNombre",
-        0 AS "activePrograms"
-      FROM academic_work_plan.periodo_cetap pc
-      INNER JOIN academic_work_plan.cetap c ON pc.id_cetap = c.id
-      INNER JOIN academic_work_plan.direccion_territorial dt ON c.id_direccion_territorial = dt.id
-      WHERE pc.id_periodo_academico = $1 AND pc.activo = TRUE
-      ORDER BY c.nombre
-    `;
+    // NOTA: A propósito ya NO se incluyen los CETAP provenientes de
+    // academic_work_plan.periodo_cetap (la activación ESTRUCTURAL por periodo del
+    // módulo "Estructura Organizacional"). En el módulo de Programas Académicos los
+    // CETAP solo tienen sentido si OFRECEN programas en el periodo; por eso aquí la
+    // única fuente es oferta_cetap_programa. Así un periodo sin programas/ofertas
+    // muestra 0 CETAP (no CETAP "sueltos" del catálogo estructural).
 
     // Programas creados directamente para este período (migración 359).
     // Se consultan aparte y se combinan con los provenientes de ofertas para
@@ -384,7 +376,6 @@ export class PeriodoAcademicoController {
     let programs: any[] = [];
     let programsPropios: any[] = [];
     let cetapsOfertas = [];
-    let cetapsPeriodo = [];
 
     try {
       programs = await this.repo.query(programsQuery, [id]);
@@ -428,28 +419,8 @@ export class PeriodoAcademicoController {
       console.warn('Error querying oferta_cetap_programa:', e.message);
     }
 
-    try {
-      cetapsPeriodo = await this.repo.query(cetapsFromPeriodoCetap, [id]);
-    } catch (e) {
-      console.warn('Error querying periodo_cetap:', e.message);
-    }
-
-    // La estructura del periodo y la oferta académica son fuentes independientes.
-    // Se unen para no ocultar CETAPs asociados al periodo que todavía no tengan programas.
-    const cetapsById = new Map<string, any>();
-    [...cetapsPeriodo, ...cetapsOfertas].forEach((cetap: any) => {
-      const key = String(cetap.id || cetap.codigo);
-      const current = cetapsById.get(key);
-      cetapsById.set(key, {
-        ...current,
-        ...cetap,
-        activePrograms: Math.max(
-          Number(current?.activePrograms || 0),
-          Number(cetap.activePrograms || 0),
-        ),
-      });
-    });
-    const cetaps = Array.from(cetapsById.values()).sort((a: any, b: any) =>
+    // Los CETAP del periodo son ÚNICAMENTE los que ofrecen programas (oferta activa).
+    const cetaps = [...cetapsOfertas].sort((a: any, b: any) =>
       String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'),
     );
 

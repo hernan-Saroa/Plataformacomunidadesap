@@ -12,7 +12,7 @@ import {
   GraduationCap, RefreshCw, AlertTriangle, Layers, Lock, ToggleLeft, ToggleRight,
   CheckCircle2, XCircle
 } from 'lucide-react';
-import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
+import { Card, Button, Badge, Input, ConfirmationDialog } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { estructuraService } from '../../services/estructuraService';
@@ -25,6 +25,16 @@ import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../.
 import { Permissions } from '@esap-mfe/shared-types';
 
 type TipoCreacion = 'seccional' | 'sede';
+
+// Estado del diálogo de confirmación de eliminación.
+// - confirm-*         : borrado PERMANENTE del catálogo maestro (cascada).
+// - remove-*-periodo  : quitar SOLO de un periodo (no toca el catálogo ni otros periodos).
+type ConfirmDeleteState =
+  | { kind: 'confirm-seccional'; seccional: Seccional; sedesCount: number }
+  | { kind: 'confirm-sede'; sede: Sede }
+  | { kind: 'remove-seccional-periodo'; seccional: Seccional; periodo: string }
+  | { kind: 'remove-sede-periodo'; sede: Sede; periodo: string };
+
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
 const getPeriodCode = (period: any) =>
@@ -76,6 +86,10 @@ export function EstructuraOrganizacionalModule() {
   // Es la fuente de verdad por-periodo que devuelve el backend; evita el matching
   // ambiguo por código/nombre que hacía que periodos distintos se vieran iguales.
   const [activeSedeIds, setActiveSedeIds] = useState<Set<number>>(new Set());
+  // Ids de las sedes MIEMBRO del periodo seleccionado (las que "pertenecen" a él,
+  // activas o inactivas). La vista de periodo solo muestra estas: así un periodo
+  // es independiente y solo contiene lo que se le agregó/importó.
+  const [memberSedeIds, setMemberSedeIds] = useState<Set<number>>(new Set());
   const [activacionEnCurso, setActivacionEnCurso] = useState(false);
 
   // Modal state
@@ -83,9 +97,12 @@ export function EstructuraOrganizacionalModule() {
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>('sede');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showPeriodoDropdown, setShowPeriodoDropdown] = useState(false);
-  const [marcandoActivoId, setMarcandoActivoId] = useState<string | null>(null);
   const [busquedaPeriodo, setBusquedaPeriodo] = useState('');
   const [editItem, setEditItem] = useState<Seccional | Sede | null>(null);
+  // Confirmación de eliminación (mantenemos el contenido aparte del flag `open`
+  // para que no parpadee al cerrarse durante la animación de salida).
+  const [confirmState, setConfirmState] = useState<ConfirmDeleteState | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [showAsignarModal, setShowAsignarModal] = useState(false);
   const [sinTerritorial, setSinTerritorial] = useState(0);
   const [sinCetap, setSinCetap] = useState(0);
@@ -156,33 +173,6 @@ export function EstructuraOrganizacionalModule() {
   });
 
   // Activa cualquier periodo (estado en_curso) en todo el sistema, directamente.
-  const handleActivarPeriodo = async (p: any) => {
-    if (!p || !p.id) {
-      toast.error('Periodo inválido');
-      return;
-    }
-    if (p.estado === 'en_curso') {
-      toast.info(`"${p.codigo}" ya es el periodo activo`);
-      return;
-    }
-    try {
-      setMarcandoActivoId(p.id);
-      await estructuraService.marcarPeriodoActivo(p.id);
-      toast.success(`Periodo "${p.codigo}" marcado como activo`);
-      setShowPeriodoDropdown(false);
-      setBusquedaPeriodo('');
-      // La vista debe seguir al periodo recién activado (no quedarse en el anterior).
-      localStorage.setItem(ESTRUCTURA_PERIOD_STORAGE_KEY, p.codigo);
-      await loadPeriodos();
-      setPeriodo(p.codigo);
-    } catch (error: any) {
-      console.error('Error marcando periodo activo:', error);
-      toast.error(error?.response?.data?.message || 'No se pudo marcar el periodo como activo');
-    } finally {
-      setMarcandoActivoId(null);
-    }
-  };
-
   const applyPeriodFilter = async () => {
     if (seccionalesOriginales.length === 0 && sedesOriginales.length === 0) return;
 
@@ -194,6 +184,7 @@ export function EstructuraOrganizacionalModule() {
       const p = periodos.find(x => x.codigo === periodo);
       if (!p || !p.id) {
         setActiveSedeIds(new Set());
+        setMemberSedeIds(new Set());
         return;
       }
 
@@ -205,26 +196,33 @@ export function EstructuraOrganizacionalModule() {
           (status?.idSedesActivas || []).map((id: unknown) => Number(id)),
         ),
       );
+      setMemberSedeIds(
+        new Set<number>(
+          (status?.idSedesMiembro || []).map((id: unknown) => Number(id)),
+        ),
+      );
     } catch (err) {
       console.error('Error filtrando por periodo:', err);
       setActiveSedeIds(new Set());
+      setMemberSedeIds(new Set());
     }
   };
 
-  // Sedes filtradas para modo periodo
+  // ── Vista por PERIODO: solo se muestran las sedes MIEMBRO del periodo ──
+  // (las que tienen fila en periodo_cetap para ese periodo). Así cada periodo
+  // es independiente: lo que importas/agregas/quitas en uno no afecta a otro.
+  // El filtro Todos/Activos/Inactivos opera SOLO dentro de los miembros.
+  const sedesMiembro = sedesOriginales.filter(s => memberSedeIds.has(Number(s.idSede)));
   const sedesFiltradas = filtroActivacion === 'todos'
-    ? sedesOriginales
+    ? sedesMiembro
     : filtroActivacion === 'activos'
-      ? sedesOriginales.filter(s => activeSedeIds.has(Number(s.idSede)))
-      : sedesOriginales.filter(s => !activeSedeIds.has(Number(s.idSede)));
+      ? sedesMiembro.filter(s => activeSedeIds.has(Number(s.idSede)))
+      : sedesMiembro.filter(s => !activeSedeIds.has(Number(s.idSede)));
 
-  // Seccionales filtradas: solo mostrar seccionales que tengan al menos una sede en sedesFiltradas
-  const seccionalesFiltradas = filtroActivacion === 'todos'
-    ? seccionalesOriginales
-    : seccionalesOriginales.filter(sec => {
-        const sedesDeEstaSeccional = sedesFiltradas.filter(s => s.idSeccional === sec.idSeccional);
-        return sedesDeEstaSeccional.length > 0;
-      });
+  // Seccionales filtradas: solo las que tengan al menos una sede visible según el filtro actual.
+  const seccionalesFiltradas = seccionalesOriginales.filter(sec =>
+    sedesFiltradas.some(s => s.idSeccional === sec.idSeccional),
+  );
 
   // Toggle handler para activar/desactivar CETAP en periodo (persistente)
   const handleToggleSedePeriodStatus = async (idSede: number, activo: boolean) => {
@@ -259,19 +257,26 @@ export function EstructuraOrganizacionalModule() {
     }
   };
 
-  // Acciones masivas (persistentes)
+  // Acciones masivas (persistentes). Operan SOLO sobre los miembros del periodo
+  // (nunca sobre todo el catálogo global) para no "contaminar" el periodo con
+  // sedes que no le pertenecen.
   const handleActivarTodos = async () => {
     if (activacionEnCurso) return;
     if (!periodo) {
       toast.error('Seleccione un periodo académico primero');
       return;
     }
+    const memberIds = [...memberSedeIds];
+    if (memberIds.length === 0) {
+      toast.info('Este periodo no tiene sedes. Importa o agrega sedes al periodo primero.');
+      return;
+    }
     const prevIds = activeSedeIds;
     setActivacionEnCurso(true);
-    setActiveSedeIds(new Set(sedesOriginales.map(s => Number(s.idSede))));
+    setActiveSedeIds(new Set(memberSedeIds));
     try {
-      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, true);
-      const n = res?.data?.actualizados ?? sedesOriginales.length;
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, true, memberIds);
+      const n = res?.data?.actualizados ?? memberIds.length;
       const omitidos = res?.data?.omitidos ?? 0;
       await applyPeriodFilter();
       if (omitidos > 0) {
@@ -294,12 +299,17 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Seleccione un periodo académico primero');
       return;
     }
+    const memberIds = [...memberSedeIds];
+    if (memberIds.length === 0) {
+      toast.info('Este periodo no tiene sedes para desactivar.');
+      return;
+    }
     const prevIds = activeSedeIds;
     setActivacionEnCurso(true);
     setActiveSedeIds(new Set());
     try {
-      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, false);
-      const n = res?.data?.actualizados ?? sedesOriginales.length;
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, false, memberIds);
+      const n = res?.data?.actualizados ?? memberIds.length;
       const omitidos = res?.data?.omitidos ?? 0;
       await applyPeriodFilter();
       if (omitidos > 0) {
@@ -323,7 +333,10 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Seleccione un periodo académico primero');
       return;
     }
-    const sedesDeLaSeccional = sedesOriginales.filter(s => s.idSeccional === idSeccional);
+    // Solo las sedes MIEMBRO de la seccional en este periodo (las visibles).
+    const sedesDeLaSeccional = sedesOriginales.filter(
+      s => s.idSeccional === idSeccional && memberSedeIds.has(Number(s.idSede)),
+    );
     if (sedesDeLaSeccional.length === 0) return;
 
     const prevIds = activeSedeIds;
@@ -398,40 +411,84 @@ export function EstructuraOrganizacionalModule() {
     setShowCreateModal(true);
   };
 
-  const handleEliminarSeccional = async (seccional: Seccional) => {
-    const sedesCount = sedes.filter(s => s.idSeccional === seccional.idSeccional).length;
-
-    if (sedesCount > 0) {
-      toast.error(`No se puede eliminar la seccional porque tiene ${sedesCount} sedes asociadas`);
-      return;
-    }
-
-    if (!confirm(`¿Estas seguro de eliminar la seccional "${seccional.nomSeccional}"?`)) {
-      return;
-    }
-
-    try {
-      await estructuraService.eliminarSeccional(seccional.idSeccional);
-      toast.success('Seccional eliminada exitosamente');
-      cargarDatos();
-    } catch (error: any) {
-      console.error('Error eliminando seccional:', error);
-      toast.error(error.response?.data?.message || 'Error al eliminar la seccional');
-    }
+  // Abre el diálogo de confirmación de eliminación.
+  const abrirConfirmacion = (estado: ConfirmDeleteState) => {
+    setConfirmState(estado);
+    setConfirmOpen(true);
   };
 
-  const handleEliminarSede = async (sede: Sede) => {
-    if (!confirm(`¿Estas seguro de eliminar la sede "${sede.nomSede}"?`)) {
+  const handleEliminarSeccional = (seccional: Seccional) => {
+    // El conteo SIEMPRE se hace contra el catálogo maestro (`sedesOriginales`),
+    // nunca contra la lista filtrada por periodo (`sedes`/`sedesFiltradas`).
+    // La eliminación es una operación del catálogo permanente, independiente del
+    // periodo: así no se mezclan ni se cuentan mal las sedes entre periodos, y el
+    // conteo coincide con lo que el backend eliminará en cascada.
+    const sedesCount = sedesOriginales.filter(s => s.idSeccional === seccional.idSeccional).length;
+    abrirConfirmacion({ kind: 'confirm-seccional', seccional, sedesCount });
+  };
+
+  const handleEliminarSede = (sede: Sede) => {
+    abrirConfirmacion({ kind: 'confirm-sede', sede });
+  };
+
+  // Quitar SOLO del periodo actual (vista "Activación por Periodo").
+  const handleQuitarSeccionalDePeriodo = (seccional: Seccional) => {
+    if (!periodo) {
+      toast.error('Seleccione un periodo académico primero');
       return;
     }
+    abrirConfirmacion({ kind: 'remove-seccional-periodo', seccional, periodo });
+  };
+
+  const handleQuitarSedeDePeriodo = (sede: Sede) => {
+    if (!periodo) {
+      toast.error('Seleccione un periodo académico primero');
+      return;
+    }
+    abrirConfirmacion({ kind: 'remove-sede-periodo', sede, periodo });
+  };
+
+  // Ejecuta la acción confirmada en el diálogo.
+  const ejecutarEliminacion = async () => {
+    if (!confirmState) return;
 
     try {
-      await estructuraService.eliminarSede(sede.idSede);
-      toast.success('Sede eliminada exitosamente');
-      cargarDatos();
+      if (confirmState.kind === 'confirm-seccional') {
+        // Borrado PERMANENTE en cascada (catálogo maestro, todos los periodos).
+        await estructuraService.eliminarSeccional(confirmState.seccional.idSeccional);
+        toast.success(
+          confirmState.sedesCount > 0
+            ? `Seccional y sus ${confirmState.sedesCount} ${confirmState.sedesCount === 1 ? 'sede eliminadas' : 'sedes eliminadas'} exitosamente`
+            : 'Seccional eliminada exitosamente',
+        );
+        cargarDatos();
+      } else if (confirmState.kind === 'confirm-sede') {
+        await estructuraService.eliminarSede(confirmState.sede.idSede);
+        toast.success('Sede eliminada exitosamente');
+        cargarDatos();
+      } else if (confirmState.kind === 'remove-seccional-periodo') {
+        // Quitar SOLO del periodo: no toca el catálogo maestro ni otros periodos.
+        await estructuraService.quitarSeccionalDePeriodo(
+          confirmState.seccional.idSeccional,
+          confirmState.periodo,
+        );
+        toast.success(
+          `Territorial "${confirmState.seccional.nomSeccional}" quitada del periodo ${confirmState.periodo}`,
+        );
+        await applyPeriodFilter();
+      } else if (confirmState.kind === 'remove-sede-periodo') {
+        await estructuraService.quitarSedeDePeriodo(
+          confirmState.sede.idSede,
+          confirmState.periodo,
+        );
+        toast.success(
+          `Sede "${confirmState.sede.nomSede}" quitada del periodo ${confirmState.periodo}`,
+        );
+        await applyPeriodFilter();
+      }
     } catch (error: any) {
-      console.error('Error eliminando sede:', error);
-      toast.error(error.response?.data?.message || 'Error al eliminar la sede');
+      console.error('Error eliminando:', error);
+      toast.error(error.response?.data?.message || 'Error al eliminar');
     }
   };
 
@@ -667,27 +724,6 @@ export function EstructuraOrganizacionalModule() {
                                       </div>
                                       {esSeleccionado && <CheckCircle2 className="w-4 h-4 shrink-0" />}
                                     </button>
-
-                                    {/* Botón Activar directo — solo si no es el periodo activo */}
-                                    {!esActivo && (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handleActivarPeriodo(p); }}
-                                        disabled={marcandoActivoId !== null}
-                                        className={`flex items-center gap-1 px-2.5 py-1 mr-1.5 rounded-md text-[11px] font-bold transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                          esSeleccionado
-                                            ? 'bg-white/20 text-white hover:bg-white/30'
-                                            : 'bg-[#003DA5]/10 text-[#003DA5] hover:bg-[#003DA5]/20'
-                                        }`}
-                                        title={`Marcar ${p.codigo} como el periodo activo del sistema`}
-                                      >
-                                        {marcandoActivoId === p.id ? (
-                                          <Loader2 className="w-3 h-3 animate-spin" />
-                                        ) : (
-                                          <CheckCircle2 className="w-3 h-3" />
-                                        )}
-                                        Activar
-                                      </button>
-                                    )}
                                   </div>
                                 );
                               })}
@@ -969,8 +1005,8 @@ export function EstructuraOrganizacionalModule() {
                 estadisticas={estadisticas}
                 onEditarSeccional={() => {}}
                 onEditarSede={() => {}}
-                onEliminarSeccional={() => Promise.resolve()}
-                onEliminarSede={() => Promise.resolve()}
+                onEliminarSeccional={handleQuitarSeccionalDePeriodo}
+                onEliminarSede={handleQuitarSedeDePeriodo}
                 activeSedeIds={activeSedeIds}
                 periodo={periodo}
                 onToggleActive={handleToggleSedePeriodStatus}
@@ -1002,6 +1038,50 @@ export function EstructuraOrganizacionalModule() {
         seccionales={seccionalesOriginales}
         sedes={sedesOriginales}
         editItem={editItem}
+      />
+
+      {/* Diálogo de confirmación de eliminación / quitar de periodo */}
+      <ConfirmationDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={ejecutarEliminacion}
+        // Quitar de un periodo NO es destructivo permanente -> warning. Borrar del
+        // catálogo maestro sí lo es -> danger.
+        variant={
+          confirmState?.kind === 'remove-seccional-periodo' || confirmState?.kind === 'remove-sede-periodo'
+            ? 'warning'
+            : 'danger'
+        }
+        title={
+          confirmState?.kind === 'confirm-seccional'
+            ? (confirmState.sedesCount > 0 ? 'Eliminar seccional y sus sedes' : 'Eliminar seccional')
+            : confirmState?.kind === 'confirm-sede'
+              ? 'Eliminar sede'
+              : confirmState?.kind === 'remove-seccional-periodo'
+                ? 'Quitar seccional del periodo'
+                : 'Quitar sede del periodo'
+        }
+        description={
+          confirmState?.kind === 'confirm-seccional'
+            ? (confirmState.sedesCount > 0
+                ? `La seccional "${confirmState.seccional.nomSeccional}" tiene ${confirmState.sedesCount} ${confirmState.sedesCount === 1 ? 'sede asociada' : 'sedes asociadas'}. Si continúas, se eliminará la seccional JUNTO CON ${confirmState.sedesCount === 1 ? 'esa sede' : `sus ${confirmState.sedesCount} sedes`}.`
+                : `¿Estás seguro de eliminar la seccional "${confirmState.seccional.nomSeccional}"?`)
+            : confirmState?.kind === 'confirm-sede'
+              ? `¿Estás seguro de eliminar la sede "${confirmState.sede.nomSede}"?`
+              : confirmState?.kind === 'remove-seccional-periodo'
+                ? `Se quitará la territorial "${confirmState.seccional.nomSeccional}" y sus sedes SOLO del periodo ${confirmState.periodo}. Seguirá existiendo en el catálogo maestro y en los demás periodos.`
+                : confirmState?.kind === 'remove-sede-periodo'
+                  ? `Se quitará la sede "${confirmState.sede.nomSede}" SOLO del periodo ${confirmState.periodo}. Seguirá existiendo en el catálogo maestro y en los demás periodos.`
+                  : ''
+        }
+        confirmText={
+          confirmState?.kind === 'confirm-seccional' && confirmState.sedesCount > 0
+            ? 'Sí, eliminar todo'
+            : confirmState?.kind === 'remove-seccional-periodo' || confirmState?.kind === 'remove-sede-periodo'
+              ? 'Sí, quitar del periodo'
+              : 'Sí, eliminar'
+        }
+        cancelText="Cancelar"
       />
 
       {/* Modal Asignar Usuarios */}
@@ -1324,10 +1404,21 @@ function VistaArbolSeccionalesSedes({
                               title={isTerritorialActiva ? `Desactivar ${seccional.nomSeccional} y todos sus CETAPs` : `Activar ${seccional.nomSeccional} y todos sus CETAPs`}
                             >
                               {isTerritorialActiva ? (
-                                <><CheckCircle2 className="w-3.5 h-3.5" />Activa</>  
+                                <><CheckCircle2 className="w-3.5 h-3.5" />Activa</>
                               ) : (
                                 <><XCircle className="w-3.5 h-3.5" />Inactiva</>
                               )}
+                            </button>
+                          )}
+
+                          {/* Quitar la territorial SOLO de este periodo — solo en Periodo */}
+                          {modo === 'periodo' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEliminarSeccional(seccional); }}
+                              className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0 cursor-pointer"
+                              title={`Quitar "${seccional.nomSeccional}" de este periodo`}
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -1411,6 +1502,15 @@ function VistaArbolSeccionalesSedes({
                                               active ? 'translate-x-4' : 'translate-x-0'
                                             }`}
                                           />
+                                        </button>
+                                        {/* Quitar la sede SOLO de este periodo */}
+                                        <button
+                                          type="button"
+                                          onClick={() => onEliminarSede(sede)}
+                                          className="ml-1 p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                                          title={`Quitar "${sede.nomSede}" de este periodo`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
                                     )}
