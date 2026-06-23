@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
   AlertTriangle, Download, Eye, ArrowRight, RotateCcw, XCircle,
-  Send, MessageSquare, BarChart3, Zap, Info, Bell, History,
+  Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
   Shield, ChevronRight, ExternalLink, ListChecks,
   FlaskConical, Globe, Briefcase, X,
@@ -248,9 +248,22 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     }
   }, [userPersonId]);
 
-  const solicitudesResueltas = useMemo(() => 
+  const solicitudesResueltas = useMemo(() =>
     todasLasSolicitudes.filter(s => s.estado !== 'pendiente' && !s.notificacionLeida),
   [todasLasSolicitudes]);
+
+  // HU-12 — Versiones del PTA del mismo periodo (R01, R02, …). El docente puede tener
+  // hasta 2 PTAs por periodo (el original R01 + el segundo R02 tras solicitud aprobada).
+  // En el detalle se muestran como sub-tabs para alternar conservando ambos visibles.
+  const versionesPeriodo = useMemo(() => {
+    if (!selectedPta) return [];
+    const periodo = String(selectedPta.periodo || '');
+    return ptas
+      .filter(p => String(p.periodo || '') === periodo)
+      .sort((a, b) =>
+        new Date(a.created_at || a.createdAt || 0).getTime() -
+        new Date(b.created_at || b.createdAt || 0).getTime());
+  }, [ptas, selectedPta]);
 
   const handleDismissSolicitud = async (id: string) => {
     await marcarSolicitudLeida(id);
@@ -264,27 +277,15 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     if (selectedPtaId) loadPtaDetalle(selectedPtaId);
   }, [selectedPtaId, loadPtaDetalle]);
 
-  // ═══ Email notification (fire-and-forget) ═══
-  const sendEmailNotification = useCallback(async (evt: any) => {
-    try {
-      const { projectId, publicAnonKey } = await import('../../../utils/supabase/info');
-      await fetch(`http://localhost:5000/api/pta/notifications/email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${publicAnonKey}` },
-        body: JSON.stringify({
-          docente_id: userPersonId,
-          docente_nombre: userName || 'Docente',
-          evento: evt.tipo,
-          estado_nuevo: evt.estado_nuevo,
-          pta_id: evt.pta_id,
-          actor: evt.actor,
-          mensaje: evt.mensaje,
-        }),
-      });
-    } catch (err) {
-      console.log('[Portal] Email notification failed (non-blocking):', err);
-    }
-  }, [userPersonId, userName]);
+  // ═══ Email notification ═══
+  // El endpoint legacy `http://localhost:5000/api/pta/notifications/email` (era Supabase)
+  // ya no existe en la arquitectura de microservicios y rompía en QA/prod por el host
+  // quemado. Los correos de cambio de estado del PTA se disparan desde el backend en la
+  // transición de estado (no desde el front). Se deja como no-op para no perder los
+  // call-sites; si se requiere correo desde el portal, debe ir vía gateway/notifications.
+  const sendEmailNotification = useCallback(async (_evt: any) => {
+    /* no-op: las notificaciones por correo las emite el backend */
+  }, []);
 
   // ═══ Real-time sync with Backoffice ═══
   const syncState = usePTARealtimeSync({
@@ -656,16 +657,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                             </div>
                           </div>
 
-                          {/* Row 2: Stepper + Actions */}
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 lg:gap-6 pt-4 border-t border-gray-100">
-                            {/* Stepper */}
-                            <div className="flex-1 w-full lg:max-w-xl">
-                              <div className="text-[0.65rem] sm:text-[0.7rem] font-semibold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                <History className="w-3 h-3 text-gray-400" /> Progreso
-                              </div>
-                              <TrackingBar estado={pta.estado} />
-                            </div>
-
+                          {/* Row 2: Actions */}
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-end gap-5 lg:gap-6 pt-4 border-t border-gray-100">
                             {/* Action Buttons */}
                             <div className="flex flex-wrap items-center gap-3 shrink-0">
                               {pta.estado === 'NOTIFICADO_DOCENTE' && (
@@ -711,6 +704,30 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 <ChevronLeft className="w-4 h-4" /> Volver al dashboard
               </button>
 
+              {/* HU-12 — Sub-tabs de versión (R01 / R02 …) del mismo periodo.
+                  Solo se muestran si el docente tiene más de un PTA en el periodo. */}
+              {versionesPeriodo.length > 1 && (
+                <div className="flex items-center gap-1.5 bg-gray-50/60 backdrop-blur-2xl rounded-xl p-1 sm:p-1.5 border border-gray-200/50 w-fit">
+                  {versionesPeriodo.map((v, idx) => {
+                    const activa = v.id === selectedPta.id;
+                    const label = `R${String(idx + 1).padStart(2, '0')}`;
+                    const cfg = getEstadoCfg(v.estado);
+                    return (
+                      <button
+                        key={v.id}
+                        onClick={() => { if (!activa) setSelectedPtaId(v.id); }}
+                        title={`${label} — ${cfg.label}`}
+                        className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[0.72rem] sm:text-[0.78rem] font-bold cursor-pointer transition-all ${activa ? 'text-[#003DA5] bg-white shadow-[0_2px_8px_rgba(0,61,165,0.08)]' : 'text-gray-500 bg-transparent hover:text-gray-700'}`}
+                      >
+                        {label}
+                        {idx === 0 && <span className="text-[0.6rem] font-semibold text-gray-400">(original)</span>}
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.color }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Estado y Tracking */}
               <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 shadow-sm">
                 {/* Header row */}
@@ -734,11 +751,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   </div>
                 </div>
 
-                {/* V08: Tracking bar */}
+                {/* Estado de aprobación */}
                 <div className="p-3 sm:p-4 bg-gray-50/70 rounded-xl border border-gray-100/60 mb-4">
                   <div className="text-[0.62rem] sm:text-[0.68rem] font-bold text-gray-400 uppercase tracking-wider mb-2">Estado de aprobación</div>
-                  <TrackingBar estado={selectedPta.estado} />
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2">
                     <span className="px-2.5 py-1 rounded-lg text-[0.65rem] sm:text-[0.7rem] font-bold" style={{ background: getEstadoCfg(selectedPta.estado).bg, color: getEstadoCfg(selectedPta.estado).color }}>
                       {getEstadoCfg(selectedPta.estado).label}
                     </span>

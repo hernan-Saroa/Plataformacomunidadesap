@@ -22,6 +22,7 @@ interface CreateSeccionalSedeModalProps {
   onSuccess: () => void;
   tipo: TipoEntidad;
   seccionales: Seccional[];
+  sedes?: Sede[];
   editItem?: Seccional | Sede | null;
 }
 
@@ -31,6 +32,7 @@ export function CreateSeccionalSedeModal({
   onSuccess,
   tipo,
   seccionales,
+  sedes = [],
   editItem,
 }: CreateSeccionalSedeModalProps) {
   const isEditMode = !!editItem;
@@ -44,6 +46,7 @@ export function CreateSeccionalSedeModal({
     codSeccional: '',
     nomSeccional: '',
     ordenVisualizacion: 999,
+    idUbiSeccional: undefined as number | undefined,
     activo: true,
   });
 
@@ -52,6 +55,7 @@ export function CreateSeccionalSedeModal({
     codSede: '',
     nomSede: '',
     idSeccional: undefined as number | undefined,
+    idGeopolitica: undefined as number | undefined,
     tipo: 'cetap',
     latitud: undefined as number | undefined,
     longitud: undefined as number | undefined,
@@ -77,6 +81,7 @@ export function CreateSeccionalSedeModal({
           codSeccional: seccional.codSeccional || '',
           nomSeccional: seccional.nomSeccional,
           ordenVisualizacion: seccional.ordenVisualizacion ?? 999,
+          idUbiSeccional: seccional.idUbiSeccional,
           activo: seccional.activo ?? true,
         });
       } else {
@@ -85,6 +90,7 @@ export function CreateSeccionalSedeModal({
           codSede: sede.codSede || '',
           nomSede: sede.nomSede,
           idSeccional: sede.idSeccional,
+          idGeopolitica: sede.idGeopolitica,
           tipo: sede.tipo || 'cetap',
           latitud: sede.numLatitud,
           longitud: sede.numLongitud,
@@ -97,11 +103,18 @@ export function CreateSeccionalSedeModal({
   // Reset form al cerrar
   useEffect(() => {
     if (!isOpen) {
-      setSeccionalForm({ codSeccional: '', nomSeccional: '', ordenVisualizacion: 999, activo: true });
+      setSeccionalForm({
+        codSeccional: '',
+        nomSeccional: '',
+        ordenVisualizacion: 999,
+        idUbiSeccional: undefined,
+        activo: true,
+      });
       setSedeForm({
         codSede: '',
         nomSede: '',
         idSeccional: undefined,
+        idGeopolitica: undefined,
         tipo: 'cetap',
         latitud: undefined,
         longitud: undefined,
@@ -148,6 +161,9 @@ export function CreateSeccionalSedeModal({
     }
   };
 
+  // Normaliza un código para comparar duplicados (sin espacios, mayúsculas)
+  const normCodigo = (value?: string) => (value || '').trim().toUpperCase();
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -157,8 +173,18 @@ export function CreateSeccionalSedeModal({
       } else if (seccionalForm.nomSeccional.length > 100) {
         newErrors.nomSeccional = 'El nombre no puede exceder 100 caracteres';
       }
-      if (seccionalForm.codSeccional && seccionalForm.codSeccional.length > 20) {
+      const cod = normCodigo(seccionalForm.codSeccional);
+      if (cod && cod.length > 20) {
         newErrors.codSeccional = 'El codigo no puede exceder 20 caracteres';
+      } else if (cod) {
+        // El código no puede repetirse entre seccionales (excluyendo la que se edita)
+        const editId = isEditMode ? (editItem as Seccional).idSeccional : undefined;
+        const duplicada = seccionales.some(
+          s => s.idSeccional !== editId && normCodigo(s.codSeccional) === cod,
+        );
+        if (duplicada) {
+          newErrors.codSeccional = `Ya existe una seccional con el código "${cod}"`;
+        }
       }
     } else {
       if (!sedeForm.nomSede.trim()) {
@@ -166,8 +192,18 @@ export function CreateSeccionalSedeModal({
       } else if (sedeForm.nomSede.length > 50) {
         newErrors.nomSede = 'El nombre no puede exceder 50 caracteres';
       }
-      if (sedeForm.codSede && sedeForm.codSede.length > 20) {
+      const cod = normCodigo(sedeForm.codSede);
+      if (cod && cod.length > 20) {
         newErrors.codSede = 'El codigo no puede exceder 20 caracteres';
+      } else if (cod) {
+        // El código no puede repetirse entre sedes (excluyendo la que se edita)
+        const editId = isEditMode ? (editItem as Sede).idSede : undefined;
+        const duplicada = sedes.some(
+          s => s.idSede !== editId && normCodigo(s.codSede) === cod,
+        );
+        if (duplicada) {
+          newErrors.codSede = `Ya existe una sede con el código "${cod}"`;
+        }
       }
       if (!sedeForm.idSeccional) {
         newErrors.idSeccional = 'Debe seleccionar una seccional';
@@ -194,6 +230,7 @@ export function CreateSeccionalSedeModal({
           codSeccional: seccionalForm.codSeccional.trim() || undefined,
           nomSeccional: seccionalForm.nomSeccional.trim(),
           ordenVisualizacion: seccionalForm.ordenVisualizacion,
+          idUbiSeccional: seccionalForm.idUbiSeccional,
           activo: seccionalForm.activo,
         };
 
@@ -209,6 +246,7 @@ export function CreateSeccionalSedeModal({
           codSede: sedeForm.codSede.trim() || undefined,
           nomSede: sedeForm.nomSede.trim(),
           idSeccional: sedeForm.idSeccional ? Number(sedeForm.idSeccional) : undefined,
+          idGeopolitica: sedeForm.idGeopolitica,
           tipo: sedeForm.tipo,
           latitud: sedeForm.latitud,
           longitud: sedeForm.longitud,
@@ -300,9 +338,17 @@ export function CreateSeccionalSedeModal({
                           onChange={(e) => setSeccionalForm(prev => ({ ...prev, codSeccional: e.target.value.toUpperCase() }))}
                           placeholder="SEC01"
                           maxLength={20}
-                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                          className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
+                            errors.codSeccional ? 'border-red-500' : 'border-gray-300'
+                          }`}
                         />
                       </div>
+                      {errors.codSeccional && (
+                        <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {errors.codSeccional}
+                        </p>
+                      )}
                     </div>
 
                     {/* Nombre Seccional */}
@@ -326,6 +372,58 @@ export function CreateSeccionalSedeModal({
                           {errors.nomSeccional}
                         </p>
                       )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Departamento
+                        </label>
+                        <select
+                          value={selectedDepartamento || ''}
+                          onChange={(e) =>
+                            handleDepartamentoChange(Number(e.target.value))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                        >
+                          <option value="">Seleccionar departamento...</option>
+                          {departamentos.map((departamento) => (
+                            <option
+                              key={departamento.idGeopolitica}
+                              value={departamento.idGeopolitica}
+                            >
+                              {departamento.nomDivGeopolitica}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Ciudad
+                        </label>
+                        <select
+                          value={seccionalForm.idUbiSeccional || ''}
+                          onChange={(e) =>
+                            setSeccionalForm((prev) => ({
+                              ...prev,
+                              idUbiSeccional:
+                                Number(e.target.value) || undefined,
+                            }))
+                          }
+                          disabled={!selectedDepartamento || loadingGeo}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] disabled:bg-gray-100"
+                        >
+                          <option value="">Seleccionar ciudad...</option>
+                          {ciudades.map((ciudad) => (
+                            <option
+                              key={ciudad.idGeopolitica}
+                              value={ciudad.idGeopolitica}
+                            >
+                              {ciudad.nomDivGeopolitica}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     {/* Orden Visualizacion */}
@@ -389,6 +487,58 @@ export function CreateSeccionalSedeModal({
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Departamento
+                          </label>
+                          <select
+                            value={selectedDepartamento || ''}
+                            onChange={(e) =>
+                              handleDepartamentoChange(Number(e.target.value))
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                          >
+                            <option value="">Seleccionar departamento...</option>
+                            {departamentos.map((departamento) => (
+                              <option
+                                key={departamento.idGeopolitica}
+                                value={departamento.idGeopolitica}
+                              >
+                                {departamento.nomDivGeopolitica}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Ciudad
+                          </label>
+                          <select
+                            value={sedeForm.idGeopolitica || ''}
+                            onChange={(e) =>
+                              setSedeForm((prev) => ({
+                                ...prev,
+                                idGeopolitica:
+                                  Number(e.target.value) || undefined,
+                              }))
+                            }
+                            disabled={!selectedDepartamento || loadingGeo}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] disabled:bg-gray-100"
+                          >
+                            <option value="">Seleccionar ciudad...</option>
+                            {ciudades.map((ciudad) => (
+                              <option
+                                key={ciudad.idGeopolitica}
+                                value={ciudad.idGeopolitica}
+                              >
+                                {ciudad.nomDivGeopolitica}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
                         {/* Codigo Sede */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -402,9 +552,17 @@ export function CreateSeccionalSedeModal({
                               onChange={(e) => setSedeForm(prev => ({ ...prev, codSede: e.target.value.toUpperCase() }))}
                               placeholder="SD001"
                               maxLength={20}
-                              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                              className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
+                                errors.codSede ? 'border-red-500' : 'border-gray-300'
+                              }`}
                             />
                           </div>
+                          {errors.codSede && (
+                            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {errors.codSede}
+                            </p>
+                          )}
                         </div>
 
                         {/* Estado */}

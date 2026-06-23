@@ -31,8 +31,8 @@ export class ProgramasController {
   }
 
   @Delete(':id')
-  eliminar(@Param('id') id: string) {
-    return this.programasService.eliminarPrograma(id);
+  eliminar(@Param('id') id: string, @Query('periodo') periodo?: string) {
+    return this.programasService.eliminarPrograma(id, periodo);
   }
 
   @Get(':id/asignaturas')

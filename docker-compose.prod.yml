@@ -206,6 +206,8 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-prod:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service-prod:3009
+      PUBLIC_APP_URL: https://comunidadesap.esap.edu.co
     ports:
       - "3003:3003"
     depends_on:

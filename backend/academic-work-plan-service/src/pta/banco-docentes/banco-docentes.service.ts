@@ -458,6 +458,33 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
   }
 }
 
+/**
+ * Validación RELAJADA para el canal AUTOGESTIÓN (Canal 3).
+ * El docente se autoregistra con datos parciales: solo exigimos lo mínimo para
+ * crear la persona/usuario. Los campos de vinculación, escalafón, formación, etc.
+ * los completa/valida GGP después en el flujo de aprobación por bloques.
+ * NO se fuerza @esap.edu.co aquí: el correo ya fue validado como elegible al
+ * solicitar el OTP (requestOtpByEmail bloquea correos no invitados/no docentes).
+ */
+function validatePayloadAutogestion(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
+  const mandatoryFields = [
+    { key: 'documentNumber', name: 'DOCUMENTO_IDENTIDAD' },
+    { key: 'fullName', name: 'NOMBRE_COMPLETO' },
+    { key: 'correoInstitucional', name: 'CORREO_INSTITUCIONAL' },
+  ];
+  for (const f of mandatoryFields) {
+    const val = (payload as any)[f.key];
+    if (val === undefined || val === null || String(val).trim() === '') {
+      throw new BadRequestException({
+        message: `Campo obligatorio vacío: ${f.name}`,
+        columna: f.name,
+        datoErrado: '(vacío)',
+        valorEsperado: 'Dato requerido'
+      });
+    }
+  }
+}
+
 // â”€â”€â”€ response builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: PersonaEntity & { usuario?: UsuarioEntity } }) {
@@ -740,6 +767,35 @@ export class BancoDocentesService implements OnModuleInit {
     }
   }
 
+  /** URL pública del frontend (shell) para armar enlaces de autogestión. */
+  private resolvePublicAppUrl(): string {
+    const direct = process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL;
+    return (direct || 'http://localhost:3000').replace(/\/$/, '');
+  }
+
+  /** Envío genérico de correo vía notifications-service. No lanza: devuelve {sent,error}. */
+  private async sendEmail(to: string, subject: string, text: string, html: string): Promise<{ sent: boolean; error?: string }> {
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, text, html }),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const error = `notifications-service ${response.status}: ${body}`;
+        this.logger.warn(`No se pudo enviar correo a ${to}: ${error}`);
+        return { sent: false, error };
+      }
+      return { sent: true };
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      this.logger.warn(`No se pudo conectar a notifications-service (${baseUrl}) para ${to}: ${message}`);
+      return { sent: false, error: message };
+    }
+  }
+
   private authDocentesBaseSql() {
     return `
       WITH auth_docentes AS (
@@ -915,18 +971,31 @@ export class BancoDocentesService implements OnModuleInit {
     return buildAuthBancoDocenteResponse(rows[0]);
   }
 
-  async upsertDocente(rawPayload: any, options: { rejectExisting?: boolean, outerManager?: any } = {}) {
+  async upsertDocente(rawPayload: any, options: { rejectExisting?: boolean, outerManager?: any, relaxValidation?: boolean } = {}) {
     const payload = normalizeBancoDocentePayload(rawPayload);
-    validatePayload(payload);
+    // Canal 3 (autogestión): validación mínima; el resto lo completa GGP.
+    if (options.relaxValidation) {
+      validatePayloadAutogestion(payload);
+    } else {
+      validatePayload(payload);
+    }
 
     const territoriales = await this.getTerritoriales();
-    const territorial = territoriales.find((t) => normalizeLookupText(t.nombre) === normalizeLookupText(payload.territorialNombre)) || findTerritorialMatch(territoriales, payload.territorialNombre);
-    if (!territorial?.id) throw new BadRequestException({
-      message: `La territorial "${payload.territorialNombre}" no existe en el catÃ¡logo.`,
-      columna: 'TERRITORIAL',
-      datoErrado: payload.territorialNombre,
-      valorEsperado: 'Sede vÃ¡lida'
-    });
+    let territorial = territoriales.find((t) => normalizeLookupText(t.nombre) === normalizeLookupText(payload.territorialNombre)) || findTerritorialMatch(territoriales, payload.territorialNombre);
+    if (!territorial?.id) {
+      // En autogestión el docente puede no conocer su territorial; usamos una por
+      // defecto para no bloquear el autoregistro (GGP la corrige en validación).
+      if (options.relaxValidation && territoriales.length > 0) {
+        territorial = territoriales.find((t) => normalizeLookupText(t.nombre) === normalizeLookupText('Sede Central')) || territoriales[0];
+      } else {
+        throw new BadRequestException({
+          message: `La territorial "${payload.territorialNombre}" no existe en el catálogo.`,
+          columna: 'TERRITORIAL',
+          datoErrado: payload.territorialNombre,
+          valorEsperado: 'Sede válida'
+        });
+      }
+    }
 
     const runWithManager = async (manager: any) => {
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
@@ -948,6 +1017,18 @@ export class BancoDocentesService implements OnModuleInit {
         [payload.documentNumber],
       );
       let authPersona = existingPersonaRows[0] || null;
+
+      // Autogestión: el correo fue verificado por OTP y es la llave confiable.
+      // Si no encontramos la persona por documento (p.ej. el docente no recordó/
+      // escribió mal su cédula), la resolvemos por correo para apuntar al registro
+      // correcto y evitar un falso "correo en uso por otra persona".
+      if (!authPersona && options.relaxValidation) {
+        const byEmailRows = await manager.query(
+          `SELECT * FROM auth.personas WHERE LOWER(dir_email) = LOWER($1) LIMIT 1`,
+          [emailFinal],
+        );
+        if (byEmailRows[0]) authPersona = byEmailRows[0];
+      }
 
       const emailConflictRows = await manager.query(
         `
@@ -1645,10 +1726,37 @@ export class BancoDocentesService implements OnModuleInit {
     
     await this.invitacionRepo.save(invitacion);
 
-    // En un caso real enviarÃ­amos correo aquÃ­ usando notifications-service.
-    this.logger.log(`[RUND] InvitaciÃ³n generada para ${correoInstitucional}. Token: ${token}`);
+    // Enviar el enlace de autogestión por correo (vía notifications-service).
+    const link = `${this.resolvePublicAppUrl()}/autogestion/docentes?token=${token}`;
+    const subject = 'Invitación RUND — Actualiza tus datos docentes (ESAP)';
+    const text = [
+      'Hola,',
+      '',
+      'Has sido invitado a completar/actualizar tu Registro Único Nacional Docente (RUND) de la ESAP.',
+      'Ingresa al siguiente enlace y valida tu identidad con el código que te enviaremos:',
+      '',
+      link,
+      '',
+      'Este enlace expira el ' + fechaExpiracion.toLocaleDateString('es-CO') + '.',
+    ].join('\n');
+    const html = `
+      <p>Hola,</p>
+      <p>Has sido invitado a completar/actualizar tu <strong>Registro Único Nacional Docente (RUND)</strong> de la ESAP.</p>
+      <p>Ingresa al siguiente enlace y valida tu identidad con el código que te enviaremos:</p>
+      <p><a href="${link}">${link}</a></p>
+      <p>Este enlace expira el ${fechaExpiracion.toLocaleDateString('es-CO')}.</p>
+    `;
+    const emailResult = await this.sendEmail(correoInstitucional, subject, text, html);
+    this.logger.log(`[RUND] Invitación para ${correoInstitucional} (enviada=${emailResult.sent}). Token: ${token}`);
 
-    return { tokenAcceso: token, expiresAt: fechaExpiracion };
+    const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+    return {
+      tokenAcceso: token,
+      expiresAt: fechaExpiracion,
+      emailSent: emailResult.sent,
+      emailError: emailResult.error,
+      ...(isDev ? { devLink: link } : {}),
+    };
   }
 
   async getInvitaciones() {
@@ -1699,13 +1807,26 @@ export class BancoDocentesService implements OnModuleInit {
     invitacion.intentosOtp = 0; // reset attempts
     await this.invitacionRepo.save(invitacion);
 
-    this.logger.log(`[RUND][OTP] Código para ${invitacion.correoInstitucional}: ${otp}`);
+    // Enviar el código OTP por correo (vía notifications-service).
+    const subject = 'Tu código de acceso RUND (ESAP)';
+    const text = `Tu código de verificación es: ${otp}\n\nVence en 10 minutos. Si no solicitaste este código, ignora este correo.`;
+    const html = `
+      <p>Tu código de verificación RUND es:</p>
+      <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p>
+      <p>Vence en 10 minutos. Si no solicitaste este código, ignora este correo.</p>
+    `;
+    const emailResult = await this.sendEmail(invitacion.correoInstitucional, subject, text, html);
 
-    return { 
-      success: true, 
-      message: 'Código OTP enviado al correo.', 
+    this.logger.log(`[RUND][OTP] Código para ${invitacion.correoInstitucional}: ${otp} (enviado=${emailResult.sent})`);
+
+    const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+    return {
+      success: true,
+      message: emailResult.sent ? 'Código OTP enviado al correo.' : 'No se pudo enviar el correo; usa el código mostrado (modo dev).',
       expiresAt,
-      devOtp: otp // Para facilitar pruebas en desarrollo
+      emailSent: emailResult.sent,
+      // Solo exponer el OTP fuera de producción o si el correo falló (para no bloquear pruebas).
+      ...(isDev || !emailResult.sent ? { devOtp: otp } : {}),
     };
   }
 
@@ -1838,8 +1959,11 @@ export class BancoDocentesService implements OnModuleInit {
     
     // Inyectar el canal de origen para que el payload upsertDocente sepa
     data.canal_origen = 'AUTOGESTION';
-    
-    const result = await this.upsertDocente(data, { rejectExisting: true });
+
+    // rejectExisting:false → un docente ya invitado puede actualizar sus datos vía
+    // autogestión (upsert por num_identificacion). relaxValidation:true → validación
+    // mínima (Canal 3): el docente aporta datos parciales y GGP completa/valida luego.
+    const result = await this.upsertDocente(data, { rejectExisting: false, relaxValidation: true });
 
     invitacion.estado = 'Gestionada';
     await this.invitacionRepo.save(invitacion);

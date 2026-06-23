@@ -146,6 +146,7 @@ export function TabActuacionesExpediente({
     const loadingToastId = toast.loading('🔄 Preparando correo y descargando adjuntos...', { duration: 0 } as any);
     try {
       const filesToAttach: File[] = [];
+      const failedAttachments: string[] = [];
 
       const urlToFile = async (url: string, filename: string): Promise<File | null> => {
         try {
@@ -185,21 +186,37 @@ export function TabActuacionesExpediente({
         const docName = actuacion.documentoNombre || 'documento.pdf';
         const fileObj = await urlToFile(actuacion.documentoUrl, docName);
         if (fileObj) filesToAttach.push(fileObj);
+        else failedAttachments.push(docName);
       }
 
-      // Documentos asociados
+      // Documentos asociados (firmados). Resolvemos contra la lista MÁS RECIENTE de documentos
+      // para asegurar que se adjunte la versión "(Firmado)" — evita la carrera del useEffect de carga.
+      const expId = expedienteId || String(actuacion.expedienteId);
+      let docsParaResolver = documentosExpediente;
+      try {
+        const freshDocs = await legalService.getDocumentos(expId);
+        if (Array.isArray(freshDocs) && freshDocs.length > 0) {
+          docsParaResolver = freshDocs;
+        }
+      } catch (e) {
+        console.error('No se pudo refrescar documentos para adjuntar; se usa la lista en memoria.', e);
+      }
+
       const associatedDocIds = actuacion.metadata?.documentosAsociados || [];
-      const resolvedDocs = documentosExpediente.filter(doc => {
+      const resolvedDocs = docsParaResolver.filter(doc => {
         const docIdStr = String(doc.id);
         return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
       });
 
       for (const doc of resolvedDocs) {
         const docUrl = doc.archivoUrl || doc.url;
+        const docName = doc.nombre || 'documento_asociado.pdf';
         if (docUrl) {
-          const docName = doc.nombre || 'documento_asociado.pdf';
           const fileObj = await urlToFile(docUrl, docName);
           if (fileObj) filesToAttach.push(fileObj);
+          else failedAttachments.push(docName);
+        } else {
+          failedAttachments.push(docName);
         }
       }
 
@@ -210,13 +227,22 @@ export function TabActuacionesExpediente({
         archivos: filesToAttach,
       };
 
-      toast.success('📨 Correo preparado con adjuntos', { id: loadingToastId });
-      
-      if (onSendEmail) {
-        onSendEmail(emailData);
-      } else {
+      if (!onSendEmail) {
         toast.error('La funcionalidad de envío de correo no está disponible en este contexto.', { id: loadingToastId });
+        return;
       }
+
+      if (failedAttachments.length > 0) {
+        toast.warning('⚠️ Algunos adjuntos no se pudieron descargar', {
+          id: loadingToastId,
+          description: `Se enviará el correo sin: ${failedAttachments.join(', ')}`,
+        });
+      } else {
+        toast.success('📨 Correo preparado con adjuntos', { id: loadingToastId });
+      }
+
+      // Siempre abrimos el correo con los adjuntos válidos (no se bloquea por uno fallido)
+      onSendEmail(emailData);
     } catch (error) {
       console.error('Error al preparar el correo:', error);
       toast.error('❌ Error al preparar el correo con los adjuntos', { id: loadingToastId });
@@ -378,11 +404,27 @@ export function TabActuacionesExpediente({
    */
   const getEstadoFirma = (act: ActuacionExpediente): 'AUTORIZADO' | 'DEVUELTO' | 'PENDIENTE' | 'NINGUNO' => {
     const stored = act?.metadata?.estadoAutorizacion;
+    // AUTORIZADO/DEVUELTO son resultado real de una aprobación persistida: NO deben depender
+    // de requiereFirmaEtapa (que cambia al avanzar de etapa). Se evalúan primero.
     if (stored === 'AUTORIZADO') return 'AUTORIZADO';
     if (stored === 'DEVUELTO') return 'DEVUELTO';
     // Las actuaciones del sistema (cambios de etapa, trazas) nunca requieren firma
     if (act?.tipo === 'CAMBIO_ETAPA' || (act?.origen && act.origen !== 'MANUAL')) return 'NINGUNO';
     return requiereFirmaEtapa ? 'PENDIENTE' : 'NINGUNO';
+  };
+
+  /**
+   * ¿Se puede enviar por correo esta actuación? Fuente de verdad única para el botón
+   * "Enviar Correo" tanto en la tarjeta como en el modal de detalle.
+   * Una actuación AUTORIZADA ya implica que sus documentos fueron firmados (requisito previo
+   * para autorizar), por lo que NO se vuelve a exigir checkAllAssociatedDocsSigned aquí
+   * (esa comprobación podía ocultar el botón por carreras de carga o flags ausentes).
+   */
+  const canSendEmail = (act: ActuacionExpediente): boolean => {
+    if (!onSendEmail) return false;
+    if (act?.tipo === 'CAMBIO_ETAPA') return false;
+    if (act?.origen && act.origen !== 'MANUAL') return false;
+    return getEstadoFirma(act) === 'AUTORIZADO';
   };
 
   /**
@@ -917,7 +959,7 @@ export function TabActuacionesExpediente({
                           </Badge>
                         )}
 
-                        {onSendEmail && actuacion.tipo !== 'CAMBIO_ETAPA' && !hasUnsignedDocs && getEstadoFirma(actuacion) === 'AUTORIZADO' && (
+                        {canSendEmail(actuacion) && (
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1576,7 +1618,7 @@ export function TabActuacionesExpediente({
                       )}
                     </div>
                   )}
-                  {onSendEmail && checkAllAssociatedDocsSigned(actuacionDetalle) && getEstadoFirma(actuacionDetalle) === 'AUTORIZADO' && (
+                  {canSendEmail(actuacionDetalle) && (
                     <Button 
                       size="sm"
                       className="text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9 border-none"

@@ -417,6 +417,7 @@ function safeNombre(val: unknown): string {
   if (val && typeof val === 'object') {
     const obj = val as Record<string, unknown>;
     if (typeof obj.nombre === 'string') return obj.nombre;
+    if (typeof obj.nombreCompleto === 'string') return obj.nombreCompleto;
     if (typeof obj.personaId === 'string') return obj.personaId;
     if (typeof obj.rolOCI === 'string') return obj.rolOCI;
     if (typeof obj.id === 'string') return obj.id;
@@ -566,21 +567,70 @@ export function CronogramaAuditoriasPremium({
 
   const handleExportExcel = async () => {
     toast.info('Generando archivo Excel...');
-    const datosExcel: AuditoriaExcel[] = auditoriasFiltradas.map((a: any) => ({
-      codigo: a.id.substring(0, 8).toUpperCase(),
-      titulo: a.nombre,
-      tipo: a.tipoOperativo || a.tipoKanban || a.tipo || 'Regular',
-      estado: a.estadoKanban || a.fase || a.estado,
-      territorial: a.territorial || 'Sede Central',
-      auditorLider: { nombre: safeNombre(a.auditorLider) },
-      fechaInicio: a.fechaInicio ? new Date(a.fechaInicio).toLocaleDateString() : 'N/A',
-      fechaFin: a.fechaFin ? new Date(a.fechaFin).toLocaleDateString() : 'N/A',
-      progreso: typeof a.avance === 'number' ? a.avance : 0,
-      hallazgos: 0, 
-      riesgo: a.riesgo || 'Bajo'
-    }));
+    const datosExcel = auditoriasFiltradas.map((a: any) => {
+      // Obtener el líder
+      const liderNombre = safeNombre(a.auditorLider);
+      let auditoresNombres: string[] = [];
+      if (liderNombre && liderNombre !== 'No asignado') {
+        auditoresNombres.push(liderNombre + ' (Líder)');
+      }
 
-    const resultado = await exportarAuditoriasTemplate(datosExcel);
+      // Obtener el equipo
+      if (a.equipoAuditores && Array.isArray(a.equipoAuditores)) {
+        a.equipoAuditores.forEach((miembro: any) => {
+          const nombreMiembro = safeNombre(miembro);
+          if (nombreMiembro && nombreMiembro !== 'No asignado' && nombreMiembro !== liderNombre) {
+            auditoresNombres.push(nombreMiembro);
+          }
+        });
+      }
+      
+      // Extraer responsable auditado del backend o frontend (no confundir con auditores)
+      let responsableAuditado = 'No asignado';
+      if (a.responsableArea) {
+         responsableAuditado = safeNombre(a.responsableArea);
+      } else if (a.responsableAreaNombre) {
+         responsableAuditado = a.responsableAreaNombre;
+      } else if (a.proceso && a.proceso.responsable && a.proceso.responsable !== 'Por asignar') {
+         responsableAuditado = safeNombre(a.proceso.responsable);
+      } else if (a.responsables) {
+         if (Array.isArray(a.responsables)) {
+             responsableAuditado = a.responsables.map((r: any) => safeNombre(r)).join('\n');
+         } else {
+             responsableAuditado = safeNombre(a.responsables);
+         }
+      } else if (a.responsable) {
+         responsableAuditado = safeNombre(a.responsable);
+      }
+
+      // Unidad auditada (Proceso / Foco)
+      const unidadAuditada = a.areaObjetivo ? `${a.nombre}\n(${a.areaObjetivo})` : a.nombre;
+
+      return {
+        codigo: a.id.substring(0, 8).toUpperCase(),
+        titulo: unidadAuditada,
+        tipo: a.tipoOperativo || a.tipoKanban || a.tipo || 'Regular',
+        estado: a.estadoKanban || a.fase || a.estado,
+        territorial: a.territorial || 'Sede Central',
+        responsable: responsableAuditado, // responsable del área
+        observaciones: a.observaciones || '',
+        auditorLider: { nombre: liderNombre },
+        equipo: auditoresNombres, // guardamos también el equipo en caso se necesite
+        fechaInicio: a.fechaInicio ? new Date(a.fechaInicio).toLocaleDateString() : 'N/A',
+        fechaFin: a.fechaFin ? new Date(a.fechaFin).toLocaleDateString() : 'N/A',
+        fechaInicioRaw: a.fechaInicio,
+        fechaFinRaw: a.fechaFin,
+        fechaFinPlaneacionRaw: a.fechaFinPlaneacion,
+        fechaInicioEjecucionRaw: a.fechaInicioEjecucion,
+        fechaFinEjecucionRaw: a.fechaFinEjecucion,
+        fechaInicioComunicacionRaw: a.fechaInicioComunicacion,
+        progreso: typeof a.avance === 'number' ? a.avance : 0,
+        hallazgos: 0, 
+        riesgo: a.riesgo || 'Bajo'
+      };
+    });
+
+    const resultado = await exportarAuditoriasTemplate(datosExcel as any, vigencia.toString());
     if (resultado.exito) {
       toast.success(resultado.mensaje);
     } else {

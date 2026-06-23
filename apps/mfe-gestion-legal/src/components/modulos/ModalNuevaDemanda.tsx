@@ -12,10 +12,8 @@ export interface NuevaDemandaData {
   medioControl: string;
   tipoProceso: string;
   territorial?: string;
-  cetap?: string;
   dependencia?: string;
   territorialNombre?: string;
-  cetapNombre?: string;
   dependenciaNombre?: string;
   demandantes: Array<{
     id: string;
@@ -132,10 +130,8 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     esDelitoAdminPublica: data.esDelitoAdminPublica || false,
     esConductaPatrimonioPublico: data.esConductaPatrimonioPublico || false,
     territorial: data.territorial,
-    cetap: data.cetap,
     dependencia: data.dependencia,
     territorialNombre: (data as any).territorialNombre,
-    cetapNombre: (data as any).cetapNombre,
     dependenciaNombre: (data as any).dependenciaNombre,
     camposAdicionales: data.camposAdicionales,
   };

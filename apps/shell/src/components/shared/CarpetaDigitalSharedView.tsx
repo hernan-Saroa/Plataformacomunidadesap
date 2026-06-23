@@ -73,6 +73,8 @@ export interface TipoDocumentoRequerido {
   icono?: string;
   completado: boolean;
   documento?: CarpetaDocumento | null;
+  /** true cuando el tipo está asociado a la carpeta de un docente específico (no es general). */
+  esEspecifico?: boolean;
 }
 
 export interface PersonaInfo {
@@ -211,6 +213,17 @@ const getExpirationStatus = (doc: CarpetaDocumento): 'expired' | 'warning' | 'ok
   return 'ok';
 };
 
+// Aviso SOFT cuando el validador de contenido detecta que el PDF no parece
+// corresponder al tipo de documento esperado. No bloquea nada; solo informa.
+const warnIfWrongDocType = (validacionTipo: any) => {
+  if (validacionTipo && validacionTipo.validated && validacionTipo.matched === false) {
+    toast.warning('Posible documento incorrecto', {
+      description: validacionTipo.reason || 'El contenido del archivo no parece corresponder al tipo solicitado. Verifica que subiste el documento correcto.',
+      duration: 7000,
+    });
+  }
+};
+
 const getRundEstadoBadge = (estado: string) => {
   const norm = String(estado || '').toLowerCase().trim();
   if (norm === 'aprobado' || norm === 'validado' || norm === 'ok') {
@@ -343,6 +356,14 @@ function TipoDocCard({ tipo, docs, onUpload, onUploadDirect, onSelectDoc }: {
           position: 'absolute', top: -4, right: -4, width: 12, height: 12,
           background: '#EF4444', borderRadius: '50%', border: '2px solid white', zIndex: 10,
         }} title="Requerido" />
+      )}
+
+      {tipo.esEspecifico && (
+        <div style={{
+          position: 'absolute', top: -7, left: 8, padding: '1px 7px', borderRadius: 6, zIndex: 10,
+          background: '#7C3AED', color: '#fff', fontSize: 8.5, fontWeight: 800, letterSpacing: '0.02em',
+          border: '1.5px solid white', textTransform: 'uppercase',
+        }} title="Documento específico para este docente (no general)">Específico</div>
       )}
 
       {hasDoc && latestDoc ? (
@@ -1118,6 +1139,7 @@ export function CarpetaDigitalSharedView({
       const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
       if (res?.success || res) {
         toast.success(`Documento "${file.name}" cargado exitosamente.`);
+        warnIfWrongDocType(res?.validacionTipo);
         await fetchRundData();
       } else {
         toast.error('Error al cargar el documento.');
@@ -1160,6 +1182,7 @@ export function CarpetaDigitalSharedView({
         const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
         if (res?.success || res) {
           toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
+          warnIfWrongDocType(res?.validacionTipo);
           await fetchRundData();
           return true;
         } else {

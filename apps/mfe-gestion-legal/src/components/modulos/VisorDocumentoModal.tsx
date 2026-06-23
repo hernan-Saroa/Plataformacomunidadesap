@@ -18,6 +18,7 @@ import { FirmaDigitalActuacion, type FirmaData } from '../core/FirmaDigitalActua
 import { authService } from '../../../../services/api/authService';
 import { toast } from 'sonner';
 import * as mammoth from 'mammoth';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { isViewableInBrowser, getFileTypeCategory } from '../../../../utils/fileUtils';
 import pdfjsWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.js?url';
 
@@ -100,24 +101,6 @@ function QuickResponseCodeSVG({ value }: { value: string }) {
   );
 }
 
-const loadPdfLib = (): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if ((window as any).PDFLib) {
-      resolve((window as any).PDFLib);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
-    script.onload = () => {
-      resolve((window as any).PDFLib);
-    };
-    script.onerror = () => {
-      reject(new Error('Failed to load pdf-lib'));
-    };
-    document.body.appendChild(script);
-  });
-};
-
 function generateQRCodeBase64(value: string): string {
   const size = 21;
   const matrix: boolean[][] = Array(size).fill(null).map(() => Array(size).fill(false));
@@ -193,9 +176,6 @@ const stampPdf = async (
   signedData: FirmaData
 ): Promise<Uint8Array | null> => {
   try {
-    const PDFLib = await loadPdfLib();
-    const { PDFDocument, rgb, StandardFonts } = PDFLib;
-
     const response = await fetch(pdfUrl);
     if (!response.ok) throw new Error('Failed to fetch original PDF');
     const existingPdfBytes = await response.arrayBuffer();
