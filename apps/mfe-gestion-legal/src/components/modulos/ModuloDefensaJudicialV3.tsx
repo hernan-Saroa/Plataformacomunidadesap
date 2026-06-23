@@ -498,12 +498,10 @@ export function ModuloDefensaJudicialV3() {
           // Clasificación Penal
           esDelitoAdminPublica: exp.esDelitoAdminPublica || false,
           esConductaPatrimonioPublico: exp.esConductaPatrimonioPublico || false,
-          // Territorial, CETAP y Dependencia
+          // Territorial y Dependencia
           territorial: exp.territorial || exp.camposAdicionales?.territorial,
-          cetap: exp.cetap || exp.camposAdicionales?.cetap,
           dependencia: exp.dependencia || exp.camposAdicionales?.dependencia,
           territorialNombre: exp.territorialNombre || exp.camposAdicionales?.territorialNombre,
-          cetapNombre: exp.cetapNombre || exp.camposAdicionales?.cetapNombre,
           dependenciaNombre: exp.dependenciaNombre || exp.camposAdicionales?.dependenciaNombre,
         }
       });
@@ -974,12 +972,10 @@ export function ModuloDefensaJudicialV3() {
                 ])
               )
             : {}),
-          // IDs y nombres de territorial/cetap/dependencia como respaldo si el backend no tiene columnas directas
+          // IDs y nombres de territorial/dependencia como respaldo si el backend no tiene columnas directas
           ...(demandaData.territorial ? { territorial: demandaData.territorial } : {}),
-          ...(demandaData.cetap ? { cetap: demandaData.cetap } : {}),
           ...(demandaData.dependencia ? { dependencia: demandaData.dependencia } : {}),
           ...((demandaData as any).territorialNombre ? { territorialNombre: (demandaData as any).territorialNombre } : {}),
-          ...((demandaData as any).cetapNombre ? { cetapNombre: (demandaData as any).cetapNombre } : {}),
           ...((demandaData as any).dependenciaNombre ? { dependenciaNombre: (demandaData as any).dependenciaNombre } : {}),
         },
 
@@ -1036,12 +1032,10 @@ export function ModuloDefensaJudicialV3() {
         esDelitoAdminPublica: demandaData.esDelitoAdminPublica || false,
         esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
 
-        // Territorial, CETAP y Dependencia (del paso 3)
+        // Territorial y Dependencia (del paso 3)
         territorial: demandaData.territorial,
-        cetap: demandaData.cetap,
         dependencia: demandaData.dependencia,
         territorialNombre: (demandaData as any).territorialNombre,
-        cetapNombre: (demandaData as any).cetapNombre,
         dependenciaNombre: (demandaData as any).dependenciaNombre,
       };
 
