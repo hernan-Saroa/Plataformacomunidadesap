@@ -16,6 +16,21 @@ import type { Seccional, Sede, Geopolitica } from '../../services/api/types';
 
 type TipoEntidad = 'seccional' | 'sede';
 
+/**
+ * Convierte un valor a número válido o `undefined`.
+ *
+ * Necesario porque las columnas bigint/decimal del backend
+ * (id_ubi_seccional, id_geopolitica, latitud, longitud) se serializan como
+ * STRING en el JSON de respuesta. Al editar, esos strings se cargaban tal cual
+ * en el formulario y se reenviaban como string, pero el backend valida con
+ * `@IsNumber()` (que rechaza strings) -> 400 "must be a number".
+ */
+const toNumberOrUndefined = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 interface CreateSeccionalSedeModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -80,8 +95,8 @@ export function CreateSeccionalSedeModal({
         setSeccionalForm({
           codSeccional: seccional.codSeccional || '',
           nomSeccional: seccional.nomSeccional,
-          ordenVisualizacion: seccional.ordenVisualizacion ?? 999,
-          idUbiSeccional: seccional.idUbiSeccional,
+          ordenVisualizacion: toNumberOrUndefined(seccional.ordenVisualizacion) ?? 999,
+          idUbiSeccional: toNumberOrUndefined(seccional.idUbiSeccional),
           activo: seccional.activo ?? true,
         });
       } else {
@@ -89,11 +104,11 @@ export function CreateSeccionalSedeModal({
         setSedeForm({
           codSede: sede.codSede || '',
           nomSede: sede.nomSede,
-          idSeccional: sede.idSeccional,
-          idGeopolitica: sede.idGeopolitica,
+          idSeccional: toNumberOrUndefined(sede.idSeccional),
+          idGeopolitica: toNumberOrUndefined(sede.idGeopolitica),
           tipo: sede.tipo || 'cetap',
-          latitud: sede.numLatitud,
-          longitud: sede.numLongitud,
+          latitud: toNumberOrUndefined(sede.numLatitud ?? sede.latitud),
+          longitud: toNumberOrUndefined(sede.numLongitud ?? sede.longitud),
           sedeAct: sede.sedeAct || 'ACTIVO',
         });
       }
@@ -229,8 +244,8 @@ export function CreateSeccionalSedeModal({
         const data: CreateSeccionalData = {
           codSeccional: seccionalForm.codSeccional.trim() || undefined,
           nomSeccional: seccionalForm.nomSeccional.trim(),
-          ordenVisualizacion: seccionalForm.ordenVisualizacion,
-          idUbiSeccional: seccionalForm.idUbiSeccional,
+          ordenVisualizacion: toNumberOrUndefined(seccionalForm.ordenVisualizacion),
+          idUbiSeccional: toNumberOrUndefined(seccionalForm.idUbiSeccional),
           activo: seccionalForm.activo,
         };
 
@@ -245,11 +260,11 @@ export function CreateSeccionalSedeModal({
         const data: CreateSedeData = {
           codSede: sedeForm.codSede.trim() || undefined,
           nomSede: sedeForm.nomSede.trim(),
-          idSeccional: sedeForm.idSeccional ? Number(sedeForm.idSeccional) : undefined,
-          idGeopolitica: sedeForm.idGeopolitica,
+          idSeccional: toNumberOrUndefined(sedeForm.idSeccional),
+          idGeopolitica: toNumberOrUndefined(sedeForm.idGeopolitica),
           tipo: sedeForm.tipo,
-          latitud: sedeForm.latitud,
-          longitud: sedeForm.longitud,
+          latitud: toNumberOrUndefined(sedeForm.latitud),
+          longitud: toNumberOrUndefined(sedeForm.longitud),
           sedeAct: sedeForm.sedeAct || undefined,
         };
 

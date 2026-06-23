@@ -514,7 +514,7 @@ export class EstructuraImportService {
         );
       }
 
-      // Sincronizar con el periodo académico si fue proporcionado
+      // Sincronizar con los periodos académicos.
       if (periodo) {
         const periodRows = await queryRunner.query(
           'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
@@ -525,32 +525,19 @@ export class EstructuraImportService {
             `El periodo académico "${periodo}" no existe. No se realizó ningún cambio.`,
           );
         }
-        const periodId = periodRows[0].id;
-        const allCetaps = await queryRunner.query(
-          'SELECT id FROM academic_work_plan.cetap WHERE activo = TRUE',
+
+        // Los CETAP del catálogo quedan disponibles (ACTIVOS) en TODOS los periodos,
+        // no solo en el periodo activo. Cada periodo es independiente: solo se INSERTA
+        // cuando la fila no existe (ON CONFLICT DO NOTHING), de modo que NO se pisan
+        // las inactivaciones manuales que ya se hayan hecho en cada periodo.
+        await queryRunner.query(
+          `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
+           SELECT pa.id, c.id, TRUE
+             FROM academic_work_plan.periodo_academico pa
+             CROSS JOIN academic_work_plan.cetap c
+            WHERE c.activo = TRUE
+           ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
         );
-        const activeCetapIds = allCetaps.map((cetap: any) => cetap.id);
-
-        for (const cetapId of activeCetapIds) {
-          await queryRunner.query(
-            `INSERT INTO academic_work_plan.periodo_cetap (
-               id_periodo_academico, id_cetap, activo
-             ) VALUES ($1, $2, TRUE)
-             ON CONFLICT (id_periodo_academico, id_cetap)
-             DO UPDATE SET activo = TRUE`,
-            [periodId, cetapId],
-          );
-        }
-
-        if (activeCetapIds.length > 0) {
-          await queryRunner.query(
-            `UPDATE academic_work_plan.periodo_cetap
-             SET activo = FALSE
-             WHERE id_periodo_academico = $1
-               AND id_cetap <> ALL($2::bigint[])`,
-            [periodId, activeCetapIds],
-          );
-        }
       }
 
       const postValidation = await queryRunner.query(

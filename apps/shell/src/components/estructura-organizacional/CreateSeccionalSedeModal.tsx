@@ -234,7 +234,11 @@ export function CreateSeccionalSedeModal({
         const data: CreateSeccionalData = {
           codSeccional: seccionalForm.codSeccional.trim() || undefined,
           nomSeccional: seccionalForm.nomSeccional.trim(),
-          idUbiSeccional: seccionalForm.idUbiSeccional,
+          // Coerción a número: el id_ubi_seccional (bigint) llega como string del
+          // backend y @IsNumber() lo rechazaría al guardar.
+          idUbiSeccional: seccionalForm.idUbiSeccional
+            ? Number(seccionalForm.idUbiSeccional)
+            : undefined,
         };
 
         if (isEditMode) {

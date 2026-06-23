@@ -473,7 +473,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                                   <p className="text-[9px] text-gray-400 font-semibold uppercase">Asig.</p>
                                 </div>
                                 <div className="text-center">
-                                  <p className="text-sm font-bold text-emerald-600">{stats.ofertas_cetap_programa || 0}</p>
+                                  <p className="text-sm font-bold text-emerald-600">{stats.cetaps ?? stats.ofertas_cetap_programa ?? 0}</p>
                                   <p className="text-[9px] text-gray-400 font-semibold uppercase">CETAPs</p>
                                 </div>
                               </div>
@@ -905,7 +905,7 @@ export function GestionPeriodos({ onBack, onNavigateToImport, onPeriodosChanged 
                           </div>
                           <div>
                             <p className="text-[9px] text-gray-500 font-bold uppercase">CETAPs</p>
-                            <p className="text-sm font-black text-emerald-600">{stats.ofertas_cetap_programa || 0}</p>
+                            <p className="text-sm font-black text-emerald-600">{stats.cetaps ?? stats.ofertas_cetap_programa ?? 0}</p>
                           </div>
                         </div>
                       )}
