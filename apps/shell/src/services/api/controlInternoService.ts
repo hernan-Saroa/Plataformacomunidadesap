@@ -2119,6 +2119,9 @@ class ControlInternoService {
       indicador?: string;
       metaIndicador?: string;
       hallazgoId?: string;
+      tipo?: string;
+      recursos?: string;
+      observaciones?: string;
     },
   ): Promise<any> {
     return client.post<any>(
@@ -2227,7 +2230,7 @@ class ControlInternoService {
    * Consulta directamente al auth-service en /users?status=active&limit=100.
    * El JWT del usuario actual se inyecta automáticamente.
    */
-  async getUsuariosActivos(): Promise<Array<{ id: string; nombre: string; email: string }>> {
+  async getUsuariosActivos(): Promise<Array<{ id: string; nombre: string; email: string; rol: string }>> {
     // Usa el endpoint del control-interno-service (mismo que usa el formulario de auditorías)
     // El client ya incluye el JWT automáticamente
     try {
@@ -2237,6 +2240,7 @@ class ControlInternoService {
         id: String(p.idPersona ?? p.id_persona ?? p.id ?? ''),
         nombre: p.nombre ?? p.full_name ?? p.email ?? '',
         email: p.email ?? '',
+        rol: p.rol ?? p.role ?? p.cargo ?? p.perfil ?? '',
       })).filter((p: any) => p.nombre);
     } catch {
       // Fallback: búsqueda vacía para traer todos
@@ -2247,6 +2251,7 @@ class ControlInternoService {
           id: String(p.idPersona ?? p.id ?? ''),
           nombre: p.nombre ?? p.full_name ?? p.email ?? '',
           email: p.email ?? '',
+          rol: p.rol ?? p.role ?? p.cargo ?? p.perfil ?? '',
         })).filter((p: any) => p.nombre);
       } catch {
         return [];
@@ -2622,6 +2627,160 @@ class ControlInternoService {
    */
   async getCondicionesDisparo(): Promise<{ id: string; nombre: string; descripcion?: string }[]> {
     return client.get('/notificaciones/condiciones-disparo');
+  }
+
+  // ==========================================================================
+  // SEGUIMIENTO, EVALUACIÓN Y CIERRE (EM-FO-002 / EM-PT-002)
+  // Endpoints del controller: planes-mejoramiento/*
+  // ==========================================================================
+
+  /**
+   * Carga evidencia formal de seguimiento (auditado).
+   * POST /planes-mejoramiento/acciones/:accionId/evidencias-seguimiento
+   */
+  async cargarEvidenciaSeguimiento(
+    accionId: string,
+    body: {
+      archivoRef: string;
+      archivoNombre: string;
+      archivoTipo?: string;
+      archivoTamanio?: number;
+      descripcion?: string;
+      cargadaPorId: string;
+      cargadaPorNombre?: string;
+    },
+  ): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/acciones/${accionId}/evidencias-seguimiento`, body);
+  }
+
+  /**
+   * Lista evidencias formales de seguimiento de una acción.
+   * GET /planes-mejoramiento/acciones/:accionId/evidencias-seguimiento
+   */
+  async getEvidenciasSeguimiento(accionId: string): Promise<any[]> {
+    return client.get<any[]>(`/planes-mejoramiento/acciones/${accionId}/evidencias-seguimiento`);
+  }
+
+  /**
+   * Califica evidencia (auditor OCI): aceptado | con_observaciones.
+   * PUT /planes-mejoramiento/evidencias/:evidenciaId/calificacion
+   */
+  async calificarEvidenciaSeguimiento(
+    evidenciaId: string,
+    body: {
+      calificacion: 'aceptado' | 'con_observaciones';
+      comentarios?: string;
+      solicitaNuevaEvidencia?: boolean;
+      calificadaPorId: string;
+      calificadaPorNombre?: string;
+    },
+  ): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/evidencias/${evidenciaId}/calificacion`, body);
+  }
+
+  /**
+   * Registra cumplimiento de una acción (fórmula EM-FO-002).
+   * PUT /planes-mejoramiento/acciones/:accionId/seguimiento-emfo
+   */
+  async registrarSeguimientoEmfo(
+    accionId: string,
+    body: {
+      cantidadImplementada: number;
+      observacionCumplimiento?: string;
+      responsableSeguimiento?: string;
+    },
+  ): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/acciones/${accionId}/seguimiento-emfo`, body);
+  }
+
+  /**
+   * Registra efectividad de una acción (dos criterios SI/NO).
+   * PUT /planes-mejoramiento/acciones/:accionId/efectividad
+   */
+  async registrarEfectividad(
+    accionId: string,
+    body: {
+      evaluarAplicacionControles: boolean;
+      validarSituacionNoRepitio: boolean;
+      observacionEfectividad?: string;
+    },
+  ): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/acciones/${accionId}/efectividad`, body);
+  }
+
+  /**
+   * Lista alertas de un plan.
+   * GET /planes-mejoramiento/:planId/alertas
+   */
+  async getAlertasPlan(planId: string): Promise<any[]> {
+    return client.get<any[]>(`/planes-mejoramiento/${planId}/alertas`);
+  }
+
+  /**
+   * Genera alertas evaluando condiciones actuales.
+   * POST /planes-mejoramiento/:planId/generar-alertas
+   */
+  async generarAlertasPlan(planId: string): Promise<any[]> {
+    return client.post<any[]>(`/planes-mejoramiento/${planId}/generar-alertas`, {});
+  }
+
+  /**
+   * Cierra un plan de mejoramiento.
+   * PUT /planes-mejoramiento/:planId/cierre
+   */
+  async cerrarPlanMejoramiento(
+    planId: string,
+    body: {
+      cerradoPorId: string;
+      cerradoPorNombre?: string;
+      observacionesCierre?: string;
+    },
+  ): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/${planId}/cierre`, body);
+  }
+
+  /**
+   * Archiva el expediente (índice electrónico).
+   * PUT /planes-mejoramiento/:planId/archivo
+   */
+  async archivarExpedientePlan(
+    planId: string,
+    body: { indiceElectronicoRef: string },
+  ): Promise<any> {
+    return client.put<any>(`/planes-mejoramiento/${planId}/archivo`, body);
+  }
+
+  /**
+   * Obtiene estado de cierre de un plan.
+   * GET /planes-mejoramiento/:planId/cierre
+   */
+  async getCierrePlan(planId: string): Promise<any> {
+    return client.get<any>(`/planes-mejoramiento/${planId}/cierre`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUIMIENTO PERIÓDICO (RF-SG-09 / RF-SG-10)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Lista los seguimientos periódicos de un plan. */
+  async getSeguimientosPlan(planId: string): Promise<any[]> {
+    return client.get<any[]>(`/planes-mejoramiento/${planId}/seguimientos`);
+  }
+
+  /** Registra un seguimiento periódico manual. */
+  async registrarSeguimientoPeriodico(
+    planId: string,
+    data: {
+      periodicidad: 'TRIMESTRAL' | 'SEMESTRAL';
+      tipoControl: 'INTERNO' | 'ENTE_EXTERNO';
+      fechaCorte: string;
+      responsableId: string;
+      responsableNombre?: string;
+      resumen?: string;
+      informeRef?: string;
+    },
+  ): Promise<any> {
+    return client.post<any>(`/planes-mejoramiento/${planId}/seguimientos`, data);
   }
 }
 

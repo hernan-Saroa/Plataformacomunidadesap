@@ -199,7 +199,7 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     auditorLiderId: form.auditorLider,
     auditorAsignadoId: form.auditorAsignado,
     supervisorAsignadoId: form.supervisorAsignado,
-    responsableAreaNombre: form.responsableAreaNombre || form.responsable,
+    responsableAreaNombre: form.responsableAreaNombre,
     responsableAreaCargo: form.responsableAreaCargo,
     responsableAreaEmail: form.responsableAreaEmail,
     objetivos: form.objetivos,

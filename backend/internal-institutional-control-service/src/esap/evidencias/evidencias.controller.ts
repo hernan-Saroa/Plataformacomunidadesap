@@ -12,6 +12,7 @@ import {
   HttpStatus,
   Res,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -76,6 +77,7 @@ export class EvidenciasController {
   async create(
     @UploadedFile() file: MulterFile,
     @Body() body: any,
+    @Req() req: any,
   ) {
     if (!file) {
       throw new BadRequestException('No se proporcionó ningún archivo');
@@ -91,11 +93,12 @@ export class EvidenciasController {
       auditoriaId: body.auditoriaId || undefined,
     };
 
-    // TODO: Obtener usuario del token JWT
-    const subidoPor = body.subidoPor || 'Sistema';
+    // Obtener usuario del token JWT
+    const subidoPor = req.user?.username || body.subidoPor || 'Sistema';
     const subidoPorId = body.subidoPorId ? parseInt(body.subidoPorId) : undefined;
+    const userId = req.user?.userId || null;
 
-    return this.evidenciasService.create(file, createDto, subidoPor, subidoPorId);
+    return this.evidenciasService.create(file, createDto, subidoPor, subidoPorId, userId);
   }
 
   /**

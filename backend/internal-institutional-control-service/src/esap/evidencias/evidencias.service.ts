@@ -49,6 +49,7 @@ export class EvidenciasService {
     tipoEvento: TipoEvento,
     accion: string,
     descripcion: string,
+    usuarioId?: string,
   ): Promise<void> {
     if (!auditoriaId) return;
     
@@ -62,7 +63,7 @@ export class EvidenciasService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      historial.usuarioId = null; // TODO: UUID de auth.personas desde contexto de autenticación
+      historial.usuarioId = usuarioId || null;
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.cambios = [];
@@ -81,6 +82,7 @@ export class EvidenciasService {
     createDto: CreateEvidenciaDto,
     subidoPor: string,
     subidoPorId?: number,
+    usuarioId?: string,
   ): Promise<EvidenciaDocumento> {
     // Validar que al menos una vinculación esté presente
     const vinculaciones = [
@@ -153,6 +155,7 @@ export class EvidenciasService {
       TipoEvento.DOCUMENTO,
       'Evidencia cargada',
       `Se cargó el documento "${savedEvidencia.nombre}" (${savedEvidencia.nombreArchivoOriginal})`,
+      usuarioId,
     );
 
     // Crear notificaciones después de guardar la evidencia

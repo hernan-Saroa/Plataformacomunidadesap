@@ -74,5 +74,6 @@ async function bootstrap() {
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`Auth service corriendo en puerto ${port} con CORS habilitado`);
+  console.log(`📋 LoginSettings module cargado`); // trigger hot-reload
 }
 bootstrap();

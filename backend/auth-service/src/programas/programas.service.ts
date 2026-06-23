@@ -628,22 +628,77 @@ export class ProgramasService {
     throw error;
   }
 
-  async eliminarPrograma(id: string): Promise<void> {
+  async eliminarPrograma(id: string, periodoCodigo?: string): Promise<void> {
     const programa = await this.programaRepo.findOne({ where: { id } });
     if (!programa) {
       throw new NotFoundException(`Programa con ID ${id} no encontrado`);
     }
 
     try {
-      // Se elimina dentro de una transacción quitando primero las dependencias
-      // que apuntan al programa, en orden de FK:
-      //   1) oferta_cetap_programa  -> programa
-      //   2) asignatura             -> programa y nucleo_tematico
-      //   3) nucleo_tematico        -> programa  (tras borrar sus asignaturas)
-      //   4) programa
-      // Si algo más en uso referencia estos datos, la transacción se revierte
-      // completa: no queda ningún borrado parcial.
       await this.programaRepo.manager.transaction(async (manager) => {
+        const codigo = periodoCodigo?.trim();
+
+        // ── BORRADO POR PERÍODO ──
+        // Eliminar un programa desde la vista de un período NO debe afectar a los
+        // demás períodos. Si el programa sigue presente en otro período, solo se
+        // quita de este; si este era su único período, se elimina por completo.
+        if (codigo) {
+          const per = await manager.query(
+            `SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1`,
+            [codigo],
+          );
+          const periodoId = per[0]?.id;
+
+          if (periodoId) {
+            // 1) Quitar las ofertas del programa SOLO en este período.
+            await manager.query(
+              `DELETE FROM academic_work_plan.oferta_cetap_programa
+                WHERE id_programa = $1 AND id_periodo_academico = $2`,
+              [id, periodoId],
+            );
+
+            // 2) ¿El programa sigue en OTROS períodos? (ofertas activas en otro
+            //    período, o pertenece a un período distinto a este).
+            const otrasOfertas = await manager.query(
+              `SELECT id_periodo_academico
+                 FROM academic_work_plan.oferta_cetap_programa
+                WHERE id_programa = $1 AND activa = TRUE AND id_periodo_academico <> $2
+                LIMIT 1`,
+              [id, periodoId],
+            );
+            // Período "dueño" del programa (columna id_periodo_academico, si existe).
+            let idPeriodoActual: any = null;
+            const tienePeriodoColumna = await this.hasProgramaPeriodoColumn();
+            if (tienePeriodoColumna) {
+              const progRow = await manager.query(
+                `SELECT id_periodo_academico FROM academic_work_plan.programa WHERE id = $1`,
+                [id],
+              );
+              idPeriodoActual = progRow[0]?.id_periodo_academico ?? null;
+            }
+            const perteneceAOtroPeriodo =
+              idPeriodoActual != null &&
+              String(idPeriodoActual) !== String(periodoId);
+
+            if (otrasOfertas.length > 0 || perteneceAOtroPeriodo) {
+              // El programa sobrevive en otro período: NO se borra globalmente.
+              // Si "pertenecía" a este período, se reasigna a otro donde aparezca.
+              if (tienePeriodoColumna && String(idPeriodoActual) === String(periodoId)) {
+                const destino = otrasOfertas[0]?.id_periodo_academico ?? null;
+                await manager.query(
+                  `UPDATE academic_work_plan.programa SET id_periodo_academico = $1 WHERE id = $2`,
+                  [destino, id],
+                );
+              }
+              return; // No se hace borrado completo.
+            }
+            // Si no quedó en ningún otro período, continúa al borrado completo.
+          }
+        }
+
+        // ── BORRADO COMPLETO ──
+        // (sin período indicado, o el programa solo existía en este período).
+        // Orden de FK: ofertas -> asignaturas -> núcleos -> programa.
         await manager.query(
           `DELETE FROM academic_work_plan.oferta_cetap_programa WHERE id_programa = $1`,
           [id],

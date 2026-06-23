@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
+import { configuracionesProfesionalesOCIApi } from './services/api';
 import { 
   controlInternoService, 
   type TareaAuditoria, 
@@ -33,13 +34,11 @@ import {
 } from '../services/api/controlInternoService';
 import { toast } from 'sonner';
 
-// Usuario de ejemplo para responsable (en producción vendría del contexto de auth)
-const EQUIPO_AUDITORES = [
-  { id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', nombre: 'Ana García López' },
-  { id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901', nombre: 'Carlos Martínez' },
-  { id: 'c3d4e5f6-a7b8-9012-cdef-012345678912', nombre: 'María Rodríguez' },
-  { id: 'd4e5f6a7-b8c9-0123-def0-123456789023', nombre: 'Pedro Sánchez' },
-];
+// Tipo para profesionales OCI mapeados
+interface ProfesionalOption {
+  id: string;
+  nombre: string;
+}
 
 interface Props {
   auditoriaId: string;
@@ -51,6 +50,10 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  // Estado de profesionales OCI (desde el backend)
+  const [profesionalesOCI, setProfesionalesOCI] = useState<ProfesionalOption[]>([]);
+  const [loadingProfesionales, setLoadingProfesionales] = useState(true);
+
   // Estado de filtros
   const [filtroEstado, setFiltroEstado] = useState<EstadoTarea | 'Todas'>('Todas');
   const [filtroFase, setFiltroFase] = useState<FaseTarea | 'Todas'>('Todas');
@@ -65,8 +68,8 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
     estado: 'Pendiente',
     prioridad: 'Media',
     fase: undefined,
-    responsableId: EQUIPO_AUDITORES[0].id,
-    responsableNombre: EQUIPO_AUDITORES[0].nombre,
+    responsableId: '',
+    responsableNombre: '',
     fechaVencimiento: '',
     progreso: 0,
     notas: ''
@@ -105,6 +108,52 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
   useEffect(() => {
     cargarTareas();
   }, [cargarTareas]);
+
+  // Cargar profesionales OCI desde el backend
+  useEffect(() => {
+    const cargarProfesionales = async () => {
+      try {
+        setLoadingProfesionales(true);
+        const response = await configuracionesProfesionalesOCIApi.getAll(true);
+        const data = Array.isArray(response.data) ? response.data
+          : Array.isArray(response) ? response : [];
+        
+        const mapeados: ProfesionalOption[] = data
+          .filter((p: any) => {
+            // Solo profesionales activos
+            if (p.activo === false) return false;
+            // Solo los que tienen nombre real (no genéricos ni vacíos)
+            const nombre = (p.nombre || '').trim();
+            if (!nombre || nombre.length < 3) return false;
+            if (nombre.toLowerCase().includes('sin nombre')) return false;
+            if (nombre.toLowerCase().startsWith('profesional ')) return false;
+            if (nombre.toLowerCase().startsWith('usuario ')) return false;
+            return true;
+          })
+          .map((p: any) => ({
+            id: p.idTercero || p.id,
+            nombre: p.nombre.trim(),
+          }))
+          .sort((a, b) => a.nombre.localeCompare(b.nombre));
+        
+        setProfesionalesOCI(mapeados);
+        
+        // Inicializar el responsable del form con el primer profesional
+        if (mapeados.length > 0 && !formData.responsableId) {
+          setFormData(prev => ({
+            ...prev,
+            responsableId: mapeados[0].id,
+            responsableNombre: mapeados[0].nombre,
+          }));
+        }
+      } catch (err) {
+        console.error('[SeccionTareasExpediente] Error cargando profesionales OCI:', err);
+      } finally {
+        setLoadingProfesionales(false);
+      }
+    };
+    cargarProfesionales();
+  }, []); // Solo una vez al montar
 
   // ============ CÁLCULOS ============
   const contarTareas = () => tareas.length;
@@ -216,8 +265,8 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
       estado: 'Pendiente',
       prioridad: 'Media',
       fase: undefined,
-      responsableId: EQUIPO_AUDITORES[0].id,
-      responsableNombre: EQUIPO_AUDITORES[0].nombre,
+      responsableId: profesionalesOCI.length > 0 ? profesionalesOCI[0].id : '',
+      responsableNombre: profesionalesOCI.length > 0 ? profesionalesOCI[0].nombre : '',
       fechaVencimiento: '',
       progreso: 0,
       notas: ''
@@ -225,12 +274,12 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
   };
 
   const handleResponsableChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedAuditor = EQUIPO_AUDITORES.find(a => a.id === e.target.value);
-    if (selectedAuditor) {
+    const selectedProfesional = profesionalesOCI.find(p => p.id === e.target.value);
+    if (selectedProfesional) {
       setFormData(prev => ({
         ...prev,
-        responsableId: selectedAuditor.id,
-        responsableNombre: selectedAuditor.nombre
+        responsableId: selectedProfesional.id,
+        responsableNombre: selectedProfesional.nombre
       }));
     }
   };
@@ -261,35 +310,36 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header con estadísticas */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900">
-            Tareas y Actividades
-          </h3>
-          <p className="text-sm text-gray-600 mt-1">
+    <div className="space-y-3">
+      {/* Header compacto en una sola línea */}
+      <div className="flex items-center justify-between gap-3 pb-1.5 border-b border-gray-150">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-gray-700">
+            Resumen de Tareas:
+          </span>
+          <span className="text-xs text-gray-600">
             {contarTareasCompletadas()} de {contarTareas()} completadas
-            <span className="ml-2 text-gray-500">
-              • {calcularProgresoTareas()}% de progreso
-            </span>
-          </p>
+          </span>
+          <span className="text-xs text-gray-400 font-bold">•</span>
+          <span className="text-xs text-gray-600">
+            {calcularProgresoTareas()}% progreso
+          </span>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+        <div className="flex items-center gap-1.5 shrink-0">
           <ButtonSIGL
             variant="secondary"
-            icon={<RefreshCw className="w-4 h-4" />}
             onClick={cargarTareas}
-            className="w-full sm:w-auto"
+            style={{ minHeight: 0, height: '28px', padding: '0 8px', fontSize: '11px' }}
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
           >
             Refrescar
           </ButtonSIGL>
           <ButtonSIGL
             variant="primary"
-            icon={<Plus className="w-4 h-4" />}
             onClick={() => setShowModal(true)}
             disabled={!isValidUUID(auditoriaId)}
-            className="w-full sm:w-auto"
+            style={{ minHeight: 0, height: '28px', padding: '0 10px', fontSize: '11px', backgroundColor: '#003DA5', color: '#FFFFFF' }}
+            icon={<Plus className="w-3.5 h-3.5" />}
           >
             Nueva Tarea
           </ButtonSIGL>
@@ -298,83 +348,67 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
 
       {/* Mensaje si no es UUID válido */}
       {!isValidUUID(auditoriaId) && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-sm text-amber-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+          <p className="text-xs text-amber-800">
             ⚠️ Esta auditoría usa un ID de demostración. Las tareas estarán disponibles cuando se conecte con una auditoría real del backend.
           </p>
         </div>
       )}
 
-      {/* Barra de progreso general */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-gray-900">
-            Progreso General
-          </span>
-          <span className="text-sm font-bold" style={{ color: '#003DA5' }}>
-            {calcularProgresoTareas()}%
-          </span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-3">
-          <div
-            className="h-3 rounded-full transition-all duration-300"
-            style={{
-              width: `${calcularProgresoTareas()}%`,
-              background: 'linear-gradient(90deg, #003DA5 0%, #2962FF 100%)'
-            }}
-          />
-        </div>
-        <div className="grid grid-cols-3 gap-4 mt-3">
-          <div>
-            <p className="text-xs text-gray-500">Completadas</p>
-            <p className="text-sm font-bold text-green-600">
-              {contarTareasCompletadas()}
-            </p>
+      {/* Barra compacta: progreso + stats + filtros en una sola línea */}
+      <div className="flex items-center gap-3 flex-wrap bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+        {/* Mini barra de progreso */}
+        <div className="flex items-center gap-2 min-w-[120px]">
+          <div className="flex-1 bg-gray-200 rounded-full h-1.5 min-w-[50px]">
+            <div
+              className="h-1.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${calcularProgresoTareas()}%`,
+                background: '#003DA5'
+              }}
+            />
           </div>
-          <div>
-            <p className="text-xs text-gray-500">Pendientes</p>
-            <p className="text-sm font-bold text-amber-600">
-              {contarTareasPendientes()}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">Total</p>
-            <p className="text-sm font-bold text-gray-900">
-              {contarTareas()}
-            </p>
-          </div>
+          <span className="text-[11px] font-bold text-gray-700 whitespace-nowrap">{calcularProgresoTareas()}%</span>
         </div>
-      </div>
 
-      {/* Filtros */}
-      <div className="flex gap-3">
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">
-            Estado
-          </label>
+        {/* Separador */}
+        <div className="w-px h-3.5 bg-gray-300" />
+
+        {/* Stats inline como badges */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-green-200">
+            ✓ {contarTareasCompletadas()}
+          </span>
+          <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+            ◷ {contarTareasPendientes()}
+          </span>
+          <span className="text-[10px] font-semibold text-gray-600 bg-white px-1.5 py-0.5 rounded border border-gray-200">
+            Σ {contarTareas()}
+          </span>
+        </div>
+
+        {/* Separador */}
+        <div className="w-px h-3.5 bg-gray-300" />
+
+        {/* Filtros inline */}
+        <div className="flex items-center gap-1.5 ml-auto">
           <select
             value={filtroEstado}
             onChange={(e) => setFiltroEstado(e.target.value as EstadoTarea | 'Todas')}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
           >
-            <option value="Todas">Todas</option>
+            <option value="Todas">Estado: Todas</option>
             <option value="Pendiente">Pendiente</option>
             <option value="En Progreso">En Progreso</option>
             <option value="Completada">Completada</option>
             <option value="Cancelada">Cancelada</option>
           </select>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">
-            Fase
-          </label>
           <select
             value={filtroFase}
             onChange={(e) => setFiltroFase(e.target.value as FaseTarea | 'Todas')}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400"
           >
-            <option value="Todas">Todas</option>
+            <option value="Todas">Fase: Todas</option>
             <option value="Planeación">Planeación</option>
             <option value="Ejecución">Ejecución</option>
             <option value="Comunicación">Comunicación</option>
@@ -384,12 +418,12 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
       </div>
 
       {/* Lista de tareas */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {tareasFiltradas.length === 0 ? (
-          <CardSIGL variant="outlined">
-            <div className="text-center py-8">
-              <CheckSquare className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600 font-medium">
+          <CardSIGL variant="outlined" padding="none">
+            <div className="text-center py-5">
+              <CheckSquare className="w-8 h-8 text-gray-400 mx-auto mb-1.5" />
+              <p className="text-xs text-gray-500 font-medium">
                 {contarTareas() === 0
                   ? 'No hay tareas registradas en esta auditoría'
                   : 'No se encontraron tareas con los filtros aplicados'}
@@ -404,9 +438,9 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
             >
-              <CardSIGL variant="outlined">
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
+              <CardSIGL variant="outlined" padding="none">
+                <div className="p-3">
+                  <div className="flex items-start gap-2.5">
                     {/* Checkbox */}
                     <button
                       onClick={() => handleToggleCompletada(tarea)}
@@ -414,18 +448,18 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                       disabled={tarea.estado === 'Completada'}
                     >
                       {tarea.estado === 'Completada' ? (
-                        <CheckSquare className="w-5 h-5 text-green-600" />
+                        <CheckSquare className="w-4 h-4 text-green-600" />
                       ) : (
-                        <Square className="w-5 h-5 text-gray-400 hover:text-blue-600 transition-colors" />
+                        <Square className="w-4 h-4 text-gray-400 hover:text-blue-600 transition-colors" />
                       )}
                     </button>
 
                     {/* Contenido */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start justify-between mb-1">
                         <div className="flex-1 min-w-0">
                           <h4
-                            className={`font-bold text-sm mb-1 wrap-anywhere whitespace-pre-wrap ${
+                            className={`font-bold text-xs mb-0.5 wrap-anywhere whitespace-pre-wrap ${
                               tarea.estado === 'Completada'
                                 ? 'line-through text-gray-500'
                                 : 'text-gray-900'
@@ -434,34 +468,34 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                             {tarea.titulo}
                           </h4>
                           {tarea.descripcion && (
-                            <p className="text-xs text-gray-600 mb-2 wrap-anywhere whitespace-pre-wrap">
+                            <p className="text-[11px] text-gray-600 mb-1.5 wrap-anywhere whitespace-pre-wrap leading-relaxed">
                               {tarea.descripcion}
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
                           {getIconoEstado(tarea.estado)}
                           <button
                             onClick={() => handleDeleteTarea(tarea.id)}
-                            className="text-gray-400 hover:text-red-600 transition-colors"
+                            className="text-gray-400 hover:text-red-600 transition-colors p-0.5 hover:bg-gray-100 rounded"
                             title="Eliminar tarea"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
 
                       {/* Badges */}
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <span className={`text-xs px-2 py-1 rounded border font-semibold ${getColorPrioridad(tarea.prioridad)}`}>
+                      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${getColorPrioridad(tarea.prioridad)}`}>
                           {tarea.prioridad}
                         </span>
                         {tarea.fase && (
-                          <span className="text-xs px-2 py-1 rounded border bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200 font-semibold">
                             {tarea.fase}
                           </span>
                         )}
-                        <span className={`text-xs px-2 py-1 rounded border font-semibold ${
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${
                           tarea.estado === 'Completada'
                             ? 'bg-green-50 text-green-700 border-green-200'
                             : tarea.estado === 'En Progreso'
@@ -474,16 +508,16 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
 
                       {/* Barra de progreso (solo si está en progreso) */}
                       {tarea.estado === 'En Progreso' && (
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-gray-600">Progreso</span>
-                            <span className="text-xs font-semibold text-blue-600">
+                        <div className="mb-2 bg-gray-50 p-1.5 rounded border border-gray-100">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-[10px] text-gray-600">Progreso</span>
+                            <span className="text-[10px] font-semibold text-blue-600">
                               {tarea.progreso}%
                             </span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="w-full bg-gray-200 rounded-full h-1">
                             <div
-                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              className="bg-blue-600 h-1 rounded-full transition-all duration-300"
                               style={{ width: `${tarea.progreso}%` }}
                             />
                           </div>
@@ -491,26 +525,26 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                       )}
 
                       {/* Footer */}
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <p className="text-gray-500">Responsable:</p>
-                          <p className="font-semibold text-gray-900 wrap-anywhere">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] pt-1.5 border-t border-gray-100 leading-none">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Resp:</span>
+                          <span className="font-semibold text-gray-800 wrap-anywhere">
                             {tarea.responsableNombre}
-                          </p>
+                          </span>
                         </div>
                         {tarea.fechaVencimiento && (
-                          <div>
-                            <p className="text-gray-500">Vence:</p>
-                            <p className="font-semibold text-gray-900">
+                          <div className="flex items-center gap-1">
+                            <span className="text-gray-500">Vence:</span>
+                            <span className="font-semibold text-gray-800">
                               {tarea.fechaVencimiento}
-                            </p>
+                            </span>
                           </div>
                         )}
                       </div>
 
                       {tarea.fechaCompletado && (
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs text-green-700">
+                        <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                          <p className="text-[10px] text-green-700 font-semibold">
                             ✅ Completada el {tarea.fechaCompletado}
                           </p>
                         </div>
@@ -524,68 +558,83 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
         )}
       </div>
 
-      {/* Modal para crear nueva tarea */}
+      {/* Modal para crear nueva tarea — World Class */}
       {showModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowModal(false); resetForm(); } }}
+        >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl pointer-events-auto"
+            initial={{ opacity: 0, scale: 0.95, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">Nueva Tarea</h3>
+            {/* Header con gradiente premium */}
+            <div className="bg-gradient-to-r from-[#2962FF] to-[#003DA5] px-5 py-4 text-white flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Nueva Tarea</h3>
+                  <p className="text-white/80 text-xs mt-0.5">Asignar tarea al expediente</p>
+                </div>
+              </div>
               <button
                 onClick={() => { setShowModal(false); resetForm(); }}
-                className="text-gray-400 hover:text-gray-600"
+                className="hover:bg-white/20 p-2 rounded-lg transition-colors"
+                aria-label="Cerrar"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
+            {/* Formulario con scroll */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               {/* Título */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Título *
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                  Título <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.titulo}
                   onChange={(e) => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                   maxLength={255}
-                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors"
                   placeholder="Ej: Revisar documentación del proceso"
                 />
-                <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-                  <span>Máximo 255 caracteres</span>
-                  <span>{formData.titulo.length}/255</span>
+                <div className="mt-1 flex items-center justify-end">
+                  <span className="text-[10px] text-gray-400">{formData.titulo.length}/255</span>
                 </div>
               </div>
 
               {/* Descripción */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                   Descripción
                 </label>
                 <textarea
                   value={formData.descripcion}
                   onChange={(e) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
-                  rows={3}
-                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors resize-none"
                   placeholder="Descripción detallada de la tarea..."
                 />
               </div>
 
-              {/* Prioridad y Fase */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Fila: Prioridad + Fase + Fecha */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                     Prioridad
                   </label>
                   <select
                     value={formData.prioridad}
                     onChange={(e) => setFormData(prev => ({ ...prev, prioridad: e.target.value as PrioridadTarea }))}
-                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-2.5 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
                   >
                     <option value="Baja">Baja</option>
                     <option value="Media">Media</option>
@@ -594,90 +643,98 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                     Fase
                   </label>
                   <select
                     value={formData.fase || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, fase: e.target.value as FaseTarea || undefined }))}
-                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-2.5 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
                   >
-                    <option value="">Sin fase específica</option>
+                    <option value="">Sin fase</option>
                     <option value="Planeación">Planeación</option>
                     <option value="Ejecución">Ejecución</option>
                     <option value="Comunicación">Comunicación</option>
                     <option value="Seguimiento">Seguimiento</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                    Vencimiento
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.fechaVencimiento}
+                    onChange={(e) => setFormData(prev => ({ ...prev, fechaVencimiento: e.target.value }))}
+                    className="w-full px-2.5 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
               </div>
 
               {/* Responsable */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Responsable *
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                  Responsable <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={formData.responsableId}
                   onChange={handleResponsableChange}
-                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors"
                 >
-                  {EQUIPO_AUDITORES.map(auditor => (
-                    <option key={auditor.id} value={auditor.id}>
-                      {auditor.nombre}
-                    </option>
-                  ))}
+                  {loadingProfesionales ? (
+                    <option value="">Cargando profesionales...</option>
+                  ) : profesionalesOCI.length === 0 ? (
+                    <option value="">No hay profesionales configurados</option>
+                  ) : (
+                    profesionalesOCI.map(prof => (
+                      <option key={prof.id} value={prof.id}>
+                        {prof.nombre}
+                      </option>
+                    ))
+                  )}
                 </select>
-              </div>
-
-              {/* Fecha de vencimiento */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Fecha de vencimiento
-                </label>
-                <input
-                  type="date"
-                  value={formData.fechaVencimiento}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fechaVencimiento: e.target.value }))}
-                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
               </div>
 
               {/* Notas */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
                   Notas adicionales
                 </label>
                 <textarea
                   value={formData.notas}
                   onChange={(e) => setFormData(prev => ({ ...prev, notas: e.target.value }))}
                   rows={2}
-                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm text-gray-900 bg-white border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors resize-none"
                   placeholder="Notas o comentarios..."
                 />
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
-              <ButtonSIGL
-                variant="secondary"
+            {/* Footer premium */}
+            <div className="border-t-2 border-gray-200 px-5 py-3 bg-gray-50 flex items-center justify-between flex-shrink-0">
+              <button
                 onClick={() => { setShowModal(false); resetForm(); }}
+                className="px-4 py-2 bg-white border-2 border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
               >
                 Cancelar
-              </ButtonSIGL>
-              <ButtonSIGL
-                variant="primary"
+              </button>
+              <button
                 onClick={handleCreateTarea}
                 disabled={saving || !formData.titulo.trim()}
+                className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-[#2962FF] to-[#003DA5] hover:from-[#1e50e0] hover:to-[#002d8a] text-white rounded-lg text-sm font-semibold transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               >
                 {saving ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     Guardando...
                   </>
                 ) : (
-                  'Crear Tarea'
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Crear Tarea
+                  </>
                 )}
-              </ButtonSIGL>
+              </button>
             </div>
           </motion.div>
         </div>

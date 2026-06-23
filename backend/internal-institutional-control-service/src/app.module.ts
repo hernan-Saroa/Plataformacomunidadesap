@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { EsapModule } from './esap/esap.module';
 import { AuthModule } from './auth/auth.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 // Entidades ESAP
 import { PlanAnual5Roles } from './esap/plan-anual-5-roles/entities/plan-anual-5-roles.entity';
@@ -54,11 +55,16 @@ import { TareaAuditoria } from './esap/tareas-auditoria/entities/tarea-auditoria
 import { ConfiguracionProfesionalOCIG } from './esap/configuraciones/entities/configuracion-profesional-ocig.entity';
 import { ReunionApertura } from './esap/auditorias/entities/reunion-apertura.entity';
 import { ReunionCierre } from './esap/auditorias/entities/reunion-cierre.entity';
+import { EvidenciaAccion } from './esap/planes-mejoramiento/entities/evidencia-accion.entity';
+import { AlertaPlan } from './esap/planes-mejoramiento/entities/alerta-plan.entity';
+import { CierrePlan } from './esap/planes-mejoramiento/entities/cierre-plan.entity';
+import { SeguimientoPlan } from './esap/planes-mejoramiento/entities/seguimiento-plan.entity';
 
 @Module({
   imports: [
     // Configuración global
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     
     // Configuración TypeORM
     TypeOrmModule.forRootAsync({
@@ -137,6 +143,10 @@ import { ReunionCierre } from './esap/auditorias/entities/reunion-cierre.entity'
             ConfiguracionProfesionalOCIG,
             ReunionApertura,
             ReunionCierre,
+            EvidenciaAccion,
+            AlertaPlan,
+            CierrePlan,
+            SeguimientoPlan,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

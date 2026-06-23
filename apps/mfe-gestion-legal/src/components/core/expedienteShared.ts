@@ -227,6 +227,7 @@ export interface DocumentoExpediente {
 
 export interface ActuacionExpediente {
   id: number | string;
+  expedienteId?: number | string;
   fecha: string;
   tipo: string;
   descripcion: string;
