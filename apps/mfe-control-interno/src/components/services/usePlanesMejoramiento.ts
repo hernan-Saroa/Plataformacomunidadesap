@@ -22,7 +22,7 @@ import {
 // TIPOS
 // ═══════════════════════════════════════════════════════════════════════════
 
-type EstadoPlan = 'FORMULACION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
+type EstadoPlan = 'FORMULACION' | 'REVISION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
 type SemaforoPlan = 'verde' | 'amarillo' | 'rojo';
 
 export interface PlanMejoramientoKanban {
@@ -126,8 +126,11 @@ function mapearEstado(estado: string): EstadoPlan {
     formulando: 'FORMULACION',
     borrador: 'FORMULACION',
     en_formulacion: 'FORMULACION',
-    revision: 'FORMULACION',
     rechazado: 'FORMULACION',
+    // Revisión OCI (auditado envió, OCI debe revisar)
+    revision: 'REVISION' as EstadoPlan,
+    revision_oci: 'REVISION' as EstadoPlan,
+    en_revision: 'REVISION' as EstadoPlan,
     // Aprobado
     aprobado: 'APROBADO',
     aprobacion: 'APROBADO',

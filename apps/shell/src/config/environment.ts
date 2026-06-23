@@ -354,6 +354,7 @@ export const API_ENDPOINTS = {
     VERIFY_RESET_CODE: '/auth/api/v1/verify-reset-code',
     RESET_PASSWORD: '/auth/api/v1/reset-password',
     CHANGE_PASSWORD: '/auth/api/v1/change-password',
+    LOGIN_SETTINGS: '/auth/api/v1/login-settings',
   },
 
   // Usuarios (auth-service)
@@ -518,12 +519,12 @@ export const getUserContextHeaders = (): HeadersInit => {
       : undefined);
   const roles = Array.isArray(user?.roles)
     ? user.roles
-        .map((role: any) =>
-          typeof role === 'string'
-            ? role
-            : role?.code || role?.name || '',
-        )
-        .filter(Boolean)
+      .map((role: any) =>
+        typeof role === 'string'
+          ? role
+          : role?.code || role?.name || '',
+      )
+      .filter(Boolean)
     : [];
 
   return {

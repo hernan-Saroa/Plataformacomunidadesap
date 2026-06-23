@@ -232,6 +232,114 @@ export class AuditoriasService {
     }
   }
 
+  private async getPersonasDetailsMap(personaIds: string[]): Promise<Map<string, { nombre: string; email: string; cargo: string }>> {
+    const detailsMap = new Map<string, { nombre: string; email: string; cargo: string }>();
+    const validIds = personaIds.filter(id => id && this.isValidUUID(String(id)));
+    if (validIds.length === 0) return detailsMap;
+
+    try {
+      const results = await this.auditoriaRepository.query(
+        `SELECT p.id_person, p.nom_largo, p.dir_email,
+                (
+                  SELECT string_agg(DISTINCT r.name, ', ' ORDER BY r.name)
+                  FROM auth."user" u
+                  INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                  INNER JOIN auth.role r ON r.id = ur.id_rol
+                  WHERE u.id_person = p.id_person
+                ) as roles_text
+           FROM auth.personas p
+          WHERE p.id_person = ANY($1::uuid[])`,
+        [validIds]
+      );
+
+      results.forEach((p: any) => {
+        detailsMap.set(String(p.id_person).toLowerCase(), {
+          nombre: p.nom_largo || 'Usuario Desconocido',
+          email: p.dir_email || '',
+          cargo: p.roles_text || 'Responsable de Área Auditada',
+        });
+      });
+    } catch (error) {
+      console.error('[AuditoriasService.getPersonasDetailsMap] Error:', error);
+    }
+    return detailsMap;
+  }
+
+  private async resolveAuditoriasResponsables(auditorias: Auditoria[]): Promise<void> {
+    if (!auditorias || auditorias.length === 0) return;
+
+    const responsableUuids = new Set<string>();
+    const emailsToResolve = new Set<string>();
+
+    auditorias.forEach(aud => {
+      const isNameUuid = aud.responsableAreaNombre && this.isValidUUID(String(aud.responsableAreaNombre));
+      const isRespUuid = aud.responsable && this.isValidUUID(String(aud.responsable));
+      if (isNameUuid) responsableUuids.add(String(aud.responsableAreaNombre));
+      else if (isRespUuid) {
+        responsableUuids.add(String(aud.responsable));
+      }
+      // Si no tiene nombre pero sí email, buscar por email
+      if ((!aud.responsableAreaNombre || aud.responsableAreaNombre.trim() === '') && aud.responsableAreaEmail && aud.responsableAreaEmail.includes('@')) {
+        emailsToResolve.add(aud.responsableAreaEmail.trim().toLowerCase());
+      }
+    });
+
+    if (responsableUuids.size > 0) {
+      const detailsMap = await this.getPersonasDetailsMap(Array.from(responsableUuids));
+      auditorias.forEach(aud => {
+        const isNameUuid = aud.responsableAreaNombre && this.isValidUUID(String(aud.responsableAreaNombre));
+        const isRespUuid = aud.responsable && this.isValidUUID(String(aud.responsable));
+        const targetUuid = isNameUuid ? String(aud.responsableAreaNombre) : (isRespUuid ? String(aud.responsable) : null);
+        if (targetUuid) {
+          const details = detailsMap.get(targetUuid.toLowerCase());
+          if (details) {
+            aud.responsableAreaNombre = details.nombre;
+            if (!aud.responsableAreaEmail || aud.responsableAreaEmail.trim() === '') {
+              aud.responsableAreaEmail = details.email;
+            }
+            if (!aud.responsableAreaCargo || aud.responsableAreaCargo.trim() === '') {
+              aud.responsableAreaCargo = details.cargo;
+            }
+          }
+        }
+      });
+    }
+
+    // Resolver nombres por email para auditorías que tienen email pero no nombre
+    if (emailsToResolve.size > 0) {
+      try {
+        const personaRepo = this.auditoriaRepository.manager.getRepository('auth.personas');
+        const emailArray = Array.from(emailsToResolve);
+        const personas = await personaRepo
+          .createQueryBuilder('p')
+          .select(['p.email', 'p.nombre', 'p.cargo'])
+          .where('LOWER(p.email) IN (:...emails)', { emails: emailArray })
+          .getMany();
+
+        const emailMap = new Map<string, { nombre: string; cargo: string }>();
+        personas.forEach((p: any) => {
+          if (p.email && p.nombre) {
+            emailMap.set(p.email.toLowerCase(), { nombre: p.nombre, cargo: p.cargo || '' });
+          }
+        });
+
+        auditorias.forEach(aud => {
+          if ((!aud.responsableAreaNombre || aud.responsableAreaNombre.trim() === '') && aud.responsableAreaEmail) {
+            const found = emailMap.get(aud.responsableAreaEmail.trim().toLowerCase());
+            if (found) {
+              aud.responsableAreaNombre = found.nombre;
+              if (!aud.responsableAreaCargo || aud.responsableAreaCargo.trim() === '') {
+                aud.responsableAreaCargo = found.cargo;
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.warn('[resolveAuditoriasResponsables] Error buscando por email:', err);
+      }
+    }
+  }
+
   /**
    * Serializa una auditoría para la respuesta JSON
    */
@@ -298,12 +406,10 @@ export class AuditoriasService {
       });
     }
 
-    // ✅ Backfill: si responsableAreaNombre es null, usar el campo 'responsable'
-    // que fue poblado durante la creación con el nombre del responsable del área auditada.
-    // Esto asegura coherencia en Kanban, Expediente, Wizard y Programa Anual.
-    if (!serialized.responsableAreaNombre && serialized.responsable && serialized.responsable !== 'Por asignar') {
-      serialized.responsableAreaNombre = serialized.responsable;
-    }
+    // NOTA: NO copiar el campo 'responsable' a 'responsableAreaNombre'.
+    // Son campos semánticamente distintos:
+    //   - 'responsable': históricamente almacena datos del auditor líder
+    //   - 'responsableAreaNombre': persona responsable del área auditada (el auditado)
 
     return serialized;
   }
@@ -494,6 +600,7 @@ export class AuditoriasService {
     query.leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores');
 
     const auditorias = await query.getMany();
+    await this.resolveAuditoriasResponsables(auditorias);
 
     // ✅ RESOLVER NOMBRES: Recolectar IDs de personas para resolver nombres en lote
     const personaIds = new Set<string>();
@@ -778,6 +885,8 @@ export class AuditoriasService {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
     }
 
+    await this.resolveAuditoriasResponsables([auditoria]);
+
     // Obtener información de personas desde auth.personas
     // Nota: auditorLiderId ahora es UUID (id_person) después de migración 159
     let auditorLider: any | undefined;
@@ -891,6 +1000,8 @@ export class AuditoriasService {
       return null;
     }
     
+    await this.resolveAuditoriasResponsables([auditoria]);
+    
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(auditoria) as any;
   }
@@ -898,7 +1009,7 @@ export class AuditoriasService {
   /**
    * Crea una nueva auditoría
    */
-  async create(createDto: CreateAuditoriaDto): Promise<Auditoria> {
+  async create(createDto: CreateAuditoriaDto, usuarioId?: string): Promise<Auditoria> {
     // Parsear fechas sin conversión de zona horaria
     const fechaInicio = this.parseDateOnly(createDto.fechaInicio);
     const fechaFin = this.parseDateOnly(createDto.fechaFin);
@@ -1188,7 +1299,7 @@ export class AuditoriasService {
       historialCreacion.tipoEvento = TipoEvento.CREACION;
       historialCreacion.fecha = new Date(fecha);
       historialCreacion.hora = hora;
-      historialCreacion.usuarioId = null; // UUID - usar null (auditorLiderId ya no es compatible)
+      historialCreacion.usuarioId = usuarioId || null;
       historialCreacion.accion = 'Auditoría creada';
       historialCreacion.descripcion = `Se creó la auditoría ${auditoriaGuardada.codigo} - ${auditoriaGuardada.nombre}`;
       historialCreacion.estadoNuevo = auditoriaGuardada.estadoKanban || auditoriaGuardada.fase || 'Planeación';
@@ -1199,13 +1310,15 @@ export class AuditoriasService {
       console.error('[AuditoriasService.create] Error al registrar en historial:', histError);
     }
 
-    return this.serializeAuditoria(auditoriaCompleta || auditoriaGuardada) as any;
+    const resultEntity = auditoriaCompleta || auditoriaGuardada;
+    await this.resolveAuditoriasResponsables([resultEntity]);
+    return this.serializeAuditoria(resultEntity) as any;
   }
 
   /**
    * Actualiza una auditoría existente
    */
-  async update(id: string, updateDto: UpdateAuditoriaDto): Promise<Auditoria> {
+  async update(id: string, updateDto: UpdateAuditoriaDto, usuarioId?: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ 
       where: { id },
       relations: ['objetivos', 'criterios']
@@ -1542,7 +1655,7 @@ export class AuditoriasService {
         historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
         historialActualizacion.fecha = new Date(fecha);
         historialActualizacion.hora = hora;
-        historialActualizacion.usuarioId = null; // UUID - usar null hasta implementar contexto de autenticación
+        historialActualizacion.usuarioId = usuarioId || null;
         historialActualizacion.accion = 'Auditoría actualizada';
         historialActualizacion.descripcion = `Cambios realizados: ${cambios.join(', ')}`;
         historialActualizacion.estadoAnterior = estadoAnterior || undefined;
@@ -1556,7 +1669,9 @@ export class AuditoriasService {
     }
 
     // Serializar fechas para evitar problemas de zona horaria
-    return this.serializeAuditoria(auditoriaActualizada || saved) as any;
+    const resultEntity = auditoriaActualizada || saved;
+    await this.resolveAuditoriasResponsables([resultEntity]);
+    return this.serializeAuditoria(resultEntity) as any;
   }
 
   /**
@@ -1664,7 +1779,7 @@ export class AuditoriasService {
   /**
    * Actualiza la fase de una auditoría
    */
-  async updateFase(id: string, fase: FaseAuditoria): Promise<Auditoria> {
+  async updateFase(id: string, fase: FaseAuditoria, usuarioId?: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
     if (!auditoria) {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
@@ -1704,7 +1819,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
+    historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Cambio de estado';
     historial.descripcion = `Auditoría ${auditoria.codigo} cambió de ${estadoAnterior || faseAnterior} a ${estadoNuevo}`;
     historial.estadoAnterior = estadoAnterior || faseAnterior || undefined;
@@ -1720,7 +1835,7 @@ export class AuditoriasService {
    * Actualiza el estado Kanban de una auditoría (para drag & drop del frontend)
    * Acepta tanto valores en español como normalizados
    */
-  async updateEstadoKanban(id: string, estadoKanbanInput: string): Promise<Auditoria> {
+  async updateEstadoKanban(id: string, estadoKanbanInput: string, usuarioId?: string, usuarioNombre?: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
     if (!auditoria) {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
@@ -1784,23 +1899,31 @@ export class AuditoriasService {
       console.error('Error al enviar notificaciones de movimiento Kanban:', e);
     }
     
-    // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    // ✅ Registrar en el historial (envuelto en try/catch para no bloquear el cambio de estado)
+    try {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().split('T')[0];
+      const hora = ahora.toTimeString().slice(0, 5);
 
-    const historial = new HistorialAuditoria();
-    historial.auditoriaId = id;
-    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
-    historial.hora = hora;
-    historial.usuarioId = null; // UUID - usar null hasta implementar contexto de autenticación
-    historial.accion = 'Cambio de estado (Kanban)';
-    historial.descripcion = `Auditoría ${auditoria.codigo} cambió de "${estadoAnterior}" a "${nuevoEstadoKanban}"`;
-    historial.estadoAnterior = estadoAnterior || undefined;
-    historial.estadoNuevo = nuevoEstadoKanban;
+      // ✅ FIX: Validar que usuarioId sea UUID válido antes de guardarlo en columna uuid
+      const uuidSanitizado = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
 
-    await this.historialRepository.save(historial);
+      const historial = new HistorialAuditoria();
+      historial.auditoriaId = id;
+      historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+      historial.fecha = new Date(fecha);
+      historial.hora = hora;
+      historial.usuarioId = uuidSanitizado;
+      historial.nombreUsuario = usuarioNombre || null;
+      historial.accion = 'Cambio de estado (Kanban)';
+      historial.descripcion = `Auditoría ${auditoria.codigo} cambió de "${estadoAnterior}" a "${nuevoEstadoKanban}"`;
+      historial.estadoAnterior = estadoAnterior || undefined;
+      historial.estadoNuevo = nuevoEstadoKanban;
+
+      await this.historialRepository.save(historial);
+    } catch (historialError) {
+      console.error('[updateEstadoKanban] Error al guardar historial (no bloquea cambio de estado):', historialError);
+    }
     
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(saved) as any;
@@ -1816,6 +1939,7 @@ export class AuditoriasService {
     observaciones: string,
     finalizadaPor: string,
     finalizadaPorId: number | null,
+    usuarioId?: string,
   ): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
     if (!auditoria) {
@@ -1863,7 +1987,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - no compatible con finalizadaPorId numérico
+    historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Finalización de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${file.originalname}`;
     historial.estadoAnterior = estadoAnterior || undefined;
@@ -1908,7 +2032,7 @@ export class AuditoriasService {
    * Finaliza una auditoría con documento de cierre obligatorio
    * El documento debe ser una matriz o formato de cierre formal
    */
-  async finalizarAuditoria(id: string, finalizarDto: any): Promise<Auditoria> {
+  async finalizarAuditoria(id: string, finalizarDto: any, usuarioId?: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
     if (!auditoria) {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
@@ -1950,7 +2074,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - no compatible con finalizadaPorId numérico
+    historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Finalización de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} finalizada. Documento de cierre: ${finalizarDto.documentoCierre.nombre}`;
     historial.estadoAnterior = estadoAnterior || undefined;
@@ -2089,7 +2213,8 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
     historial.fecha = new Date();
     historial.hora = new Date().toTimeString().slice(0, 5);
-    historial.usuarioId = null; // UUID - no compatible con idTercero numérico
+    const uuidPersona = typeof aprobadoPorId === 'string' ? aprobadoPorId : (idTercero ? await this.mapIdTerceroToIdPerson(idTercero) : null);
+    historial.usuarioId = uuidPersona;
     historial.accion = 'Aprobación Informe de Cierre';
     historial.descripcion = `Informe de cierre aprobado por Jefe OCI. Auditoría ${auditoria.codigo} cerrada.`;
     historial.estadoAnterior = estadoAnterior;
@@ -2152,6 +2277,8 @@ export class AuditoriasService {
           aprobadaPorId: auditorias[0].aprobadaPorId,
         });
       }
+
+      await this.resolveAuditoriasResponsables(auditorias);
 
       // Si no hay auditorías, retornar array vacío
       if (!auditorias || auditorias.length === 0) {
@@ -2343,7 +2470,7 @@ export class AuditoriasService {
               fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : undefined,
               fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : undefined,
               // ✅ RESPONSABLE DEL ÁREA AUDITADA
-              responsableAreaNombre: auditoria.responsableAreaNombre || auditoria.responsable || undefined,
+              responsableAreaNombre: auditoria.responsableAreaNombre || undefined,
               responsableAreaCargo: auditoria.responsableAreaCargo || undefined,
               responsableAreaEmail: auditoria.responsableAreaEmail || undefined,
             };
@@ -2398,7 +2525,7 @@ export class AuditoriasService {
               fechaFinEjecucion: auditoria.fechaFinEjecucion ? this.serializeDate(auditoria.fechaFinEjecucion) : undefined,
               fechaInicioComunicacion: auditoria.fechaInicioComunicacion ? this.serializeDate(auditoria.fechaInicioComunicacion) : undefined,
               // ✅ RESPONSABLE DEL ÁREA AUDITADA EN FALLBACK
-              responsableAreaNombre: auditoria.responsableAreaNombre || auditoria.responsable || undefined,
+              responsableAreaNombre: auditoria.responsableAreaNombre || undefined,
               responsableAreaCargo: auditoria.responsableAreaCargo || undefined,
               responsableAreaEmail: auditoria.responsableAreaEmail || undefined,
             };
@@ -2433,6 +2560,8 @@ export class AuditoriasService {
       relations: ['objetivos', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
       order: { fechaArchivo: 'DESC' },
     });
+
+    await this.resolveAuditoriasResponsables(auditorias);
 
     // Obtener información de personas desde auth.personas usando query raw
     const auditoriasConPersonas = await Promise.all(
@@ -2932,6 +3061,7 @@ export class AuditoriasService {
     comentarios?: string,
     usuarioId?: number,
     usuarioNombre?: string,
+    usuarioUuid?: string,
   ): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
@@ -2976,7 +3106,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.APROBACION;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
+    historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Aprobación de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} aprobada${estadoNuevo !== estadoAnterior ? ` y avanzada a ${estadoNuevo}` : ''}`;
     historial.observaciones = comentarios || undefined;
@@ -2995,6 +3125,7 @@ export class AuditoriasService {
     auditoriaId: string,
     justificacion: string,
     usuarioId?: number,
+    usuarioUuid?: string,
   ): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
@@ -3018,7 +3149,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.ACTUALIZACION; // Usamos actualizacion para rechazo
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
+    historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Rechazo de auditoría';
     historial.descripcion = `Auditoría ${auditoria.codigo} rechazada`;
     historial.observaciones = justificacion;
@@ -3037,6 +3168,7 @@ export class AuditoriasService {
     auditoriaId: string,
     observaciones: string,
     usuarioId?: number,
+    usuarioUuid?: string,
   ): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
@@ -3060,7 +3192,7 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.ACTUALIZACION;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - usar null hasta implementar autenticación
+    historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Solicitud de modificación';
     historial.descripcion = `Solicitud de modificación para auditoría ${auditoria.codigo}`;
     historial.observaciones = observaciones;
@@ -3189,7 +3321,8 @@ export class AuditoriasService {
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
     historial.fecha = new Date(fecha);
     historial.hora = hora;
-    historial.usuarioId = null; // UUID - usar null
+    const uuidPersona = typeof usuarioIdOrUUID === 'string' ? usuarioIdOrUUID : (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
+    historial.usuarioId = uuidPersona;
     historial.accion = 'Solicitud de ampliación de plazo';
     historial.descripcion = `Solicitud de ampliación de plazo para auditoría ${auditoria.codigo}`;
     // Guardar estado y justificación en observaciones: "ESTADO:pendiente|JUSTIFICACION:..."
@@ -3571,21 +3704,50 @@ export class AuditoriasService {
     // Enriquecer con datos de personas
     const historialEnriquecido = await Promise.all(
       historial.map(async (evento) => {
-        let nombreUsuario = 'Usuario desconocido';
+        let nombreUsuario = evento.nombreUsuario || 'Sistema';
         let cargoUsuario = '';
 
         if (evento.usuarioId) {
           try {
-            const personaResult = await this.dataSource.query(
-              'SELECT nom_largo FROM auth.personas WHERE id_person = $1',
-              [evento.usuarioId]
-            );
-            
-            if (personaResult && personaResult.length > 0) {
-              nombreUsuario = personaResult[0].nom_largo || nombreUsuario;
+            const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(evento.usuarioId);
+
+            if (esUUID) {
+              // 1) Primary: Try auth.user by id_user (UUID stored from JWT payload.sub) → LEFT JOIN auth.personas
+              const userResult = await this.dataSource.query(
+                `SELECT u.username, p.nom_largo, p.nom_tercero, p.pri_apellido
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE u.id_user = $1`,
+                [evento.usuarioId]
+              );
+              if (userResult && userResult.length > 0) {
+                const u = userResult[0];
+                const nombrePersona = (u.nom_largo || `${u.nom_tercero || ''} ${u.pri_apellido || ''}`.trim()).trim();
+                nombreUsuario = nombrePersona || u.username || nombreUsuario;
+              } else {
+                // 2) Fallback: Try auth.personas directly by id_person UUID (legacy records)
+                const personaResult = await this.dataSource.query(
+                  'SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_person = $1',
+                  [evento.usuarioId]
+                );
+                if (personaResult && personaResult.length > 0) {
+                  const p = personaResult[0];
+                  nombreUsuario = (p.nom_largo || `${p.nom_tercero || ''} ${p.pri_apellido || ''}`.trim()).trim() || nombreUsuario;
+                }
+              }
+            } else if (!isNaN(Number(evento.usuarioId))) {
+              // 3) Fallback para id numérico (id_tercero) proveniente del auth antiguo o migraciones
+              const terceroResult = await this.dataSource.query(
+                'SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1',
+                [Number(evento.usuarioId)]
+              );
+              if (terceroResult && terceroResult.length > 0) {
+                const t = terceroResult[0];
+                nombreUsuario = (t.nom_largo || `${t.nom_tercero || ''} ${t.pri_apellido || ''}`.trim()).trim() || nombreUsuario;
+              }
             }
           } catch (error) {
-            console.error('Error obteniendo datos de persona:', error);
+            console.error('Error obteniendo datos de persona para historial:', error);
           }
         }
 
@@ -3654,13 +3816,27 @@ export class AuditoriasService {
     try {
       const rows = await this.auditoriaRepository.query(
         `
-        SELECT id_person, nom_largo, nom_tercero, pri_apellido,
-               num_identificacion, tip_identificacion, dir_email
-          FROM auth.personas
-         WHERE nom_largo ILIKE $1
-            OR dir_email ILIKE $1
-            OR num_identificacion ILIKE $1
-         ORDER BY nom_largo ASC
+        SELECT p.id_person, p.nom_largo, p.nom_tercero, p.pri_apellido,
+               p.num_identificacion, p.tip_identificacion, p.dir_email,
+               EXISTS (
+                 SELECT 1 FROM auth."user" u
+                 INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                 INNER JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_person = p.id_person
+                   AND r.name IN ('Jefe OCI', 'Auditor Lider', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico')
+               ) as is_auditor,
+               (
+                 SELECT string_agg(DISTINCT r.name, ', ' ORDER BY r.name)
+                 FROM auth."user" u
+                 INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                 INNER JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_person = p.id_person
+               ) as roles_text
+          FROM auth.personas p
+         WHERE p.nom_largo ILIKE $1
+            OR p.dir_email ILIKE $1
+            OR p.num_identificacion ILIKE $1
+         ORDER BY p.nom_largo ASC
          LIMIT 20
         `,
         [`%${q}%`],
@@ -3673,6 +3849,8 @@ export class AuditoriasService {
         numeroIdentificacion: p.num_identificacion || '',
         tipoIdentificacion: p.tip_identificacion || 'CC',
         iniciales: this.getIniciales(p.nom_largo || ''),
+        isAuditor: p.is_auditor || false,
+        roles: p.roles_text || null,
       }));
     } catch (err) {
       console.error('[searchPersonasByText] error:', err);
@@ -3733,11 +3911,25 @@ export class AuditoriasService {
     try {
       const rows = await this.auditoriaRepository.query(
         `
-        SELECT id_person, nom_largo, nom_tercero, pri_apellido,
-               num_identificacion, tip_identificacion, dir_email
-          FROM auth.personas
-         WHERE nom_largo IS NOT NULL AND nom_largo != ''
-         ORDER BY nom_largo ASC
+        SELECT p.id_person, p.nom_largo, p.nom_tercero, p.pri_apellido,
+               p.num_identificacion, p.tip_identificacion, p.dir_email,
+               EXISTS (
+                 SELECT 1 FROM auth."user" u
+                 INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                 INNER JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_person = p.id_person
+                   AND r.name IN ('Jefe OCI', 'Auditor Lider', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico')
+               ) as is_auditor,
+               (
+                 SELECT string_agg(DISTINCT r.name, ', ' ORDER BY r.name)
+                 FROM auth."user" u
+                 INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                 INNER JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_person = p.id_person
+               ) as roles_text
+          FROM auth.personas p
+         WHERE p.nom_largo IS NOT NULL AND p.nom_largo != ''
+         ORDER BY p.nom_largo ASC
          LIMIT $1
         `,
         [limit],
@@ -3750,6 +3942,8 @@ export class AuditoriasService {
         numeroIdentificacion: p.num_identificacion || '',
         tipoIdentificacion: p.tip_identificacion || 'CC',
         iniciales: this.getIniciales(p.nom_largo || ''),
+        isAuditor: p.is_auditor || false,
+        roles: p.roles_text || null,
       }));
     } catch (err) {
       console.error('[getAllPersonas] error:', err);

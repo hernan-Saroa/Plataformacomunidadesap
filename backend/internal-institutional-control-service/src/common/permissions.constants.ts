@@ -55,6 +55,11 @@ export const ControlInternoPermissions = {
   PLAN_MEJORAMIENTO_DELETE: 'control-interno.planes-mejoramiento.delete',
   PLAN_MEJORAMIENTO_FOLLOW_UP: 'control-interno.planes-mejoramiento.follow-up',
 
+  // Permisos de seguimiento, evaluación y cierre (EM-PT-002 act. 4-10, spec §5.5)
+  PLAN_MEJORA_VALIDAR_EVIDENCIA: 'control-interno.planes-mejoramiento.validar-evidencia',
+  PLAN_MEJORA_SEGUIMIENTO: 'control-interno.planes-mejoramiento.seguimiento',
+  PLAN_MEJORA_CERRAR: 'control-interno.planes-mejoramiento.cerrar',
+
   // ═══════════════════════════════════════════════════════════════
   // HALLAZGOS
   // ═══════════════════════════════════════════════════════════════
