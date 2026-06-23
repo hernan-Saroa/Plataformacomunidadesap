@@ -78,6 +78,9 @@ interface TareasContextType {
   contarTareasCompletadas: (auditoriaId: string) => number;
   calcularProgresoTareas: (auditoriaId: string) => number;
   
+  // Contadores personalizados (para el usuario logueado)
+  contarMisTareasPendientes: (auditoriaId: string) => number;
+  
   // Validación de completitud por fase
   verificarFaseCompleta: (auditoriaId: string, fase: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento') => boolean;
   contarTareasPendientesPorFase: (auditoriaId: string, fase: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento') => number;
@@ -100,6 +103,13 @@ export interface FiltrosTarea {
 const isValidUUID = (id: string): boolean => {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(id);
+};
+
+// Obtener el ID del usuario logueado desde el cache de auth
+const getCurrentUserId = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const user = (window as any).__esap_auth_cache;
+  return user?.id_user ?? user?.user?.id_user ?? user?.userId ?? user?.id ?? user?.sub ?? null;
 };
 
 // Convertir TareaAuditoria del backend a Tarea del contexto
@@ -345,6 +355,16 @@ export function TareasProvider({ children }: { children: ReactNode }) {
     return tareasFase.filter(t => t.estado === 'Pendiente' || t.estado === 'En Progreso').length;
   }, [tareasPorAuditoria]);
 
+  // ============ CONTADORES PERSONALIZADOS (USUARIO LOGUEADO) ============
+  const contarMisTareasPendientes = useCallback((auditoriaId: string): number => {
+    const userId = getCurrentUserId();
+    if (!userId) return 0;
+    return tareasPorAuditoria[auditoriaId]?.filter(t => 
+      (t.estado === 'Pendiente' || t.estado === 'En Progreso') &&
+      t.responsableId === userId
+    ).length || 0;
+  }, [tareasPorAuditoria]);
+
   // ============ FILTROS ============
   const filtrarTareas = useCallback((auditoriaId: string, filtros: FiltrosTarea): Tarea[] => {
     let tareasFiltradas = obtenerTareasPorAuditoria(auditoriaId);
@@ -395,6 +415,7 @@ export function TareasProvider({ children }: { children: ReactNode }) {
         contarTareasPendientes,
         contarTareasCompletadas,
         calcularProgresoTareas,
+        contarMisTareasPendientes,
         verificarFaseCompleta,
         contarTareasPendientesPorFase,
         filtrarTareas

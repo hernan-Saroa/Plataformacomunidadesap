@@ -258,6 +258,46 @@ function mapEvidenciaBackend(ev: any): Documento {
 
 // Convierte datos del backend de auditoría a la interfaz Expediente
 function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expediente {
+  // ✅ Resolver nombre del responsable (auditorLider puede ser objeto, UUID string, o nombre)
+  let nombreResponsable = 'Sin asignar';
+  
+  if (auditoria.auditorLider) {
+    if (typeof auditoria.auditorLider === 'object' && auditoria.auditorLider.nombre) {
+      // Caso 1: auditorLider es objeto { nombre, cargo, iniciales }
+      nombreResponsable = auditoria.auditorLider.nombre;
+    } else if (typeof auditoria.auditorLider === 'string') {
+      // Caso 2: auditorLider es string - verificar si es UUID o nombre real
+      const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(auditoria.auditorLider);
+      if (!esUUID) {
+        // Es un nombre directo
+        nombreResponsable = auditoria.auditorLider;
+      }
+      // Si es UUID, se queda como 'Sin asignar' y se intenta resolver abajo
+    }
+  }
+  
+  // Fallback: intentar otros campos disponibles en el backend
+  if (nombreResponsable === 'Sin asignar') {
+    if (auditoria.auditorLiderNombre) {
+      nombreResponsable = auditoria.auditorLiderNombre;
+    } else if (auditoria.responsable && typeof auditoria.responsable === 'string') {
+      const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(auditoria.responsable);
+      if (!esUUID) {
+        nombreResponsable = auditoria.responsable;
+      }
+    } else if (auditoria.responsableArea?.nombre) {
+      nombreResponsable = auditoria.responsableArea.nombre;
+    } else if (auditoria.equipoAuditores?.length > 0) {
+      const primerAuditor = auditoria.equipoAuditores[0];
+      if (typeof primerAuditor === 'object' && primerAuditor.nombre) {
+        nombreResponsable = primerAuditor.nombre;
+      } else if (typeof primerAuditor === 'string') {
+        const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(primerAuditor);
+        if (!esUUID) nombreResponsable = primerAuditor;
+      }
+    }
+  }
+
   return {
     id: auditoria.id,
     codigoAuditoria: auditoria.codigo || `AU-${auditoria.id.slice(0, 8).toUpperCase()}`,
@@ -266,7 +306,7 @@ function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expe
     fechaInicio: auditoria.fechaInicio?.split('T')[0] || auditoria.createdAt?.split('T')[0] || '',
     fechaFin: auditoria.fechaFin?.split('T')[0],
     estado: mapEstadoAuditoria(auditoria.fase, auditoria.estadoKanban),
-    responsable: auditoria.responsable || auditoria.auditorLider || 'Sin asignar',
+    responsable: nombreResponsable,
     totalDocumentos: documentos.length,
     documentos: documentos
   };

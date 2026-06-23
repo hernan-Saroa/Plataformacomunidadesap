@@ -19,7 +19,7 @@ export class Sede {
   @Column({ name: 'cod_sede', length: 20, nullable: true })
   codSede: string;
 
-  @Column({ name: 'nom_sede', length: 50 })
+  @Column({ name: 'nom_sede', nullable: true })
   nomSede: string;
 
   @Column({ name: 'id_geopolitica', type: 'bigint', nullable: true })

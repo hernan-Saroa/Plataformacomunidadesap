@@ -667,7 +667,7 @@ function SeguimientoView({
     if (filtroEstado !== 'TODOS') {
       // Agrupar estados del backend a filtros Kanban
       const estadosDelFiltro: Record<string, string[]> = {
-        FORMULACION: ['FORMULACION', 'borrador', 'revision'],
+        REVISION: ['revision', 'REVISION'],
         APROBADO: ['APROBADO', 'aprobado'],
         EN_EJECUCION: ['EN_EJECUCION', 'en_ejecucion'],
         CON_RETRASO: ['CON_RETRASO'],
@@ -693,7 +693,7 @@ function SeguimientoView({
 
   const estadisticas = useMemo(() => {
     const total = planes.length;
-    const formulacion = planes.filter(p => p.estado === 'FORMULACION' || p.estado === 'borrador' || p.estado === 'revision').length;
+    const formulacion = planes.filter(p => p.estado === 'revision' || p.estado === 'REVISION').length;
     const aprobados = planes.filter(p => p.estado === 'APROBADO' || p.estado === 'aprobado').length;
     const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION' || p.estado === 'en_ejecucion').length;
     const conRetraso = planes.filter(p => p.estado === 'CON_RETRASO').length;
@@ -818,9 +818,9 @@ function SeguimientoView({
                 count={planes.length}
               />
               <FilterButton
-                active={filtroEstado === 'FORMULACION'}
-                onClick={() => setFiltroEstado('FORMULACION')}
-                label="Formulación"
+                active={filtroEstado === 'REVISION'}
+                onClick={() => setFiltroEstado('REVISION')}
+                label="Revisión OCI"
                 count={estadisticas.formulacion}
                 color="purple"
               />
@@ -934,9 +934,12 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         {columnasKanban.map((columna) => {
         // Normalizar estados del backend (minúsculas) a columnas Kanban (MAYÚSCULAS)
         const estadoToColumna: Record<string, string> = {
-          borrador: 'FORMULACION',
-          revision: 'FORMULACION',
-          FORMULACION: 'FORMULACION',
+          // BORRADOR y FORMULACION NO aparecen en backoffice (el auditado los maneja en portal)
+          borrador: '__AUDITADO__',
+          FORMULACION: '__AUDITADO__',
+          // Solo REVISION aparece en la primera columna del backoffice
+          revision: 'REVISION',
+          REVISION: 'REVISION',
           aprobado: 'APROBADO',
           APROBADO: 'APROBADO',
           en_ejecucion: 'EN_EJECUCION',
@@ -1344,7 +1347,7 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
           className="w-full px-3 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] hover:from-[#1557a0] hover:to-[#1e5da8] text-white rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2"
         >
           <Eye className="w-3.5 h-3.5" />
-          {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+          Ver Detalle
         </button>
       </div>
     </motion.div>
@@ -1559,7 +1562,7 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
                       className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
                     >
                       <Eye className="w-4 h-4" />
-                      {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+                      Ver Detalle
                     </button>
                   </div>
                 </div>

@@ -47,7 +47,9 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Filter
+  Filter,
+  KeyRound, // Para forzar restablecimiento de contraseña
+  Mail // Para correo de restablecimiento
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Avatar, AvatarFallback, AvatarImage, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
@@ -837,6 +839,37 @@ export function UsersPersonsModulePremium() {
       console.error('Error al bloquear usuario:', error);
       toast.error('Error al bloquear usuario', {
         description: error?.message || 'No se pudo bloquear el usuario. Intente nuevamente.'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ NUEVO: Forzar restablecimiento de contraseña
+  const handleForcePasswordReset = async (user: any) => {
+    const userEmail = user.email || user.person?.email || user.username;
+    if (!userEmail) {
+      toast.error('Error', { description: 'No se encontró el correo electrónico del usuario.' });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Enviar correo de restablecimiento de contraseña a ${user.firstName || user.person?.first_name} ${user.lastName || user.person?.last_name}?\n\nSe enviará un código OTP al correo: ${userEmail}`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await usersService.forcePasswordReset(userEmail);
+      toast.success('Correo de restablecimiento enviado', {
+        description: `Se envió un código OTP a ${userEmail}. El usuario deberá ingresar el código y crear una nueva contraseña.`,
+        duration: 6000,
+      });
+    } catch (error: any) {
+      console.error('Error al forzar restablecimiento:', error);
+      toast.error('Error al enviar correo de restablecimiento', {
+        description: error?.message || 'No se pudo enviar el correo. Intente nuevamente.',
       });
     } finally {
       setLoading(false);
@@ -1938,8 +1971,7 @@ export function UsersPersonsModulePremium() {
                                       "digital-folder",
                                     );
                                   }}
-                                  className="bg-blue-50 hover:bg-blue-100"
-                                  style={{ color: "#003DA5" }}
+                                  className="text-[#003DA5] data-[highlighted]:bg-[#003DA5] data-[highlighted]:text-white"
                                 >
                                   <FolderOpen className="w-4 h-4 mr-2" />
                                   Ver Carpeta Digital
@@ -1956,26 +1988,24 @@ export function UsersPersonsModulePremium() {
                                 {!hasSuperAdminRole(user) && (
                                   <DropdownMenuItem
                                     onClick={() => handleAssignRoles(user)}
-                                    className="bg-blue-50 hover:bg-blue-100"
-                                    style={{ color: '#003DA5' }}
+                                    className="text-[#003DA5] data-[highlighted]:bg-[#003DA5] data-[highlighted]:text-white"
                                   >
                                     <Users className="w-4 h-4 mr-2" />
                                     Asignar Roles
                                   </DropdownMenuItem>
                                 )}
-                                {/* <DropdownMenuItem
-                                  onClick={() => handleAssignAccess(user)}
-                                  className="bg-amber-50 hover:bg-amber-100"
-                                  style={{ color: "#D97706" }}
+                                <DropdownMenuItem
+                                  onClick={() => handleForcePasswordReset(user)}
+                                  className="text-[#7C3AED] data-[highlighted]:bg-[#7C3AED] data-[highlighted]:text-white"
                                 >
-                                  <Shield className="w-4 h-4 mr-2" />
-                                  Asignar Accesos
-                                </DropdownMenuItem> */}
+                                  <KeyRound className="w-4 h-4 mr-2" />
+                                  Forzar Restablecer Contraseña
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 {user.status === 'active' || user.is_active ? (
                                   <DropdownMenuItem
                                     onClick={() => handleBlockUser(user)}
-                                    style={{ color: 'rgba(245, 158, 11, 1)' }}
+                                    className="text-amber-500 data-[highlighted]:bg-amber-500 data-[highlighted]:text-white"
                                   >
                                     <Lock className="w-4 h-4 mr-2" />
                                     Bloquear Usuario
@@ -1983,8 +2013,7 @@ export function UsersPersonsModulePremium() {
                                 ) : (
                                   <DropdownMenuItem
                                     onClick={() => handleActivateUser(user)}
-                                    className="bg-green-50 hover:bg-green-100"
-                                    style={{ color: '#10B981' }}
+                                    className="text-emerald-600 data-[highlighted]:bg-emerald-600 data-[highlighted]:text-white"
                                   >
                                     <Unlock className="w-4 h-4 mr-2" />
                                     Activar Usuario
@@ -1993,7 +2022,7 @@ export function UsersPersonsModulePremium() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => handleDelete(user)}
-                                  style={{ color: '#EF4444' }}
+                                  className="text-red-500 data-[highlighted]:bg-red-500 data-[highlighted]:text-white"
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Eliminar
@@ -2181,7 +2210,7 @@ export function UsersPersonsModulePremium() {
                               setSelectedUser(user);
                               setViewMode("digital-folder");
                             }}
-                            className="text-blue-700 focus:bg-blue-600 focus:text-white"
+                            className="text-blue-700 data-[highlighted]:bg-blue-600 data-[highlighted]:text-white"
                           >
                             <FolderOpen className="w-4 h-4 mr-2" />
                             Ver Carpeta Digital
@@ -2196,25 +2225,24 @@ export function UsersPersonsModulePremium() {
                           {!hasSuperAdminRole(user) && (
                             <DropdownMenuItem
                               onClick={() => handleAssignRoles(user)}
-                              className="text-blue-700 focus:bg-blue-600 focus:text-white"
+                              className="text-blue-700 data-[highlighted]:bg-blue-600 data-[highlighted]:text-white"
                             >
                               <Users className="w-4 h-4 mr-2" />
                               Asignar Roles
                             </DropdownMenuItem>
                           )}
-                          {/* <DropdownMenuItem
-                            onClick={() => handleAssignAccess(user)}
-                            className="bg-amber-50 hover:bg-amber-100"
-                            style={{ color: "#D97706" }}
+                          <DropdownMenuItem
+                            onClick={() => handleForcePasswordReset(user)}
+                            className="text-purple-700 data-[highlighted]:bg-purple-600 data-[highlighted]:text-white"
                           >
-                            <Shield className="w-4 h-4 mr-2" />
-                            Asignar Accesos
-                          </DropdownMenuItem> */}
+                            <KeyRound className="w-4 h-4 mr-2" />
+                            Forzar Restablecer Contraseña
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {user.status === 'active' || user.is_active ? (
                             <DropdownMenuItem
                               onClick={() => handleBlockUser(user)}
-                              className="text-amber-600 focus:bg-amber-500 focus:text-white"
+                              className="text-amber-600 data-[highlighted]:bg-amber-500 data-[highlighted]:text-white"
                             >
                               <Lock className="w-4 h-4 mr-2" />
                               Bloquear Usuario
@@ -2222,7 +2250,7 @@ export function UsersPersonsModulePremium() {
                           ) : (
                             <DropdownMenuItem
                               onClick={() => handleActivateUser(user)}
-                              className="text-green-600 focus:bg-green-600 focus:text-white"
+                              className="text-green-600 data-[highlighted]:bg-green-600 data-[highlighted]:text-white"
                             >
                               <Unlock className="w-4 h-4 mr-2" />
                               Activar Usuario
@@ -2231,7 +2259,7 @@ export function UsersPersonsModulePremium() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDelete(user)}
-                            className="text-red-600 focus:bg-red-600 focus:text-white"
+                            className="text-red-600 data-[highlighted]:bg-red-600 data-[highlighted]:text-white"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Eliminar

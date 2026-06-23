@@ -112,7 +112,7 @@ export function BancoDocentesPTA() {
       if (raw) {
         const shellUser = JSON.parse(raw);
         const email = String(shellUser?.email || '').toLowerCase();
-        if (email === 'superuser@esap.edu.co') return true;
+        if (email === 'desarrollo.ccd@esap.edu.co') return true;
         const roles = shellUser?.roles || [];
         if (roles.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'SUPER_ADMIN')) return true;
       }

@@ -46,8 +46,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// 🆕 Importar datos de territoriales y CETAP
-import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
+// 🆕 Importar servicio de Estructura Organizacional para territoriales dinámicas
+import { estructuraService } from '../../services/estructuraService';
 // ✅ Importar tipos del hook para compatibilidad
 import {
   resolverColumnaKanban,
@@ -465,6 +465,23 @@ export function CronogramaAuditoriasPremium({
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<AuditoriaProgramada | null>(null);
 
+  // Seccionales/territoriales cargadas desde Estructura Organizacional
+  const [seccionalesCronograma, setSeccionalesCronograma] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
+
+  useEffect(() => {
+    const cargarSeccionales = async () => {
+      try {
+        const seccionales = await estructuraService.obtenerSeccionales();
+        if (seccionales && seccionales.length > 0) {
+          setSeccionalesCronograma(seccionales.map((s: any) => ({ id: s.id, nombre: s.nombre, codigo: s.codigo })));
+        }
+      } catch (error) {
+        console.warn('[Cronograma] No se pudieron cargar seccionales:', error);
+      }
+    };
+    cargarSeccionales();
+  }, []);
+
   // Filtrar auditorías con TODOS los criterios
   const auditoriasFiltradas = useMemo(() => {
     return auditorias.filter(aud => {
@@ -748,16 +765,17 @@ export function CronogramaAuditoriasPremium({
               <option value="especial">Especial</option>
             </select>
 
-            {/* Filtro Territorial */}
+            {/* Filtro Territorial - Dinámico desde Estructura Organizacional */}
             <select
               value={filtroTerritorial}
               onChange={(e) => setFiltroTerritorial(e.target.value)}
               className="px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-xs font-bold focus:border-[#2962FF] outline-none"
             >
               <option value="Todas las Territoriales">Todas las Territoriales</option>
-              {TERRITORIALES_ESAP.map((territorial) => (
-                <option key={territorial.id} value={territorial.nombre}>
-                  {territorial.nombre}
+              <option value="Sede Central">🏛️ Sede Central</option>
+              {seccionalesCronograma.map((s) => (
+                <option key={s.id} value={s.nombre}>
+                  📍 {s.nombre}
                 </option>
               ))}
             </select>

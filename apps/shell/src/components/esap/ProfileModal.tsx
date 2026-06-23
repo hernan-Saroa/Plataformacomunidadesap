@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, User, Mail, Phone, Building2, Shield, Calendar, Clock, MapPin, Globe, 
   Edit2, Save, Eye, Key, Activity, TrendingUp, Award, Zap, LogOut,
   Settings, Bell, Lock, Sparkles, CheckCircle2, BarChart3, Users,
-  Camera, Upload, Link as LinkIcon, MessageSquare, Hash
+  Camera, Upload, Link as LinkIcon, MessageSquare, Hash,
+  AlertTriangle, Loader2, KeyRound
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -68,6 +69,9 @@ export function ProfileModal({
   const [activeTab, setActiveTab] = useState('general');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [viewAllPermissions, setViewAllPermissions] = useState('');
+  const [credentialLoginEnabled, setCredentialLoginEnabled] = useState(true);
+  const [isLoadingLoginSettings, setIsLoadingLoginSettings] = useState(false);
+  const [isSavingLoginSettings, setIsSavingLoginSettings] = useState(false);
   const [formData, setFormData] = useState({
     fullName: userName,
     email: userEmail,
@@ -135,6 +139,49 @@ export function ProfileModal({
       description: 'Todos tus cambios se han guardado correctamente',
     });
     setIsEditing(false);
+  };
+
+  // ── Login Settings (solo SuperAdmin) ──
+  useEffect(() => {
+    if (!isSuperAdmin || !isOpen) return;
+    let cancelled = false;
+    const loadSettings = async () => {
+      setIsLoadingLoginSettings(true);
+      try {
+        const settings = await authService.getLoginSettings();
+        if (!cancelled) setCredentialLoginEnabled(settings.credentialLoginEnabled);
+      } catch {
+        // fallback: assume enabled
+      } finally {
+        if (!cancelled) setIsLoadingLoginSettings(false);
+      }
+    };
+    loadSettings();
+    return () => { cancelled = true; };
+  }, [isSuperAdmin, isOpen]);
+
+  const handleToggleCredentialLogin = async () => {
+    const newValue = !credentialLoginEnabled;
+    setIsSavingLoginSettings(true);
+    try {
+      await authService.updateLoginSettings({ credentialLoginEnabled: newValue });
+      setCredentialLoginEnabled(newValue);
+      toast.success(
+        newValue ? 'Login con correo habilitado' : 'Login con correo deshabilitado',
+        {
+          description: newValue
+            ? 'Los usuarios pueden iniciar sesión con correo y contraseña'
+            : 'Solo se permite inicio de sesión con Microsoft (SSO)',
+          duration: 4000,
+        },
+      );
+    } catch (error: any) {
+      toast.error('Error al actualizar configuración', {
+        description: error?.message || 'Intenta nuevamente',
+      });
+    } finally {
+      setIsSavingLoginSettings(false);
+    }
   };
 
   console.log('🟡 ProfileModal render', { isOpen });
@@ -647,6 +694,62 @@ export function ProfileModal({
                       </div>
                     </div>
                   </div>
+
+                  {/* ── SOLO SUPER ADMIN: Configuración del Sistema ── */}
+                  {isSuperAdmin && (
+                    <div className="bg-white rounded-xl border-2 border-orange-200 p-4 md:p-5 mt-4">
+                      <h3 className="font-black text-gray-900 mb-1 flex items-center gap-2 text-sm">
+                        <Shield className="w-4 h-4 text-orange-600" />
+                        Configuración del Sistema
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-4">Solo visible para Super Administrador</p>
+
+                      <div className="space-y-4">
+                        {/* Toggle: Login con Correo+Contraseña */}
+                        <div className={`flex items-start justify-between p-4 rounded-xl border-2 transition-all ${
+                          credentialLoginEnabled
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-red-50 border-red-200'
+                        }`}>
+                          <div className="flex-1 pr-4">
+                            <div className="flex items-center gap-2 mb-1">
+                              <KeyRound className={`w-4 h-4 ${
+                                credentialLoginEnabled ? 'text-green-700' : 'text-red-600'
+                              }`} />
+                              <p className="font-semibold text-gray-900 text-sm">
+                                Login con correo y contraseña
+                              </p>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              {credentialLoginEnabled
+                                ? 'Los usuarios pueden iniciar sesión con correo y contraseña, además de Microsoft.'
+                                : 'Solo se muestra el botón de Microsoft (SSO). Reactiva esta opción si el SSO falla.'}
+                            </p>
+                            {!credentialLoginEnabled && (
+                              <div className="flex items-start gap-2 mt-2 p-2 bg-red-100 rounded-lg">
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-[11px] text-red-700 font-medium">
+                                  Solo Microsoft SSO está activo. Si el SSO falla, reactiva esta opción para permitir el acceso con credenciales.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={credentialLoginEnabled}
+                              onChange={handleToggleCredentialLogin}
+                              disabled={isSavingLoginSettings || isLoadingLoginSettings}
+                            />
+                            <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${
+                              isSavingLoginSettings ? 'opacity-50 cursor-wait' : ''
+                            } peer-checked:bg-green-600`}></div>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
               </div>
             </Tabs>
