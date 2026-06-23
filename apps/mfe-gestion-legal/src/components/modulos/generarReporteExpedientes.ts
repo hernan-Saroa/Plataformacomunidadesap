@@ -270,18 +270,13 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposCo
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Abogado Asignado</td>
           <td colspan="3" style="padding:8px 12px;font-size:12px;font-weight:700;color:#003DA5;border-bottom:1px solid #E5E7EB;">${exp.abogadoAsignado || 'Sin asignar'}</td>
         </tr>
-        ${(exp.territorial || exp.dependencia || exp.camposAdicionales?.cetap) ? `
+        ${(exp.territorial || exp.dependencia) ? `
         <tr style="background:#F9FAFB;">
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Territorial</td>
           <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.territorial || '—'}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Dependencia</td>
           <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.dependencia || '—'}</td>
         </tr>
-        ${exp.camposAdicionales?.cetap ? `
-        <tr>
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;">CETAP</td>
-          <td colspan="3" style="padding:8px 12px;font-size:11px;font-weight:600;">${exp.camposAdicionales.cetap}</td>
-        </tr>` : ''}
         ` : ''}
       </table>
 

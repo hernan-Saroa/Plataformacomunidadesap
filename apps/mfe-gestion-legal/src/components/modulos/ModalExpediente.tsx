@@ -1938,7 +1938,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Briefcase className="w-4 h-4" />
                     RESUMEN EJECUTIVO
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">🏛️ Juzgado</p>
                       <p className="text-sm font-bold text-gray-900">{expediente.juzgadoConocimiento}</p>
@@ -1955,6 +1955,44 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           : ''}
                       </p>
                     </div>
+                    {(() => {
+                      const diasRestantes = (expediente as any).diasRestantes;
+                      const tieneVenc = !!expediente.fechaVencimiento;
+                      const vencido = typeof diasRestantes === 'number' && diasRestantes < 0;
+                      const urgente = typeof diasRestantes === 'number' && diasRestantes >= 0 && diasRestantes <= 5;
+                      const colorFecha = !tieneVenc
+                        ? 'text-gray-900'
+                        : vencido
+                          ? 'text-red-600'
+                          : urgente
+                            ? 'text-amber-600'
+                            : 'text-gray-900';
+                      return (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">⏳ Fecha Vencimiento</p>
+                          <p className={`text-sm font-bold ${colorFecha}`}>
+                            {tieneVenc
+                              ? new Date(expediente.fechaVencimiento as any).toLocaleDateString('es-CO')
+                              : 'Sin definir'}
+                          </p>
+                          {typeof diasRestantes === 'number' && (
+                            <Badge
+                              variant="outline"
+                              className={`mt-1 font-semibold text-[10px] border ${vencido
+                                ? 'border-red-300 text-red-700 bg-red-50'
+                                : urgente
+                                  ? 'border-amber-300 text-amber-700 bg-amber-50'
+                                  : 'border-green-300 text-green-700 bg-green-50'
+                                }`}
+                            >
+                              {vencido
+                                ? `Vencido hace ${Math.abs(diasRestantes)} día(s)`
+                                : `${diasRestantes} día(s) restantes`}
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div>
                       <p className="text-xs text-gray-500 mb-1">⚠️ Nivel de Riesgo</p>
                       <Badge
@@ -2439,25 +2477,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           )}
                         </div>
 
-                        {/* Territorial, CETAP y Dependencia (solo Demandado) */}
+                        {/* Territorial y Dependencia (solo Demandado) */}
                         {parte.tipo === 'Demandado' && (
-                          (expediente as any).territorial || (expediente as any).cetap || (expediente as any).dependencia
+                          (expediente as any).territorial || (expediente as any).dependencia
                         ) && (
                           <div className="mt-3 p-2.5 rounded-xl bg-blue-50/30 border border-blue-100/50 flex flex-col gap-1.5">
-                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider">Territorial / CETAP / Dependencia</p>
+                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider">Territorial / Dependencia</p>
                             {((expediente as any).territorial) && (
                               <div className="flex items-center gap-1.5">
                                 <MapPin className="w-3 h-3 text-blue-500 flex-shrink-0" />
                                 <span className="text-[10px] font-semibold text-slate-700 truncate">
                                   {(expediente as any).territorialNombre || (expediente as any).territorial}
-                                </span>
-                              </div>
-                            )}
-                            {((expediente as any).cetap) && (
-                              <div className="flex items-center gap-1.5">
-                                <Building2 className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                                <span className="text-[10px] font-semibold text-slate-700 truncate">
-                                  {(expediente as any).cetapNombre || (expediente as any).cetap}
                                 </span>
                               </div>
                             )}
