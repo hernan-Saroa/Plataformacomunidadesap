@@ -3049,6 +3049,7 @@
                                               con_observaciones: { label: 'Con observaciones', color: 'text-red-700', bg: 'bg-red-50' },
                                             };
 
+                                            return (
                                               <div className="space-y-6">
 
 
