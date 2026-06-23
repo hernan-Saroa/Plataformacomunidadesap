@@ -281,7 +281,12 @@ export function ProgramasAcademicosModule() {
   const confirmDelete = async () => {
     if (programaToDelete) {
       try {
-        await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}`);
+        // Se envía el período visualizado para que el borrado sea SOLO de ese período
+        // (si el programa también existe en otro período, allí se conserva).
+        const periodoQS = periodoSeleccionadoPA
+          ? `?periodo=${encodeURIComponent(periodoSeleccionadoPA)}`
+          : '';
+        await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}${periodoQS}`);
         toast.success('Programa Eliminado', { description: `Se eliminó: ${programaToDelete.nombre}` });
         // Recargar datos
         setRefreshTrigger(prev => prev + 1);
@@ -322,10 +327,6 @@ export function ProgramasAcademicosModule() {
     }
   };
 
-  const handleView = (programa: ProgramaAcademico) => {
-    toast.info('Ver Programa', { description: `Viendo: ${programa.nombre}` });
-  };
-
   const clearAllFilters = () => {
     setSearchQuery('');
     setNivelFilter('all');
@@ -341,7 +342,14 @@ export function ProgramasAcademicosModule() {
     setProgramaToEdit(null);
   };
 
-  if (loading) {
+  // Las pantallas de carga/error a página completa solo aplican a las vistas que
+  // muestran la lista de programas. Las vistas de import y periodos se gestionan
+  // por sí mismas; no deben desmontarse por una recarga en segundo plano (si no,
+  // perderían su estado, p. ej. la pantalla de "importación exitosa").
+  const isListLikeView =
+    activeView !== 'importar-asignaturas' && activeView !== 'periodos-academicos';
+
+  if (loading && isListLikeView) {
     return (
       <Container4K className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -352,7 +360,7 @@ export function ProgramasAcademicosModule() {
     );
   }
 
-  if (error) {
+  if (error && isListLikeView) {
     return (
       <Container4K className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -729,10 +737,6 @@ export function ProgramasAcademicosModule() {
                                 </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => handleView(programa)}>
-                                  <Eye className="w-4 h-4 mr-2" />
-                                  Ver Detalles
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleEdit(programa)}>
                                   <Edit className="w-4 h-4 mr-2" />
                                   Editar Programa
