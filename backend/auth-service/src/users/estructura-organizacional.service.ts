@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, QueryRunner } from 'typeorm';
 import { Geopolitica } from './geopolitica.entity';
 import { Sede } from './sede.entity';
 import { Seccional } from './seccional.entity';
@@ -330,17 +330,22 @@ export class EstructuraOrganizacionalService {
       throw new NotFoundException(`Seccional con ID ${id} no encontrada`);
     }
 
-    // Verificar si tiene sedes asociadas
-    const sedesCount = await this.sedeRepo.count({ where: { idSeccional: id } });
-    if (sedesCount > 0) {
-      throw new ConflictException(`No se puede eliminar la seccional porque tiene ${sedesCount} sedes asociadas`);
-    }
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
+      // Eliminación EN CASCADA: primero se borran TODAS las sedes asociadas
+      // (con la misma limpieza que el borrado individual de sede) y luego la
+      // seccional. Todo dentro de una sola transacción: si algo falla no se borra
+      // nada (operación atómica), evitando estados a medias o inconsistentes.
+      const sedes = await queryRunner.manager.find(Sede, {
+        where: { idSeccional: id },
+      });
+      for (const sede of sedes) {
+        await this.removeSedeInTransaction(queryRunner, sede);
+      }
+
       const codSeccional = seccional.codSeccional;
       await queryRunner.manager.remove(Seccional, seccional);
 
@@ -448,6 +453,17 @@ export class EstructuraOrganizacionalService {
                  updated_at = CURRENT_TIMESTAMP`,
               [saved.idSede, cetapDbId],
             );
+
+            // La sede/CETAP queda disponible (ACTIVA) en TODOS los periodos, igual
+            // que en la importación. Cada periodo es independiente: ON CONFLICT DO
+            // NOTHING respeta cualquier estado/inactivación previa por periodo.
+            await queryRunner.query(
+              `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
+               SELECT pa.id, $1, TRUE
+                 FROM academic_work_plan.periodo_academico pa
+               ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
+              [cetapDbId],
+            );
           }
 
         }
@@ -551,6 +567,17 @@ export class EstructuraOrganizacionalService {
                  updated_at = CURRENT_TIMESTAMP`,
               [saved.idSede, cetapDbId],
             );
+
+            // La sede/CETAP queda disponible (ACTIVA) en TODOS los periodos, igual
+            // que en la importación. Cada periodo es independiente: ON CONFLICT DO
+            // NOTHING respeta cualquier estado/inactivación previa por periodo.
+            await queryRunner.query(
+              `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
+               SELECT pa.id, $1, TRUE
+                 FROM academic_work_plan.periodo_academico pa
+               ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
+              [cetapDbId],
+            );
           }
         }
       }
@@ -565,6 +592,56 @@ export class EstructuraOrganizacionalService {
     }
   }
 
+  /**
+   * Limpieza de una sede DENTRO de una transacción ya abierta: elimina la sede del
+   * catálogo maestro (auth.sedes) y desactiva su CETAP espejo en el plan académico,
+   * incluyendo su oferta y su activación por periodo (periodo_cetap).
+   *
+   * Se reutiliza tanto en el borrado individual de una sede como en el borrado en
+   * cascada de una seccional, para garantizar EXACTAMENTE el mismo comportamiento
+   * en ambos casos y no dejar activaciones de periodo huérfanas.
+   */
+  private async removeSedeInTransaction(
+    queryRunner: QueryRunner,
+    sede: Sede,
+  ): Promise<void> {
+    const id = sede.idSede;
+    const codSede = sede.codSede;
+
+    const mappingRows = await queryRunner.query(
+      `SELECT id_cetap
+         FROM auth.sede_cetap_mapping
+        WHERE id_sede = $1
+        LIMIT 1`,
+      [id],
+    );
+    await queryRunner.manager.remove(Sede, sede);
+
+    let cetapId = mappingRows[0]?.id_cetap;
+    if (!cetapId && codSede) {
+      const cetapRows = await queryRunner.query(
+        'SELECT id FROM academic_work_plan.cetap WHERE codigo = $1 LIMIT 1',
+        [codSede],
+      );
+      cetapId = cetapRows[0]?.id;
+    }
+
+    if (cetapId) {
+      await queryRunner.query(
+        'UPDATE academic_work_plan.cetap SET activo = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [cetapId],
+      );
+      await queryRunner.query(
+        'UPDATE academic_work_plan.oferta_cetap_programa SET activa = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id_cetap = $1',
+        [cetapId],
+      );
+      await queryRunner.query(
+        'UPDATE academic_work_plan.periodo_cetap SET activo = FALSE WHERE id_cetap = $1',
+        [cetapId],
+      );
+    }
+  }
+
   async deleteSede(id: number): Promise<void> {
     const sede = await this.findSedeById(id);
     if (!sede) {
@@ -576,40 +653,7 @@ export class EstructuraOrganizacionalService {
     await queryRunner.startTransaction();
 
     try {
-      const codSede = sede.codSede;
-      const mappingRows = await queryRunner.query(
-        `SELECT id_cetap
-           FROM auth.sede_cetap_mapping
-          WHERE id_sede = $1
-          LIMIT 1`,
-        [id],
-      );
-      await queryRunner.manager.remove(Sede, sede);
-
-      let cetapId = mappingRows[0]?.id_cetap;
-      if (!cetapId && codSede) {
-        const cetapRows = await queryRunner.query(
-          'SELECT id FROM academic_work_plan.cetap WHERE codigo = $1 LIMIT 1',
-          [codSede],
-        );
-        cetapId = cetapRows[0]?.id;
-      }
-
-      if (cetapId) {
-        await queryRunner.query(
-          'UPDATE academic_work_plan.cetap SET activo = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-          [cetapId],
-        );
-        await queryRunner.query(
-          'UPDATE academic_work_plan.oferta_cetap_programa SET activa = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id_cetap = $1',
-          [cetapId],
-        );
-        await queryRunner.query(
-          'UPDATE academic_work_plan.periodo_cetap SET activo = FALSE WHERE id_cetap = $1',
-          [cetapId],
-        );
-      }
-
+      await this.removeSedeInTransaction(queryRunner, sede);
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -1648,7 +1692,9 @@ export class EstructuraOrganizacionalService {
   async getSedePeriodStatus(periodoCodigo: string): Promise<{
     periodoCodigo: string;
     idSedesActivas: number[];
+    idSedesMiembro: number[];
     totalActivas: number;
+    totalMiembro: number;
   }> {
     const periodRows = await this.dataSource.query(
       `SELECT id
@@ -1662,37 +1708,173 @@ export class EstructuraOrganizacionalService {
         `Periodo académico con código ${periodoCodigo} no encontrado`,
       );
     }
+    const idPeriodo = periodRows[0].id;
 
-    const rows = await this.dataSource.query(
-      `WITH active_cetaps AS (
-         SELECT pc.id_cetap
-           FROM academic_work_plan.periodo_cetap pc
-          WHERE pc.id_periodo_academico = $1
-            AND pc.activo = TRUE
-       )
-       SELECT DISTINCT active_sedes.id_sede
-         FROM (
-           SELECT mapping.id_sede
-             FROM auth.sede_cetap_mapping mapping
-             INNER JOIN active_cetaps active
-                     ON active.id_cetap = mapping.id_cetap
-           UNION
-           SELECT sede.id_sede
-             FROM auth.sedes sede
-             INNER JOIN academic_work_plan.cetap cetap
-                     ON cetap.codigo = sede.cod_sede
-             INNER JOIN active_cetaps active
-                     ON active.id_cetap = cetap.id
-         ) active_sedes
-        ORDER BY active_sedes.id_sede`,
-      [periodRows[0].id],
-    );
-    const idSedesActivas = rows.map((row: any) => Number(row.id_sede));
+    // Mapea los CETAP del periodo a IDs de sede (auth.sedes).
+    // - soloActivos = true  -> sedes ACTIVAS en el periodo (periodo_cetap.activo = TRUE)
+    // - soloActivos = false -> sedes MIEMBRO del periodo (tienen fila en periodo_cetap,
+    //   sin importar el flag activo). La membresía es lo que define si una sede
+    //   "pertenece" al periodo: una sede solo existe en el periodo donde se agregó.
+    const mapCetapsAPeriodo = async (soloActivos: boolean): Promise<number[]> => {
+      const rows = await this.dataSource.query(
+        `WITH sel_cetaps AS (
+           SELECT pc.id_cetap
+             FROM academic_work_plan.periodo_cetap pc
+            WHERE pc.id_periodo_academico = $1
+              ${soloActivos ? 'AND pc.activo = TRUE' : ''}
+         )
+         SELECT DISTINCT s.id_sede
+           FROM (
+             SELECT mapping.id_sede
+               FROM auth.sede_cetap_mapping mapping
+               INNER JOIN sel_cetaps sc
+                       ON sc.id_cetap = mapping.id_cetap
+             UNION
+             SELECT sede.id_sede
+               FROM auth.sedes sede
+               INNER JOIN academic_work_plan.cetap cetap
+                       ON cetap.codigo = sede.cod_sede
+               INNER JOIN sel_cetaps sc
+                       ON sc.id_cetap = cetap.id
+           ) s
+          ORDER BY s.id_sede`,
+        [idPeriodo],
+      );
+      return rows.map((row: any) => Number(row.id_sede));
+    };
+
+    const idSedesActivas = await mapCetapsAPeriodo(true);
+    const idSedesMiembro = await mapCetapsAPeriodo(false);
     return {
       periodoCodigo,
       idSedesActivas,
+      idSedesMiembro,
       totalActivas: idSedesActivas.length,
+      totalMiembro: idSedesMiembro.length,
     };
+  }
+
+  /**
+   * Resuelve el id del CETAP espejo de una sede SIN crearlo (solo lectura).
+   * Devuelve null si la sede no tiene CETAP asociado.
+   */
+  private async resolveCetapId(
+    queryRunner: QueryRunner,
+    sede: Sede,
+  ): Promise<number | null> {
+    const mappingRows = await queryRunner.query(
+      `SELECT id_cetap FROM auth.sede_cetap_mapping WHERE id_sede = $1 LIMIT 1`,
+      [sede.idSede],
+    );
+    let cetapId = mappingRows[0]?.id_cetap;
+    if (!cetapId && sede.codSede) {
+      const cetapRows = await queryRunner.query(
+        'SELECT id FROM academic_work_plan.cetap WHERE codigo = $1 LIMIT 1',
+        [sede.codSede],
+      );
+      cetapId = cetapRows[0]?.id;
+    }
+    return cetapId ?? null;
+  }
+
+  /**
+   * Quita una sede de UN periodo (elimina su fila en periodo_cetap para ese
+   * periodo). NO toca el catálogo maestro ni otros periodos: la sede sigue
+   * existiendo globalmente y en los demás periodos donde sea miembro.
+   */
+  async removeSedeFromPeriod(
+    idSede: number,
+    periodoCodigo: string,
+  ): Promise<{ success: boolean }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const periodRes = await queryRunner.query(
+        `SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1`,
+        [periodoCodigo],
+      );
+      if (!periodRes || periodRes.length === 0) {
+        throw new NotFoundException(
+          `Periodo académico con código ${periodoCodigo} no encontrado`,
+        );
+      }
+      const idPeriodo = periodRes[0].id;
+
+      const sede = await queryRunner.manager.findOne(Sede, { where: { idSede } });
+      if (!sede) {
+        throw new NotFoundException(`Sede con ID ${idSede} no encontrada`);
+      }
+
+      const idCetap = await this.resolveCetapId(queryRunner, sede);
+      if (idCetap) {
+        await queryRunner.query(
+          `DELETE FROM academic_work_plan.periodo_cetap
+            WHERE id_periodo_academico = $1 AND id_cetap = $2`,
+          [idPeriodo, idCetap],
+        );
+      }
+
+      await queryRunner.commitTransaction();
+      return { success: true };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Quita una seccional (territorial) de UN periodo: elimina de periodo_cetap,
+   * para ese periodo, las filas de TODAS sus sedes. NO borra del catálogo maestro
+   * ni afecta a otros periodos.
+   */
+  async removeSeccionalFromPeriod(
+    idSeccional: number,
+    periodoCodigo: string,
+  ): Promise<{ success: boolean; quitadas: number }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const periodRes = await queryRunner.query(
+        `SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1`,
+        [periodoCodigo],
+      );
+      if (!periodRes || periodRes.length === 0) {
+        throw new NotFoundException(
+          `Periodo académico con código ${periodoCodigo} no encontrado`,
+        );
+      }
+      const idPeriodo = periodRes[0].id;
+
+      const sedes = await queryRunner.manager.find(Sede, {
+        where: { idSeccional },
+      });
+
+      let quitadas = 0;
+      for (const sede of sedes) {
+        const idCetap = await this.resolveCetapId(queryRunner, sede);
+        if (idCetap) {
+          const res = await queryRunner.query(
+            `DELETE FROM academic_work_plan.periodo_cetap
+              WHERE id_periodo_academico = $1 AND id_cetap = $2`,
+            [idPeriodo, idCetap],
+          );
+          // pg devuelve [rows, count] en DELETE sin RETURNING
+          quitadas += Array.isArray(res) ? (res[1] ?? 0) : 0;
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return { success: true, quitadas };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async toggleSedePeriodStatus(idSede: number, periodoCodigo: string, activo: boolean): Promise<any> {

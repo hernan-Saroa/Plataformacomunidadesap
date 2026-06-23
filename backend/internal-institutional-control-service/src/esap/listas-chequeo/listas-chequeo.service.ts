@@ -405,14 +405,7 @@ export class ListasChequeoService {
   async remove(id: string): Promise<void> {
     const lista = await this.findOne(id);
 
-    // Verificar que no tenga usos programados
-    if (lista.usosProgramados > 0) {
-      throw new BadRequestException(
-        `No se puede eliminar la lista de chequeo porque tiene ${lista.usosProgramados} usos programados`,
-      );
-    }
-
-    // Soft delete
+    // Soft delete — se permite eliminar sin importar los usos programados
     lista.deletedAt = new Date();
     await this.listaChequeoRepository.save(lista);
   }

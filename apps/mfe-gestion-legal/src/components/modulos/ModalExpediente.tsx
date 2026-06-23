@@ -1787,8 +1787,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent
           hideCloseButton
-          className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
-          style={{ width: '60vw', maxWidth: '60vw' }}
+          className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col !p-0 overflow-hidden"
+          style={{ width: '60vw', maxWidth: '60vw', top: '2.5vh', padding: 0 }}
           // Mientras el visor de documentos está abierto (otro Dialog hermano portaleado a body),
           // un clic dentro de él se interpreta como "clic-fuera" de este modal y lo cerraría,
           // arrastrando consigo al visor (vuelve al Kanban). Bloqueamos el cierre por
@@ -1842,17 +1842,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </>
             }
             actions={
-              <div className="flex items-center gap-4">
-                <BarraProgresoExpediente
-                  diasTotales={expediente.diasTotales}
-                  diasRestantes={expediente.diasRestantes}
-                  etapa={expediente.etapa}
-                  columnasTablero={columnasTablero}
-                  documentos={documentos}
-                  actuaciones={actuaciones}
-                  compact={true}
-                />
-                <div className="flex gap-2">
+              <div className="flex flex-col xl:flex-row items-end xl:items-center gap-2 xl:gap-4">
+                <div className="hidden xl:block">
+                  <BarraProgresoExpediente
+                    diasTotales={expediente.diasTotales}
+                    diasRestantes={expediente.diasRestantes}
+                    etapa={expediente.etapa}
+                    columnasTablero={columnasTablero}
+                    documentos={documentos}
+                    actuaciones={actuaciones}
+                    compact={true}
+                  />
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
                   {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
                     <Button
                       variant="outline"
@@ -1861,10 +1863,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         e.preventDefault();
                         setIsEditModalOpen(true);
                       }}
-                      className="font-bold text-xs h-[38px] px-4 text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                      className="font-bold text-xs h-[32px] sm:h-[38px] px-2 sm:px-4 text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
                     >
-                      <Edit className="w-4 h-4 mr-1.5" />
-                      Editar Proceso
+                      <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                      Editar
                     </Button>
                   )}
                   {(() => {
@@ -1882,10 +1884,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onClick={() => setIsProvisionModalOpen(true)}
                         disabled={!esAbogadoResponsable}
                         title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
-                        className="font-bold text-xs h-[38px] px-4 text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="font-bold text-xs h-[32px] sm:h-[38px] px-2 sm:px-4 text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <DollarSign className="w-4 h-4 mr-1.5" />
-                        Provisión Contable
+                        <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                        <span className="hidden sm:inline">Provisión Contable</span>
+                        <span className="sm:hidden">Provisión</span>
                       </Button>
                     );
                   })()}
@@ -1893,10 +1896,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Button
                       variant="outline"
                       onClick={() => setModalAnexarAbierto(true)}
-                      className="font-bold text-xs h-[38px] px-4 text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                      className="font-bold text-xs h-[32px] sm:h-[38px] px-2 sm:px-4 text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
                     >
-                      <LinkIcon className="w-4 h-4 mr-1.5" />
-                      Asociado
+                      <LinkIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                      <span className="hidden sm:inline">Asociado</span>
                     </Button>
                   )}
                 </div>

@@ -478,13 +478,13 @@ export function SeccionListasChequeoExpediente({
   // Estado de carga
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-8">
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-4">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-spin" />
-          <h3 className="text-lg font-bold text-gray-900 mb-2">
+          <Loader2 className="w-8 h-8 text-blue-600 mx-auto mb-2 animate-spin" />
+          <h3 className="text-sm font-bold text-gray-900 mb-1">
             Cargando listas de chequeo...
           </h3>
-          <p className="text-gray-600">
+          <p className="text-xs text-gray-600">
             Obteniendo listas vinculadas a esta auditoría
           </p>
         </div>
@@ -495,16 +495,16 @@ export function SeccionListasChequeoExpediente({
   // Estado de error
   if (loadError) {
     return (
-      <div className="bg-white rounded-xl border-2 border-red-200 p-8">
+      <div className="bg-white rounded-xl border-2 border-red-200 p-4">
         <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-red-900 mb-2">
+          <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
+          <h3 className="text-sm font-bold text-red-900 mb-1">
             Error al cargar listas
           </h3>
-          <p className="text-red-600 mb-4">{loadError}</p>
+          <p className="text-xs text-red-600 mb-3">{loadError}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors"
+            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-semibold transition-colors"
           >
             Reintentar
           </button>
@@ -529,23 +529,23 @@ export function SeccionListasChequeoExpediente({
 
   if (listasEtapaActual.length === 0) {
     return (
-      <div className={`bg-white border-2 ${etapaBorderColors[etapaActual] || 'border-gray-200'} rounded-lg p-4`}>
+      <div className={`bg-white border-2 ${etapaBorderColors[etapaActual] || 'border-gray-200'} rounded-lg p-3`}>
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-              <CheckSquare className="w-6 h-6 text-gray-400" />
+            <h3 className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+              <CheckSquare className="w-4 h-4 text-gray-400" />
               Listas de Chequeo - {etapaActual}
             </h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-0.5">
               No hay listas de chequeo configuradas para esta etapa.
             </p>
           </div>
           <button
             onClick={navegarAModuloListasChequeo}
-            className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+            className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
           >
-            <Plus className="w-4 h-4" />
-            Generar Lista de Chequeo
+            <Plus className="w-3.5 h-3.5" />
+            Generar Lista
           </button>
         </div>
       </div>
@@ -553,30 +553,30 @@ export function SeccionListasChequeoExpediente({
   }
 
   return (
-    <div className={`bg-white border-2 ${etapaBorderColors[etapaActual]} rounded-lg p-4`}>
-    <div className="space-y-4">
+    <div className={`bg-white border-2 ${etapaBorderColors[etapaActual]} rounded-lg p-3`}>
+    <div className="space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-            <CheckSquare className="w-6 h-6 text-blue-600" />
+          <h3 className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+            <CheckSquare className="w-4 h-4 text-blue-600" />
             Listas de Chequeo - {etapaActual}
           </h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-xs text-gray-600 mt-0.5">
             {listasEtapaActual.length} lista(s) configurada(s) para esta etapa
           </p>
         </div>
         <button
           onClick={navegarAModuloListasChequeo}
-          className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+          className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
         >
-          <ExternalLink className="w-4 h-4" />
+          <ExternalLink className="w-3.5 h-3.5" />
           Ver Todas las Listas
         </button>
       </div>
 
       {/* Listas de Chequeo */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         {listasEtapaActual.map((lista) => {
           // ✅ VALIDACIÓN: Solo permitir completar items de la etapa actual
           const esEtapaActual = lista.etapaKanban === etapaActual;
@@ -584,17 +584,17 @@ export function SeccionListasChequeoExpediente({
           return (
             <div
               key={lista.id}
-              className={`bg-white rounded-xl border-2 overflow-hidden hover:border-blue-300 transition-all ${
+              className={`bg-white rounded-lg border-2 overflow-hidden hover:border-blue-300 transition-all ${
                 esEtapaActual ? 'border-gray-200' : 'border-gray-300 opacity-70'
               }`}
             >
               {/* Header de la lista */}
-              <div className={`px-5 py-4 border-b-2 border-gray-200 ${
+              <div className={`px-3 py-2 border-b border-gray-200 ${
                 esEtapaActual ? 'bg-gray-50' : 'bg-gray-100'
               }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-2 mb-1">
                       <button
                         onClick={() => setListaExpandida(listaExpandida === lista.id ? null : lista.id)}
                         className="p-1 hover:bg-gray-200 rounded transition-colors"
@@ -606,8 +606,8 @@ export function SeccionListasChequeoExpediente({
                         )}
                       </button>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-base font-black text-gray-900">{lista.nombre}</h4>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-sm font-bold text-gray-900">{lista.nombre}</h4>
                           {!esEtapaActual && (
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-md border border-orange-300">
                               🔒 Solo lectura
@@ -621,23 +621,23 @@ export function SeccionListasChequeoExpediente({
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-gray-600 ml-9">{lista.descripcion}</p>
+                    <p className="text-xs text-gray-600 ml-7">{lista.descripcion}</p>
                   </div>
 
                   {/* Indicador de completitud */}
-                  <div className="text-center ml-4">
-                    <div className={`text-3xl font-black mb-1 ${
+                  <div className="text-center ml-3">
+                    <div className={`text-xl font-black mb-0.5 ${
                       esEtapaActual ? 'text-blue-600' : 'text-gray-400'
                     }`}>
                       {lista.completitud}%
                     </div>
-                    <div className="text-xs text-gray-500">Completitud</div>
+                    <div className="text-[10px] text-gray-500">Completitud</div>
                   </div>
                 </div>
 
                 {/* Barra de progreso */}
-                <div className="mt-4 ml-9">
-                  <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                <div className="mt-2 ml-7">
+                  <div className="flex items-center justify-between text-[10px] text-gray-600 mb-1">
                     <span>
                       {lista.items.filter(i => i.completado).length} / {lista.items.length} items completados
                     </span>
@@ -648,7 +648,7 @@ export function SeccionListasChequeoExpediente({
                       </span>
                     )}
                   </div>
-                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-blue-600 to-blue-700 transition-all duration-500"
                       style={{ width: `${lista.completitud}%` }}
@@ -667,9 +667,9 @@ export function SeccionListasChequeoExpediente({
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="p-5 space-y-4">
+                    <div className="p-3 space-y-2">
                       {/* Items de chequeo */}
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {lista.items.map((item) => {
                           const bloqueadoSinPlantilla =
                             Boolean(item.documentoBibliotecaId)
@@ -678,7 +678,7 @@ export function SeccionListasChequeoExpediente({
                           return (
                           <div
                             key={item.id}
-                            className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${
+                            className={`flex items-start gap-2 p-2 rounded-lg border transition-all ${
                               item.completado
                                 ? 'bg-green-50 border-green-200'
                                 : 'bg-white border-gray-200 hover:border-blue-300'
@@ -707,7 +707,7 @@ export function SeccionListasChequeoExpediente({
                             </button>
 
                             <div className="flex-1 min-w-0">
-                              <p className={`text-sm ${
+                              <p className={`text-xs ${
                                 item.completado 
                                   ? 'text-gray-600 line-through' 
                                   : 'text-gray-900 font-medium'
@@ -738,8 +738,8 @@ export function SeccionListasChequeoExpediente({
                                 </div>
                               )}
                               {bloqueadoSinPlantilla && (
-                                <p className="text-xs text-amber-700 mt-2">
-                                  Sube la plantilla diligenciada abajo («Plantillas requeridas») para poder completar este ítem.
+                                <p className="text-[10px] text-amber-700 mt-1">
+                                  Sube la plantilla diligenciada abajo para completar este ítem.
                                 </p>
                               )}
                             </div>
@@ -764,38 +764,38 @@ export function SeccionListasChequeoExpediente({
 
                       {/* ── Plantillas requeridas de la lista ── */}
                       {lista.documentosAdjuntos.length > 0 ? (
-                        <div className="mt-1 pt-4 border-t-2 border-gray-100">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Paperclip className="w-4 h-4 text-indigo-500" />
-                            <span className="text-sm font-bold text-gray-800">Plantillas requeridas</span>
-                            <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        <div className="mt-1 pt-2 border-t border-gray-100">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                            <span className="text-xs font-bold text-gray-800">Plantillas requeridas</span>
+                            <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
                               {lista.documentosAdjuntos.filter(d => d.diligenciado).length}/{lista.documentosAdjuntos.length} completadas
                             </span>
                           </div>
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             {lista.documentosAdjuntos.map((doc, idx) => {
                               const idDocSubido = extraerIdDocumentoSubido(doc.archivoSubidoUrl);
                               return (
                               <div
                                 key={`${doc.documentoBibliotecaId || doc.nombreDocumento}-${idx}`}
-                                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                                className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
                                   doc.diligenciado
                                     ? 'bg-emerald-50 border-emerald-200'
                                     : 'bg-slate-50 border-slate-200 hover:border-indigo-200'
                                 }`}
                               >
                                 {/* Icono estado */}
-                                <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${
+                                <div className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${
                                   doc.diligenciado ? 'bg-emerald-100' : 'bg-slate-100'
                                 }`}>
                                   {doc.diligenciado
-                                    ? <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                    : <FileText className="w-5 h-5 text-slate-400" />
+                                    ? <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                    : <FileText className="w-4 h-4 text-slate-400" />
                                   }
                                 </div>
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-gray-900 truncate">{doc.nombreDocumento}</p>
+                                  <p className="text-xs font-semibold text-gray-900 truncate">{doc.nombreDocumento}</p>
                                   {(() => {
                                     const itemsAsociados = lista.items
                                       .filter(i => i.documentoBibliotecaId === doc.documentoBibliotecaId)
@@ -910,23 +910,23 @@ export function SeccionListasChequeoExpediente({
       </div>
 
       {/* Footer con acciones */}
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600" />
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-blue-600" />
             <div>
-              <p className="text-sm font-semibold text-blue-900">
+              <p className="text-xs font-semibold text-blue-900">
                 Progreso de la etapa {etapaActual}
               </p>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-black text-blue-600">
+            <div className="text-lg font-black text-blue-600">
               {Math.round(
                 listasEtapaActual.reduce((sum, l) => sum + l.completitud, 0) / listasEtapaActual.length
               )}%
             </div>
-            <div className="text-xs text-blue-700">Completitud total</div>
+            <div className="text-[10px] text-blue-700">Completitud total</div>
           </div>
         </div>
       </div>

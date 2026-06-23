@@ -505,5 +505,200 @@ export class PlanesMejoramientoController {
       throw new NotFoundException(error.message);
     }
   }
-}
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENDPOINTS DE SEGUIMIENTO, EVALUACIÓN Y CIERRE
+  // Fuente: spec-plan-mejoramiento-seguimiento §5.4
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * POST /planes-mejoramiento/acciones/:accionId/evidencias-seguimiento
+   * Carga evidencia formal (auditado). Tabla evidencia_accion.
+   */
+  @Post('acciones/:accionId/evidencias-seguimiento')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_EDIT)
+  cargarEvidenciaFormal(
+    @Param('accionId') accionId: string,
+    @Body() body: {
+      archivoRef: string;
+      archivoNombre: string;
+      archivoTipo?: string;
+      archivoTamanio?: number;
+      descripcion?: string;
+      cargadaPorId: string;
+      cargadaPorNombre?: string;
+    },
+  ) {
+    return this.planesMejoramientoService.cargarEvidenciaAccion(accionId, body);
+  }
+
+  /**
+   * GET /planes-mejoramiento/acciones/:accionId/evidencias-seguimiento
+   * Lista evidencias formales de una acción.
+   */
+  @Get('acciones/:accionId/evidencias-seguimiento')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
+  listarEvidenciasFormal(@Param('accionId') accionId: string) {
+    return this.planesMejoramientoService.listarEvidenciasAccion(accionId);
+  }
+
+  /**
+   * PUT /planes-mejoramiento/evidencias/:evidenciaId/calificacion
+   * Califica evidencia (Aceptado / Con Observaciones). Solo auditor.
+   */
+  @Put('evidencias/:evidenciaId/calificacion')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_VALIDAR_EVIDENCIA)
+  calificarEvidenciaFormal(
+    @Param('evidenciaId') evidenciaId: string,
+    @Body() body: {
+      calificacion: 'aceptado' | 'con_observaciones';
+      comentarios?: string;
+      solicitaNuevaEvidencia?: boolean;
+      calificadaPorId: string;
+      calificadaPorNombre?: string;
+    },
+  ) {
+    return this.planesMejoramientoService.calificarEvidencia(evidenciaId, body);
+  }
+
+  /**
+   * PUT /planes-mejoramiento/acciones/:accionId/seguimiento-emfo
+   * Registra cumplimiento por acción (cantidad implementada → cálculo automático).
+   */
+  @Put('acciones/:accionId/seguimiento-emfo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_SEGUIMIENTO)
+  registrarSeguimientoEmfo(
+    @Param('accionId') accionId: string,
+    @Body() body: {
+      cantidadImplementada: number;
+      observacionCumplimiento?: string;
+      responsableSeguimiento?: string;
+    },
+  ) {
+    return this.planesMejoramientoService.registrarSeguimientoAccion(accionId, body);
+  }
+
+  /**
+   * PUT /planes-mejoramiento/acciones/:accionId/efectividad
+   * Registra efectividad (dos criterios SI/NO → cálculo automático).
+   */
+  @Put('acciones/:accionId/efectividad')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_SEGUIMIENTO)
+  registrarEfectividadAccion(
+    @Param('accionId') accionId: string,
+    @Body() body: {
+      evaluarAplicacionControles: boolean;
+      validarSituacionNoRepitio: boolean;
+      observacionEfectividad?: string;
+    },
+  ) {
+    return this.planesMejoramientoService.registrarEfectividad(accionId, body);
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/alertas
+   * Lista alertas generadas para un plan.
+   */
+  @Get(':planId/alertas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
+  getAlertasPlan(@Param('planId') planId: string) {
+    return this.planesMejoramientoService.getAlertas(planId);
+  }
+
+  /**
+   * POST /planes-mejoramiento/:planId/generar-alertas
+   * Genera alertas nuevas evaluando condiciones actuales.
+   */
+  @Post(':planId/generar-alertas')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_SEGUIMIENTO)
+  generarAlertasPlan(@Param('planId') planId: string) {
+    return this.planesMejoramientoService.generarAlertas(planId);
+  }
+
+  /**
+   * PUT /planes-mejoramiento/:planId/cierre
+   * Cierra un plan de mejoramiento.
+   */
+  @Put(':planId/cierre')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_CERRAR)
+  cerrarPlanMejoramiento(
+    @Param('planId') planId: string,
+    @Body() body: {
+      cerradoPorId: string;
+      cerradoPorNombre?: string;
+      observacionesCierre?: string;
+    },
+  ) {
+    return this.planesMejoramientoService.cerrarPlan(planId, body);
+  }
+
+  /**
+   * PUT /planes-mejoramiento/:planId/archivo
+   * Archiva el expediente (índice electrónico).
+   */
+  @Put(':planId/archivo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_CERRAR)
+  archivarExpedientePlan(
+    @Param('planId') planId: string,
+    @Body() body: { indiceElectronicoRef: string },
+  ) {
+    return this.planesMejoramientoService.archivarExpediente(planId, body);
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/cierre
+   * Obtiene el estado de cierre de un plan.
+   */
+  @Get(':planId/cierre')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
+  getCierrePlan(@Param('planId') planId: string) {
+    return this.planesMejoramientoService.getCierre(planId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUIMIENTO PERIÓDICO (RF-SG-09 / EM-PT-002 act. 5 y 7)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /planes-mejoramiento/:planId/seguimientos
+   * Lista los seguimientos periódicos de un plan.
+   */
+  @Get(':planId/seguimientos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORAMIENTO_VIEW)
+  getSeguimientosPlan(@Param('planId') planId: string) {
+    return this.planesMejoramientoService.getSeguimientosPlan(planId);
+  }
+
+  /**
+   * POST /planes-mejoramiento/:planId/seguimientos
+   * Registra un seguimiento periódico manual + informe (RF-SG-10).
+   */
+  @Post(':planId/seguimientos')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_MEJORA_SEGUIMIENTO)
+  registrarSeguimiento(
+    @Param('planId') planId: string,
+    @Body() body: {
+      periodicidad: 'TRIMESTRAL' | 'SEMESTRAL';
+      tipoControl: 'INTERNO' | 'ENTE_EXTERNO';
+      fechaCorte: string;
+      responsableId: string;
+      responsableNombre?: string;
+      resumen?: string;
+      informeRef?: string;
+    },
+  ) {
+    return this.planesMejoramientoService.registrarSeguimientoPeriodico(planId, body);
+  }
+}
