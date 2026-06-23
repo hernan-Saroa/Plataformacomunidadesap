@@ -173,6 +173,23 @@ export function DigitalFolderSection({
   const docsFingerprint = documentos.map(d => `${d.id}:${d.tipo_documento_id || ''}:${d.estado}`).join('|');
   useEffect(() => { loadTiposDocumentos(); }, [docsFingerprint, selectedUserId]);
 
+  // Carga ROBUSTA del UUID de la carpeta para habilitar "Documento específico".
+  // Independiente del checklist (que puede caer al fallback sin devolver carpeta).
+  // getCarpetaByPersona hace ensureCarpetaForPersona → siempre devuelve un id válido.
+  useEffect(() => {
+    const personaIdClean = selectedUserId?.replace('persona:', '') || '';
+    if (!personaIdClean) { setCarpetaDigitalId(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await supabaseService.documentos.getCarpetaByPersona(personaIdClean);
+        const uuid = res?.data?.carpeta_digital_id || res?.data?.id || null;
+        if (!cancelled && uuid && !String(uuid).startsWith('carpeta:')) setCarpetaDigitalId(uuid);
+      } catch { /* el checklist puede haberlo seteado igual */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedUserId]);
+
   const handleChangeUser = (userId: string) => {
     setSelectedUserId(userId);
   };

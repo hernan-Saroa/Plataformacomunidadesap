@@ -4,10 +4,14 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
 import { CarpetaDigitalService } from './carpeta-digital.service';
+import { DocumentTypeValidatorService } from './document-type-validator.service';
 
 @Controller()
 export class CarpetaDigitalController {
-  constructor(private readonly carpetaDigitalService: CarpetaDigitalService) {}
+  constructor(
+    private readonly carpetaDigitalService: CarpetaDigitalService,
+    private readonly docTypeValidator: DocumentTypeValidatorService,
+  ) {}
 
   @Get('carpeta-digital')
   async getAllCarpetas() {
@@ -84,17 +88,39 @@ export class CarpetaDigitalController {
     if (!file) return { success: false, message: 'Archivo requerido' };
     const cleanId = String(personaId || '').replace(/^carpeta:/, '');
     const urlArchivo = `/auth/api/v1/uploads/carpeta-digital/${cleanId}/${file.filename}`;
-    const data = await this.carpetaDigitalService.createDocumento({
+    const tipoDocumentoId = body?.tipoDocumentoId || body?.tipoDocumento || null;
+
+    // Validación SOFT de tipo: escanea el PDF y compara contra el nombre+descripción
+    // del tipo de documento configurado (general o individual). No bloquea la carga.
+    let validacionTipo: any = undefined;
+    if (tipoDocumentoId) {
+      const tipo = await this.carpetaDigitalService.findTipoDocumentoById(tipoDocumentoId);
+      if (tipo) {
+        validacionTipo = await this.docTypeValidator.validate({
+          filePath: (file as any).path,
+          originalName: file.originalname,
+          expectedName: tipo.nombre,
+          expectedDescription: tipo.descripcion || undefined,
+        });
+      }
+    }
+
+    const created = await this.carpetaDigitalService.createDocumento({
       personaId: cleanId,
       nombre: file.originalname,
       urlArchivo,
-      tipoDocumentoId: body?.tipoDocumentoId || body?.tipoDocumento || null,
+      tipoDocumentoId,
       rundSoporteId: body?.rundSoporteId || null,
       categoria: body?.categoria || 'otros',
       tipoArchivo: extname(file.originalname).replace('.', '').toLowerCase(),
       tamanoBytes: file.size,
       comentarios: body?.descripcion || null,
     });
+    // validacionTipo se EMBEBE en data porque el apiClient del shell desenvuelve
+    // {success, data} y descartaría cualquier campo hermano de data.
+    const data = (created && typeof created === 'object' && !Array.isArray(created))
+      ? { ...created, validacionTipo }
+      : { resultado: created, validacionTipo };
     return { success: true, data };
   }
 
