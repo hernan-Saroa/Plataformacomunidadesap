@@ -153,7 +153,7 @@ export class EmailsService {
     }
 
     const transporter = await this.getTransporter(config);
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: config.from,
       to: payload.to,
       subject: payload.subject,
@@ -165,6 +165,14 @@ export class EmailsService {
         contentType: attachment.contentType,
       })),
     });
+
+    this.logger.log(
+      `[SMTP] to=${payload.to} messageId=${info.messageId} accepted=${JSON.stringify(info.accepted)} rejected=${JSON.stringify(info.rejected)}`,
+    );
+
+    if (info.rejected?.length) {
+      this.logger.warn(`[SMTP] Gmail rechazó la entrega a: ${info.rejected.join(', ')}`);
+    }
 
     return { sent: true };
   }

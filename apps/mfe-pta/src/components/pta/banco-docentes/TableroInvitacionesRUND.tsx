@@ -131,10 +131,11 @@ export function TableroInvitacionesRUND() {
   const fetchInvitaciones = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/pta/api/v1/pta/banco-docentes/invitaciones');
-      if (res.data?.success) {
-        setInvitaciones(res.data.data || []);
-      }
+      // apiClient desenvuelve {success, data} y devuelve `data` directamente,
+      // así que `res` ya es el array. Soportamos también el caso sin desenvolver.
+      const res: any = await apiClient.get('/pta/api/v1/pta/banco-docentes/invitaciones');
+      const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+      setInvitaciones(list);
     } catch (err: any) {
       setError(err.message || 'Error al cargar invitaciones');
     } finally {
