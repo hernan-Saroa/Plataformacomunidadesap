@@ -205,42 +205,53 @@ export async function seedTablerosKanban(dataSource: DataSource) {
   // 7. Definir etapas base para Planes de Mejoramiento
   const etapasPMOficiales = [
     {
-      nombre: 'Suscripción y Formulación',
-      descripcion: 'Definición del plan de mejoramiento',
+      nombre: 'Formulación',
+      descripcion: 'Definición y formulación del plan de mejoramiento',
       orden: 1,
-      color: '#3B82F6',
-      tiempoSLA: 10,
+      color: '#9333ea',
+      tiempoSLA: 15,
       limiteWIP: 999,
       notificarVencimiento: true,
-      diasAnticipacionAlerta: 2,
+      diasAnticipacionAlerta: 3,
       estado: EstadoEtapa.INICIAL,
     },
     {
-      nombre: 'Ejecución de Acciones',
-      descripcion: 'Implementación de acciones correctivas',
+      nombre: 'Aprobado',
+      descripcion: 'Plan revisado y aprobado',
       orden: 2,
-      color: '#F59E0B',
-      tiempoSLA: 60,
+      color: '#3B82F6',
+      tiempoSLA: 0,
+      limiteWIP: 999,
+      notificarVencimiento: false,
+      diasAnticipacionAlerta: 0,
+      estado: EstadoEtapa.INTERMEDIA,
+    },
+    {
+      nombre: 'En Ejecución',
+      descripcion: 'Implementación de acciones',
+      orden: 3,
+      color: '#10B981',
+      tiempoSLA: 180,
       limiteWIP: 999,
       notificarVencimiento: true,
       diasAnticipacionAlerta: 10,
       estado: EstadoEtapa.INTERMEDIA,
     },
     {
-      nombre: 'Verificación',
-      descripcion: 'Verificación de cumplimiento por parte de OCI',
-      orden: 3,
-      color: '#8B5CF6',
-      tiempoSLA: 15,
+      nombre: 'Con Retraso',
+      descripcion: 'Plan con acciones vencidas',
+      orden: 4,
+      color: '#F97316',
+      tiempoSLA: 0,
       limiteWIP: 999,
       notificarVencimiento: true,
-      diasAnticipacionAlerta: 3,
+      diasAnticipacionAlerta: 0,
       estado: EstadoEtapa.INTERMEDIA,
     },
     {
-      nombre: 'Cerrado',
+      nombre: 'Completado',
       descripcion: 'Plan completado exitosamente',
-      orden: 4,
+      orden: 5,
       color: '#10B981',
       tiempoSLA: 0,
       limiteWIP: 999,
@@ -248,6 +259,17 @@ export async function seedTablerosKanban(dataSource: DataSource) {
       diasAnticipacionAlerta: 0,
       estado: EstadoEtapa.FINAL,
     },
+    {
+      nombre: 'Suspendido',
+      descripcion: 'Plan suspendido temporalmente o cancelado',
+      orden: 6,
+      color: '#6B7280',
+      tiempoSLA: 0,
+      limiteWIP: 999,
+      notificarVencimiento: false,
+      diasAnticipacionAlerta: 0,
+      estado: EstadoEtapa.FINAL,
+    }
   ];
 
   const etapasPMActuales = await etapaRepo.find({
@@ -265,8 +287,43 @@ export async function seedTablerosKanban(dataSource: DataSource) {
       await etapaRepo.save(etapa);
       console.log(`✅ Etapa agregada al PM: ${config.nombre}`);
     } else {
-      // ⚠️ Respetar configuración existente en la base de datos
-      console.log(`⏭️ Etapa PM "${config.nombre}" ya existe, se omite sobrescritura.`);
+      let needsSave = false;
+      if (etapa.visible === false) {
+        etapa.visible = true;
+        needsSave = true;
+      }
+      if (etapa.orden !== config.orden) {
+        etapa.orden = config.orden;
+        needsSave = true;
+      }
+      if (etapa.color !== config.color) {
+        etapa.color = config.color;
+        needsSave = true;
+      }
+      
+      if (needsSave) {
+        await etapaRepo.save(etapa);
+        console.log(`🔄 Etapa actualizada PM (visible/orden/color): ${config.nombre}`);
+      } else {
+        console.log(`⏭️ Etapa PM "${config.nombre}" ya existe, se omite sobrescritura.`);
+      }
+    }
+  }
+
+  // Limpiar etapas obsoletas de PM
+  const nombresPMOficiales = etapasPMOficiales.map((e) => e.nombre);
+  const etapasPMAEliminar = etapasPMActuales.filter((e) => !nombresPMOficiales.includes(e.nombre));
+  
+  if (etapasPMAEliminar.length > 0) {
+    console.log(`🧹 Limpiando ${etapasPMAEliminar.length} etapas no oficiales de PM...`);
+    for (const etapa of etapasPMAEliminar) {
+      try {
+        await etapaRepo.remove(etapa);
+      } catch (err) {
+        console.warn(`⚠️ No se pudo eliminar la etapa ${etapa.nombre}. Se oculta.`);
+        etapa.visible = false;
+        await etapaRepo.save(etapa);
+      }
     }
   }
 

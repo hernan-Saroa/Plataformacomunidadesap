@@ -1749,7 +1749,14 @@ export class BancoDocentesService implements OnModuleInit {
     const emailResult = await this.sendEmail(correoInstitucional, subject, text, html);
     this.logger.log(`[RUND] Invitación para ${correoInstitucional} (enviada=${emailResult.sent}). Token: ${token}`);
 
-    return { tokenAcceso: token, expiresAt: fechaExpiracion, emailSent: emailResult.sent, emailError: emailResult.error };
+    const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+    return {
+      tokenAcceso: token,
+      expiresAt: fechaExpiracion,
+      emailSent: emailResult.sent,
+      emailError: emailResult.error,
+      ...(isDev ? { devLink: link } : {}),
+    };
   }
 
   async getInvitaciones() {
