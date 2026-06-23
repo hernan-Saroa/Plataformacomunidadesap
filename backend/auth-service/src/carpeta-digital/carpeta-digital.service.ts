@@ -75,6 +75,12 @@ export class CarpetaDigitalService {
     return tipos.map((tipo) => this.toTipoDocumentoDto(tipo));
   }
 
+  /** Busca un tipo de documento por id (para validación de contenido en upload). */
+  async findTipoDocumentoById(id: string): Promise<TipoDocumento | null> {
+    if (!id) return null;
+    return (await this.tipoDocumentoRepo.findOne({ where: { id } })) || null;
+  }
+
   async createTipoDocumento(data: Record<string, any>) {
     const tipo = this.tipoDocumentoRepo.create(this.toTipoDocumentoEntity(data));
     const saved = await this.tipoDocumentoRepo.save(tipo);

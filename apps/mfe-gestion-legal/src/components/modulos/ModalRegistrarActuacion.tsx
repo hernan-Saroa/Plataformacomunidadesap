@@ -250,7 +250,7 @@ export function ModalRegistrarActuacion({
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton size="md" className="!w-[70vw] !max-w-[70vw] !h-[85vh] !max-h-[85vh] overflow-y-auto flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton size="md" className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Registrar Actuación Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar actuaciones procesales en el expediente {expedienteId}
@@ -503,6 +503,29 @@ export function ModalRegistrarActuacion({
                       );
                     })}
                   </div>
+                  {(() => {
+                    const idsDocs = documentosDelExpediente.map((doc: any) => doc.id?.toString());
+                    const todosSeleccionados = idsDocs.length > 0 && idsDocs.every(id => documentosAsociados.includes(id));
+                    return (
+                      <div className="border-t border-gray-100 px-3 py-2 bg-gray-50/60 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs font-bold text-blue-700 border-blue-200 hover:bg-blue-50"
+                          onClick={() => {
+                            if (todosSeleccionados) {
+                              setDocumentosAsociados([]);
+                            } else {
+                              setDocumentosAsociados(idsDocs);
+                            }
+                          }}
+                        >
+                          {todosSeleccionados ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                        </Button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

@@ -213,6 +213,17 @@ const getExpirationStatus = (doc: CarpetaDocumento): 'expired' | 'warning' | 'ok
   return 'ok';
 };
 
+// Aviso SOFT cuando el validador de contenido detecta que el PDF no parece
+// corresponder al tipo de documento esperado. No bloquea nada; solo informa.
+const warnIfWrongDocType = (validacionTipo: any) => {
+  if (validacionTipo && validacionTipo.validated && validacionTipo.matched === false) {
+    toast.warning('Posible documento incorrecto', {
+      description: validacionTipo.reason || 'El contenido del archivo no parece corresponder al tipo solicitado. Verifica que subiste el documento correcto.',
+      duration: 7000,
+    });
+  }
+};
+
 const getRundEstadoBadge = (estado: string) => {
   const norm = String(estado || '').toLowerCase().trim();
   if (norm === 'aprobado' || norm === 'validado' || norm === 'ok') {
@@ -1128,6 +1139,7 @@ export function CarpetaDigitalSharedView({
       const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
       if (res?.success || res) {
         toast.success(`Documento "${file.name}" cargado exitosamente.`);
+        warnIfWrongDocType(res?.validacionTipo);
         await fetchRundData();
       } else {
         toast.error('Error al cargar el documento.');
@@ -1170,6 +1182,7 @@ export function CarpetaDigitalSharedView({
         const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
         if (res?.success || res) {
           toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
+          warnIfWrongDocType(res?.validacionTipo);
           await fetchRundData();
           return true;
         } else {
