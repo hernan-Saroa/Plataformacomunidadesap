@@ -347,12 +347,4 @@ export default queryClient;
 export {
   queryCache,
   mutationCache,
-  invalidarAuditorias,
-  invalidarPlanes,
-  limpiarCache,
-  prefetchAuditorias,
-  getDatosCache,
-  setDatosCache,
-  cancelarQueries,
-  habilitarPersistencia
 };

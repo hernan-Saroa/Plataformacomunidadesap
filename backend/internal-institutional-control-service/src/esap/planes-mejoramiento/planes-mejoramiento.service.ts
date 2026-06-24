@@ -366,9 +366,10 @@ export class PlanesMejoramientoService {
     }
 
     // 2. Si la fecha límite ya pasó y no está completado, es VENCIDO (Con Retraso en FE)
-    if (esVencido) {
-      return PlanMejoramientoEstado.VENCIDO;
-    }
+    // Comentado temporalmente para permitir seguir con el plan de mejoramiento independientemente de la fecha
+    // if (esVencido) {
+    //   return PlanMejoramientoEstado.VENCIDO;
+    // }
 
     // 3. Estados de flujo de aprobación
     if (plan.estado === PlanMejoramientoEstado.RECHAZADO) {

@@ -570,7 +570,7 @@ function FormReunionBase({
           <div className="border-t pt-2">
             <label className="block text-xs font-medium text-gray-700 mb-0.5">
               <FileText className="w-3 h-3 inline mr-1" />
-              {tituloActa} – SELECCIONAR PLANTILLA DESDE BIBLIOTECA
+              {tituloActa} – SELECCIONAR PLANTILLA DESDE BIBLIOTECA - {plantillas.length} PLANTILLAS
             </label>
             <Select
               value={actaBibliotecaId || 'ninguno'}
@@ -715,7 +715,7 @@ export function ModalReunionApertura({
       <DialogContent
           layer="nested"
           className="block overflow-y-auto overflow-x-visible p-6 bg-white"
-          style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+          style={{ width: 620, maxWidth: 620, boxShadow: '0px 0px 60px 20px' }}
           {...propsDialogEvitarCerrarCombobox}
         >
         <DialogHeader className="pb-2">
@@ -910,7 +910,7 @@ export function ModalReunionCierre({
       <DialogContent
           layer="nested"
           className="block overflow-y-auto overflow-x-visible p-6 bg-white"
-          style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+          style={{ width: 620, maxWidth: 620, boxShadow: '0px 0px 60px 20px' }}
           {...propsDialogEvitarCerrarCombobox}
         >
         <DialogHeader className="pb-2">

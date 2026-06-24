@@ -339,18 +339,44 @@ const ORDEN_FASES_EXPEDIENTE: EstadoAuditoria[] = [
   'finalizada',
 ];
 
-const parseLocalDate = (dateInput: any): Date => {
-  if (!dateInput) return new Date();
-  if (dateInput instanceof Date) return dateInput;
+const toValidDate = (dateInput: any): Date | null => {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return Number.isNaN(dateInput.getTime()) ? null : dateInput;
+  }
   const dateStr = String(dateInput).trim();
   const parts = dateStr.split('T')[0].split('-');
   if (parts.length === 3) {
     const y = parseInt(parts[0], 10);
     const m = parseInt(parts[1], 10) - 1;
     const d = parseInt(parts[2], 10);
-    return new Date(y, m, d);
+    const localDate = new Date(y, m, d);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
   }
-  return new Date(dateStr);
+  const parsedDate = new Date(dateStr);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
+const parseLocalDate = (dateInput: any): Date => {
+  return toValidDate(dateInput) ?? new Date();
+};
+
+const formatDateInputValue = (dateInput: any): string => {
+  const date = toValidDate(dateInput);
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateLabel = (
+  dateInput: any,
+  options: Intl.DateTimeFormatOptions,
+  fallback = 'Sin fecha',
+): string => {
+  const date = toValidDate(dateInput);
+  return date ? date.toLocaleDateString('es-CO', options) : fallback;
 };
 
 const TAB_REQUIERE_FASE: Partial<Record<TabActiva, EstadoAuditoria>> = {
@@ -727,7 +753,7 @@ export function ExpedienteAuditoriaCompleto({
           },
 
           metadata: {
-            creadoPor: data.responsable || 'Sistema',
+            creadoPor: data.auditorLider?.nombre || data.auditorLider || data.responsableAreaNombre || (/^[0-9a-f]{8}-/.test(data.responsable || '') ? 'Sistema' : data.responsable) || 'Sistema',
             fechaCreacion: new Date(data.createdAt || data.fechaInicio),
             ultimaModificacion: new Date(data.updatedAt || Date.now()),
             modificadoPor: 'Sistema',
@@ -1308,9 +1334,9 @@ export function ExpedienteAuditoriaCompleto({
   }, [isOpen, auditoria?.id, auditoria?.estado]);
 
   const diasRestantes = useMemo(() => {
-    if (!auditoria?.cronograma?.fechaFin) return 0;
+    const fin = toValidDate(auditoria?.cronograma?.fechaFin);
+    if (!fin) return 0;
     const hoy = new Date();
-    const fin = new Date(auditoria.cronograma.fechaFin);
     const diff = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
   }, [auditoria?.cronograma?.fechaFin]);
@@ -1778,7 +1804,14 @@ export function ExpedienteAuditoriaCompleto({
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {activeTab === 'general' && <TabGeneral auditoria={auditoria} readOnly={auditoria.estado === 'finalizada'} />}
+                    {activeTab === 'general' && (
+                      <TabGeneral
+                        auditoria={auditoria}
+                        readOnly={auditoria.estado === 'finalizada'}
+                        onAuditoriaUpdated={(auditoriaActualizada) => setAuditoria(auditoriaActualizada)}
+                        onReload={() => setRecargarTrigger((prev) => prev + 1)}
+                      />
+                    )}
                     {activeTab === 'planeacion' && (
                       <TabPlaneacion
                         auditoria={auditoria}
@@ -1879,7 +1912,7 @@ export function ExpedienteAuditoriaCompleto({
                     variant="outline"
                     size="sm"
                     onClick={generarInformePDF}
-                    className="font-bold text-xs border-blue-600 text-blue-700 hover:bg-blue-50 shrink-0 self-start sm:self-center px-2.5"
+                    className="font-bold text-xs border-blue-600 text-blue-700 hover:bg-[#003DA5] shrink-0 self-start sm:self-center px-2.5"
                     style={{ minHeight: 0, height: '28px' }}
                   >
                     <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -1899,7 +1932,17 @@ export function ExpedienteAuditoriaCompleto({
 // TABS INDIVIDUALES
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; readOnly?: boolean; onReload?: () => void }) {
+function TabGeneral({
+  auditoria,
+  readOnly,
+  onReload,
+  onAuditoriaUpdated,
+}: {
+  auditoria: Auditoria;
+  readOnly?: boolean;
+  onReload?: () => void;
+  onAuditoriaUpdated?: (auditoria: Auditoria) => void;
+}) {
   const iniciales = (nombre: string) => {
     const parts = (nombre || '').split(' ').filter(Boolean);
     return parts.length >= 2
@@ -1931,6 +1974,8 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
     responsableAreaNombre: auditoria.responsableArea?.nombre || '',
     responsableAreaCargo: auditoria.responsableArea?.cargo || '',
     responsableAreaEmail: auditoria.responsableArea?.email || '',
+    fechaInicio: formatDateInputValue(auditoria.cronograma?.fechaInicio),
+    fechaFin: formatDateInputValue(auditoria.cronograma?.fechaFin),
   });
 
   // ✅ Sincronizar editData cuando llegan datos reales del backend
@@ -1957,6 +2002,8 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
+      fechaInicio: formatDateInputValue(auditoria.cronograma?.fechaInicio),
+      fechaFin: formatDateInputValue(auditoria.cronograma?.fechaFin),
     });
   }, [auditoria.id, auditoria.descripcion, auditoria.alcance, auditoria.metodologia, auditoria.objetivos?.length]);
   const [newItem, setNewItem] = useState<Record<string, string>>({});
@@ -2099,7 +2146,79 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
   const handleSave = async () => {
     setSaving(true);
     try {
-      await controlInternoService.updateAuditoria(auditoria.id, editData);
+      const auditoriaGuardada = await controlInternoService.updateAuditoria(auditoria.id, editData);
+      const toTextArray = (value: any): string[] =>
+        Array.isArray(value)
+          ? value
+            .map((item) =>
+              typeof item === 'string'
+                ? item
+                : item?.descripcion || item?.criterio || item?.texto || item?.nombre || '',
+            )
+            .filter(Boolean)
+          : [];
+      const objetivosGuardados = toTextArray(auditoriaGuardada?.objetivos);
+      const criteriosGuardados = toTextArray(auditoriaGuardada?.criterios);
+      const fechaInicioActualizada =
+        toValidDate(auditoriaGuardada?.fechaInicio ?? editData.fechaInicio) ??
+        toValidDate(auditoria.cronograma?.fechaInicio) ??
+        new Date();
+      const fechaFinActualizada =
+        toValidDate(auditoriaGuardada?.fechaFin ?? editData.fechaFin) ??
+        toValidDate(auditoria.cronograma?.fechaFin) ??
+        fechaInicioActualizada;
+      const duracionDiasActualizada = Math.max(
+        0,
+        Math.ceil((fechaFinActualizada.getTime() - fechaInicioActualizada.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      const diasTranscurridosActualizados = Math.max(
+        0,
+        Math.ceil((Date.now() - fechaInicioActualizada.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      console.log('TabGeneral - Guardado:', auditoria);
+      onAuditoriaUpdated?.({
+        ...auditoria,
+        nombre: auditoriaGuardada?.nombre ?? editData.nombre ?? auditoria.nombre,
+        territorial: auditoriaGuardada?.territorial || auditoriaGuardada?.sede || editData.territorial || auditoria.territorial,
+        tipo: (editData.tipo || auditoriaGuardada?.tipo || auditoria.tipo) as TipoAuditoria,
+        areaAuditable: auditoriaGuardada?.areaObjetivo || editData.areaAuditable || auditoria.areaAuditable,
+        procesoNombre: auditoriaGuardada?.procesoAuditado || editData.procesoAuditado || auditoria.procesoNombre,
+        nivelRiesgo: (auditoriaGuardada?.riesgoKanban || editData.nivelRiesgo || auditoria.nivelRiesgo) as NivelRiesgo,
+        responsableArea: {
+          ...auditoria.responsableArea,
+          nombre: auditoriaGuardada?.responsableAreaNombre || editData.responsableAreaNombre || auditoria.responsableArea.nombre,
+          cargo: auditoriaGuardada?.responsableAreaCargo || editData.responsableAreaCargo || auditoria.responsableArea.cargo,
+          email: auditoriaGuardada?.responsableAreaEmail || editData.responsableAreaEmail || auditoria.responsableArea.email,
+        },
+        descripcion: auditoriaGuardada?.descripcion ?? editData.descripcion ?? auditoria.descripcion,
+        alcance: auditoriaGuardada?.alcance ?? editData.alcance ?? auditoria.alcance,
+        metodologia: auditoriaGuardada?.metodologia ?? editData.metodologia ?? auditoria.metodologia,
+        presupuestoEstimado: auditoriaGuardada?.presupuestoEstimado ?? editData.presupuestoEstimado ?? auditoria.presupuestoEstimado,
+        observacionesAdicionales: auditoriaGuardada?.observacionesAdicionales ?? editData.observacionesAdicionales ?? auditoria.observacionesAdicionales,
+        calificacionRiesgo: auditoriaGuardada?.calificacionRiesgo ?? editData.calificacionRiesgo ?? auditoria.calificacionRiesgo,
+        objetivos: objetivosGuardados.length ? objetivosGuardados : editData.objetivos,
+        criteriosAuditoria: criteriosGuardados.length ? criteriosGuardados : editData.criteriosAuditoria,
+        normatividadAplicable: Array.isArray(auditoriaGuardada?.normatividadAplicable)
+          ? auditoriaGuardada.normatividadAplicable
+          : editData.normatividadAplicable,
+        riesgosIdentificados: Array.isArray(auditoriaGuardada?.riesgosIdentificados)
+          ? auditoriaGuardada.riesgosIdentificados
+          : editData.riesgosIdentificados,
+        controlesAplicar: Array.isArray(auditoriaGuardada?.controlesAplicar)
+          ? auditoriaGuardada.controlesAplicar
+          : editData.controlesAplicar,
+        cronograma: {
+          ...auditoria.cronograma,
+          fechaInicio: fechaInicioActualizada,
+          fechaFin: fechaFinActualizada,
+          duracionDias: duracionDiasActualizada,
+          diasTranscurridos: diasTranscurridosActualizados,
+        },
+        metadata: {
+          ...auditoria.metadata,
+          ultimaModificacion: auditoriaGuardada?.updatedAt ? new Date(auditoriaGuardada.updatedAt) : new Date(),
+        },
+      });
       toast.success('✅ Auditoría actualizada', { description: 'Los cambios fueron guardados exitosamente' });
       setIsEditing(false);
       if (onReload) onReload();
@@ -2133,6 +2252,8 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
+      fechaInicio: formatDateInputValue(auditoria.cronograma?.fechaInicio),
+      fechaFin: formatDateInputValue(auditoria.cronograma?.fechaFin),
     });
     setIsEditing(false);
   };
@@ -2353,15 +2474,45 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
           </div>
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Tipo de Auditoría</p>
-            <p className="text-sm font-bold text-gray-900">{auditoria.tipo}</p>
+            {isEditing ? (
+              <select
+                value={editData.tipo}
+                onChange={(e) => handleFieldChange('tipo', e.target.value)}
+                className="text-sm font-bold text-gray-900 border border-gray-200 rounded-md px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+              >
+                <option value="Regular">Regular</option>
+                <option value="Territorial">Territorial</option>
+                <option value="Especial">Especial</option>
+              </select>
+            ) : (
+              <p className="text-sm font-bold text-gray-900">{auditoria.tipo}</p>
+            )}
           </div>
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Periodo</p>
-            <p className="text-sm font-bold text-gray-900">
-              {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
-              {' – '}
-              {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </p>
+            {isEditing ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  value={editData.fechaInicio}
+                  onChange={(e) => handleFieldChange('fechaInicio', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+                />
+                <span className="text-gray-400 text-xs">–</span>
+                <input
+                  type="date"
+                  value={editData.fechaFin}
+                  onChange={(e) => handleFieldChange('fechaFin', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+                />
+              </div>
+            ) : (
+              <p className="text-sm font-bold text-gray-900">
+                {formatDateLabel(auditoria.cronograma?.fechaInicio, { day: '2-digit', month: 'short' })}
+                {' – '}
+                {formatDateLabel(auditoria.cronograma?.fechaFin, { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Nivel de Riesgo</p>
@@ -2565,6 +2716,9 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
                         })}
                       </div>
                     )}
+                    {mostrarSugerenciasResponsable && (
+                      <div className="h-44 pointer-events-none" />
+                    )}
                   </div>
                 )}
               </div>
@@ -2720,17 +2874,35 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
 
           {/* Fechas */}
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="text-center p-3 bg-blue-50/60 rounded-lg border border-blue-100">
+            <div className="text-center p-3 bg-blue-50/60 rounded-lg border border-blue-100 flex flex-col justify-center">
               <p className="text-[10px] text-gray-400 font-medium mb-1">Inicio</p>
-              <p className="text-xs font-black text-gray-900">
-                {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </p>
+              {isEditing ? (
+                <input
+                  type="date"
+                  value={editData.fechaInicio}
+                  onChange={(e) => handleFieldChange('fechaInicio', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full text-center"
+                />
+              ) : (
+                <p className="text-xs font-black text-gray-900">
+                  {formatDateLabel(auditoria.cronograma?.fechaInicio, { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+              )}
             </div>
-            <div className="text-center p-3 bg-purple-50/60 rounded-lg border border-purple-100">
+            <div className="text-center p-3 bg-purple-50/60 rounded-lg border border-purple-100 flex flex-col justify-center">
               <p className="text-[10px] text-gray-400 font-medium mb-1">Fin Estimado</p>
-              <p className="text-xs font-black text-gray-900">
-                {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </p>
+              {isEditing ? (
+                <input
+                  type="date"
+                  value={editData.fechaFin}
+                  onChange={(e) => handleFieldChange('fechaFin', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 w-full text-center"
+                />
+              ) : (
+                <p className="text-xs font-black text-gray-900">
+                  {formatDateLabel(auditoria.cronograma?.fechaFin, { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+              )}
             </div>
           </div>
 
@@ -3126,7 +3298,7 @@ function TabEjecucion({
               variant="outline"
               size="sm"
               onClick={() => setModalAperturaOpen(true)}
-              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-gray-50 text-gray-700 shrink-0"
+              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-[#003DA5] text-gray-700 shrink-0"
             >
               <Users className="w-3.5 h-3.5 mr-1" />
               {reunionApertura ? 'Editar' : 'Registrar'}
@@ -3155,7 +3327,7 @@ function TabEjecucion({
               variant="outline"
               size="sm"
               onClick={() => setModalCierreOpen(true)}
-              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-gray-50 text-gray-700 shrink-0"
+              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-[#003DA5] text-gray-700 shrink-0"
             >
               <Users className="w-3.5 h-3.5 mr-1" />
               {reunionCierre ? 'Editar' : 'Registrar'}

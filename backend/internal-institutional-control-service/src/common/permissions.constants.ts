@@ -98,6 +98,7 @@ export const ControlInternoPermissions = {
   CONFIG_TIPOS_AUDITORIA: 'control-interno.configuraciones.manage',
   CONFIG_TABLEROS: 'control-interno.configuraciones.manage',
   CONFIG_LISTAS_CHEQUEO: 'control-interno.configuraciones.manage',
+  ROLES_DELETE: 'control-interno.roles.delete',
 
   // ═══════════════════════════════════════════════════════════════
   // UNIVERSO AUDITABLE / PROGRAMA ANUAL

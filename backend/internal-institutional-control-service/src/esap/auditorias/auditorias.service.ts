@@ -274,13 +274,15 @@ export class AuditoriasService {
     auditorias.forEach(aud => {
       const isNameUuid = aud.responsableAreaNombre && this.isValidUUID(String(aud.responsableAreaNombre));
       const isRespUuid = aud.responsable && this.isValidUUID(String(aud.responsable));
+      const areaEmail = aud.responsableAreaEmail?.trim();
+      const hasAreaEmail = !!areaEmail && areaEmail.includes('@');
       if (isNameUuid) responsableUuids.add(String(aud.responsableAreaNombre));
-      else if (isRespUuid) {
+      else if (isRespUuid && !hasAreaEmail) {
         responsableUuids.add(String(aud.responsable));
       }
-      // Si no tiene nombre pero sí email, buscar por email
-      if ((!aud.responsableAreaNombre || aud.responsableAreaNombre.trim() === '') && aud.responsableAreaEmail && aud.responsableAreaEmail.includes('@')) {
-        emailsToResolve.add(aud.responsableAreaEmail.trim().toLowerCase());
+      // Si tiene email de responsable de área, ese correo es la fuente autoritativa del nombre.
+      if (hasAreaEmail) {
+        emailsToResolve.add(areaEmail.toLowerCase());
       }
     });
 
@@ -289,7 +291,9 @@ export class AuditoriasService {
       auditorias.forEach(aud => {
         const isNameUuid = aud.responsableAreaNombre && this.isValidUUID(String(aud.responsableAreaNombre));
         const isRespUuid = aud.responsable && this.isValidUUID(String(aud.responsable));
-        const targetUuid = isNameUuid ? String(aud.responsableAreaNombre) : (isRespUuid ? String(aud.responsable) : null);
+        const areaEmail = aud.responsableAreaEmail?.trim();
+        const hasAreaEmail = !!areaEmail && areaEmail.includes('@');
+        const targetUuid = isNameUuid ? String(aud.responsableAreaNombre) : (isRespUuid && !hasAreaEmail ? String(aud.responsable) : null);
         if (targetUuid) {
           const details = detailsMap.get(targetUuid.toLowerCase());
           if (details) {
@@ -961,8 +965,11 @@ export class AuditoriasService {
       }
     }
 
-    // ✅ RESOLVER NOMBRES DEL EQUIPO
+    // ✅ RESOLVER NOMBRES DEL EQUIPO Y RESPONSABLE
     const teamPersonaIds = auditoria.equipoAuditores?.map(eq => String(eq.personaId)) || [];
+    if (auditoria.responsable && this.isValidUUID(auditoria.responsable)) {
+      teamPersonaIds.push(String(auditoria.responsable));
+    }
     const teamNamesMap = await this.getPersonasNames(teamPersonaIds);
 
     // Serializar fechas para evitar problemas de zona horaria
@@ -4267,11 +4274,6 @@ export class AuditoriasService {
     }
   }
 }
-
-
-
-
-
 
 
 

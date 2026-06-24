@@ -65,6 +65,15 @@ export class PlanAnual5Roles {
   @Column({ type: 'varchar', length: 20, nullable: true, name: 'orden_aprobacion', default: 'secuencial' })
   orden_aprobacion: string;
 
+  @Column({ type: 'jsonb', nullable: true, name: 'firma_activacion', default: null })
+  firma_activacion: {
+    firmante: string;
+    fechaFirma: string;
+    ip: string;
+    hash: string;
+    userAgent: string;
+  } | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
