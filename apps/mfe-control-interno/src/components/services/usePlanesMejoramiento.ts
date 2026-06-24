@@ -480,6 +480,23 @@ export function usePlanesMejoramiento(filters?: PlanesMejoramientoFilters) {
     }
   }, [fetchPlanes]);
 
+  // Helper to map frontend column IDs / states to backend states
+  const mapFrontendToBackendEstado = (estado: string): string => {
+    const map: Record<string, string> = {
+      SUSCRIPCION_Y_FORMULACION: 'revision',
+      EJECUCION_DE_ACCIONES: 'en_ejecucion',
+      VERIFICACION: 'completado',
+      CERRADO: 'completado',
+      REVISION: 'revision',
+      APROBADO: 'aprobado',
+      EN_EJECUCION: 'en_ejecucion',
+      COMPLETADO: 'completado',
+      SUSPENDIDO: 'rechazado',
+      FORMULACION: 'borrador',
+    };
+    return map[estado] ?? estado.toLowerCase();
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // Actualizar estado de un plan
   // ─────────────────────────────────────────────────────────────────────────
@@ -490,7 +507,8 @@ export function usePlanesMejoramiento(filters?: PlanesMejoramientoFilters) {
     try {
       console.log('🔄 [usePlanesMejoramiento] Actualizando estado:', { planId, nuevoEstado });
       
-      await controlInternoService.updatePlanMejoramiento(planId, { estado: nuevoEstado });
+      const backendEstado = mapFrontendToBackendEstado(nuevoEstado);
+      await controlInternoService.updatePlanMejoramiento(planId, { estado: backendEstado });
       
       // Actualizar localmente
       setPlanes(prev => prev.map(p => 

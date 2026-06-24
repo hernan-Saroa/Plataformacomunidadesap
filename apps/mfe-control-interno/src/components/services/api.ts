@@ -713,7 +713,7 @@ export const informesLeyApi = {
 export interface ConfiguracionProfesionalOCI {
   id: string;
   idTercero: string;
-  rolOcig: 'Jefe OCIG' | 'Auditor Líder' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  rolOcig: 'Jefe OCIG' | 'Auditor Líder' | 'Auditor' | 'Auditor Júnior' | 'Profesional OCI' | 'Apoyo Técnico' | 'Aprobador PAI';
   /** @deprecated use rolOcig */ rolOCI?: string;
   especialidades: string[];
   capacidadMaximaAuditorias: number;

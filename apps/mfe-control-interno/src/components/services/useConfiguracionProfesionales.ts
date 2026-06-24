@@ -491,6 +491,10 @@ export function useConfiguracionProfesionales() {
         observaciones: config.observaciones
       });
 
+      if (!response.success) {
+        throw new Error(response.error || 'Error al agregar profesional');
+      }
+
       if (response.data) {
         const nuevaConfig = convertirConfigBackendALocal(response.data);
         setConfiguracionesOCI(prev => [...prev, nuevaConfig]);
@@ -523,6 +527,10 @@ export function useConfiguracionProfesionales() {
         observaciones: cambios.observaciones
       });
 
+      if (!response.success) {
+        throw new Error(response.error || 'Error al actualizar configuración');
+      }
+
       if (response.data) {
         const configActualizada = convertirConfigBackendALocal(response.data);
         setConfiguracionesOCI(prev => 
@@ -547,7 +555,10 @@ export function useConfiguracionProfesionales() {
         throw new Error('Configuración no encontrada');
       }
 
-      await configuracionesProfesionalesOCIApi.delete(configActual.id);
+      const response = await configuracionesProfesionalesOCIApi.delete(configActual.id);
+      if (!response.success) {
+        throw new Error(response.error || 'Error al eliminar profesional');
+      }
       
       setConfiguracionesOCI(prev => prev.filter(c => c.usuarioId !== usuarioId));
       toast.success('🗑️ Profesional removido del equipo OCI');

@@ -434,7 +434,7 @@ export class ConfiguracionesProfesionalesOCIGService {
 
   /**
    * Personas que pueden integrar el comité de aprobación del PAI:
-   * usuarios activos con permiso control-interno.plan-anual.approve (sin rol OCIG "Aprobador PAI").
+   * SOLO profesionales configurados con rol_ocig = 'Aprobador PAI'.
    */
   async buscarAprobadoresPlanAnual(busqueda?: string): Promise<
     Array<{
@@ -448,7 +448,7 @@ export class ConfiguracionesProfesionalesOCIGService {
     }>
   > {
     try {
-      const params: string[] = [CIP.PLAN_ANUAL_APPROVE];
+      const params: string[] = ['Aprobador PAI'];
       let query = `
         SELECT DISTINCT
           p.id_person,
@@ -456,21 +456,13 @@ export class ConfiguracionesProfesionalesOCIGService {
           p.dir_email,
           p.num_identificacion,
           cfg.rol_ocig AS cargo_ocig
-        FROM auth.personas p
+        FROM control_interno.configuracion_profesionales_ocig cfg
+        INNER JOIN auth.personas p ON p.id_person = cfg.id_tercero::uuid
         INNER JOIN auth."user" u ON u.id_person = p.id_person
-        LEFT JOIN control_interno.configuracion_profesionales_ocig cfg
-          ON cfg.id_tercero = p.id_person::text AND cfg.activo = true
-        WHERE p.nom_largo IS NOT NULL
+        WHERE cfg.activo = true
+          AND cfg.rol_ocig = $1
           AND u.is_active = true
-          AND EXISTS (
-            SELECT 1
-            FROM auth.user_roles ur
-            INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
-            INNER JOIN auth.permission perm ON perm.id_permission = rp.id_permission
-            WHERE ur.id_user = u.id_user
-              AND COALESCE(ur.is_active, true) = true
-              AND perm.code = $1
-          )
+          AND p.nom_largo IS NOT NULL
       `;
 
       if (busqueda?.trim()) {
@@ -514,7 +506,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: p.nom_largo || 'Sin Nombre',
         email: p.dir_email || '',
         identificacion: p.num_identificacion || '',
-        cargo: p.cargo_ocig || rolesMap.get(p.id_person)?.[0] || 'Aprobador plan anual',
+        cargo: p.cargo_ocig || 'Aprobador PAI',
         roles: rolesMap.get(p.id_person) || [],
       }));
     } catch (error) {

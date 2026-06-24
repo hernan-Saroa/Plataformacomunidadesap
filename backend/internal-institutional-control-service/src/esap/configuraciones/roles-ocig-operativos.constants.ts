@@ -20,9 +20,17 @@ export const ROLES_OCIG_OPERATIVOS = [
       'Apoya la ejecución de auditorías bajo supervisión de un Auditor Líder o Auditor.',
   },
   {
+    name: 'Profesional OCI',
+    description: 'Profesional de apoyo de la Oficina de Control Interno de Gestión.',
+  },
+  {
     name: 'Apoyo Técnico',
     description:
       'Soporte documental, logístico y técnico al equipo de auditoría.',
+  },
+  {
+    name: 'Aprobador PAI',
+    description: 'Miembro con facultad de aprobación/firma del Plan Anual de Auditoría (PAI).',
   },
 ] as const;
 
