@@ -114,6 +114,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [reasignando, setReasignando] = useState(false);
   const [audienciaIdPendienteEliminar, setAudienciaIdPendienteEliminar] = useState<string | null>(null);
   const [actuacionIdPendienteEliminar, setActuacionIdPendienteEliminar] = useState<string | null>(null);
+  const [docPendienteEliminar, setDocPendienteEliminar] = useState<any | null>(null);
 
   // Estados de datos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -972,9 +973,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleDeleteDocument = async (doc: any) => {
-    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el documento "${doc.nombre}"? Esta acción no se puede deshacer.`);
-    if (!confirmacion) return;
+  const handleDeleteDocument = (doc: any) => {
+    setDocPendienteEliminar(doc);
+  };
+
+  const confirmarEliminarDocumento = async () => {
+    const doc = docPendienteEliminar;
+    if (!doc) return;
+    setDocPendienteEliminar(null);
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
@@ -3352,6 +3358,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onConfirm={confirmarEliminarActuacion}
         titulo="Eliminar Actuación"
         mensaje="¿Estás seguro de eliminar esta actuación procesal? Esta acción no se puede deshacer."
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
+      <DialogoConfirmacion
+        isOpen={!!docPendienteEliminar}
+        onClose={() => setDocPendienteEliminar(null)}
+        onConfirm={confirmarEliminarDocumento}
+        titulo="Eliminar Documento"
+        mensaje={`¿Está seguro de que desea eliminar el documento "${docPendienteEliminar?.nombre ?? ''}"? Esta acción no se puede deshacer.`}
         tipo="peligro"
         textoConfirmar="Sí, eliminar"
         textoCancelar="Cancelar"
