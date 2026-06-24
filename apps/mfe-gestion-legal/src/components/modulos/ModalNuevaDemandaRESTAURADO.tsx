@@ -137,6 +137,21 @@ interface ModalNuevaDemandaRESTAURADOProps {
   tableroSeleccionado?: string;
 }
 
+// ==================== DEMANDADO POR DEFECTO (ESAP) ====================
+// El primer demandado se pre-rellena con la información de la ESAP.
+// Los datos quedan editables y el demandado puede eliminarse manualmente.
+const crearDemandadoESAPPorDefecto = (): Demandado => ({
+  id: 'DEMA-ESAP-DEFAULT',
+  tipoPersona: 'Juridica',
+  cedula: '899999054-9',
+  nombreCompleto: 'Escuela Superior de Administración Pública - ESAP',
+  cargoFuncion: '',
+  telefono: '6012202790',
+  correo: 'ventanillaunica@esap.gov.co',
+  direccion: 'Calle 44 N.º 53-37, CAN, Bogotá D.C.',
+  tieneApoderado: false
+});
+
 // ==================== DATOS PARAMETRIZABLES ====================
 // MEDIOS_CONTROL, TIPOS_PROCESO y ETAPAS_PROCESALES ahora se obtienen
 // dinámicamente desde el submodulo de configuración via useConfiguracionModulo
@@ -901,7 +916,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           fechaEstimacionProvision: '',
           observacionesProvision: '',
           demandantes: [],
-          demandados: [],
+          demandados: [crearDemandadoESAPPorDefecto()],
           otrosActores: [],
           juzgadoTribunal: '',
           departamento: '',
