@@ -39,17 +39,33 @@ import { useAuth } from '../../../hooks/useAuth';
 
 /**
  * Obtiene la URL base para documentos del backend
- * En modo gateway (producción): /services/control-institucional/api/v1/documentos
+ * En modo gateway: {api-gateway}/control-institucional/api/v1/documentos
  * En modo direct (desarrollo local): http://localhost:3007/documentos
  */
 const getDocumentosBaseUrl = () => {
   if (API_MODE === 'gateway') {
-    // En modo gateway, usar ruta relativa que pasa por Nginx -> API Gateway
-    return '/services/control-institucional/api/v1/documentos';
+    return `${getServiceUrl('control-institucional')}/control-institucional/api/v1/documentos`;
   }
   // En modo direct, usar URL directa al microservicio
   return `${getServiceUrl('control-institucional')}/documentos`;
 };
+
+const resolveDocumentoUrl = (rawUrl?: string | null): string => {
+  if (!rawUrl) return '';
+  if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
+  if (rawUrl.startsWith('/control-institucional/api/v1/')) {
+    return `${getServiceUrl('control-institucional')}${rawUrl}`;
+  }
+  if (rawUrl.startsWith('/services/control-institucional/api/v1/')) {
+    return `${getServiceUrl('control-institucional')}${rawUrl.replace(/^\/services/, '')}`;
+  }
+  return `${window.location.origin}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`;
+};
+
+const getDocumentoFileHeaders = (): HeadersInit => ({
+  ...getDefaultHeaders(),
+  Accept: 'application/pdf,image/*,application/octet-stream',
+});
 
 /**
  * Formatea bytes a KB/MB/GB legible
@@ -701,8 +717,8 @@ function BibliotecaDocumentos({
   const handleDescargar = async (documento: DocumentoBiblioteca) => {
     try {
       const dl = documento.urlDownload ?? '';
-      const url = dl.startsWith('http') ? dl : `${window.location.origin}${dl}`;
-      const res = await fetch(url, { headers: getDefaultHeaders() });
+      const url = resolveDocumentoUrl(dl);
+      const res = await fetch(url, { headers: getDocumentoFileHeaders() });
       if (!res.ok) {
         throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
       }
@@ -3023,11 +3039,11 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
 
   useEffect(() => {
     if (!documento.urlPreview) return;
-    const url = documento.urlPreview.startsWith('http') ? documento.urlPreview : `${window.location.origin}${documento.urlPreview}`;
+    const url = resolveDocumentoUrl(documento.urlPreview);
     let revoked = false;
     setLoading(true);
     setError(null);
-    fetch(url, { headers: getDefaultHeaders() })
+    fetch(url, { headers: getDocumentoFileHeaders() })
       .then(res => {
         if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
         return res.blob();
@@ -3053,8 +3069,8 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
   const handleDescargarDesdeModal = useCallback(async () => {
     if (!documento.urlDownload) return;
     try {
-      const url = documento.urlDownload.startsWith('http') ? documento.urlDownload : `${window.location.origin}${documento.urlDownload}`;
-      const res = await fetch(url, { headers: getDefaultHeaders() });
+      const url = resolveDocumentoUrl(documento.urlDownload);
+      const res = await fetch(url, { headers: getDocumentoFileHeaders() });
       if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
       const blob = await res.blob();
       const u = URL.createObjectURL(blob);
