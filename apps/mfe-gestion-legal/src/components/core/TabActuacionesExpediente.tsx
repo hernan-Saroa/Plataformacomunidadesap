@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail } from 'lucide-react';
+import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail, Eye } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Card } from '@esap-mfe/shared-ui/card';
@@ -66,6 +66,12 @@ interface TabActuacionesExpedienteProps {
   expedienteId?: string;
   onReloadExpediente?: () => void;
   onViewDocument?: (doc: any) => void;
+  /**
+   * Abre el documento en el visor en modo SOLO LECTURA (previsualización), sin el flujo de
+   * firma ni el código OTP. Se usa para los roles que no son el aprobador/firmante configurado,
+   * de modo que igual puedan ver el documento sin opción de firmarlo.
+   */
+  onPreviewDocument?: (doc: any) => void;
   onAutoAdvanceStage?: () => void;
   onDeleteActuacion?: (id: string) => Promise<void> | void;
   onSendEmail?: (data: { para: string; cc?: string; asunto: string; cuerpo: string; archivos?: File[] }) => void;
@@ -100,6 +106,7 @@ export function TabActuacionesExpediente({
   expedienteId,
   onReloadExpediente,
   onViewDocument,
+  onPreviewDocument,
   onAutoAdvanceStage,
   onDeleteActuacion,
   onSendEmail,
@@ -625,12 +632,39 @@ export function TabActuacionesExpediente({
     }
   };
 
+  /**
+   * Resuelve la URL absoluta y servible de un archivo del expediente a partir de su URL
+   * almacenada, que puede venir en distintas formas:
+   *   - relativa sin slash:  "files/abc.pdf"        (actuaciones de juzgamiento)
+   *   - con prefijo /legal:  "/legal/files/abc.pdf" (documentos asociados)
+   *   - con /uploads:        "/uploads/abc.pdf"      (actuaciones de defensa judicial)
+   *   - absoluta:            "http://host/files/abc.pdf"
+   * Se usa el endpoint inline (/files/:filename), que es el mismo que emplea el visor y que
+   * está garantizado en el gateway; el nombre de descarga se fuerza en el cliente.
+   */
+  const resolveFileUrl = (rawUrl: string): string => {
+    if (!rawUrl) return '';
+    // URLs absolutas: buildServiceAssetUrl ya reescribe hosts loopback para evitar CORS.
+    if (/^https?:\/\//i.test(rawUrl)) return buildServiceAssetUrl('legal', rawUrl);
+    // Extraer solo el nombre de archivo (sin querystring ni rutas previas).
+    let filename = rawUrl.split('?')[0];
+    if (filename.includes('/files/')) {
+      filename = filename.split('/files/').pop() || filename;
+    } else {
+      filename = filename.split('/').pop() || filename;
+    }
+    return buildServiceAssetUrl('legal', `/files/${filename}`);
+  };
+
   const downloadDocumentFile = async (docUrl: string, docNombre: string) => {
+    if (!docUrl) {
+      toast.error('No hay documento disponible para descargar.');
+      return;
+    }
+    const downloadName = docNombre || docUrl.split('?')[0].split('/').pop() || 'documento';
     try {
-      const storedFilename = docUrl.split('/').pop() || 'documento';
-      const downloadName = docNombre || storedFilename;
-      const downloadUrl = buildServiceAssetUrl('legal', `/files/download/${encodeURIComponent(storedFilename)}?name=${encodeURIComponent(downloadName)}`);
-      const response = await fetch(downloadUrl);
+      const fileUrl = resolveFileUrl(docUrl);
+      const response = await fetch(fileUrl);
       if (!response.ok) throw new Error('Error al descargar');
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -642,6 +676,7 @@ export function TabActuacionesExpediente({
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
+      console.error('Download error:', err);
       toast.error('No se pudo descargar el archivo.');
     }
   };
@@ -1296,14 +1331,36 @@ export function TabActuacionesExpediente({
                                     </p>
                                   </div>
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-[11px] font-bold text-blue-700 hover:text-blue-800 border-blue-200 hover:bg-blue-50 shrink-0 flex items-center gap-1"
-                                  onClick={() => downloadDocumentFile(actuacionDetalle.documentoUrl!, actuacionDetalle.documentoNombre || 'documento.pdf')}
-                                >
-                                  <Download className="w-3.5 h-3.5" /> Descargar
-                                </Button>
+                                <div className="flex gap-1.5 shrink-0">
+                                  {onPreviewDocument && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 text-[11px] font-bold text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50 flex items-center gap-1"
+                                      onClick={() => {
+                                        const docInfo = {
+                                          id: actuacionDetalle.id,
+                                          nombre: actuacionDetalle.documentoNombre || 'documento.pdf',
+                                          url: actuacionDetalle.documentoUrl,
+                                          tipo: actuacionDetalle.tipo || 'Documento',
+                                          descripcion: actuacionDetalle.descripcion || ''
+                                        };
+                                        setActuacionDetalle(null);
+                                        setTimeout(() => onPreviewDocument?.(docInfo), 0);
+                                      }}
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-slate-500" /> Previsualizar
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-[11px] font-bold text-blue-700 hover:text-blue-800 border-blue-200 hover:bg-blue-50 flex items-center gap-1"
+                                    onClick={() => downloadDocumentFile(actuacionDetalle.documentoUrl!, actuacionDetalle.documentoNombre || 'documento.pdf')}
+                                  >
+                                    <Download className="w-3.5 h-3.5" /> Descargar
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })()}
@@ -1356,29 +1413,52 @@ export function TabActuacionesExpediente({
                                       <Download className="w-3.5 h-3.5" /> Descargar
                                     </Button>
                                   )}
-                                  {!signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove() && (
-                                    <Button
-                                      size="sm"
-                                      className="h-8 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1 bg-white"
-                                      variant="outline"
-                                      onClick={() => {
-                                        const docInfo = {
-                                          id: doc.id,
-                                          nombre: doc.nombre,
-                                          url: doc.archivoUrl,
-                                          tipo: doc.tipo || 'Documento Asociado',
-                                          descripcion: doc.descripcion || ''
-                                        };
-                                        // Cerramos primero el detalle (portal) y abrimos el visor en el
-                                        // siguiente tick para no encadenar el cierre del modal del expediente
-                                        // (evita que el clic se interprete como descarte y vuelva al Kanban).
-                                        setActuacionDetalle(null);
-                                        setTimeout(() => onViewDocument(docInfo), 0);
-                                      }}
-                                    >
-                                      <PenTool className="w-3.5 h-3.5 text-emerald-600" /> Firmar
-                                    </Button>
-                                  )}
+                                  {(() => {
+                                    const puedeFirmarDoc = !signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove();
+                                    const docInfo = {
+                                      id: doc.id,
+                                      nombre: doc.nombre,
+                                      url: doc.archivoUrl,
+                                      tipo: doc.tipo || 'Documento Asociado',
+                                      descripcion: doc.descripcion || ''
+                                    };
+                                    // El firmante autorizado ve "Firmar"; el resto de roles ve "Previsualizar"
+                                    // (mismo visor en modo solo lectura, sin código OTP ni opción de firmar).
+                                    if (puedeFirmarDoc) {
+                                      return (
+                                        <Button
+                                          size="sm"
+                                          className="h-8 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1 bg-white"
+                                          variant="outline"
+                                          onClick={() => {
+                                            // Cerramos primero el detalle (portal) y abrimos el visor en el
+                                            // siguiente tick para no encadenar el cierre del modal del expediente
+                                            // (evita que el clic se interprete como descarte y vuelva al Kanban).
+                                            setActuacionDetalle(null);
+                                            setTimeout(() => onViewDocument!(docInfo), 0);
+                                          }}
+                                        >
+                                          <PenTool className="w-3.5 h-3.5 text-emerald-600" /> Firmar
+                                        </Button>
+                                      );
+                                    }
+                                    if (onPreviewDocument && doc.archivoUrl) {
+                                      return (
+                                        <Button
+                                          size="sm"
+                                          className="h-8 text-[11px] font-bold text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50 flex items-center gap-1 bg-white"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setActuacionDetalle(null);
+                                            setTimeout(() => onPreviewDocument?.(docInfo), 0);
+                                          }}
+                                        >
+                                          <Eye className="w-3.5 h-3.5 text-slate-500" /> Previsualizar
+                                        </Button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </div>
                             );

@@ -98,6 +98,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string; descripcion?: string; id?: string } | null>(null);
+  // Cuando es true, el visor se abre en modo previsualización (sin firma ni código OTP).
+  const [visorSoloLectura, setVisorSoloLectura] = useState(false);
   const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
@@ -558,22 +560,26 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleVerDocumento = (doc: any) => {
+  const handleVerDocumento = (doc: any, soloLectura: boolean = false) => {
     if (!isPrevisuable(doc)) {
       handleDescargarDocumento(doc);
       return;
     }
     const fullUrl = getFullUrl(doc.url);
+    setVisorSoloLectura(soloLectura);
     // Abrir el documento en el visor inline
-    setDocParaVisor({ 
-      url: fullUrl, 
-      nombre: doc.nombre || 'Documento', 
-      asunto: doc.tipo || '', 
+    setDocParaVisor({
+      url: fullUrl,
+      nombre: doc.nombre || 'Documento',
+      asunto: doc.tipo || '',
       descripcion: doc.descripcion || '',
-      id: doc.id 
+      id: doc.id
     });
     setVisorAbierto(true);
   };
+
+  // Previsualización en modo solo lectura (roles que no pueden firmar/aprobar).
+  const handlePrevisualizarDocumento = (doc: any) => handleVerDocumento(doc, true);
 
   const handleDescargarTodos = async () => {
     // Usamos documentosFiltrados para validar visualmente, pero descargamos todo el expediente
@@ -2605,7 +2611,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   onDownloadDocument={handleDescargarDocumento}
                   onDownloadAll={handleDescargarTodos}
                   onDeleteDocument={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) ? handleDeleteDocument : undefined}
-                  allowSigning={requiereAprobacion}
+                  allowSigning={requiereAprobacion && puedeAprobarEtapa}
                 />
               </TabsContent>
 
@@ -2667,6 +2673,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   radicadoExpediente={expediente.radicado || String(expediente.id)}
                   onReloadExpediente={() => loadActuaciones(String(expediente.uuid || expediente.id))}
                   onViewDocument={handleVerDocumento}
+                  onPreviewDocument={handlePrevisualizarDocumento}
                   onAutoAdvanceStage={handleAutoAdvanceStage}
                   aprobacionEtapaActual={requiereAprobacion && colActual ? {
                     aprobacionTipo: colActual.aprobacionTipo,
@@ -3398,13 +3405,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       {docParaVisor && (
         <VisorDocumentoModal
           isOpen={visorAbierto}
-          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); setVisorSoloLectura(false); }}
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={docParaVisor.asunto}
           descripcion={docParaVisor.descripcion}
           docId={docParaVisor.id}
-          allowSigning={requiereAprobacion}
+          allowSigning={requiereAprobacion && puedeAprobarEtapa && !visorSoloLectura}
           onSignComplete={async (docId, signedData, pdfFile) => {
             try {
               const originalDocName = docParaVisor.nombre;
