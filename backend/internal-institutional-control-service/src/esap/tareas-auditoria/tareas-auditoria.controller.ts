@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -94,8 +95,9 @@ export class TareasAuditoriaController {
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  create(@Body() createDto: CreateTareaAuditoriaDto) {
-    return this.tareasService.create(createDto);
+  create(@Body() createDto: CreateTareaAuditoriaDto, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.tareasService.create(createDto, userId);
   }
 
   /**
@@ -104,8 +106,9 @@ export class TareasAuditoriaController {
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  update(@Param('id') id: string, @Body() updateDto: UpdateTareaAuditoriaDto) {
-    return this.tareasService.update(id, updateDto);
+  update(@Param('id') id: string, @Body() updateDto: UpdateTareaAuditoriaDto, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.tareasService.update(id, updateDto, userId);
   }
 
   /**
@@ -115,8 +118,9 @@ export class TareasAuditoriaController {
   @Patch(':id/completar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  completar(@Param('id') id: string) {
-    return this.tareasService.completar(id);
+  completar(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.tareasService.completar(id, userId);
   }
 
   /**
@@ -126,7 +130,8 @@ export class TareasAuditoriaController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.tareasService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.tareasService.remove(id, userId);
   }
 }

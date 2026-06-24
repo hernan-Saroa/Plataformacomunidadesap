@@ -180,6 +180,19 @@ export class EstructuraOrganizacionalController {
     return { message: 'Sede eliminada exitosamente' };
   }
 
+  // Quita una sede SOLO de un periodo (no la borra del catálogo maestro).
+  @Delete('sedes/:id/periodo/:periodoCodigo')
+  async removeSedeFromPeriod(
+    @Param('id') id: string,
+    @Param('periodoCodigo') periodoCodigo: string,
+  ) {
+    const res = await this.estructuraService.removeSedeFromPeriod(
+      Number(id),
+      periodoCodigo,
+    );
+    return { data: res, message: 'Sede quitada del periodo exitosamente' };
+  }
+
   // ==================== SECCIONALES ====================
 
   @Post('seccionales')
@@ -217,6 +230,19 @@ export class EstructuraOrganizacionalController {
   async deleteSeccional(@Param('id') id: string) {
     await this.estructuraService.deleteSeccional(Number(id));
     return { message: 'Seccional eliminada exitosamente' };
+  }
+
+  // Quita una seccional (y sus sedes) SOLO de un periodo (no del catálogo maestro).
+  @Delete('seccionales/:id/periodo/:periodoCodigo')
+  async removeSeccionalFromPeriod(
+    @Param('id') id: string,
+    @Param('periodoCodigo') periodoCodigo: string,
+  ) {
+    const res = await this.estructuraService.removeSeccionalFromPeriod(
+      Number(id),
+      periodoCodigo,
+    );
+    return { data: res, message: 'Seccional quitada del periodo exitosamente' };
   }
 
   // ==================== ASIGNACIÓN DE USUARIOS ====================

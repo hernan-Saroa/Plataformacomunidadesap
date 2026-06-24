@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles, Req } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, BadRequestException, InternalServerErrorException, Param, UseInterceptors, UploadedFiles, Req, Logger } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -9,6 +9,8 @@ import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('expedientes')
 export class ExpedienteController {
+    private readonly logger = new Logger(ExpedienteController.name);
+
     constructor(
         private readonly expedienteService: ExpedienteService,
         private readonly notificationClient: NotificationClientService,
@@ -21,13 +23,18 @@ export class ExpedienteController {
         @Query('search') search?: string,
         @Req() req?: any,
     ): Promise<Expediente[]> {
-        const access = getLegalAccessFromRequest(req);
-        return this.expedienteService.listarExpedientes({
-            estado,
-            jurisdiccion,
-            search,
-            abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined,
-        });
+        try {
+            const access = getLegalAccessFromRequest(req);
+            return await this.expedienteService.listarExpedientes({
+                estado,
+                jurisdiccion,
+                search,
+                abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined,
+            });
+        } catch (error) {
+            this.logger.error(`Error cargando expedientes: ${error?.message || error}`, error?.stack);
+            throw new InternalServerErrorException(`Error cargando expedientes: ${error?.message || 'Error desconocido'}`);
+        }
     }
 
     @Get(':id')
@@ -125,10 +132,15 @@ export class ExpedienteController {
 
     @Get('estado/archivados')
     async listarArchivados(@Req() req?: any): Promise<Expediente[]> {
-        const access = getLegalAccessFromRequest(req);
-        return this.expedienteService.getExpedientesArchivados({
-            abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined,
-        });
+        try {
+            const access = getLegalAccessFromRequest(req);
+            return await this.expedienteService.getExpedientesArchivados({
+                abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined,
+            });
+        } catch (error) {
+            this.logger.error(`Error cargando archivados: ${error?.message || error}`, error?.stack);
+            throw new InternalServerErrorException(`Error cargando archivados: ${error?.message || 'Error desconocido'}`);
+        }
     }
 
     @Post(':id/archivar')

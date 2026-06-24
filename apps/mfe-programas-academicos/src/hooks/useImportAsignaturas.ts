@@ -32,6 +32,13 @@ export interface ImportResult {
   advertencias: string[];
   errores: string[];
   relaciones_cruzadas?: any[];
+  // Resumen real de lo que quedó en el período tras la importación (no solo lo creado).
+  resumen_periodo?: {
+    programas: number;
+    asignaturas: number;
+    cetaps: number;
+    ofertas: number;
+  };
 }
 
 export interface EstructuraImportStatus {

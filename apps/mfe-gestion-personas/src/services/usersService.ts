@@ -166,6 +166,14 @@ export const usersService = {
   },
 
   /**
+   * Forzar restablecimiento de contraseña por correo OTP
+   * Envía el código de recuperación al correo registrado del usuario
+   */
+  async forcePasswordReset(email: string): Promise<void> {
+    return apiClient.post(`${SERVICE_PREFIX}/forgot-password`, { email });
+  },
+
+  /**
    * Buscar usuarios por término de búsqueda
    */
   async searchUsers(searchTerm: string, filters: Omit<UserFilters, 'search'> = {}): Promise<PaginatedUsersResponse> {

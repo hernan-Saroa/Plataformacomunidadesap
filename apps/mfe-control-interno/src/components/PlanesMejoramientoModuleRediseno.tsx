@@ -44,6 +44,7 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
+import { useConfiguracionKanban, TipoTablero } from './services/useConfiguracionKanban';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
@@ -108,271 +109,7 @@ interface PlanMejoramiento {
   diasRestantes: number;
 }
 
-// Datos de ejemplo mejorados con semáforos
-const PLANES_EJEMPLO: PlanMejoramiento[] = [
-  {
-    id: 'plan-1',
-    codigo: 'PM-2024-001',
-    auditoria: 'Auditoría Control Interno - Gestión Documental',
-    area: 'Dirección General',
-    responsable: 'Carlos Méndez',
-    cargoResponsable: 'Director General',
-    fechaCreacion: '2024-01-10',
-    fechaAprobacion: '2024-01-15',
-    fechaInicio: '2024-01-20',
-    fechaFin: '2024-12-30',
-    estado: 'EN_EJECUCION',
-    semaforo: 'verde',
-    totalHallazgos: 8,
-    totalAcciones: 8,
-    accionesCompletadas: 6,
-    accionesEnProceso: 2,
-    accionesPendientes: 0,
-    porcentajeAvance: 75,
-    hallazgosCriticos: 2,
-    hallazgosModerados: 3,
-    hallazgosLeves: 3,
-    ultimaActualizacion: '2024-12-20',
-    alertas: 0,
-    diasRestantes: 10
-  },
-  {
-    id: 'plan-2',
-    codigo: 'PM-2024-002',
-    auditoria: 'Auditoría Contratación - Procesos de Selección',
-    area: 'Subdirección Administrativa',
-    responsable: 'Ana Rodríguez',
-    cargoResponsable: 'Subdirectora Administrativa',
-    fechaCreacion: '2024-02-05',
-    fechaAprobacion: '2024-02-10',
-    fechaInicio: '2024-02-15',
-    fechaFin: '2024-12-25',
-    estado: 'CON_RETRASO',
-    semaforo: 'rojo',
-    totalHallazgos: 12,
-    totalAcciones: 12,
-    accionesCompletadas: 4,
-    accionesEnProceso: 5,
-    accionesPendientes: 3,
-    porcentajeAvance: 33,
-    hallazgosCriticos: 4,
-    hallazgosModerados: 5,
-    hallazgosLeves: 3,
-    ultimaActualizacion: '2024-12-10',
-    alertas: 3,
-    diasRestantes: -5
-  },
-  {
-    id: 'plan-3',
-    codigo: 'PM-2023-015',
-    auditoria: 'Auditoría Financiera - Ejecución Presupuestal',
-    area: 'Dirección Financiera',
-    responsable: 'Luis Gómez',
-    cargoResponsable: 'Director Financiero',
-    fechaCreacion: '2023-11-01',
-    fechaAprobacion: '2023-11-05',
-    fechaInicio: '2023-11-10',
-    fechaFin: '2024-11-10',
-    estado: 'COMPLETADO',
-    semaforo: 'verde',
-    totalHallazgos: 6,
-    totalAcciones: 6,
-    accionesCompletadas: 6,
-    accionesEnProceso: 0,
-    accionesPendientes: 0,
-    porcentajeAvance: 100,
-    hallazgosCriticos: 1,
-    hallazgosModerados: 3,
-    hallazgosLeves: 2,
-    ultimaActualizacion: '2024-11-05',
-    alertas: 0,
-    diasRestantes: 0
-  },
-  {
-    id: 'plan-4',
-    codigo: 'PM-2024-003',
-    auditoria: 'Auditoría Recursos Humanos - Nómina',
-    area: 'Gestión del Talento Humano',
-    responsable: 'María Torres',
-    cargoResponsable: 'Jefe de Talento Humano',
-    fechaCreacion: '2024-02-25',
-    fechaAprobacion: '2024-03-01',
-    fechaInicio: '2024-03-05',
-    fechaFin: '2025-03-05',
-    estado: 'EN_EJECUCION',
-    semaforo: 'amarillo',
-    totalHallazgos: 10,
-    totalAcciones: 10,
-    accionesCompletadas: 5,
-    accionesEnProceso: 4,
-    accionesPendientes: 1,
-    porcentajeAvance: 50,
-    hallazgosCriticos: 2,
-    hallazgosModerados: 4,
-    hallazgosLeves: 4,
-    ultimaActualizacion: '2024-12-22',
-    alertas: 1,
-    diasRestantes: 73
-  },
-  {
-    id: 'plan-5',
-    codigo: 'PM-2024-004',
-    auditoria: 'Auditoría TIC - Seguridad de la Información',
-    area: 'Dirección de Tecnología',
-    responsable: 'Jorge Silva',
-    cargoResponsable: 'Director de TIC',
-    fechaCreacion: '2024-04-10',
-    fechaAprobacion: '2024-04-12',
-    fechaInicio: '2024-04-15',
-    fechaFin: '2025-04-15',
-    estado: 'APROBADO',
-    semaforo: 'verde',
-    totalHallazgos: 15,
-    totalAcciones: 15,
-    accionesCompletadas: 0,
-    accionesEnProceso: 0,
-    accionesPendientes: 15,
-    porcentajeAvance: 0,
-    hallazgosCriticos: 5,
-    hallazgosModerados: 6,
-    hallazgosLeves: 4,
-    ultimaActualizacion: '2024-04-12',
-    alertas: 0,
-    diasRestantes: 114
-  },
-  {
-    id: 'plan-6',
-    codigo: 'PM-2024-005',
-    auditoria: 'Auditoría Académica - Programas de Formación',
-    area: 'Dirección Académica',
-    responsable: 'Patricia Vargas',
-    cargoResponsable: 'Directora Académica',
-    fechaCreacion: '2024-05-15',
-    fechaAprobacion: '2024-05-20',
-    fechaInicio: '2024-05-25',
-    fechaFin: '2024-12-25',
-    estado: 'SUSPENDIDO',
-    semaforo: 'rojo',
-    totalHallazgos: 7,
-    totalAcciones: 7,
-    accionesCompletadas: 2,
-    accionesEnProceso: 0,
-    accionesPendientes: 5,
-    porcentajeAvance: 28,
-    hallazgosCriticos: 1,
-    hallazgosModerados: 2,
-    hallazgosLeves: 4,
-    ultimaActualizacion: '2024-10-15',
-    alertas: 2,
-    diasRestantes: 1
-  },
-  {
-    id: 'plan-7',
-    codigo: 'PM-2024-006',
-    auditoria: 'Auditoría Planeación Estratégica - Indicadores de Gestión',
-    area: 'Oficina de Planeación',
-    responsable: 'Ricardo Mora',
-    cargoResponsable: 'Jefe de Planeación',
-    fechaCreacion: '2024-12-20',
-    fechaFin: '2025-12-20',
-    estado: 'FORMULACION',
-    semaforo: 'amarillo',
-    totalHallazgos: 9,
-    totalAcciones: 0,
-    accionesCompletadas: 0,
-    accionesEnProceso: 0,
-    accionesPendientes: 0,
-    porcentajeAvance: 0,
-    hallazgosCriticos: 3,
-    hallazgosModerados: 4,
-    hallazgosLeves: 2,
-    ultimaActualizacion: '2024-12-20',
-    alertas: 0,
-    diasRestantes: 365
-  },
-  {
-    id: 'plan-8',
-    codigo: 'PM-2024-007',
-    auditoria: 'Auditoría Inventarios - Control de Activos Fijos',
-    area: 'Almacén General',
-    responsable: 'Sandra López',
-    cargoResponsable: 'Jefe de Almacén',
-    fechaCreacion: '2024-11-15',
-    fechaFin: '2025-11-15',
-    estado: 'FORMULACION',
-    semaforo: 'verde',
-    totalHallazgos: 5,
-    totalAcciones: 0,
-    accionesCompletadas: 0,
-    accionesEnProceso: 0,
-    accionesPendientes: 0,
-    porcentajeAvance: 0,
-    hallazgosCriticos: 1,
-    hallazgosModerados: 2,
-    hallazgosLeves: 2,
-    ultimaActualizacion: '2024-11-15',
-    alertas: 0,
-    diasRestantes: 329
-  }
-];
 
-// Configuración de columnas Kanban
-const COLUMNAS_KANBAN = [
-  {
-    id: 'FORMULACION',
-    titulo: 'Formulación',
-    icono: <ClipboardCheck className="w-4 h-4" style={{ color: '#9333ea' }} />,
-    color: '#9333ea',
-    bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-200',
-    diasEstimados: 15
-  },
-  {
-    id: 'APROBADO',
-    titulo: 'Aprobado',
-    icono: <CheckSquare className="w-4 h-4" style={{ color: '#3b82f6' }} />,
-    color: '#3b82f6',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-    diasEstimados: 0
-  },
-  {
-    id: 'EN_EJECUCION',
-    titulo: 'En Ejecución',
-    icono: <PlayCircle className="w-4 h-4" style={{ color: '#10b981' }} />,
-    color: '#10b981',
-    bgColor: 'bg-green-50',
-    borderColor: 'border-green-200',
-    diasEstimados: 180
-  },
-  {
-    id: 'CON_RETRASO',
-    titulo: 'Con Retraso',
-    icono: <AlertOctagon className="w-4 h-4" style={{ color: '#f97316' }} />,
-    color: '#f97316',
-    bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
-    diasEstimados: 0
-  },
-  {
-    id: 'COMPLETADO',
-    titulo: 'Completado',
-    icono: <CheckCircle2 className="w-4 h-4" style={{ color: '#10b981' }} />,
-    color: '#10b981',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    diasEstimados: 0
-  },
-  {
-    id: 'SUSPENDIDO',
-    titulo: 'Suspendido',
-    icono: <PauseCircle className="w-4 h-4" style={{ color: '#6b7280' }} />,
-    color: '#6b7280',
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
-    diasEstimados: 0
-  }
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -861,6 +598,41 @@ function SeguimientoView({
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const { auditoriaIdFoco, setAuditoriaIdFoco } = useIntegracionAuditoriaPlanes();
 
+  // ✅ Obtener etapas dinámicas del backend
+  const { etapas, loading: loadingEtapas } = useConfiguracionKanban(TipoTablero.PLANES_MEJORAMIENTO);
+
+  const columnasKanbanDinamicas = useMemo(() => {
+    if (!etapas || etapas.length === 0) return []; // Fallback vacío si no hay etapas
+
+    
+    return etapas
+      .filter(e => e.visible !== false)
+      .sort((a, b) => a.orden - b.orden)
+      .map(etapa => {
+        const nameUpper = etapa.nombre.toUpperCase();
+        let icono = <ClipboardCheck className="w-4 h-4" style={{ color: etapa.color || '#9333ea' }} />;
+        if (nameUpper.includes('APROBAD')) icono = <CheckSquare className="w-4 h-4" style={{ color: etapa.color || '#3b82f6' }} />;
+        else if (nameUpper.includes('EJECUCION')) icono = <PlayCircle className="w-4 h-4" style={{ color: etapa.color || '#10b981' }} />;
+        else if (nameUpper.includes('RETRASO')) icono = <AlertOctagon className="w-4 h-4" style={{ color: etapa.color || '#f97316' }} />;
+        else if (nameUpper.includes('COMPLETAD') || nameUpper.includes('CERRAD')) icono = <CheckCircle2 className="w-4 h-4" style={{ color: etapa.color || '#10b981' }} />;
+        else if (nameUpper.includes('SUSPENDID')) icono = <PauseCircle className="w-4 h-4" style={{ color: etapa.color || '#6b7280' }} />;
+
+        const normalizedId = nameUpper
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, '_');
+
+        return {
+          id: normalizedId,
+          titulo: etapa.nombre,
+          icono,
+          color: etapa.color || '#9333ea',
+          bgColor: 'bg-gray-50',
+          borderColor: 'border-gray-200',
+          diasEstimados: etapa.slaDias || 0
+        };
+      });
+  }, [etapas]);
+
   // Abrir detalle cuando viene de "Ir a ver plan"
   useEffect(() => {
     if (planIdParaAbrir && planes.length > 0) {
@@ -895,7 +667,7 @@ function SeguimientoView({
     if (filtroEstado !== 'TODOS') {
       // Agrupar estados del backend a filtros Kanban
       const estadosDelFiltro: Record<string, string[]> = {
-        FORMULACION: ['FORMULACION', 'borrador', 'revision'],
+        REVISION: ['revision', 'REVISION'],
         APROBADO: ['APROBADO', 'aprobado'],
         EN_EJECUCION: ['EN_EJECUCION', 'en_ejecucion'],
         CON_RETRASO: ['CON_RETRASO'],
@@ -921,7 +693,7 @@ function SeguimientoView({
 
   const estadisticas = useMemo(() => {
     const total = planes.length;
-    const formulacion = planes.filter(p => p.estado === 'FORMULACION' || p.estado === 'borrador' || p.estado === 'revision').length;
+    const formulacion = planes.filter(p => p.estado === 'revision' || p.estado === 'REVISION').length;
     const aprobados = planes.filter(p => p.estado === 'APROBADO' || p.estado === 'aprobado').length;
     const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION' || p.estado === 'en_ejecucion').length;
     const conRetraso = planes.filter(p => p.estado === 'CON_RETRASO').length;
@@ -1046,9 +818,9 @@ function SeguimientoView({
                 count={planes.length}
               />
               <FilterButton
-                active={filtroEstado === 'FORMULACION'}
-                onClick={() => setFiltroEstado('FORMULACION')}
-                label="Formulación"
+                active={filtroEstado === 'REVISION'}
+                onClick={() => setFiltroEstado('REVISION')}
+                label="Revisión OCI"
                 count={estadisticas.formulacion}
                 color="purple"
               />
@@ -1087,6 +859,7 @@ function SeguimientoView({
           onCompletarPlan={onCompletarPlan}
           columnasColapsadas={columnasColapsadas}
           onToggleColapso={toggleColapsoColumna}
+          columnasKanban={columnasKanbanDinamicas}
         />
       ) : (
         <VistaLista 
@@ -1122,9 +895,10 @@ interface VistaKanbanProps {
   onCompletarPlan?: (plan: PlanMejoramiento) => void;
   columnasColapsadas: Set<string>;
   onToggleColapso: (columnaId: string) => void;
+  columnasKanban: any[];
 }
 
-function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
+function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, columnasColapsadas, onToggleColapso, columnasKanban }: VistaKanbanProps) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   const scrollLeft = () => {
@@ -1157,24 +931,35 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
           flexWrap: 'nowrap',
         }}
       >
-        {COLUMNAS_KANBAN.map((columna) => {
+        {columnasKanban.map((columna) => {
         // Normalizar estados del backend (minúsculas) a columnas Kanban (MAYÚSCULAS)
         const estadoToColumna: Record<string, string> = {
-          borrador: 'FORMULACION',
-          revision: 'FORMULACION',
-          FORMULACION: 'FORMULACION',
-          aprobado: 'APROBADO',
-          APROBADO: 'APROBADO',
-          en_ejecucion: 'EN_EJECUCION',
-          EN_EJECUCION: 'EN_EJECUCION',
-          CON_RETRASO: 'CON_RETRASO',
-          completado: 'COMPLETADO',
-          COMPLETADO: 'COMPLETADO',
-          rechazado: 'SUSPENDIDO',
-          RECHAZADO: 'SUSPENDIDO',
-          SUSPENDIDO: 'SUSPENDIDO',
+          // BORRADOR y FORMULACION NO aparecen en backoffice (el auditado los maneja en portal)
+          borrador: '__AUDITADO__',
+          FORMULACION: '__AUDITADO__',
+          // Solo REVISION aparece en la primera columna del backoffice
+          revision: 'SUSCRIPCION_Y_FORMULACION',
+          REVISION: 'SUSCRIPCION_Y_FORMULACION',
+          aprobado: 'EJECUCION_DE_ACCIONES',
+          APROBADO: 'EJECUCION_DE_ACCIONES',
+          en_ejecucion: 'EJECUCION_DE_ACCIONES',
+          EN_EJECUCION: 'EJECUCION_DE_ACCIONES',
+          CON_RETRASO: 'EJECUCION_DE_ACCIONES',
+          completado: 'VERIFICACION',
+          COMPLETADO: 'VERIFICACION',
+          rechazado: 'SUSCRIPCION_Y_FORMULACION',
+          RECHAZADO: 'SUSCRIPCION_Y_FORMULACION',
+          SUSPENDIDO: 'SUSCRIPCION_Y_FORMULACION',
+          // Nuevos IDs
+          SUSCRIPCION_Y_FORMULACION: 'SUSCRIPCION_Y_FORMULACION',
+          EJECUCION_DE_ACCIONES: 'EJECUCION_DE_ACCIONES',
+          VERIFICACION: 'VERIFICACION',
+          CERRADO: 'CERRADO',
         };
-        const planesColumna = planes.filter(p => (estadoToColumna[p.estado] ?? p.estado) === columna.id);
+        const planesColumna = planes.filter(p => {
+          const mappedEstado = estadoToColumna[p.estado] ?? p.estado.toUpperCase();
+          return mappedEstado === columna.id || p.estado.toUpperCase() === columna.id;
+        });
         const colapsada = columnasColapsadas.has(columna.id);
         
         return (
@@ -1200,7 +985,7 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ColumnaKanbanProps {
-  columna: typeof COLUMNAS_KANBAN[0];
+  columna: any;
   planes: PlanMejoramiento[];
   onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;
@@ -1213,7 +998,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'PLAN',
     drop: (item: { planId: string; plan?: PlanMejoramiento }) => {
-      if (columna.id === 'COMPLETADO' && onCompletarPlan && item.plan) {
+      if ((columna.id === 'CERRADO' || columna.id === 'VERIFICACION' || columna.id === 'COMPLETADO') && onCompletarPlan && item.plan) {
         onCompletarPlan(item.plan);
       } else {
         onMoverPlan(item.planId, columna.id as EstadoPlan);
@@ -1567,7 +1352,7 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
           className="w-full px-3 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] hover:from-[#1557a0] hover:to-[#1e5da8] text-white rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2"
         >
           <Eye className="w-3.5 h-3.5" />
-          {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+          Ver Detalle
         </button>
       </div>
     </motion.div>
@@ -1782,7 +1567,7 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
                       className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
                     >
                       <Eye className="w-4 h-4" />
-                      {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+                      Ver Detalle
                     </button>
                   </div>
                 </div>

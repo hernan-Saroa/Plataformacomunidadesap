@@ -342,13 +342,36 @@ export const estructuraService = {
     data: {
       periodoCodigo: string;
       idSedesActivas: number[];
+      // Sedes MIEMBRO del periodo (las que "pertenecen" a él). Una sede solo
+      // aparece en el periodo donde fue agregada/importada.
+      idSedesMiembro: number[];
       totalActivas: number;
+      totalMiembro: number;
     };
   }> {
     return apiClient.get(
       `${SERVICE_PREFIX}/estructura-organizacional/periodo/${encodeURIComponent(periodoCodigo)}/sedes-estado`,
       undefined,
       { retries: 0 },
+    );
+  },
+
+  /**
+   * Quita una sede SOLO del periodo indicado (no la borra del catálogo maestro
+   * ni de otros periodos).
+   */
+  async quitarSedeDePeriodo(idSede: number, periodoCodigo: string): Promise<any> {
+    return apiClient.delete<any>(
+      `${SERVICE_PREFIX}/estructura-organizacional/sedes/${idSede}/periodo/${encodeURIComponent(periodoCodigo)}`,
+    );
+  },
+
+  /**
+   * Quita una seccional (con todas sus sedes) SOLO del periodo indicado.
+   */
+  async quitarSeccionalDePeriodo(idSeccional: number, periodoCodigo: string): Promise<any> {
+    return apiClient.delete<any>(
+      `${SERVICE_PREFIX}/estructura-organizacional/seccionales/${idSeccional}/periodo/${encodeURIComponent(periodoCodigo)}`,
     );
   },
 

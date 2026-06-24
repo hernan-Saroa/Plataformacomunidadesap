@@ -125,11 +125,12 @@ export class AuditadoController {
     const estadosEditables: string[] = [
       PlanMejoramientoEstado.BORRADOR,
       PlanMejoramientoEstado.REVISION,
+      PlanMejoramientoEstado.RECHAZADO,
     ];
     if (!estadosEditables.includes(plan.estado)) {
       throw new ForbiddenException(
         `No se pueden agregar acciones: el plan está en estado "${plan.estado}". ` +
-        `Solo se permite en estado BORRADOR o REVISION (formulación).`,
+        `Solo se permite en estado BORRADOR, REVISION o RECHAZADO (formulación).`,
       );
     }
 
@@ -145,7 +146,7 @@ export class AuditadoController {
   /**
    * PATCH /auditorias/auditado/:id/planes/:planId/enviar-revision
    * El auditado envía el plan a revisión por parte de la OCI.
-   * Solo permitido si el plan está en BORRADOR.
+   * Permitido si el plan está en BORRADOR o RECHAZADO (para reenviar tras correcciones).
    */
   @Patch(':id/planes/:planId/enviar-revision')
   @HttpCode(HttpStatus.OK)
@@ -160,11 +161,44 @@ export class AuditadoController {
     if (plan.auditoriaId !== auditoriaId) {
       throw new ForbiddenException('El plan de mejoramiento no pertenece a esta auditoría');
     }
-    if (plan.estado !== PlanMejoramientoEstado.BORRADOR) {
+    const estadosPermitidos = [PlanMejoramientoEstado.BORRADOR, PlanMejoramientoEstado.RECHAZADO];
+    if (!estadosPermitidos.includes(plan.estado)) {
       throw new BadRequestException(
-        `Solo se puede enviar a revisión un plan en estado BORRADOR. Estado actual: "${plan.estado}".`,
+        `Solo se puede enviar a revisión un plan en estado BORRADOR o RECHAZADO. Estado actual: "${plan.estado}".`,
       );
     }
+
+    // Validar que exista al menos una acción por cada hallazgo aceptado, ratificado o modificado.
+    const hallazgos = await this.hallazgosService.findByAuditoria(auditoriaId);
+    const hallazgosRequeridos = hallazgos.filter((h) =>
+      ['aceptado', 'ratificado', 'modificado'].includes(String(h.estado || '').toLowerCase()),
+    );
+
+    const getHallazgoIdFromAccion = (accion: any): string | null => {
+      if (!accion) return null;
+      if (accion.hallazgoId) return String(accion.hallazgoId);
+      if (accion.hallazgo_id) return String(accion.hallazgo_id);
+      if (accion.hallazgo && typeof accion.hallazgo === 'object') {
+        return String(accion.hallazgo.id);
+      }
+      if (accion.hallazgo && typeof accion.hallazgo === 'string') {
+        return String(accion.hallazgo);
+      }
+      return null;
+    };
+
+    const hallazgosFaltantes = hallazgosRequeridos.filter((h) => {
+      const tieneAccion = plan.acciones?.some((a) => getHallazgoIdFromAccion(a) === h.id);
+      return !tieneAccion;
+    });
+
+    if (hallazgosFaltantes.length > 0) {
+      const codigos = hallazgosFaltantes.map((h) => h.codigo).join(', ');
+      throw new BadRequestException(
+        `Para enviar el plan de mejoramiento a revisión, debe registrar al menos una acción correctiva por cada hallazgo aceptado, ratificado o modificado. Faltan acciones para los hallazgos: ${codigos}.`,
+      );
+    }
+
     return this.planesMejoramientoService.update(planId, { estado: PlanMejoramientoEstado.REVISION });
   }
 
@@ -190,10 +224,11 @@ export class AuditadoController {
     const estadosEditables: string[] = [
       PlanMejoramientoEstado.BORRADOR,
       PlanMejoramientoEstado.REVISION,
+      PlanMejoramientoEstado.RECHAZADO,
     ];
     if (!estadosEditables.includes(plan.estado)) {
       throw new ForbiddenException(
-        `No se puede editar: el plan está en estado "${plan.estado}". Solo se permite en BORRADOR o REVISION.`,
+        `No se puede editar: el plan está en estado "${plan.estado}". Solo se permite en BORRADOR, REVISION o RECHAZADO.`,
       );
     }
     return this.planesMejoramientoService.updateAccion(planId, accionId, body as UpdateAccionDto);
@@ -220,6 +255,7 @@ export class AuditadoController {
     const estadosEditables: string[] = [
       PlanMejoramientoEstado.BORRADOR,
       PlanMejoramientoEstado.REVISION,
+      PlanMejoramientoEstado.RECHAZADO,
     ];
     if (!estadosEditables.includes(plan.estado)) {
       throw new ForbiddenException(

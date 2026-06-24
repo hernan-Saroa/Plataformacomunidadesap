@@ -113,7 +113,6 @@ export interface NuevaDemandaData {
   departamento: string;
   ciudad: string;
   territorial: string;
-  cetap: string;
   dependencia: string;
   tipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas';
   termino: number;
@@ -137,6 +136,21 @@ interface ModalNuevaDemandaRESTAURADOProps {
   expedienteEdit?: ExpedienteJudicial;
   tableroSeleccionado?: string;
 }
+
+// ==================== DEMANDADO POR DEFECTO (ESAP) ====================
+// El primer demandado se pre-rellena con la información de la ESAP.
+// Los datos quedan editables y el demandado puede eliminarse manualmente.
+const crearDemandadoESAPPorDefecto = (): Demandado => ({
+  id: 'DEMA-ESAP-DEFAULT',
+  tipoPersona: 'Juridica',
+  cedula: '899999054-9',
+  nombreCompleto: 'Escuela Superior de Administración Pública - ESAP',
+  cargoFuncion: '',
+  telefono: '6012202790',
+  correo: 'ventanillaunica@esap.gov.co',
+  direccion: 'Calle 44 N.º 53-37, CAN, Bogotá D.C.',
+  tieneApoderado: false
+});
 
 // ==================== DATOS PARAMETRIZABLES ====================
 // MEDIOS_CONTROL, TIPOS_PROCESO y ETAPAS_PROCESALES ahora se obtienen
@@ -333,7 +347,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     departamento: '',
     ciudad: '',
     territorial: '',
-    cetap: '',
     dependencia: '',
     tipoPlazo: 'Dias Habiles',
     termino: 30,
@@ -775,8 +788,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [seccionales, setSeccionales] = useState<{ idSeccional: number; nomSeccional: string }[]>([]);
-  const [sedesFiltradas, setSedesFiltradas] = useState<{ idSede: number; nomSede: string }[]>([]);
-  const [cargandoSedes, setCargandoSedes] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
@@ -855,7 +866,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
           territorial: (expedienteEdit as any).territorial || '',
-          cetap: (expedienteEdit as any).cetap || '',
           dependencia: (expedienteEdit as any).dependencia || '',
           tipoPlazo: expedienteEdit.tipoConteoTermino === 'HORAS' ? 'Horas' : expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
           termino: expedienteEdit.terminoProcesalDias || expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
@@ -906,13 +916,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           fechaEstimacionProvision: '',
           observacionesProvision: '',
           demandantes: [],
-          demandados: [],
+          demandados: [crearDemandadoESAPPorDefecto()],
           otrosActores: [],
           juzgadoTribunal: '',
           departamento: '',
           ciudad: '',
           territorial: '',
-          cetap: '',
           dependencia: '',
           tipoPlazo: defaultTipoPlazo,
           termino: defaultTermino,
@@ -1013,24 +1022,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       })
       .catch(() => {});
   }, []);
-
-  // Cargar CETAPs (sedes) cuando cambia la territorial seleccionada
-  useEffect(() => {
-    if (!formData.territorial) {
-      setSedesFiltradas([]);
-      return;
-    }
-    setCargandoSedes(true);
-    estructuraService.sedes.listar({ idSeccional: Number(formData.territorial) })
-      .then(res => {
-        setSedesFiltradas((res.data || []).map((s: any) => ({
-          idSede: s.idSede,
-          nomSede: s.nomSede,
-        })));
-      })
-      .catch(() => { setSedesFiltradas([]); })
-      .finally(() => setCargandoSedes(false));
-  }, [formData.territorial]);
 
   // Cargar abogados con rol resuelve desde el servicio de auth
   useEffect(() => {
@@ -1707,7 +1698,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         finalPayload = {
           ...formData,
           territorialNombre: seccionales.find(s => String(s.idSeccional) === formData.territorial)?.nomSeccional,
-          cetapNombre: sedesFiltradas.find(s => String(s.idSede) === formData.cetap)?.nomSede,
           dependenciaNombre: dependenciasActivas.find((d: any) => d.id === formData.dependencia)?.nombre,
         };
       }
@@ -2298,13 +2288,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             {/* PASO 3: DATOS DEMANDADOS */}
             {pasoActual === 3 && (
               <>
-                {/* CAMPOS DE SISTEMA: Territorial, CETAP y Dependencia */}
+                {/* CAMPOS DE SISTEMA: Territorial y Dependencia */}
                 <Card className="p-4 bg-blue-50 border-blue-200 mb-4">
                   <div className="flex items-center gap-2 mb-4">
                     <MapPin className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-bold text-gray-900">Territorial, CETAP y Dependencia</h3>
+                    <h3 className="font-bold text-gray-900">Territorial y Dependencia</h3>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Territorial */}
                     <div className="space-y-2">
                       <Label className="text-sm font-bold text-gray-700">
@@ -2312,7 +2302,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       </Label>
                       <Select
                         value={formData.territorial}
-                        onValueChange={(val) => setFormData(prev => ({ ...prev, territorial: val, cetap: '' }))}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, territorial: val }))}
                       >
                         <SelectTrigger className="bg-white">
                           <SelectValue placeholder="Seleccione territorial..." />
@@ -2321,33 +2311,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           {seccionales.map(s => (
                             <SelectItem key={s.idSeccional} value={String(s.idSeccional)}>
                               {s.nomSeccional}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* CETAP */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-bold text-gray-700">CETAP</Label>
-                      <Select
-                        value={formData.cetap}
-                        onValueChange={(val) => setFormData(prev => ({ ...prev, cetap: val }))}
-                        disabled={!formData.territorial || cargandoSedes}
-                      >
-                        <SelectTrigger className="bg-white">
-                          <SelectValue placeholder={
-                            !formData.territorial
-                              ? 'Seleccione territorial primero'
-                              : cargandoSedes
-                              ? 'Cargando...'
-                              : 'Seleccione CETAP...'
-                          } />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100000]">
-                          {sedesFiltradas.map(s => (
-                            <SelectItem key={s.idSede} value={String(s.idSede)}>
-                              {s.nomSede}
                             </SelectItem>
                           ))}
                         </SelectContent>

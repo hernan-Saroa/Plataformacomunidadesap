@@ -282,6 +282,11 @@ export class PlanAnual5RolesService {
       plan.responsable = updateDto.responsable;
     }
 
+    if (updateDto.responsable_id !== undefined && updateDto.responsable_id !== plan.responsable_id) {
+      cambios.push({ campo: 'responsable_id', valorAnterior: plan.responsable_id || '', valorNuevo: updateDto.responsable_id || '' });
+      plan.responsable_id = updateDto.responsable_id;
+    }
+
     if (updateDto.estado !== undefined) {
       const estadoNormalizado = this.normalizarEstadoPlan(updateDto.estado);
       if (estadoNormalizado !== plan.estado) {
@@ -302,6 +307,12 @@ export class PlanAnual5RolesService {
     if (updateDto.orden_aprobacion !== undefined && updateDto.orden_aprobacion !== plan.orden_aprobacion) {
       cambios.push({ campo: 'orden_aprobacion', valorAnterior: plan.orden_aprobacion || 'secuencial', valorNuevo: updateDto.orden_aprobacion });
       plan.orden_aprobacion = updateDto.orden_aprobacion;
+    }
+
+    // Persistir firma de activación del Jefe OCI cuando se activa el plan
+    if ((updateDto as any).firma_activacion !== undefined) {
+      plan.firma_activacion = (updateDto as any).firma_activacion;
+      cambios.push({ campo: 'firma_activacion', valorAnterior: 'sin firma', valorNuevo: 'firmado' });
     }
 
     // Manejo de fecha_inicio y fecha_fin del plan

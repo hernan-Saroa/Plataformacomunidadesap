@@ -98,6 +98,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string; descripcion?: string; id?: string } | null>(null);
+  // Cuando es true, el visor se abre en modo previsualización (sin firma ni código OTP).
+  const [visorSoloLectura, setVisorSoloLectura] = useState(false);
   const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
@@ -114,6 +116,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [reasignando, setReasignando] = useState(false);
   const [audienciaIdPendienteEliminar, setAudienciaIdPendienteEliminar] = useState<string | null>(null);
   const [actuacionIdPendienteEliminar, setActuacionIdPendienteEliminar] = useState<string | null>(null);
+  const [docPendienteEliminar, setDocPendienteEliminar] = useState<any | null>(null);
 
   // Estados de datos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -557,22 +560,26 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleVerDocumento = (doc: any) => {
+  const handleVerDocumento = (doc: any, soloLectura: boolean = false) => {
     if (!isPrevisuable(doc)) {
       handleDescargarDocumento(doc);
       return;
     }
     const fullUrl = getFullUrl(doc.url);
+    setVisorSoloLectura(soloLectura);
     // Abrir el documento en el visor inline
-    setDocParaVisor({ 
-      url: fullUrl, 
-      nombre: doc.nombre || 'Documento', 
-      asunto: doc.tipo || '', 
+    setDocParaVisor({
+      url: fullUrl,
+      nombre: doc.nombre || 'Documento',
+      asunto: doc.tipo || '',
       descripcion: doc.descripcion || '',
-      id: doc.id 
+      id: doc.id
     });
     setVisorAbierto(true);
   };
+
+  // Previsualización en modo solo lectura (roles que no pueden firmar/aprobar).
+  const handlePrevisualizarDocumento = (doc: any) => handleVerDocumento(doc, true);
 
   const handleDescargarTodos = async () => {
     // Usamos documentosFiltrados para validar visualmente, pero descargamos todo el expediente
@@ -972,9 +979,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleDeleteDocument = async (doc: any) => {
-    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el documento "${doc.nombre}"? Esta acción no se puede deshacer.`);
-    if (!confirmacion) return;
+  const handleDeleteDocument = (doc: any) => {
+    setDocPendienteEliminar(doc);
+  };
+
+  const confirmarEliminarDocumento = async () => {
+    const doc = docPendienteEliminar;
+    if (!doc) return;
+    setDocPendienteEliminar(null);
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
@@ -1020,7 +1032,25 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   );
   const requiereAprobacion = !!(colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno');
 
-  const currentIndex = (columnasTablero || []).findIndex((e: any) => 
+  // Solo el rol/usuario configurado como aprobador de la etapa actual (o un super admin)
+  // puede ver los botones de "Aprobar Etapa" / "Devolver Etapa". Misma lógica que el
+  // botón "Firmar" de los documentos (isUserAuthorizedToApprove en TabActuacionesExpediente).
+  const puedeAprobarEtapa = (() => {
+    if (!requiereAprobacion || !colActual) return false;
+    if (authService.isSuperAdmin()) return true;
+    const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+    if (aprobacionTipo === 'rol' && aprobacionRol) {
+      return authService.hasRole(aprobacionRol);
+    }
+    if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+      const currentUser = authService.getCurrentUser() as any;
+      const currentUserId = currentUser?.id || currentUser?.id_user || currentUser?.user?.id || currentUser?.user?.id_user || currentUser?.person?.id;
+      return String(currentUserId) === String(aprobacionUsuario);
+    }
+    return false;
+  })();
+
+  const currentIndex = (columnasTablero || []).findIndex((e: any) =>
     normalizeString(e.id) === etapaActualNorm || 
     normalizeString(e.nombre) === etapaActualNorm
   );
@@ -1787,8 +1817,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent
           hideCloseButton
-          className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
-          style={{ width: '60vw', maxWidth: '60vw' }}
+          className="!w-[60vw] !max-w-[60vw] h-[95vh] !max-h-[95vh] flex flex-col !p-0 overflow-hidden"
+          style={{ width: '60vw', maxWidth: '60vw', top: '2.5vh', padding: 0 }}
           // Mientras el visor de documentos está abierto (otro Dialog hermano portaleado a body),
           // un clic dentro de él se interpreta como "clic-fuera" de este modal y lo cerraría,
           // arrastrando consigo al visor (vuelve al Kanban). Bloqueamos el cierre por
@@ -1842,17 +1872,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </>
             }
             actions={
-              <div className="flex items-center gap-4">
-                <BarraProgresoExpediente
-                  diasTotales={expediente.diasTotales}
-                  diasRestantes={expediente.diasRestantes}
-                  etapa={expediente.etapa}
-                  columnasTablero={columnasTablero}
-                  documentos={documentos}
-                  actuaciones={actuaciones}
-                  compact={true}
-                />
-                <div className="flex gap-2">
+              <div className="flex flex-col xl:flex-row items-end xl:items-center gap-2 xl:gap-4">
+                <div className="hidden xl:block">
+                  <BarraProgresoExpediente
+                    diasTotales={expediente.diasTotales}
+                    diasRestantes={expediente.diasRestantes}
+                    etapa={expediente.etapa}
+                    columnasTablero={columnasTablero}
+                    documentos={documentos}
+                    actuaciones={actuaciones}
+                    compact={true}
+                  />
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
                   {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
                     <Button
                       variant="outline"
@@ -1861,10 +1893,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         e.preventDefault();
                         setIsEditModalOpen(true);
                       }}
-                      className="font-bold text-xs h-[38px] px-4 text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                      className="font-bold text-xs h-[32px] sm:h-[38px] px-2 sm:px-4 text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
                     >
-                      <Edit className="w-4 h-4 mr-1.5" />
-                      Editar Proceso
+                      <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                      Editar
                     </Button>
                   )}
                   {(() => {
@@ -1882,10 +1914,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onClick={() => setIsProvisionModalOpen(true)}
                         disabled={!esAbogadoResponsable}
                         title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
-                        className="font-bold text-xs h-[38px] px-4 text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="font-bold text-xs h-[32px] sm:h-[38px] px-2 sm:px-4 text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <DollarSign className="w-4 h-4 mr-1.5" />
-                        Provisión Contable
+                        <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                        <span className="hidden sm:inline">Provisión Contable</span>
+                        <span className="sm:hidden">Provisión</span>
                       </Button>
                     );
                   })()}
@@ -1893,10 +1926,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Button
                       variant="outline"
                       onClick={() => setModalAnexarAbierto(true)}
-                      className="font-bold text-xs h-[38px] px-4 text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                      className="font-bold text-xs h-[32px] sm:h-[38px] px-2 sm:px-4 text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
                     >
-                      <LinkIcon className="w-4 h-4 mr-1.5" />
-                      Asociado
+                      <LinkIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+                      <span className="hidden sm:inline">Asociado</span>
                     </Button>
                   )}
                 </div>
@@ -1938,7 +1971,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Briefcase className="w-4 h-4" />
                     RESUMEN EJECUTIVO
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">🏛️ Juzgado</p>
                       <p className="text-sm font-bold text-gray-900">{expediente.juzgadoConocimiento}</p>
@@ -1955,6 +1988,44 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           : ''}
                       </p>
                     </div>
+                    {(() => {
+                      const diasRestantes = (expediente as any).diasRestantes;
+                      const tieneVenc = !!expediente.fechaVencimiento;
+                      const vencido = typeof diasRestantes === 'number' && diasRestantes < 0;
+                      const urgente = typeof diasRestantes === 'number' && diasRestantes >= 0 && diasRestantes <= 5;
+                      const colorFecha = !tieneVenc
+                        ? 'text-gray-900'
+                        : vencido
+                          ? 'text-red-600'
+                          : urgente
+                            ? 'text-amber-600'
+                            : 'text-gray-900';
+                      return (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">⏳ Fecha Vencimiento</p>
+                          <p className={`text-sm font-bold ${colorFecha}`}>
+                            {tieneVenc
+                              ? new Date(expediente.fechaVencimiento as any).toLocaleDateString('es-CO')
+                              : 'Sin definir'}
+                          </p>
+                          {typeof diasRestantes === 'number' && (
+                            <Badge
+                              variant="outline"
+                              className={`mt-1 font-semibold text-[10px] border ${vencido
+                                ? 'border-red-300 text-red-700 bg-red-50'
+                                : urgente
+                                  ? 'border-amber-300 text-amber-700 bg-amber-50'
+                                  : 'border-green-300 text-green-700 bg-green-50'
+                                }`}
+                            >
+                              {vencido
+                                ? `Vencido hace ${Math.abs(diasRestantes)} día(s)`
+                                : `${diasRestantes} día(s) restantes`}
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div>
                       <p className="text-xs text-gray-500 mb-1">⚠️ Nivel de Riesgo</p>
                       <Badge
@@ -2439,25 +2510,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           )}
                         </div>
 
-                        {/* Territorial, CETAP y Dependencia (solo Demandado) */}
+                        {/* Territorial y Dependencia (solo Demandado) */}
                         {parte.tipo === 'Demandado' && (
-                          (expediente as any).territorial || (expediente as any).cetap || (expediente as any).dependencia
+                          (expediente as any).territorial || (expediente as any).dependencia
                         ) && (
                           <div className="mt-3 p-2.5 rounded-xl bg-blue-50/30 border border-blue-100/50 flex flex-col gap-1.5">
-                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider">Territorial / CETAP / Dependencia</p>
+                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider">Territorial / Dependencia</p>
                             {((expediente as any).territorial) && (
                               <div className="flex items-center gap-1.5">
                                 <MapPin className="w-3 h-3 text-blue-500 flex-shrink-0" />
                                 <span className="text-[10px] font-semibold text-slate-700 truncate">
                                   {(expediente as any).territorialNombre || (expediente as any).territorial}
-                                </span>
-                              </div>
-                            )}
-                            {((expediente as any).cetap) && (
-                              <div className="flex items-center gap-1.5">
-                                <Building2 className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                                <span className="text-[10px] font-semibold text-slate-700 truncate">
-                                  {(expediente as any).cetapNombre || (expediente as any).cetap}
                                 </span>
                               </div>
                             )}
@@ -2548,7 +2611,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   onDownloadDocument={handleDescargarDocumento}
                   onDownloadAll={handleDescargarTodos}
                   onDeleteDocument={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) ? handleDeleteDocument : undefined}
-                  allowSigning={requiereAprobacion}
+                  allowSigning={requiereAprobacion && puedeAprobarEtapa}
                 />
               </TabsContent>
 
@@ -2564,7 +2627,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onClick: () => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); },
                         color: '#003DA5'
                       },
-                      ...(requiereAprobacion ? [
+                      ...(requiereAprobacion && puedeAprobarEtapa ? [
                         {
                           label: 'Aprobar Etapa',
                           icono: <CheckCircle className="w-3 h-3 mr-1" />,
@@ -2607,8 +2670,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); }}
                   expedienteId={String(expediente.uuid || expediente.id)}
+                  radicadoExpediente={expediente.radicado || String(expediente.id)}
                   onReloadExpediente={() => loadActuaciones(String(expediente.uuid || expediente.id))}
                   onViewDocument={handleVerDocumento}
+                  onPreviewDocument={handlePrevisualizarDocumento}
                   onAutoAdvanceStage={handleAutoAdvanceStage}
                   aprobacionEtapaActual={requiereAprobacion && colActual ? {
                     aprobacionTipo: colActual.aprobacionTipo,
@@ -3324,17 +3389,29 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         icono="eliminar"
       />
 
+      <DialogoConfirmacion
+        isOpen={!!docPendienteEliminar}
+        onClose={() => setDocPendienteEliminar(null)}
+        onConfirm={confirmarEliminarDocumento}
+        titulo="Eliminar Documento"
+        mensaje={`¿Está seguro de que desea eliminar el documento "${docPendienteEliminar?.nombre ?? ''}"? Esta acción no se puede deshacer.`}
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
       {/* VISOR INLINE DE DOCUMENTOS */}
       {docParaVisor && (
         <VisorDocumentoModal
           isOpen={visorAbierto}
-          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); setVisorSoloLectura(false); }}
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={docParaVisor.asunto}
           descripcion={docParaVisor.descripcion}
           docId={docParaVisor.id}
-          allowSigning={requiereAprobacion}
+          allowSigning={requiereAprobacion && puedeAprobarEtapa && !visorSoloLectura}
           onSignComplete={async (docId, signedData, pdfFile) => {
             try {
               const originalDocName = docParaVisor.nombre;

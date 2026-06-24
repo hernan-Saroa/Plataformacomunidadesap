@@ -2731,7 +2731,7 @@ const ModalDecisionAuditor: React.FC<{
   onClose: () => void;
   onConfirmar: (hallazgoId: string, tipo: 'ratificado' | 'modificado' | 'retirado' | 'devolver', fundamentacion: string) => void;
 }> = ({ hallazgo, onClose, onConfirmar }) => {
-  const [tipo, setTipo] = useState<'ratificado' | 'modificado' | 'retirado' | 'devolver'>('retirado');
+  const [tipo, setTipo] = useState<'ratificado' | 'modificado' | 'retirado' | 'devolver'>('ratificado');
   const [fundamentacion, setFundamentacion] = useState('');
 
   const handleConfirmar = () => {
@@ -2745,15 +2745,19 @@ const ModalDecisionAuditor: React.FC<{
   const placeholderFundamentacion = tipo === 'devolver' ? 'Describe las observaciones o requerimientos para el área auditada...' : 'Describe la fundamentación de la decisión...';
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent style={{ maxWidth: '560px', width: '95vw', borderRadius: '1rem', padding: 0, overflow: 'hidden' }} className="border-0 shadow-2xl p-0 gap-0">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]" style={{ zIndex: 9999 }} onClick={onClose}>
+      <div 
+        style={{ maxWidth: '560px', width: '95vw', borderRadius: '1rem', padding: 0, overflow: 'hidden' }} 
+        className="bg-white shadow-2xl border border-slate-200 flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="bg-slate-50 border-b border-slate-100 px-6 py-5 flex flex-col items-start gap-1">
-          <DialogTitle className="text-xl font-bold text-slate-800 flex items-center gap-3 w-full">
+          <div className="text-xl font-bold text-slate-800 flex items-center gap-3 w-full">
             <span className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
               <ClipboardCheck className="w-5 h-5" />
             </span>
             Decisión sobre Controversia
-          </DialogTitle>
+          </div>
           <p className="text-slate-500 text-sm ml-[44px]">Registra la resolución final o devuelve para ajustes.</p>
         </div>
 
@@ -2784,6 +2788,7 @@ const ModalDecisionAuditor: React.FC<{
                   onChange={(e) => setTipo(e.target.value as any)} 
                   className="w-full pl-4 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 shadow-sm transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 appearance-none outline-none cursor-pointer font-medium"
                 >
+                  <option value="ratificado">Rechazar controversia (Ratificar hallazgo)</option>
                   <option value="retirado">Aceptar controversia (Retirar hallazgo)</option>
                   <option value="modificado">Aceptar controversia (Modificar hallazgo)</option>
                   <option value="devolver">Devolver a área auditada con observaciones</option>
@@ -2808,20 +2813,30 @@ const ModalDecisionAuditor: React.FC<{
         </div>
 
         <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex justify-end gap-3 items-center">
-          <Button variant="ghost" className="text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg font-medium px-4" onClick={onClose}>
+          <button 
+            type="button" 
+            className="text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg font-medium px-4 py-2 text-sm transition-all" 
+            onClick={onClose}
+          >
             Cancelar
-          </Button>
-          <Button 
-            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm font-medium px-6 py-2 transition-all flex items-center gap-2" 
+          </button>
+          <button 
+            type="button"
+            className="rounded-lg shadow-sm font-semibold px-6 py-2 text-sm transition-all flex items-center gap-2 hover:opacity-90 active:scale-[0.98]" 
+            style={{
+              backgroundColor: !fundamentacion.trim() ? '#E2E8F0' : '#4F46E5',
+              color: !fundamentacion.trim() ? '#64748B' : '#FFFFFF',
+              cursor: !fundamentacion.trim() ? 'not-allowed' : 'pointer'
+            }}
             onClick={handleConfirmar} 
             disabled={!fundamentacion.trim()}
           >
             <CheckCircle2 className="w-4 h-4" />
             Confirmar Resolución
-          </Button>
+          </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 };
 

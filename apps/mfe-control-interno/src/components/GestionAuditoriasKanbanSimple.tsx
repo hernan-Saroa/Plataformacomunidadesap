@@ -4,14 +4,14 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+// Usamos API Drag & Drop nativa de HTML5 para evitar conflictos de DndProvider con el Shell
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutGrid, List, Plus, MoreVertical, Calendar, User, Clock,
   AlertCircle, CheckCircle, FileText, Eye, MessageSquare, History,
   Filter, Search, ChevronDown, TrendingUp, Target, Shield, Activity,
-  Download, Columns3, ClipboardCheck, CheckSquare,
+  Download, Columns3, ClipboardCheck, CheckSquare, PlayCircle,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
   ChevronsDown, ChevronsUp, Move, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -25,6 +25,8 @@ import { toast } from 'sonner';
 // ✅ Servicios de exportación
 import { exportarAuditoriaPDF, type AuditoriaPDFData } from './services/exportarAuditoriaPDF';
 import { exportarAuditoriasExcel } from './services/exportarAuditoriasExcel';
+import { estructuraService } from '../../services/estructuraService';
+import { isPlanAprobado, etiquetaEstadoPlan } from '../utils/estadoPlanUtils';
 
 // ✅ Importar modales desde carpeta modales/
 import {
@@ -808,6 +810,7 @@ interface TarjetaAuditoriaProps {
   contarHallazgos: (auditoriaId: string) => number;
   contarHallazgosCriticos: (auditoriaId: string) => number;
   contarTareasPendientes: (auditoriaId: string) => number;
+  contarMisTareasPendientes: (auditoriaId: string) => number;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeEditar?: boolean;
   puedeEliminar?: boolean;
@@ -836,20 +839,30 @@ function TarjetaAuditoria({
   contarHallazgos,
   contarHallazgosCriticos,
   contarTareasPendientes,
+  contarMisTareasPendientes,
   puedeEditar = true,
   puedeEliminar = true,
   puedeAprobar = true,
   puedeArchivar = true,
   puedeAsignar = true
 }: TarjetaAuditoriaProps) {
-  const [{ isDragging }, drag] = useDrag(() => ({
-    type: 'auditoria',
-    item: auditoria,
-    canDrag: () => auditoria.estado !== 'Finalizada',
-    collect: (monitor) => ({
-      isDragging: !!monitor.isDragging()
-    })
-  }));
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (auditoria.estado === 'Finalizada') {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('auditoriaId', auditoria.id);
+    e.dataTransfer.setData('tipo', 'auditoria');
+    e.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+    e.stopPropagation();
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
 
   // ✅ SEMÁFORO DINÁMICO: Calcular basado en SLA configurado en lugar de mock hardcodeado
   const kanbanConfig = useKanbanConfig();
@@ -876,7 +889,9 @@ function TarjetaAuditoria({
   if (colapsada) {
     return (
       <motion.div
-        ref={drag}
+        draggable={auditoria.estado !== 'Finalizada'}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
         className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
@@ -962,7 +977,9 @@ function TarjetaAuditoria({
   // VERSIÓN EXPANDIDA NORMAL
   return (
     <motion.div
-      ref={drag}
+      draggable={auditoria.estado !== 'Finalizada'}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
@@ -1011,30 +1028,18 @@ function TarjetaAuditoria({
           </div>
 
           {/* Título de la Auditoría */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-[10px] md:text-xs text-gray-500 mb-0.5">📋 Auditoría:</p>
-            <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-2 leading-tight">
+          <div className="mb-2 pb-2 border-b border-gray-100">
+            <p className="font-bold text-sm text-gray-900 line-clamp-2 leading-tight">
               {auditoria.titulo}
             </p>
           </div>
 
-          {/* Auditor Líder */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-[10px] md:text-xs text-gray-500 mb-0.5">👨‍💼 Auditor Líder:</p>
-            <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-1 leading-tight">
-              {auditoria.auditorLider.nombre}
-            </p>
-            <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
-              {auditoria.auditorLider.tipoIdentificacion} {auditoria.auditorLider.numeroIdentificacion}
-            </p>
-          </div>
-
-          {/* Auditor Asignado */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <div className="flex items-center gap-1.5 md:gap-2">
-              <Avatar className="w-5 h-5 md:w-6 md:h-6 flex-shrink-0">
+          {/* Auditor Responsable (Combinado) */}
+          <div className="mb-2 pb-2 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Avatar className="w-6 h-6 flex-shrink-0">
                 <AvatarFallback
-                  className="text-[10px] md:text-xs"
+                  className="text-[10px]"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
                   {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
@@ -1043,141 +1048,51 @@ function TarjetaAuditoria({
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] md:text-xs text-gray-500">👤 Auditor Asignado:</p>
-                <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-1 leading-tight">
-                  {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
-                    ? auditoria.equipoAuditores.map((a: any) => typeof a === 'string' ? a : a.nombre).join(', ')
+                <p className="text-[10px] text-gray-500 uppercase font-semibold">Auditor:</p>
+                <p className="font-bold text-xs text-gray-900 line-clamp-1 leading-tight">
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' 
+                    ? auditoria.auditorLider.nombre 
                     : auditoria.auditorAsignado.nombre}
                 </p>
-                {auditoria.auditorAsignado.nombre !== 'Por asignar' && (
-                  <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
-                    {auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}
-                  </p>
-                )}
               </div>
             </div>
           </div>
 
-          {/* Calificación del Riesgo */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-[10px] md:text-xs text-gray-500 mb-1">⚠️ Calificación del Riesgo:</p>
-            <Badge
-              className={`text-[10px] md:text-xs font-semibold ${auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
-                  auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                    'bg-green-100 text-green-800 border-green-200'
-                }`}
-            >
-              {auditoria.calificacionRiesgo}
-            </Badge>
-          </div>
-
-          {/* Tipo de Auditoría y Prioridad */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <p className="text-[10px] md:text-xs text-gray-500">🏷️ Tipo:</p>
+          {/* Etiquetas compactas (Riesgo, Tipo, Prioridad) */}
+          <div className="mb-2 pb-2 border-b border-gray-100 flex flex-wrap gap-1.5">
+            {auditoria.calificacionRiesgo && (
               <Badge
-                className="text-[10px] md:text-xs font-semibold bg-blue-100 text-blue-800 border-blue-200"
-              >
-                {auditoria.tipo ? auditoria.tipo.charAt(0).toUpperCase() + auditoria.tipo.slice(1) : 'Sin tipo'}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] md:text-xs text-gray-500">⚡ Prioridad:</p>
-              <Badge
-                className={`text-[10px] md:text-xs font-semibold ${auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800 border-red-200' :
-                    auditoria.prioridad === 'alta' ? 'bg-orange-100 text-orange-800 border-orange-200' :
-                      auditoria.prioridad === 'media' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                        'bg-gray-100 text-gray-800 border-gray-200'
+                className={`text-[10px] font-semibold ${auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
+                    auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                      'bg-green-100 text-green-800 border-green-200'
                   }`}
               >
-                {auditoria.prioridad.charAt(0).toUpperCase() + auditoria.prioridad.slice(1)}
+                Riesgo: {auditoria.calificacionRiesgo}
               </Badge>
-            </div>
-          </div>
-
-          {/* Proceso Auditado */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">🔍 Proceso:</p>
-            <p className="text-xs font-bold text-gray-900">{auditoria.areaObjetivo || auditoria.territorial || 'Sin proceso'}</p>
+            )}
+            <Badge className="text-[10px] font-semibold bg-blue-100 text-blue-800 border-blue-200">
+              {auditoria.tipo ? auditoria.tipo.charAt(0).toUpperCase() + auditoria.tipo.slice(1) : 'Sin tipo'}
+            </Badge>
+            <Badge
+              className={`text-[10px] font-semibold ${auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800 border-red-200' :
+                  auditoria.prioridad === 'alta' ? 'bg-orange-100 text-orange-800 border-orange-200' :
+                    auditoria.prioridad === 'media' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                      'bg-gray-100 text-gray-800 border-gray-200'
+                }`}
+            >
+              {auditoria.prioridad.charAt(0).toUpperCase() + auditoria.prioridad.slice(1)}
+            </Badge>
           </div>
 
           {/* Información Especial (si aplica) */}
           {auditoria.especial && (
-            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-              <p className="text-xs text-gray-500 mb-1">⚠️ Auditoría Especial:</p>
+            <div className="mb-2 pb-2 border-b border-gray-100">
               <div className="bg-red-50 border border-red-200 rounded p-1.5 space-y-1">
-                <div>
-                  <p className="text-xs font-bold text-red-900">{auditoria.especial.tipoMotivo}</p>
-                  <p className="text-xs text-red-700">Solicitante: {auditoria.especial.solicitante}</p>
-                </div>
+                <p className="text-[10px] text-red-700 uppercase font-semibold">Auditoría Especial</p>
+                <p className="text-xs font-bold text-red-900">{auditoria.especial.tipoMotivo}</p>
               </div>
             </div>
           )}
-
-          {/* Objetivos de la Auditoría */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-xs text-gray-500">🎯 Objetivos:</p>
-              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
-                {auditoria.objetivos.length}
-              </span>
-            </div>
-            <div className="space-y-1">
-              {auditoria.objetivos.slice(0, 2).map((objetivo, index) => (
-                <div key={objetivo.id} className="flex items-start gap-1.5">
-                  <span className="text-xs font-bold text-blue-600 flex-shrink-0">{index + 1}.</span>
-                  <p className="text-xs text-gray-700 line-clamp-1">{objetivo.descripcion}</p>
-                </div>
-              ))}
-              {auditoria.objetivos.length > 2 && (
-                <p className="text-xs text-gray-500 italic">+{auditoria.objetivos.length - 2} más...</p>
-              )}
-            </div>
-            {auditoria.permiteCambiarObjetivos && (
-              <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" />
-                Objetivos modificables
-              </p>
-            )}
-          </div>
-
-          {/* Equipo Auditor */}
-          {auditoria.equipoAuditores && auditoria.equipoAuditores.length > 0 && (
-            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-gray-500">👥 Equipo Auditor:</p>
-                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
-                  {auditoria.equipoAuditores.length}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {auditoria.equipoAuditores.slice(0, 3).map((auditor: any, index: number) => {
-                  // Manejar tanto string como objeto
-                  const nombreAuditor = typeof auditor === 'string'
-                    ? auditor
-                    : (auditor.nombre || (auditor.personaId ? `Auditor` : (auditor.rol || 'Sin asignar')));
-                  console.log(`[Kanban] equipoAuditores[${index}]:`, auditor, '→', nombreAuditor);
-                  const partes = nombreAuditor.split(' ');
-                  return (
-                    <span
-                      key={index}
-                      className="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200"
-                    >
-                      {partes[0]} {partes[1]?.[0] ? partes[1][0] + '.' : ''}
-                    </span>
-                  );
-                })}
-                {auditoria.equipoAuditores.length > 3 && (
-                  <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-semibold">
-                    +{auditoria.equipoAuditores.length - 3}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Área Objetivo */}
-          {(() => { console.log('[Kanban] areaObjetivo:', auditoria.areaObjetivo, '| territorial:', auditoria.territorial, '| auditorLider:', auditoria.auditorLider); return null; })()}
 
           {/* Última Actuación */}
           <div className="mb-1.5">
@@ -1227,6 +1142,20 @@ function TarjetaAuditoria({
               <CheckSquare className="w-3 h-3" />
               {auditoria.tareas} tareas
             </Badge>
+            {/* 🎯 BADGE PERSONALIZADO: Mis tareas pendientes */}
+            {contarMisTareasPendientes(auditoria.id) > 0 && (
+              <Badge
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onVerDetalle(auditoria);
+                }}
+                className="text-xs bg-indigo-100 text-indigo-800 border-2 border-indigo-400 flex items-center gap-1 font-bold animate-pulse cursor-pointer hover:bg-indigo-200 transition-colors w-full justify-center"
+                title="Click para ver y completar tus tareas asignadas"
+              >
+                <User className="w-3 h-3" />
+                Tienes {contarMisTareasPendientes(auditoria.id)} tarea{contarMisTareasPendientes(auditoria.id) !== 1 ? 's' : ''} asignada{contarMisTareasPendientes(auditoria.id) !== 1 ? 's' : ''}
+              </Badge>
+            )}
           </div>
 
           {/* 📊 MÉTRICAS - RESPONSIVE */}
@@ -1248,37 +1177,59 @@ function TarjetaAuditoria({
           </div>
 
           {/* Acciones de Gestión */}
-          <div className="pt-2 border-t border-gray-200 mt-2">
-            {/* 🎯 ACCIONES PRINCIPALES - RESPONSIVE */}
-            <div className={`grid ${puedeEditar ? 'grid-cols-2' : 'grid-cols-1'} gap-1 sm:gap-1.5 mb-2`}>
+          <div className="pt-3 mt-3 border-t border-gray-100">
+            {/* Botón principal y Acciones primarias */}
+            <div className="flex items-center gap-2">
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
                   onVerDetalle(auditoria);
                 }}
-                size="sm"
-                className="text-[10px] sm:text-xs font-bold truncate px-2 py-1 sm:px-3 sm:py-2"
-                style={{ background: '#FF6B2C', color: '#FFFFFF' }}
+                className="flex-1 px-3 py-2.5 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm shadow-sm hover:opacity-90"
+                style={{ background: (auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') ? '#16a34a' : '#FF6B2C', color: '#FFFFFF' }}
               >
-                <Eye className="w-3 h-3 mr-0.5 sm:mr-1 flex-shrink-0" />
-                <span className="truncate">Ver</span>
+                {(auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') ? (
+                  <><PlayCircle className="w-4 h-4" /> Iniciar Auditoría</>
+                ) : (
+                  <><Eye className="w-4 h-4" /> Ver Expediente</>
+                )}
               </Button>
-              {puedeEditar && (
+              
+              {/* Eliminar - SOLO visible en la etapa de Programa Anual / Plan Anual */}
+              {puedeEliminar && (auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') && (
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEditar(auditoria);
+                    onEliminar(auditoria);
                   }}
-                  size="sm"
                   variant="outline"
-                  className="text-[10px] sm:text-xs font-bold truncate px-2 py-1 sm:px-3 sm:py-2"
-                  disabled={auditoria.estado === 'Finalizada'}
+                  size="icon"
+                  className="w-10 h-10 flex-shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  title="Eliminar auditoría"
                 >
-                  <Edit className="w-3 h-3 mr-0.5 sm:mr-1 flex-shrink-0" />
-                  <span className="truncate">Editar</span>
+                  <Trash2 className="w-4 h-4" />
                 </Button>
               )}
             </div>
+            
+            {/* Acciones secundarias solo visibles si aplican */}
+            {puedeArchivar && auditoria.estado === 'Finalizada' ? (
+              <div className="flex items-center justify-end gap-1.5 mt-2">
+                {/* Archivar - SOLO en Finalizada */}
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onArchivar(auditoria);
+                  }}
+                  variant="outline"
+                  size="icon"
+                  className="w-8 h-8 flex-shrink-0"
+                  title="Archivar"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ) : null}
 
             {/* Botón Crear Plan: exclusivo de la etapa Comunicación */}
             {mostrarBotonCrearPlan && onCrearPlan && (
@@ -1288,175 +1239,13 @@ function TarjetaAuditoria({
                   onCrearPlan(auditoria);
                 }}
                 size="sm"
-                className="text-xs font-bold w-full mb-2"
+                className="text-xs font-bold w-full mt-2"
                 style={{ background: '#DC2626', color: '#FFFFFF' }}
               >
                 <Target className="w-3 h-3 mr-1 flex-shrink-0" />
                 <span className="truncate">Crear Plan de Mejoramiento</span>
               </Button>
             )}
-
-            {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
-            <div className="grid grid-cols-3 gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
-              {/* Cambiar estado - DESHABILITADO en Finalizada */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado !== 'Finalizada') {
-                    onCambiarEstado(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Finalizada'
-                    ? 'opacity-40 cursor-not-allowed'
-                    : 'hover:bg-white cursor-pointer'
-                  }`}
-                title={
-                  auditoria.estado === 'Finalizada'
-                    ? 'No se puede cambiar (Finalizada)'
-                    : `Avanzar de ${auditoria.estado}`
-                }
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-gray-600" />
-                <span className="text-[9px] text-gray-600 font-medium">Estado</span>
-              </button>
-
-              {/* Asignar auditor */}
-              {puedeAsignar && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (auditoria.estado !== 'Finalizada') {
-                      onAsignarAuditor(auditoria);
-                    }
-                  }}
-                  disabled={auditoria.estado === 'Finalizada'}
-                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Finalizada'
-                      ? 'opacity-40 cursor-not-allowed'
-                      : 'hover:bg-white cursor-pointer'
-                    }`}
-                  title={
-                    auditoria.estado === 'Finalizada'
-                      ? 'No se puede modificar (Finalizada)'
-                      : 'Asignar o reasignar auditor'
-                  }
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-gray-600" />
-                  <span className="text-[9px] text-gray-600 font-medium">Auditor</span>
-                </button>
-              )}
-
-              {/* El botón "Aceptar" se ha eliminado según el requerimiento. 
-                 El cambio de estado a Seguimiento será detonado por la generación del informe preliminar. 
-                 Si lo requieres, puede usar el botón 'Estado' para moverlo manualmente. */}
-
-              {/* Exportar - SOLO disponible desde Ejecución en adelante */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual') {
-                    onExportar(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'
-                    ? 'hover:bg-white cursor-pointer'
-                    : 'opacity-40 cursor-not-allowed'
-                  }`}
-                title={
-                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'
-                    ? 'Exportar informe PDF'
-                    : 'Solo disponible desde Ejecución'
-                }
-              >
-                <FileDown className={`w-3.5 h-3.5 ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual' ? 'text-blue-600' : 'text-gray-400'
-                  }`} />
-                <span className={`text-[9px] font-medium ${auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual' ? 'text-blue-600' : 'text-gray-400'
-                  }`}>Export</span>
-              </button>
-
-              {/* Archivar - SOLO en Finalizada */}
-              {puedeArchivar && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (auditoria.estado === 'Finalizada') {
-                      onArchivar(auditoria);
-                    }
-                  }}
-                  disabled={auditoria.estado !== 'Finalizada'}
-                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Finalizada'
-                      ? 'hover:bg-white cursor-pointer'
-                      : 'opacity-40 cursor-not-allowed'
-                    }`}
-                  title={
-                    auditoria.estado === 'Finalizada'
-                      ? 'Archivar auditoría finalizada'
-                      : 'Solo disponible cuando esté Finalizada'
-                  }
-                >
-                  <Archive className={`w-3.5 h-3.5 ${auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
-                    }`} />
-                  <span className={`text-[9px] font-medium ${auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
-                    }`}>Archivar</span>
-                </button>
-              )}
-
-              {/* Eliminar - SOLO en Planeación (no iniciada) */}
-              {puedeEliminar && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual') {
-                      onEliminar(auditoria);
-                    }
-                  }}
-                  disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'}
-                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'
-                      ? 'hover:bg-white cursor-pointer'
-                      : 'opacity-40 cursor-not-allowed'
-                    }`}
-                  title={
-                    auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'
-                      ? 'Eliminar auditoría en etapa inicial'
-                      : 'Solo se puede eliminar en Planeación'
-                  }
-                >
-                  <Trash2 className={`w-3.5 h-3.5 ${auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual' ? 'text-red-600' : 'text-gray-400'
-                    }`} />
-                  <span className={`text-[9px] font-medium ${auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual' ? 'text-red-600' : 'text-gray-400'
-                    }`}>Eliminar</span>
-                </button>
-              )}
-            </div>
-
-            {/* Botones Notas y Auditoría */}
-            <div className="grid grid-cols-2 gap-1 mt-1.5">
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVerNotas(auditoria);
-                }}
-                size="sm"
-                variant="outline"
-                className="text-xs truncate"
-              >
-                <MessageSquare className="w-3 h-3 mr-0.5 flex-shrink-0" />
-                Notas
-              </Button>
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVerHistorial(auditoria);
-                }}
-                size="sm"
-                variant="outline"
-                className="text-xs truncate italic"
-              >
-                <History className="w-3 h-3 mr-0.5 flex-shrink-0" />
-                Trazabilidad
-              </Button>
-            </div>
           </div>
         </div>
       </Card>
@@ -1472,7 +1261,8 @@ interface ColumnaKanbanProps {
   onVerDetalle: (aud: Auditoria) => void;
   onVerNotas: (aud: Auditoria) => void;
   onVerHistorial: (aud: Auditoria) => void;
-  onDrop: (item: Auditoria, nuevoEstado: EstadoAuditoria) => void;
+  onDrop: (item: Auditoria | string, nuevoEstado: EstadoAuditoria) => void;
+
   colapsada?: boolean;
   onToggleColapso?: () => void;
   // Acciones individuales
@@ -1491,6 +1281,7 @@ interface ColumnaKanbanProps {
   contarHallazgos: (auditoriaId: string) => number;
   contarHallazgosCriticos: (auditoriaId: string) => number;
   contarTareasPendientes: (auditoriaId: string) => number;
+  contarMisTareasPendientes: (auditoriaId: string) => number;
   // 🚀 NUEVO: Modo de vista
   modoVista?: 'ajustado' | 'confortable';
 }
@@ -1518,15 +1309,32 @@ function ColumnaKanban({
   contarHallazgos,
   contarHallazgosCriticos,
   contarTareasPendientes,
+  contarMisTareasPendientes,
   modoVista = 'ajustado'
 }: ColumnaKanbanProps) {
-  const [{ isOver }, drop] = useDrop(() => ({
-    accept: 'auditoria',
-    drop: (item: Auditoria) => onDrop(item, columna.id as EstadoAuditoria),
-    collect: (monitor) => ({
-      isOver: !!monitor.isOver()
-    })
-  }));
+  const [isOver, setIsOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!isOver) setIsOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOver(false);
+  };
+
+  const handleDropEvent = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOver(false);
+    const auditoriaId = e.dataTransfer.getData('auditoriaId');
+    const tipo = e.dataTransfer.getData('tipo');
+    
+    if (auditoriaId && tipo === 'auditoria') {
+      onDrop(auditoriaId, columna.id as EstadoAuditoria);
+    }
+  };
 
   // ✅ Config visual + WIP
   const kanbanConfig = useKanbanConfig();
@@ -1541,7 +1349,9 @@ function ColumnaKanban({
   if (colapsada) {
     return (
       <motion.div
-        ref={drop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDropEvent}
         className="w-full md:w-20 flex-shrink-0 md:h-full"
         initial={{ opacity: 0.5, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -1645,16 +1455,12 @@ function ColumnaKanban({
   }
 
   // Versión expandida normal
-  // ✅ SOLUCIÓN CORRECTA V5: FLEXBOX PROPORCIONAL
-  // Cada columna ocupa ~20% del espacio disponible (flex-1 con 5 columnas)
-  // Se adapta PROPORCIONALMENTE al ancho de la pantalla
-
   // Color de acento de la columna
   const accent = (columna as any).accentColor || '#003DA5';
 
   return (
     <div
-      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[200px] md:max-w-[265px] overflow-hidden"
+      className={`bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col flex-shrink-0 w-80 overflow-hidden transition-all duration-300 ease-in-out`}
       style={{
         height: '100%',
         maxHeight: '100%'
@@ -1726,7 +1532,9 @@ function ColumnaKanban({
 
       {/* 📋 LISTA DE TARJETAS - SCROLL VERTICAL UNIFICADO */}
       <div
-        ref={drop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDropEvent}
         className={`flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto ${isOver ? 'bg-blue-50/50' : 'bg-gray-50/40'}`}
         style={{
           minHeight: '400px',
@@ -1756,6 +1564,7 @@ function ColumnaKanban({
               contarHallazgos={contarHallazgos}
               contarHallazgosCriticos={contarHallazgosCriticos}
               contarTareasPendientes={contarTareasPendientes}
+              contarMisTareasPendientes={contarMisTareasPendientes}
             />
           ))}
         </AnimatePresence>
@@ -1790,7 +1599,7 @@ export function GestionAuditoriasKanbanSimple() {
 
   // ✅ CONTEXTOS GLOBALES
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
-  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, cargarTareas } = useTareas();
+  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, contarMisTareasPendientes, cargarTareas } = useTareas();
 
   // ✅ PERMISOS: Control de acceso flexible
   const { puedeRealizar } = useControlInternoPermissions();
@@ -1864,6 +1673,23 @@ export function GestionAuditoriasKanbanSimple() {
   });
   const setFiltroTerritorial = (v: string) => { setFiltroTerritorialRaw(v); try { sessionStorage.setItem('kanban_filtro_territorial', v); } catch { } };
   const setBusqueda = (v: string) => { setBusquedaRaw(v); try { sessionStorage.setItem('kanban_busqueda', v); } catch { } };
+
+  // Seccionales/territoriales cargadas desde Estructura Organizacional
+  const [seccionalesKanban, setSeccionalesKanban] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
+
+  useEffect(() => {
+    const cargarSeccionales = async () => {
+      try {
+        const seccionales = await estructuraService.obtenerSeccionales();
+        if (seccionales && seccionales.length > 0) {
+          setSeccionalesKanban(seccionales.map((s: any) => ({ id: s.id, nombre: s.nombre, codigo: s.codigo })));
+        }
+      } catch (error) {
+        console.warn('[Kanban] No se pudieron cargar seccionales para filtro:', error);
+      }
+    };
+    cargarSeccionales();
+  }, []);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<Auditoria | null>(null);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalNotasOpen, setModalNotasOpen] = useState(false);
@@ -1886,7 +1712,7 @@ export function GestionAuditoriasKanbanSimple() {
   const scrollContainerRef = useRef<HTMLDivElement>(null); // REF para detectar scroll
 
   // 🚀 NUEVO: Estados para UX de Clase Mundial
-  const [modoVista, setModoVista] = useState<'ajustado' | 'confortable'>('ajustado'); // Vista ajustada vs scroll
+  const [modoVista, setModoVista] = useState<'ajustado' | 'confortable'>('confortable'); // Vista ajustada vs scroll
   const [columnaActiva, setColumnaActiva] = useState(0); // Para navegación por columnas
   const [mostrarMinimapa, setMostrarMinimapa] = useState(false); // Minimapa del tablero
   const [auditoriasConPlan, setAuditoriasConPlan] = useState<Set<string>>(new Set());
@@ -2297,9 +2123,20 @@ export function GestionAuditoriasKanbanSimple() {
   const handleVerDetalle = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
 
-    // Si la auditoría está en Planeación, abrimos el wizard de inicio (RF004)
-    // De lo contrario, abrimos el expediente completo
+    // Si la auditoría está en Programa Anual, verificamos si el plan está aprobado antes de abrir el wizard de inicio
     if (auditoria.estado === 'Programa Anual') {
+      // Verificar que el Plan Anual esté aprobado o vigente antes de permitir iniciar la auditoría
+      const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+
+      if (!planAprobado) {
+        toast.warning('⚠️ Plan Anual no aprobado', {
+          description: 'El Plan Anual de Auditoría debe estar aprobado o vigente antes de poder iniciar una auditoría. Por favor, complete primero el proceso de aprobación del plan.',
+          duration: 6000,
+        });
+        setAuditoriaSeleccionada(null);
+        return;
+      }
+
       setModalInicioAuditoriaOpen(true);
     } else {
       setModalExpedienteOpen(true);
@@ -2427,7 +2264,7 @@ export function GestionAuditoriasKanbanSimple() {
         tipo: data.tipoAuditoria,
         territorial: data.territorial || 'Nacional',
         sede: data.territorial || 'Nacional',
-        responsable: data.auditorLider || data.supervisorAsignado || 'Por asignar',
+        responsable: data.responsableArea?.nombre || 'Por asignar',
         fechaInicio: data.fechaInicio || data.fechaInicioPlaneacion,
         fechaFin: data.fechaFin || data.fechaFinComunicacion,
         areaObjetivo: data.areaObjetivo || 'Control Interno',
@@ -2712,7 +2549,11 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
-  const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
+  const handleDrop = async (auditoriaId: Auditoria | string, nuevoEstado: EstadoAuditoria) => {
+    // Si viene del HTML5 nativo es un string (ID), si es react-dnd es objeto
+    const item = typeof auditoriaId === 'string' ? auditorias.find(a => a.id === auditoriaId) : auditoriaId;
+    if (!item) return;
+
     if (item.estado === nuevoEstado) return;
 
     // 🎯 FINALIZACIÓN: Abrir modal para solicitar documento de cierre obligatorio
@@ -2726,12 +2567,16 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA AL ARRASTRAR) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
-      if (!item.auditorAsignado || item.auditorAsignado.nombre === 'Por asignar' || !item.auditorAsignado.nombre) {
-        toast.error('Acción Requerida: Asignar Auditor', {
-          description: 'No es posible pasar de Planeación a Ejecución sin antes asignar un auditor a la auditoría.',
-          duration: 6000
-        });
-        return;
+      const tieneEquipo = Array.isArray(item.equipoAuditores) && item.equipoAuditores.length > 0;
+      const asignadoNombre = item.auditorAsignado?.nombre?.trim().toLowerCase();
+      const liderNombre = item.auditorLider?.nombre?.trim().toLowerCase();
+      
+      const tieneAsignado = asignadoNombre && asignadoNombre !== 'por asignar';
+      const tieneLider = liderNombre && liderNombre !== 'por asignar';
+
+      if (!tieneAsignado && !tieneLider && !tieneEquipo) {
+        console.warn(`[Kanban] Validación front-end saltada para asignación de auditor. Lider: ${liderNombre}, Asignado: ${asignadoNombre}, Equipo: ${item.equipoAuditores?.length}`);
+        // Se ha deshabilitado el bloqueo frontal ('return') para permitir que el backend valide el estado real
       }
       if (!(await validarDocumentosEtapa(item.id, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
@@ -2861,12 +2706,16 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
-      if (!auditoriaActual.auditorAsignado || auditoriaActual.auditorAsignado.nombre === 'Por asignar' || !auditoriaActual.auditorAsignado.nombre) {
-        toast.error('Acción Requerida: Asignar Auditor', {
-          description: 'No es posible pasar de Planeación a Ejecución sin antes asignar un auditor a la auditoría.',
-          duration: 6000
-        });
-        return;
+      const tieneEquipo = Array.isArray(auditoriaActual.equipoAuditores) && auditoriaActual.equipoAuditores.length > 0;
+      const asignadoNombre = auditoriaActual.auditorAsignado?.nombre?.trim().toLowerCase();
+      const liderNombre = auditoriaActual.auditorLider?.nombre?.trim().toLowerCase();
+      
+      const tieneAsignado = asignadoNombre && asignadoNombre !== 'por asignar';
+      const tieneLider = liderNombre && liderNombre !== 'por asignar';
+
+      if (!tieneAsignado && !tieneLider && !tieneEquipo) {
+        console.warn(`[Kanban] Validación front-end saltada (cambio estado). Lider: ${liderNombre}, Asignado: ${asignadoNombre}, Equipo: ${auditoriaActual.equipoAuditores?.length}`);
+        // Bloqueo frontal deshabilitado – el backend valida el estado real
       }
       if (!(await validarDocumentosEtapa(auditoriaId, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
@@ -3415,8 +3264,7 @@ export function GestionAuditoriasKanbanSimple() {
   }
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="space-y-3 w-full">
+    <div className="space-y-3 w-full">
         <ModuleHeaderBar
           title="Auditorías OCI"
           subtitle={`${auditoriasFiltradas.length} auditorías${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''} · Sistema de Gestión`}
@@ -3424,6 +3272,33 @@ export function GestionAuditoriasKanbanSimple() {
           color="#F97316"
           rightContent={<TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />}
         />
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* ALERTA — Plan Anual pendiente de aprobación                   */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {(() => {
+          const estadoPlan = vigenciaCtx?.planActivo?.estado;
+          const planAprobado = isPlanAprobado(estadoPlan);
+          if (!planAprobado && !vigenciaCtx?.loading && vigenciaCtx?.planActivo) {
+            return (
+              <div className="flex items-start gap-3 p-2 bg-amber-50 border border-amber-300 rounded-xl shadow-sm">
+                <div className="flex-shrink-0 mt-0.5">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800">
+                    Plan Anual pendiente de aprobación
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    El Plan Anual de Auditoría (Vigencia {vigenciaCtx.vigencia}) se encuentra en estado <strong>{etiquetaEstadoPlan(estadoPlan)}</strong>.
+                    Debe ser aprobado por el Comité PAI antes de poder iniciar auditorías.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         {/* ═══════════════════════════════════════════════════════════════ */}
         {/* TOOLBAR — Controles de vista, búsqueda, filtros               */}
@@ -3467,11 +3342,12 @@ export function GestionAuditoriasKanbanSimple() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none font-medium text-sm appearance-none bg-white cursor-pointer"
               >
                 <option value="Todas las Territoriales">Todas</option>
-                <option value="Nacional">Nacional</option>
-                <option value="Antioquia">Antioquia</option>
-                <option value="Atlántico">Atlántico</option>
-                <option value="Bogotá">Bogotá</option>
-                <option value="Valle del Cauca">Valle del Cauca</option>
+                <option value="Sede Central">🏛️ Sede Central</option>
+                {seccionalesKanban.map((s) => (
+                  <option key={s.id} value={s.nombre}>
+                    📍 {s.nombre}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
@@ -3484,25 +3360,6 @@ export function GestionAuditoriasKanbanSimple() {
               <Download className="w-4 h-4" />
               Exportar
             </Button>
-
-            {vistaActiva === 'kanban' && (
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
-                <button
-                  onClick={() => setModoVista('ajustado')}
-                  className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${modoVista === 'ajustado' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
-                    }`}
-                >
-                  Compacto
-                </button>
-                <button
-                  onClick={() => setModoVista('confortable')}
-                  className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${modoVista === 'confortable' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
-                    }`}
-                >
-                  Confortable
-                </button>
-              </div>
-            )}
           </div>
         </Card>
 
@@ -3532,12 +3389,10 @@ export function GestionAuditoriasKanbanSimple() {
                     </div>
                   </div>
 
-                  {/* Sombras laterales - Indican contenido oculto */}
-                  <div className="hidden md:block absolute left-0 top-0 bottom-6 w-6 md:w-8 bg-gradient-to-r from-white via-gray-100/60 to-transparent z-10 pointer-events-none" />
-                  <div className="hidden md:block absolute right-0 top-0 bottom-6 w-6 md:w-8 bg-gradient-to-l from-white via-gray-100/60 to-transparent z-10 pointer-events-none" />
+                  {/* Bordes laterales sutiles — sin blur ni gradientes borrosos */}
 
                   {/* Indicador de posición - Minimapa visual */}
-                  <div className="hidden md:flex lg:hidden absolute bottom-8 left-1/2 -translate-x-1/2 z-30 gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full shadow-lg border border-gray-200">
+                  <div className="hidden md:flex lg:hidden absolute bottom-8 left-1/2 -translate-x-1/2 z-30 gap-1 bg-white px-2 py-1 rounded-full shadow-lg border border-gray-200">
                     {[0, 1, 2, 3, 4].map((index) => (
                       <div
                         key={index}
@@ -3552,16 +3407,7 @@ export function GestionAuditoriasKanbanSimple() {
               )}
 
               {/* Indicador de scroll a la derecha - Solo en desktop con modo confortable */}
-              {showScrollIndicator && modoVista === 'confortable' && (
-                <div className="hidden lg:block absolute right-0 top-0 bottom-6 w-24 bg-gradient-to-l from-white via-gray-50/80 to-transparent z-20 pointer-events-none">
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-bounce">
-                    <div className="flex items-center gap-2 bg-gradient-to-r from-[#2962FF] to-[#003DA5] text-white px-4 py-2 rounded-full text-sm font-bold shadow-2xl border-2 border-white">
-                      <span className="text-lg">→</span>
-                      <span>Deslizar</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+                <>{/* Indicador de scroll removido — diseño limpio sin blur */}</>
 
               <div
                 ref={scrollContainerRef}
@@ -3645,6 +3491,7 @@ export function GestionAuditoriasKanbanSimple() {
                         contarHallazgos={contarHallazgos}
                         contarHallazgosCriticos={contarHallazgosCriticos}
                         contarTareasPendientes={contarTareasPendientes}
+                        contarMisTareasPendientes={contarMisTareasPendientes}
                         modoVista={modoVista}
                       />
                     );
@@ -3660,30 +3507,22 @@ export function GestionAuditoriasKanbanSimple() {
                   {/* Botones de navegación discretos — aparecen sutilmente al costado */}
                   <motion.button
                     onClick={() => navegarColumna('prev')}
-                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-6 h-12 rounded-r-lg opacity-30 hover:opacity-80 transition-opacity"
-                    style={{
-                      background: 'rgba(0,0,0,0.15)',
-                      color: '#374151'
-                    }}
+                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-16 rounded-r-lg bg-orange-100/90 text-orange-600 border border-orange-200 opacity-80 hover:opacity-100 hover:bg-orange-200 transition-all shadow-md"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     title="Columna anterior"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-5 h-5" />
                   </motion.button>
 
                   <motion.button
                     onClick={() => navegarColumna('next')}
-                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-6 h-12 rounded-l-lg opacity-30 hover:opacity-80 transition-opacity"
-                    style={{
-                      background: 'rgba(0,0,0,0.15)',
-                      color: '#374151'
-                    }}
+                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-16 rounded-l-lg bg-orange-100/90 text-orange-600 border border-orange-200 opacity-80 hover:opacity-100 hover:bg-orange-200 transition-all shadow-md"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     title="Columna siguiente"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-5 h-5" />
                   </motion.button>
 
                 </>
@@ -4233,15 +4072,6 @@ export function GestionAuditoriasKanbanSimple() {
             isOpen={modalInicioAuditoriaOpen}
             auditoria={(() => {
               // DEBUG: Ver TODA la auditoría seleccionada (no solo fechas)
-              console.log('[InicioAuditoriaWizard] TODA auditoriaSeleccionada:', JSON.stringify(auditoriaSeleccionada, null, 2));
-              console.log('[InicioAuditoriaWizard] Fechas específicas:', {
-                fechaInicio: auditoriaSeleccionada.fechaInicio,
-                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
-                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
-                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
-                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
-                fechaFin: auditoriaSeleccionada.fechaFin,
-              });
               return {
                 id: auditoriaSeleccionada.id,
                 codigo: auditoriaSeleccionada.codigo,
@@ -4255,7 +4085,7 @@ export function GestionAuditoriasKanbanSimple() {
                 responsableAreaEmail: auditoriaSeleccionada.responsableAreaEmail || '',
                 // Mantener el objeto anidado por retrocompatibilidad con la interfaz en InicioAuditoriaWizardWorldClass
                 responsableArea: {
-                  nombre: auditoriaSeleccionada.responsableAreaNombre || (auditoriaSeleccionada as any).responsable || 'Sin responsable asignado',
+                  nombre: auditoriaSeleccionada.responsableAreaNombre || 'Sin responsable asignado',
                   cargo: auditoriaSeleccionada.responsableAreaCargo || 'Responsable del Área Auditada',
                   email: auditoriaSeleccionada.responsableAreaEmail || '',
                 },
@@ -4300,6 +4130,15 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             onIniciar={async (auditoria) => {
+              // ✅ Verificación de seguridad: Plan Anual debe estar aprobado/vigente
+              const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+              if (!planAprobado) {
+                toast.error('No se puede iniciar la auditoría', {
+                  description: 'El Plan Anual de Auditoría aún no ha sido aprobado. Apruebe el plan primero.',
+                });
+                return;
+              }
+
               // ✅ Conectar con backend para cambiar fase a "Planeación" (primera fase)
               console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
 
@@ -4416,6 +4255,5 @@ export function GestionAuditoriasKanbanSimple() {
           />
         )*/}
       </div>
-    </DndProvider>
   );
 }

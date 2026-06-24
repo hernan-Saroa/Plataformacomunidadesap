@@ -42,6 +42,7 @@ import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../services/api/controlInternoService';
+import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -97,6 +98,7 @@ export interface ResponsableArea {
   cargo?: string;
   numeroIdentificacion?: string;
   isAuditorBackend?: boolean;
+  roles?: string | null;
 }
 
 export interface AuditoriaUnificadaFormData {
@@ -179,11 +181,12 @@ interface FormularioAuditoriaUnificadoProps {
 // DATOS MOCK
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TERRITORIALES = [
-  'Nacional', 'Antioquia', 'Atlántico', 'Bogotá', 'Bolívar', 'Boyacá', 'Caldas',
-  'Caquetá', 'Cauca', 'Cesar', 'Chocó', 'Córdoba', 'Cundinamarca', 'Huila',
-  'La Guajira', 'Magdalena', 'Meta', 'Nariño', 'Norte de Santander', 'Quindío',
-  'Risaralda', 'Santander', 'Sucre', 'Tolima', 'Valle del Cauca'
+// TERRITORIALES: Ahora se cargan dinámicamente desde Estructura Organizacional
+// (ver useEffect cargarSeccionales dentro del componente principal)
+const TERRITORIALES_FALLBACK = [
+  'Sede Central', 'Antioquia', 'Atlántico', 'Bolívar', 'Boyacá', 'Caldas',
+  'Cauca', 'Chocó', 'Cundinamarca', 'Huila', 'Meta', 'Nariño',
+  'Norte de Santander', 'Quindío', 'Santander', 'Tolima', 'Valle del Cauca'
 ];
 
 const AREAS_INSTITUCIONALES = [
@@ -292,6 +295,13 @@ function FieldWrapper({ label, error, required, children, helpText }: FieldWrapp
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Helper to parse YYYY-MM-DD local dates avoiding UTC timezone shift
+const parseLocalDate = (dateString: string) => {
+  if (!dateString) return new Date();
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export function FormularioAuditoriaUnificado({
   open,
   onClose,
@@ -394,6 +404,10 @@ export function FormularioAuditoriaUnificado({
   // Estado para evaluaciones completas (incluye datos de riesgo)
   const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
 
+  // Estado para seccionales/territoriales cargadas desde Estructura Organizacional
+  const [seccionalesDisponibles, setSeccionalesDisponibles] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
+  const [cargandoSeccionales, setCargandoSeccionales] = useState(false);
+
   const TOTAL_PASOS = 9;
   
   // Precargar todas las personas disponibles al abrir el formulario
@@ -403,14 +417,51 @@ export function FormularioAuditoriaUnificado({
       try {
         const resp = await auditoriasApi.getAllAuditados();
         if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
-          const list = resp.data.map((p: any) => ({
+          let list = resp.data.map((p: any) => ({
             idPersona: String(p.idPersona ?? p.id ?? ''),
             nombre: p.nombre ?? '',
             email: p.email ?? '',
             cargo: p.cargo,
             numeroIdentificacion: p.numeroIdentificacion,
             isAuditorBackend: p.isAuditor ?? false,
+            roles: p.roles ?? null,
           }));
+
+          // Si el backend no devolvió roles, obtenerlos del auth service
+          const sinRoles = list.every((p: ResponsableArea) => !p.roles);
+          if (sinRoles) {
+            try {
+              const { getApiGatewayBaseUrl } = await import('../../../config/environment');
+              const gw = getApiGatewayBaseUrl();
+              const authResp = await fetch(`${gw}/auth/api/v1/users?limit=300`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+              });
+              if (authResp.ok) {
+                const authData = await authResp.json();
+                const usersArr = Array.isArray(authData) ? authData : (authData?.data || authData?.users || []);
+                // Crear mapa email -> roles
+                const rolesMap = new Map<string, string>();
+                usersArr.forEach((u: any) => {
+                  const email = (u.email || u.person?.email || u.person?.dir_email || '').toLowerCase();
+                  const roles = Array.isArray(u.roles)
+                    ? u.roles.map((r: any) => typeof r === 'string' ? r : (r.name || r.code || '')).filter(Boolean).join(', ')
+                    : '';
+                  if (email && roles) {
+                    rolesMap.set(email, roles);
+                  }
+                });
+                // Enriquecer lista con roles
+                list = list.map((p: ResponsableArea) => ({
+                  ...p,
+                  roles: rolesMap.get((p.email || '').toLowerCase()) || p.roles || null,
+                }));
+              }
+            } catch (authErr) {
+              console.warn('[FormularioAuditoriaUnificado] No se pudieron obtener roles desde auth:', authErr);
+            }
+          }
+
           setPersonasPrecargadas(list);
         }
       } catch (err) {
@@ -531,31 +582,60 @@ export function FormularioAuditoriaUnificado({
     cargarProcesos();
   }, [open]);
 
+  // Cargar seccionales/territoriales desde Estructura Organizacional
+  useEffect(() => {
+    const cargarSeccionales = async () => {
+      if (!open) return;
+      setCargandoSeccionales(true);
+      try {
+        const seccionales = await estructuraService.obtenerSeccionales();
+        if (seccionales && seccionales.length > 0) {
+          setSeccionalesDisponibles(seccionales.map((s: any) => ({
+            id: s.id,
+            nombre: s.nombre,
+            codigo: s.codigo,
+          })));
+          console.log(`[FormularioAuditoria] ✅ ${seccionales.length} seccionales/territoriales cargadas desde Estructura Organizacional`);
+        } else {
+          // Usar fallback si no hay seccionales configuradas
+          setSeccionalesDisponibles(TERRITORIALES_FALLBACK.map((t, i) => ({ id: i + 1, nombre: t })));
+          console.warn('[FormularioAuditoria] No hay seccionales en Estructura Organizacional, usando fallback');
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] Error al cargar seccionales:', error);
+        setSeccionalesDisponibles(TERRITORIALES_FALLBACK.map((t, i) => ({ id: i + 1, nombre: t })));
+      } finally {
+        setCargandoSeccionales(false);
+      }
+    };
+    cargarSeccionales();
+  }, [open]);
+
   // Auto-calcular etapas del cronograma (PROMPT: 4-4-5 semanas)
   useEffect(() => {
     if (formData.fechaInicioPlaneacion && !formData.fechaFinPlaneacion && mode === 'create') {
-      const inicioP = new Date(formData.fechaInicioPlaneacion);
+      const inicioP = parseLocalDate(formData.fechaInicioPlaneacion);
       
       // 1. Planeación: 4 semanas (28 días)
-      const finP = new Date(inicioP);
+      const finP = new Date(inicioP.getTime());
       finP.setDate(finP.getDate() + 27);
       const fechaFinP = finP.toISOString().split('T')[0];
       
       // 2. Ejecución: 4 semanas (28 días)
-      const inicioE = new Date(finP);
+      const inicioE = new Date(finP.getTime());
       inicioE.setDate(inicioE.getDate() + 1);
       const fechaInicioE = inicioE.toISOString().split('T')[0];
       
-      const finE = new Date(inicioE);
+      const finE = new Date(inicioE.getTime());
       finE.setDate(finE.getDate() + 27);
       const fechaFinE = finE.toISOString().split('T')[0];
       
       // 3. Comunicación: 5 semanas (35 días)
-      const inicioC = new Date(finE);
+      const inicioC = new Date(finE.getTime());
       inicioC.setDate(inicioC.getDate() + 1);
       const fechaInicioC = inicioC.toISOString().split('T')[0];
       
-      const finC = new Date(inicioC);
+      const finC = new Date(inicioC.getTime());
       finC.setDate(finC.getDate() + 34);
       const fechaFinC = finC.toISOString().split('T')[0];
       
@@ -620,6 +700,7 @@ export function FormularioAuditoriaUnificado({
             cargo: p.cargo,
             numeroIdentificacion: p.numeroIdentificacion,
             isAuditorBackend: p.isAuditor ?? false,
+            roles: p.roles ?? null,
           }));
           setResultadosResponsable(fetched);
         }
@@ -817,8 +898,8 @@ export function FormularioAuditoriaUnificado({
       return;
     }
     
-    const inicioPlaneacion = new Date(formData.fechaInicioPlaneacion);
-    const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+    const inicioPlaneacion = parseLocalDate(formData.fechaInicioPlaneacion);
+    const finPlaneacion = parseLocalDate(formData.fechaFinPlaneacion);
     if (finPlaneacion <= inicioPlaneacion) {
       toast.error('La fecha de fin de Planeación debe ser posterior a la fecha de inicio');
       setPasoActual(4);
@@ -832,8 +913,8 @@ export function FormularioAuditoriaUnificado({
         setPasoActual(4);
         return;
       }
-      const inicioEjecucion = new Date(formData.fechaInicioEjecucion);
-      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      const inicioEjecucion = parseLocalDate(formData.fechaInicioEjecucion);
+      const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
       if (inicioEjecucion < finPlaneacion) {
         toast.error('La fecha de inicio de Ejecución debe ser igual o posterior al fin de Planeación');
         setPasoActual(4);
@@ -858,9 +939,9 @@ export function FormularioAuditoriaUnificado({
         setPasoActual(4);
         return;
       }
-      const finEjecucion = new Date(formData.fechaFinEjecucion);
-      const inicioComunicacion = new Date(formData.fechaInicioComunicacion);
-      const finComunicacion = new Date(formData.fechaFinComunicacion);
+      const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
+      const inicioComunicacion = parseLocalDate(formData.fechaInicioComunicacion);
+      const finComunicacion = parseLocalDate(formData.fechaFinComunicacion);
       if (inicioComunicacion < finEjecucion) {
         toast.error('La fecha de inicio de Comunicación debe ser igual o posterior al fin de Ejecución');
         setPasoActual(4);
@@ -996,6 +1077,8 @@ export function FormularioAuditoriaUnificado({
             mostrarSugerenciasResponsable={mostrarSugerenciasResponsable}
             setMostrarSugerenciasResponsable={setMostrarSugerenciasResponsable}
             auditoresDisponibles={auditoresDisponibles}
+            seccionalesDisponibles={seccionalesDisponibles}
+            cargandoSeccionales={cargandoSeccionales}
           />
         );
       case 3:
@@ -1075,18 +1158,18 @@ export function FormularioAuditoriaUnificado({
           <Dialog open={open} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
               {/* HEADER */}
-              <div className="flex items-start justify-between p-6 border-b border-gray-200">
+              <div className="flex items-start justify-between px-6 py-3 border-b border-gray-200">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Shield className="w-6 h-6" style={{ color: '#003DA5' }} />
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <Shield className="w-5 h-5" style={{ color: '#003DA5' }} />
                     <DialogTitle asChild>
-                      <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
+                      <h2 className="text-xl font-black" style={{ color: '#003DA5' }}>
                         {mode === 'create' ? 'Nueva Auditoría OCI' : 'Editar Auditoría OCI'}
                       </h2>
                     </DialogTitle>
                   </div>
                   <DialogDescription asChild>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-xs text-gray-600">
                       Formulario Unificado de Control Interno de Gestión - ESAP
                     </p>
                   </DialogDescription>
@@ -1094,21 +1177,21 @@ export function FormularioAuditoriaUnificado({
               </div>
 
               {/* INDICADOR DE PROGRESO */}
-              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-bold text-gray-700">
+              <div className="px-6 py-2 bg-gray-50 border-b border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-gray-700">
                     Paso {pasoActual} de {TOTAL_PASOS}
                   </span>
                   <Badge
-                    className="bg-blue-100 text-blue-700 border-blue-200"
+                    className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] px-2 py-0"
                     variant="outline"
                   >
                     {Math.round((pasoActual / TOTAL_PASOS) * 100)}% Completado
                   </Badge>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
                   <motion.div
-                    className="h-2 rounded-full"
+                    className="h-1.5 rounded-full"
                     style={{ backgroundColor: '#003DA5' }}
                     initial={{ width: 0 }}
                     animate={{ width: `${(pasoActual / TOTAL_PASOS) * 100}%` }}
@@ -1117,21 +1200,21 @@ export function FormularioAuditoriaUnificado({
                 </div>
 
                 {/* Breadcrumb de pasos - Solo móvil */}
-                <div className="mt-3 lg:hidden">
-                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                <div className="mt-2 lg:hidden">
+                  <p className="text-[11px] text-gray-600 flex items-center gap-1">
                     {pasos[pasoActual - 1].icono}
                     {pasos[pasoActual - 1].titulo}
                   </p>
                 </div>
 
                 {/* Tabs de pasos - Desktop */}
-                <div className="hidden lg:flex gap-2 mt-3 overflow-x-auto pb-2">
+                <div className="hidden lg:flex gap-1.5 mt-2 overflow-x-auto pb-1 custom-scrollbar">
                   {pasos.map((paso) => (
                     <button
                       key={paso.numero}
                       onClick={() => setPasoActual(paso.numero)}
                       className={`
-                        flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium
+                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium
                         transition-all whitespace-nowrap
                         ${
                           pasoActual === paso.numero
@@ -1150,7 +1233,7 @@ export function FormularioAuditoriaUnificado({
               </div>
 
               {/* CONTENIDO DEL PASO */}
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={pasoActual}
@@ -1605,6 +1688,8 @@ interface Paso2Props extends PasoProps {
   mostrarSugerenciasResponsable: boolean;
   setMostrarSugerenciasResponsable: (v: boolean) => void;
   auditoresDisponibles: any[];
+  seccionalesDisponibles: { id: number; nombre: string; codigo?: string }[];
+  cargandoSeccionales: boolean;
 }
 
 function Paso2ClasificacionAlcance({
@@ -1618,6 +1703,8 @@ function Paso2ClasificacionAlcance({
   mostrarSugerenciasResponsable,
   setMostrarSugerenciasResponsable,
   auditoresDisponibles = [],
+  seccionalesDisponibles = [],
+  cargandoSeccionales = false,
 }: Paso2Props) {
   // Buscar la evaluación del proceso seleccionado para obtener la dependencia
   const evaluacionProceso = evaluaciones.find(
@@ -1653,6 +1740,39 @@ function Paso2ClasificacionAlcance({
                 <span className="text-gray-400">Primero seleccione un proceso en el Paso 1</span>
               )}
             </div>
+          </FieldWrapper>
+
+          {/* Territorial / Seccional - Cargado desde Estructura Organizacional */}
+          <FieldWrapper
+            label="Territorial / Seccional"
+            required
+            helpText="Seleccione la territorial o seccional donde se realizará la auditoría. Los datos provienen del módulo de Estructura Organizacional."
+          >
+            <div className="relative">
+              <select
+                value={formData.territorial}
+                onChange={(e) => onChange('territorial', e.target.value)}
+                className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white appearance-none font-medium"
+                disabled={cargandoSeccionales}
+              >
+                <option value="">{cargandoSeccionales ? '⏳ Cargando seccionales...' : '📍 Seleccione una territorial/seccional'}</option>
+                <option value="Sede Central">🏛️ Sede Central (Bogotá)</option>
+                {seccionalesDisponibles.map((s) => (
+                  <option key={s.id} value={s.nombre}>
+                    📍 {s.nombre} {s.codigo ? `(${s.codigo})` : ''}
+                  </option>
+                ))}
+              </select>
+              <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+            {formData.territorial && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-blue-50 text-blue-800 border-blue-200">
+                  <MapPin className="w-3 h-3" />
+                  {formData.territorial}
+                </span>
+              </div>
+            )}
           </FieldWrapper>
 
           {/* Foco de la Auditoría */}
@@ -2002,12 +2122,35 @@ function Paso2ClasificacionAlcance({
                                 {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
                               </p>
                             </div>
-                            {!isAuditor && <User className="w-4 h-4 text-gray-300 shrink-0" />}
+                            {/* Roles a la derecha */}
+                            <div className="shrink-0 flex flex-col items-end gap-0.5 ml-2">
+                              {p.roles ? (
+                                p.roles.split(', ').slice(0, 2).map((rol: string) => (
+                                  <span
+                                    key={rol}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold leading-tight ${
+                                      isAuditor
+                                        ? 'bg-red-50 text-red-600 border border-red-200'
+                                        : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    }`}
+                                  >
+                                    {rol}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-50 text-gray-400 border border-gray-200">
+                                  Sin rol
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </button>
                       );
                     })}
                   </div>
+                )}
+                {mostrarSugerenciasResponsable && (
+                  <div className="h-64 pointer-events-none" />
                 )}
               </div>
             )}
@@ -2159,7 +2302,7 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
   // Calcular días de cada etapa
   const calcularDias = (inicio: string, fin: string) => {
     if (!inicio || !fin) return 0;
-    return Math.ceil((new Date(fin).getTime() - new Date(inicio).getTime()) / (1000 * 60 * 60 * 24));
+    return Math.ceil((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24));
   };
 
   return (

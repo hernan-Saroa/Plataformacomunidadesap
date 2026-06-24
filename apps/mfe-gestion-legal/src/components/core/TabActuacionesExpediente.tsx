@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail } from 'lucide-react';
+import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail, Eye } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Card } from '@esap-mfe/shared-ui/card';
@@ -66,9 +66,20 @@ interface TabActuacionesExpedienteProps {
   expedienteId?: string;
   onReloadExpediente?: () => void;
   onViewDocument?: (doc: any) => void;
+  /**
+   * Abre el documento en el visor en modo SOLO LECTURA (previsualización), sin el flujo de
+   * firma ni el código OTP. Se usa para los roles que no son el aprobador/firmante configurado,
+   * de modo que igual puedan ver el documento sin opción de firmarlo.
+   */
+  onPreviewDocument?: (doc: any) => void;
   onAutoAdvanceStage?: () => void;
   onDeleteActuacion?: (id: string) => Promise<void> | void;
   onSendEmail?: (data: { para: string; cc?: string; asunto: string; cuerpo: string; archivos?: File[] }) => void;
+  /**
+   * Consecutivo/radicado legible del proceso (p. ej. "9756492-99c5..."). Se usa en el asunto y
+   * cuerpo del correo para mostrar el número del proceso en vez del UUID interno (expedienteId).
+   */
+  radicadoExpediente?: string;
   /**
    * Configuración de aprobación de la ETAPA ACTUAL del expediente (campo "Aprobación para entrar").
    * Si la etapa actual exige aprobación, las actuaciones quedan pendientes de firma y solo
@@ -95,9 +106,11 @@ export function TabActuacionesExpediente({
   expedienteId,
   onReloadExpediente,
   onViewDocument,
+  onPreviewDocument,
   onAutoAdvanceStage,
   onDeleteActuacion,
   onSendEmail,
+  radicadoExpediente,
   aprobacionEtapaActual
 }: TabActuacionesExpedienteProps) {
   const [firmaSeleccionadaUrl, setFirmaSeleccionadaUrl] = useState<string | null>(null);
@@ -146,6 +159,7 @@ export function TabActuacionesExpediente({
     const loadingToastId = toast.loading('🔄 Preparando correo y descargando adjuntos...', { duration: 0 } as any);
     try {
       const filesToAttach: File[] = [];
+      const failedAttachments: string[] = [];
 
       const urlToFile = async (url: string, filename: string): Promise<File | null> => {
         try {
@@ -185,38 +199,66 @@ export function TabActuacionesExpediente({
         const docName = actuacion.documentoNombre || 'documento.pdf';
         const fileObj = await urlToFile(actuacion.documentoUrl, docName);
         if (fileObj) filesToAttach.push(fileObj);
+        else failedAttachments.push(docName);
       }
 
-      // Documentos asociados
+      // Documentos asociados (firmados). Resolvemos contra la lista MÁS RECIENTE de documentos
+      // para asegurar que se adjunte la versión "(Firmado)" — evita la carrera del useEffect de carga.
+      const expId = expedienteId || String(actuacion.expedienteId);
+      let docsParaResolver = documentosExpediente;
+      try {
+        const freshDocs = await legalService.getDocumentos(expId);
+        if (Array.isArray(freshDocs) && freshDocs.length > 0) {
+          docsParaResolver = freshDocs;
+        }
+      } catch (e) {
+        console.error('No se pudo refrescar documentos para adjuntar; se usa la lista en memoria.', e);
+      }
+
       const associatedDocIds = actuacion.metadata?.documentosAsociados || [];
-      const resolvedDocs = documentosExpediente.filter(doc => {
+      const resolvedDocs = docsParaResolver.filter(doc => {
         const docIdStr = String(doc.id);
         return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
       });
 
       for (const doc of resolvedDocs) {
         const docUrl = doc.archivoUrl || doc.url;
+        const docName = doc.nombre || 'documento_asociado.pdf';
         if (docUrl) {
-          const docName = doc.nombre || 'documento_asociado.pdf';
           const fileObj = await urlToFile(docUrl, docName);
           if (fileObj) filesToAttach.push(fileObj);
+          else failedAttachments.push(docName);
+        } else {
+          failedAttachments.push(docName);
         }
       }
 
+      // Consecutivo legible del proceso para el correo (no el UUID interno del expediente).
+      const numeroProceso = radicadoExpediente || expedienteId || actuacion.expedienteId || '';
+
       const emailData = {
         para: '',
-        asunto: `Actuación: ${actuacion.descripcion} - Expediente #${expedienteId || actuacion.expedienteId || ''}`,
-        cuerpo: `Cordial saludo,\n\nSe remite la actuación "${actuacion.descripcion}" relacionada con el expediente #${expedienteId || actuacion.expedienteId || ''}.\n\nDetalles de la actuación:\n- Tipo: ${actuacion.tipo}\n- Fecha: ${actuacion.fecha}\n\nAtentamente,\nOficina Jurídica ESAP`,
+        asunto: `Actuación: ${actuacion.descripcion} - Expediente #${numeroProceso}`,
+        cuerpo: `Cordial saludo,\n\nSe remite la actuación "${actuacion.descripcion}" relacionada con el expediente #${numeroProceso}.\n\nDetalles de la actuación:\n- Tipo: ${actuacion.tipo}\n- Fecha: ${actuacion.fecha}\n\nAtentamente,\nOficina Jurídica ESAP`,
         archivos: filesToAttach,
       };
 
-      toast.success('📨 Correo preparado con adjuntos', { id: loadingToastId });
-      
-      if (onSendEmail) {
-        onSendEmail(emailData);
-      } else {
+      if (!onSendEmail) {
         toast.error('La funcionalidad de envío de correo no está disponible en este contexto.', { id: loadingToastId });
+        return;
       }
+
+      if (failedAttachments.length > 0) {
+        toast.warning('⚠️ Algunos adjuntos no se pudieron descargar', {
+          id: loadingToastId,
+          description: `Se enviará el correo sin: ${failedAttachments.join(', ')}`,
+        });
+      } else {
+        toast.success('📨 Correo preparado con adjuntos', { id: loadingToastId });
+      }
+
+      // Siempre abrimos el correo con los adjuntos válidos (no se bloquea por uno fallido)
+      onSendEmail(emailData);
     } catch (error) {
       console.error('Error al preparar el correo:', error);
       toast.error('❌ Error al preparar el correo con los adjuntos', { id: loadingToastId });
@@ -378,11 +420,27 @@ export function TabActuacionesExpediente({
    */
   const getEstadoFirma = (act: ActuacionExpediente): 'AUTORIZADO' | 'DEVUELTO' | 'PENDIENTE' | 'NINGUNO' => {
     const stored = act?.metadata?.estadoAutorizacion;
+    // AUTORIZADO/DEVUELTO son resultado real de una aprobación persistida: NO deben depender
+    // de requiereFirmaEtapa (que cambia al avanzar de etapa). Se evalúan primero.
     if (stored === 'AUTORIZADO') return 'AUTORIZADO';
     if (stored === 'DEVUELTO') return 'DEVUELTO';
     // Las actuaciones del sistema (cambios de etapa, trazas) nunca requieren firma
     if (act?.tipo === 'CAMBIO_ETAPA' || (act?.origen && act.origen !== 'MANUAL')) return 'NINGUNO';
     return requiereFirmaEtapa ? 'PENDIENTE' : 'NINGUNO';
+  };
+
+  /**
+   * ¿Se puede enviar por correo esta actuación? Fuente de verdad única para el botón
+   * "Enviar Correo" tanto en la tarjeta como en el modal de detalle.
+   * Una actuación AUTORIZADA ya implica que sus documentos fueron firmados (requisito previo
+   * para autorizar), por lo que NO se vuelve a exigir checkAllAssociatedDocsSigned aquí
+   * (esa comprobación podía ocultar el botón por carreras de carga o flags ausentes).
+   */
+  const canSendEmail = (act: ActuacionExpediente): boolean => {
+    if (!onSendEmail) return false;
+    if (act?.tipo === 'CAMBIO_ETAPA') return false;
+    if (act?.origen && act.origen !== 'MANUAL') return false;
+    return getEstadoFirma(act) === 'AUTORIZADO';
   };
 
   /**
@@ -574,12 +632,39 @@ export function TabActuacionesExpediente({
     }
   };
 
+  /**
+   * Resuelve la URL absoluta y servible de un archivo del expediente a partir de su URL
+   * almacenada, que puede venir en distintas formas:
+   *   - relativa sin slash:  "files/abc.pdf"        (actuaciones de juzgamiento)
+   *   - con prefijo /legal:  "/legal/files/abc.pdf" (documentos asociados)
+   *   - con /uploads:        "/uploads/abc.pdf"      (actuaciones de defensa judicial)
+   *   - absoluta:            "http://host/files/abc.pdf"
+   * Se usa el endpoint inline (/files/:filename), que es el mismo que emplea el visor y que
+   * está garantizado en el gateway; el nombre de descarga se fuerza en el cliente.
+   */
+  const resolveFileUrl = (rawUrl: string): string => {
+    if (!rawUrl) return '';
+    // URLs absolutas: buildServiceAssetUrl ya reescribe hosts loopback para evitar CORS.
+    if (/^https?:\/\//i.test(rawUrl)) return buildServiceAssetUrl('legal', rawUrl);
+    // Extraer solo el nombre de archivo (sin querystring ni rutas previas).
+    let filename = rawUrl.split('?')[0];
+    if (filename.includes('/files/')) {
+      filename = filename.split('/files/').pop() || filename;
+    } else {
+      filename = filename.split('/').pop() || filename;
+    }
+    return buildServiceAssetUrl('legal', `/files/${filename}`);
+  };
+
   const downloadDocumentFile = async (docUrl: string, docNombre: string) => {
+    if (!docUrl) {
+      toast.error('No hay documento disponible para descargar.');
+      return;
+    }
+    const downloadName = docNombre || docUrl.split('?')[0].split('/').pop() || 'documento';
     try {
-      const storedFilename = docUrl.split('/').pop() || 'documento';
-      const downloadName = docNombre || storedFilename;
-      const downloadUrl = buildServiceAssetUrl('legal', `/files/download/${encodeURIComponent(storedFilename)}?name=${encodeURIComponent(downloadName)}`);
-      const response = await fetch(downloadUrl);
+      const fileUrl = resolveFileUrl(docUrl);
+      const response = await fetch(fileUrl);
       if (!response.ok) throw new Error('Error al descargar');
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -591,6 +676,7 @@ export function TabActuacionesExpediente({
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
+      console.error('Download error:', err);
       toast.error('No se pudo descargar el archivo.');
     }
   };
@@ -917,7 +1003,7 @@ export function TabActuacionesExpediente({
                           </Badge>
                         )}
 
-                        {onSendEmail && actuacion.tipo !== 'CAMBIO_ETAPA' && !hasUnsignedDocs && getEstadoFirma(actuacion) === 'AUTORIZADO' && (
+                        {canSendEmail(actuacion) && (
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1245,14 +1331,36 @@ export function TabActuacionesExpediente({
                                     </p>
                                   </div>
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-[11px] font-bold text-blue-700 hover:text-blue-800 border-blue-200 hover:bg-blue-50 shrink-0 flex items-center gap-1"
-                                  onClick={() => downloadDocumentFile(actuacionDetalle.documentoUrl!, actuacionDetalle.documentoNombre || 'documento.pdf')}
-                                >
-                                  <Download className="w-3.5 h-3.5" /> Descargar
-                                </Button>
+                                <div className="flex gap-1.5 shrink-0">
+                                  {onPreviewDocument && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 text-[11px] font-bold text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50 flex items-center gap-1"
+                                      onClick={() => {
+                                        const docInfo = {
+                                          id: actuacionDetalle.id,
+                                          nombre: actuacionDetalle.documentoNombre || 'documento.pdf',
+                                          url: actuacionDetalle.documentoUrl,
+                                          tipo: actuacionDetalle.tipo || 'Documento',
+                                          descripcion: actuacionDetalle.descripcion || ''
+                                        };
+                                        setActuacionDetalle(null);
+                                        setTimeout(() => onPreviewDocument?.(docInfo), 0);
+                                      }}
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-slate-500" /> Previsualizar
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-[11px] font-bold text-blue-700 hover:text-blue-800 border-blue-200 hover:bg-blue-50 flex items-center gap-1"
+                                    onClick={() => downloadDocumentFile(actuacionDetalle.documentoUrl!, actuacionDetalle.documentoNombre || 'documento.pdf')}
+                                  >
+                                    <Download className="w-3.5 h-3.5" /> Descargar
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })()}
@@ -1305,29 +1413,52 @@ export function TabActuacionesExpediente({
                                       <Download className="w-3.5 h-3.5" /> Descargar
                                     </Button>
                                   )}
-                                  {!signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove() && (
-                                    <Button
-                                      size="sm"
-                                      className="h-8 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1 bg-white"
-                                      variant="outline"
-                                      onClick={() => {
-                                        const docInfo = {
-                                          id: doc.id,
-                                          nombre: doc.nombre,
-                                          url: doc.archivoUrl,
-                                          tipo: doc.tipo || 'Documento Asociado',
-                                          descripcion: doc.descripcion || ''
-                                        };
-                                        // Cerramos primero el detalle (portal) y abrimos el visor en el
-                                        // siguiente tick para no encadenar el cierre del modal del expediente
-                                        // (evita que el clic se interprete como descarte y vuelva al Kanban).
-                                        setActuacionDetalle(null);
-                                        setTimeout(() => onViewDocument(docInfo), 0);
-                                      }}
-                                    >
-                                      <PenTool className="w-3.5 h-3.5 text-emerald-600" /> Firmar
-                                    </Button>
-                                  )}
+                                  {(() => {
+                                    const puedeFirmarDoc = !signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove();
+                                    const docInfo = {
+                                      id: doc.id,
+                                      nombre: doc.nombre,
+                                      url: doc.archivoUrl,
+                                      tipo: doc.tipo || 'Documento Asociado',
+                                      descripcion: doc.descripcion || ''
+                                    };
+                                    // El firmante autorizado ve "Firmar"; el resto de roles ve "Previsualizar"
+                                    // (mismo visor en modo solo lectura, sin código OTP ni opción de firmar).
+                                    if (puedeFirmarDoc) {
+                                      return (
+                                        <Button
+                                          size="sm"
+                                          className="h-8 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1 bg-white"
+                                          variant="outline"
+                                          onClick={() => {
+                                            // Cerramos primero el detalle (portal) y abrimos el visor en el
+                                            // siguiente tick para no encadenar el cierre del modal del expediente
+                                            // (evita que el clic se interprete como descarte y vuelva al Kanban).
+                                            setActuacionDetalle(null);
+                                            setTimeout(() => onViewDocument!(docInfo), 0);
+                                          }}
+                                        >
+                                          <PenTool className="w-3.5 h-3.5 text-emerald-600" /> Firmar
+                                        </Button>
+                                      );
+                                    }
+                                    if (onPreviewDocument && doc.archivoUrl) {
+                                      return (
+                                        <Button
+                                          size="sm"
+                                          className="h-8 text-[11px] font-bold text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50 flex items-center gap-1 bg-white"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setActuacionDetalle(null);
+                                            setTimeout(() => onPreviewDocument?.(docInfo), 0);
+                                          }}
+                                        >
+                                          <Eye className="w-3.5 h-3.5 text-slate-500" /> Previsualizar
+                                        </Button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </div>
                             );
@@ -1576,7 +1707,7 @@ export function TabActuacionesExpediente({
                       )}
                     </div>
                   )}
-                  {onSendEmail && checkAllAssociatedDocsSigned(actuacionDetalle) && getEstadoFirma(actuacionDetalle) === 'AUTORIZADO' && (
+                  {canSendEmail(actuacionDetalle) && (
                     <Button 
                       size="sm"
                       className="text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9 border-none"

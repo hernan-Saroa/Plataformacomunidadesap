@@ -112,7 +112,7 @@ export function BancoDocentesPTA() {
       if (raw) {
         const shellUser = JSON.parse(raw);
         const email = String(shellUser?.email || '').toLowerCase();
-        if (email === 'superuser@esap.edu.co') return true;
+        if (email === 'desarrollo.ccd@esap.edu.co') return true;
         const roles = shellUser?.roles || [];
         if (roles.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'SUPER_ADMIN')) return true;
       }
@@ -122,7 +122,6 @@ export function BancoDocentesPTA() {
 
   const hasPermission = (perm: string) => isSuperUserFallback || auth.hasPermission(perm);
   
-  console.log('[BancoDocentesPTA] AUTH:', { isSuperUser: auth.isSuperUser, isSuperUserFallback, email: auth.userEmail, role: auth.userRole, invite: hasPermission('banco-docentes.rund.invite'), import: hasPermission('banco-docentes.rund.import'), manage: hasPermission('banco-docentes.rund.manage') });
   const [tab, setTab] = useState<Tab>('listado');
   const [docentes, setDocentes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -192,12 +191,17 @@ export function BancoDocentesPTA() {
         territorial: statsFilterTerritorial || undefined,
         dedicacion: statsFilterDedicacion || undefined,
         estado: statsFilterEstado || undefined,
-        periodoCarga: filterPeriodo || undefined,
+        // Usar el filtro de periodo PROPIO de las estadísticas (statsFilterPeriodo),
+        // no el del listado (filterPeriodo). El del listado se auto-setea al periodo
+        // activo y aplicaba un filtro "invisible" que dejaba los conteos en 0 porque
+        // los docentes no tienen periodoCarga igual al periodo activo. Vacío al inicio
+        // → sin filtro → cuenta todos. Esto además hace funcional el dropdown de stats.
+        periodoCarga: statsFilterPeriodo || undefined,
       });
       if (statsRes.success && statsRes.data) setStats(statsRes.data);
     } catch { /* silencioso */ }
     finally { setStatsLoading(false); }
-  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
+  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, statsFilterPeriodo]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 

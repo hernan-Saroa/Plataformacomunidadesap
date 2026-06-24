@@ -41,6 +41,8 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
 
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
   const [periodoActivo, setPeriodoActivo] = useState<any | null>(null);
+  // Pantalla de éxito tras una importación real (no dry-run).
+  const [importSuccess, setImportSuccess] = useState(false);
 
   // Prerequisite
   // La carga del catálogo NO se bloquea por el estado de la estructura geográfica.
@@ -86,12 +88,17 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
 
         if (data && Array.isArray(data)) {
           const activo = data.find((p: any) => p.estado === 'en_curso');
-          if (activo) {
-            setPeriodoActivo(activo);
-            setPeriodo(activo.codigo);
-          } else if (data.length > 0) {
-            setPeriodoActivo(data[0]);
-            setPeriodo(data[0].codigo);
+          // Si se entró desde el botón "Importar" de un período específico, la carga
+          // se hace a ESE período (cada período tiene su propio botón). Solo si no se
+          // indicó ninguno se usa el período activo como predeterminado.
+          const objetivo =
+            (initialPeriodo &&
+              data.find((p: any) => p.codigo === initialPeriodo)) ||
+            activo ||
+            data[0];
+          if (objetivo) {
+            setPeriodoActivo(objetivo);
+            setPeriodo(objetivo.codigo);
           }
         }
       } catch (e) {
@@ -142,11 +149,13 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
   const handleImportar = async (dryRun = true, fileToImport?: File, skipInvalid = false) => {
     const currentFile = fileToImport || file;
     if (!currentFile) return;
+    setImportSuccess(false);
     try {
       await uploadCatalog(currentFile, dryRun, periodo, skipInvalid);
       if (!dryRun) {
+        setImportSuccess(true);
         toast.success('Catálogo cargado exitosamente', {
-          description: 'El nuevo catálogo está disponible para armar los PTAs.',
+          description: `Se cargó correctamente en el período ${periodo}.`,
         });
         onImportSuccess?.();
       }
@@ -161,6 +170,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
     setSelectedProgramaCode(null);
     setSearchPrograma('');
     setActiveTab('asignaturas');
+    setImportSuccess(false);
     resetImportState();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -185,6 +195,15 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
   const totalAsignaturas = carga?.asignaturas?.creados || 0;
   const totalOfertas = carga?.ofertas_cetap_programa?.creados || 0;
   const hasErrors = result?.errores && result.errores.length > 0;
+
+  // Para el aviso de ÉXITO se muestra lo que QUEDÓ en el período (resumen_periodo),
+  // no solo lo recién creado. Así, reimportar el mismo catálogo en otro período
+  // muestra el total real del período y no ceros. (Fallback: los conteos de carga.)
+  const resumenPeriodo = result?.resumen_periodo;
+  const exitoProgramas = resumenPeriodo?.programas ?? totalProgramas;
+  const exitoAsignaturas = resumenPeriodo?.asignaturas ?? totalAsignaturas;
+  const exitoCetaps = resumenPeriodo?.cetaps ?? totalCetaps;
+  const exitoOfertas = resumenPeriodo?.ofertas ?? totalOfertas;
 
   // ─── Filter Logic for Master-Detail ───
   const relaciones = result?.relaciones_cruzadas || [];
@@ -460,7 +479,62 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
         )}
 
         {/* ━━━━━ STEP 2: VALIDATE & PREVIEW ━━━━━ */}
-        {currentStep === 'validate' && (
+        {/* ━━━━━ PANTALLA DE ÉXITO ━━━━━ */}
+        {importSuccess && (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-white border border-gray-100 rounded-2xl shadow-sm px-6 py-14 flex flex-col items-center text-center mb-10"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 200, damping: 14 }}
+              className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mb-5"
+            >
+              <CheckCircle2 className="w-11 h-11 text-emerald-600" />
+            </motion.div>
+            <h2 className="text-2xl font-black text-gray-900 mb-1.5">¡Importación exitosa!</h2>
+            <p className="text-sm text-gray-500 mb-8 max-w-md">
+              El catálogo se cargó correctamente en el período{' '}
+              <strong className="text-gray-700">{periodoActivo?.codigo || periodo}</strong>.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-2xl mb-9">
+              {[
+                { label: 'Programas', value: exitoProgramas, color: 'text-[#003DA5]' },
+                { label: 'Asignaturas', value: exitoAsignaturas, color: 'text-indigo-600' },
+                { label: 'CETAPs', value: exitoCetaps, color: 'text-emerald-600' },
+                { label: 'Ofertas', value: exitoOfertas, color: 'text-amber-600' },
+              ].map((s) => (
+                <div key={s.label} className="bg-gray-50/70 border border-gray-100 rounded-xl py-4">
+                  <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mt-0.5">
+                    {s.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={resetState}
+                className="px-5 py-2.5 text-xs font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
+              >
+                Importar otro archivo
+              </button>
+              <button
+                onClick={onBack}
+                className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-sm flex items-center gap-2"
+              >
+                Terminar
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {currentStep === 'validate' && !importSuccess && (
           <motion.div
             key="validate"
             initial={{ opacity: 0, x: -20 }}
