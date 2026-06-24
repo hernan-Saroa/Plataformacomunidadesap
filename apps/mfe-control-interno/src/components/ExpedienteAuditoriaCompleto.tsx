@@ -1886,7 +1886,7 @@ export function ExpedienteAuditoriaCompleto({
                     variant="outline"
                     size="sm"
                     onClick={generarInformePDF}
-                    className="font-bold text-xs border-blue-600 text-blue-700 hover:bg-blue-50 shrink-0 self-start sm:self-center px-2.5"
+                    className="font-bold text-xs border-blue-600 text-blue-700 hover:bg-[#003DA5] shrink-0 self-start sm:self-center px-2.5"
                     style={{ minHeight: 0, height: '28px' }}
                   >
                     <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -3192,7 +3192,7 @@ function TabEjecucion({
               variant="outline"
               size="sm"
               onClick={() => setModalAperturaOpen(true)}
-              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-gray-50 text-gray-700 shrink-0"
+              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-[#003DA5] text-gray-700 shrink-0"
             >
               <Users className="w-3.5 h-3.5 mr-1" />
               {reunionApertura ? 'Editar' : 'Registrar'}
@@ -3221,7 +3221,7 @@ function TabEjecucion({
               variant="outline"
               size="sm"
               onClick={() => setModalCierreOpen(true)}
-              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-gray-50 text-gray-700 shrink-0"
+              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-[#003DA5] text-gray-700 shrink-0"
             >
               <Users className="w-3.5 h-3.5 mr-1" />
               {reunionCierre ? 'Editar' : 'Registrar'}

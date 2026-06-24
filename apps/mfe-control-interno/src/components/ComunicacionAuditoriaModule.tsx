@@ -2746,7 +2746,7 @@ const ModalDecisionAuditor: React.FC<{
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent style={{ maxWidth: '560px', width: '95vw', borderRadius: '1rem', padding: 0, overflow: 'hidden', zIndex: 60 }} className="border-0 shadow-2xl p-0 gap-0 z-[60]">
+      <DialogContent style={{ maxWidth: '560px', width: '95vw', borderRadius: '1rem', padding: 0, overflow: 'hidden', zIndex: 99999 }} className="border-0 shadow-2xl p-0 gap-0 z-[60]">
         <div className="bg-slate-50 border-b border-slate-100 px-6 py-5 flex flex-col items-start gap-1">
           <DialogTitle className="text-xl font-bold text-slate-800 flex items-center gap-3 w-full">
             <span className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
