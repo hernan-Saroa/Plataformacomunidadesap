@@ -1026,7 +1026,25 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   );
   const requiereAprobacion = !!(colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno');
 
-  const currentIndex = (columnasTablero || []).findIndex((e: any) => 
+  // Solo el rol/usuario configurado como aprobador de la etapa actual (o un super admin)
+  // puede ver los botones de "Aprobar Etapa" / "Devolver Etapa". Misma lógica que el
+  // botón "Firmar" de los documentos (isUserAuthorizedToApprove en TabActuacionesExpediente).
+  const puedeAprobarEtapa = (() => {
+    if (!requiereAprobacion || !colActual) return false;
+    if (authService.isSuperAdmin()) return true;
+    const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+    if (aprobacionTipo === 'rol' && aprobacionRol) {
+      return authService.hasRole(aprobacionRol);
+    }
+    if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+      const currentUser = authService.getCurrentUser() as any;
+      const currentUserId = currentUser?.id || currentUser?.id_user || currentUser?.user?.id || currentUser?.user?.id_user || currentUser?.person?.id;
+      return String(currentUserId) === String(aprobacionUsuario);
+    }
+    return false;
+  })();
+
+  const currentIndex = (columnasTablero || []).findIndex((e: any) =>
     normalizeString(e.id) === etapaActualNorm || 
     normalizeString(e.nombre) === etapaActualNorm
   );
@@ -2603,7 +2621,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onClick: () => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); },
                         color: '#003DA5'
                       },
-                      ...(requiereAprobacion ? [
+                      ...(requiereAprobacion && puedeAprobarEtapa ? [
                         {
                           label: 'Aprobar Etapa',
                           icono: <CheckCircle className="w-3 h-3 mr-1" />,
