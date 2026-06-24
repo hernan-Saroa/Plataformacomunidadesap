@@ -965,8 +965,11 @@ export class AuditoriasService {
       }
     }
 
-    // ✅ RESOLVER NOMBRES DEL EQUIPO
+    // ✅ RESOLVER NOMBRES DEL EQUIPO Y RESPONSABLE
     const teamPersonaIds = auditoria.equipoAuditores?.map(eq => String(eq.personaId)) || [];
+    if (auditoria.responsable && this.isValidUUID(auditoria.responsable)) {
+      teamPersonaIds.push(String(auditoria.responsable));
+    }
     const teamNamesMap = await this.getPersonasNames(teamPersonaIds);
 
     // Serializar fechas para evitar problemas de zona horaria
@@ -4271,7 +4274,6 @@ export class AuditoriasService {
     }
   }
 }
-
 
 
 
