@@ -291,19 +291,26 @@ export class PtaService {
     return d.includes('medio') || d === 'mt' || d === 'medio_tiempo' || d === 'medio tiempo';
   }
 
-  calcHorasProgramables(input: { tipo_vinculacion?: any; dedicacion?: any; semanas_vinculacion?: any }) {
+  async calcHorasProgramables(input: { tipo_vinculacion?: any; dedicacion?: any; semanas_vinculacion?: any }) {
     const tipo = coalesceString(input?.tipo_vinculacion) || 'CARRERA_003';
     const esMT = this.isMedioTiempo(input?.dedicacion);
     const semanas = Number(input?.semanas_vinculacion) || 16;
 
+    // Lee las horas base configuradas (Términos Generales). Fallback a los valores normativos.
+    const rules = (await this.getConfiguracionPTAGlobal()) || {};
+    const base009 = Number(rules.horas_base_carrera_009) || 720;
+    const base003 = Number(rules.horas_base_carrera_003) || 800;
+    const hSemTC = Number(rules.horas_semanales_tc) || 40;
+    const hSemMT = Number(rules.horas_semanales_mt) || 20;
+
     if (tipo === 'CARRERA_009') {
-      return esMT ? 360 : 720;
+      return esMT ? Math.round(base009 / 2) : base009;
     }
     if (tipo === 'CARRERA_003' || tipo === 'PERIODO_PRUEBA') {
-      return esMT ? 400 : 800;
+      return esMT ? Math.round(base003 / 2) : base003;
     }
 
-    const hSem = esMT ? 20 : 40;
+    const hSem = esMT ? hSemMT : hSemTC;
     return hSem * semanas;
   }
 
@@ -617,11 +624,11 @@ export class PtaService {
     const horas = this.computeHorasTotales(input);
     const horasAProgramar =
       Number(input?.horas_a_programar ?? input?.horasAsignables ?? input?.horas_asignables) ||
-      this.calcHorasProgramables({
+      (await this.calcHorasProgramables({
         tipo_vinculacion: input?.tipo_vinculacion,
         dedicacion: input?.dedicacion,
         semanas_vinculacion: input?.semanas_vinculacion,
-      });
+      }));
 
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
       docenteId,

@@ -33,6 +33,8 @@ export interface PTARules {
   max_pct_investigacion: number;
   max_pct_extension: number;
   max_pct_complementarias: number;
+  // Tope cruzado investigación + extensión para Enlace Territorial / Director de Grupo
+  max_pct_inv_ext_combinado: number;
   // SLAs Operativos (Días)
   sla_radicacion_pta: number;
   sla_verificacion_jefaturas: number;
@@ -52,6 +54,14 @@ export interface PTARules {
   dias_verificacion_posterior: number;
   criterio_multiplicador_docencia: number;
   min_pct_docencia_no_vinculados: number;
+
+  // Horas base de docencia por categoría (usadas por el portal cuando un programa no tiene
+  // configuración propia en la Matriz Paramétrica). Bloque fijo o base por crédito según categoría.
+  docencia_base_seminario_sc: number;   // Seminario de Énfasis Sede Central (bloque fijo)
+  docencia_base_pregrado_sc: number;    // Pregrado Sede Central AP/EP (bloque fijo)
+  docencia_base_maestria: number;       // Maestría (horas por crédito)
+  docencia_base_especializacion: number;// Especialización (horas por crédito)
+  docencia_base_apt: number;            // APT / Territorial / otros (horas por crédito)
 
   // Configuración dinámica de docencia por programa académico (Base h/Cr, Multiplicador, etc.)
   docencia_por_programa: Record<string, {
@@ -237,6 +247,7 @@ export const defaultPTARules: PTARules = {
   max_pct_investigacion: 50,
   max_pct_extension: 25,
   max_pct_complementarias: 25,
+  max_pct_inv_ext_combinado: 50,
 
   sla_radicacion_pta: 5,
   sla_verificacion_jefaturas: 15,
@@ -254,6 +265,12 @@ export const defaultPTARules: PTARules = {
   dias_verificacion_posterior: 15,
   criterio_multiplicador_docencia: 3,
   min_pct_docencia_no_vinculados: 50,
+
+  docencia_base_seminario_sc: 128,
+  docencia_base_pregrado_sc: 64,
+  docencia_base_maestria: 12,
+  docencia_base_especializacion: 16,
+  docencia_base_apt: 16,
 
   docencia_por_programa: {},
 
