@@ -572,7 +572,19 @@ export class AsignaturasImportService {
           (SELECT COUNT(*) FROM academic_work_plan.asignatura a
             WHERE a.id_programa IN (SELECT id FROM progs) AND a.activa = TRUE) AS asignaturas,
           (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa
-            WHERE id_periodo_academico = (SELECT id FROM per)) AS ofertas
+            WHERE id_periodo_academico = (SELECT id FROM per)) AS ofertas,
+          -- CETAPs del período = SOLO los que OFRECEN programas (oferta activa),
+          -- mismo criterio que el detalle. NO se cuentan los CETAP de la activación
+          -- estructural (periodo_cetap): en este módulo un CETAP sin programas no
+          -- tiene sentido, por eso un período sin ofertas muestra 0 CETAP.
+          (SELECT COUNT(DISTINCT o.id_cetap)
+             FROM academic_work_plan.oferta_cetap_programa o
+            WHERE o.id_periodo_academico = (SELECT id FROM per) AND o.activa = TRUE
+              AND NOT EXISTS (
+                SELECT 1 FROM academic_work_plan.periodo_cetap ov
+                 WHERE ov.id_periodo_academico = o.id_periodo_academico
+                   AND ov.id_cetap = o.id_cetap AND ov.activo = FALSE)
+          ) AS cetaps
       `, [periodo]);
       stats = counts[0] || {};
     } catch (e) {
@@ -590,7 +602,15 @@ export class AsignaturasImportService {
              FROM academic_work_plan.oferta_cetap_programa ocp2
              WHERE ocp2.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)
            )) AS asignaturas,
-          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas
+          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas,
+          (SELECT COUNT(DISTINCT o.id_cetap)
+             FROM academic_work_plan.oferta_cetap_programa o
+            WHERE o.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1) AND o.activa = TRUE
+              AND NOT EXISTS (
+                SELECT 1 FROM academic_work_plan.periodo_cetap ov
+                 WHERE ov.id_periodo_academico = o.id_periodo_academico
+                   AND ov.id_cetap = o.id_cetap AND ov.activo = FALSE)
+          ) AS cetaps
       `, [periodo]);
       stats = counts[0] || {};
     }
@@ -602,6 +622,8 @@ export class AsignaturasImportService {
         programas: parseInt(stats.programas || 0, 10),
         ofertas_cetap_programa: parseInt(stats.ofertas || 0, 10),
         asignaturas: parseInt(stats.asignaturas || 0, 10),
+        // CETAPs activos reales del período (coincide con el detalle).
+        cetaps: parseInt(stats.cetaps || 0, 10),
       },
     };
   }

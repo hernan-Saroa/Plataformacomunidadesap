@@ -196,9 +196,13 @@ export class GatewayService {
     try {
       // Detectar si se espera un archivo binario basándose en el Accept header
       const acceptHeader = (req.headers['accept'] as string) || '';
+      const isBinaryFileRoute =
+        /\/(?:documentos|evidencias)\/[^/]+\/(?:preview|download)(?:\?|$)/i.test(req.originalUrl);
       const expectsBinaryFile = acceptHeader.includes('application/zip') ||
                                 acceptHeader.includes('application/octet-stream') ||
-                                acceptHeader.includes('application/pdf');
+                                acceptHeader.includes('application/pdf') ||
+                                acceptHeader.includes('image/') ||
+                                isBinaryFileRoute;
 
       console.log(`[Gateway] Forwarding to: ${targetUrl}`);
       console.log(`[Gateway] Expects binary: ${expectsBinaryFile}`);

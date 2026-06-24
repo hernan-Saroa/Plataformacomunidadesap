@@ -98,6 +98,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string; descripcion?: string; id?: string } | null>(null);
+  // Cuando es true, el visor se abre en modo previsualización (sin firma ni código OTP).
+  const [visorSoloLectura, setVisorSoloLectura] = useState(false);
   const [selectedAnexado, setSelectedAnexado] = useState<any>(null); // Sub-modal para ver anexados
 
   // Estado para modal de reasignar
@@ -114,6 +116,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [reasignando, setReasignando] = useState(false);
   const [audienciaIdPendienteEliminar, setAudienciaIdPendienteEliminar] = useState<string | null>(null);
   const [actuacionIdPendienteEliminar, setActuacionIdPendienteEliminar] = useState<string | null>(null);
+  const [docPendienteEliminar, setDocPendienteEliminar] = useState<any | null>(null);
 
   // Estados de datos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -557,22 +560,26 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleVerDocumento = (doc: any) => {
+  const handleVerDocumento = (doc: any, soloLectura: boolean = false) => {
     if (!isPrevisuable(doc)) {
       handleDescargarDocumento(doc);
       return;
     }
     const fullUrl = getFullUrl(doc.url);
+    setVisorSoloLectura(soloLectura);
     // Abrir el documento en el visor inline
-    setDocParaVisor({ 
-      url: fullUrl, 
-      nombre: doc.nombre || 'Documento', 
-      asunto: doc.tipo || '', 
+    setDocParaVisor({
+      url: fullUrl,
+      nombre: doc.nombre || 'Documento',
+      asunto: doc.tipo || '',
       descripcion: doc.descripcion || '',
-      id: doc.id 
+      id: doc.id
     });
     setVisorAbierto(true);
   };
+
+  // Previsualización en modo solo lectura (roles que no pueden firmar/aprobar).
+  const handlePrevisualizarDocumento = (doc: any) => handleVerDocumento(doc, true);
 
   const handleDescargarTodos = async () => {
     // Usamos documentosFiltrados para validar visualmente, pero descargamos todo el expediente
@@ -972,9 +979,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
   };
 
-  const handleDeleteDocument = async (doc: any) => {
-    const confirmacion = window.confirm(`¿Está seguro de que desea eliminar el documento "${doc.nombre}"? Esta acción no se puede deshacer.`);
-    if (!confirmacion) return;
+  const handleDeleteDocument = (doc: any) => {
+    setDocPendienteEliminar(doc);
+  };
+
+  const confirmarEliminarDocumento = async () => {
+    const doc = docPendienteEliminar;
+    if (!doc) return;
+    setDocPendienteEliminar(null);
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
@@ -1020,7 +1032,25 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   );
   const requiereAprobacion = !!(colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno');
 
-  const currentIndex = (columnasTablero || []).findIndex((e: any) => 
+  // Solo el rol/usuario configurado como aprobador de la etapa actual (o un super admin)
+  // puede ver los botones de "Aprobar Etapa" / "Devolver Etapa". Misma lógica que el
+  // botón "Firmar" de los documentos (isUserAuthorizedToApprove en TabActuacionesExpediente).
+  const puedeAprobarEtapa = (() => {
+    if (!requiereAprobacion || !colActual) return false;
+    if (authService.isSuperAdmin()) return true;
+    const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
+    if (aprobacionTipo === 'rol' && aprobacionRol) {
+      return authService.hasRole(aprobacionRol);
+    }
+    if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+      const currentUser = authService.getCurrentUser() as any;
+      const currentUserId = currentUser?.id || currentUser?.id_user || currentUser?.user?.id || currentUser?.user?.id_user || currentUser?.person?.id;
+      return String(currentUserId) === String(aprobacionUsuario);
+    }
+    return false;
+  })();
+
+  const currentIndex = (columnasTablero || []).findIndex((e: any) =>
     normalizeString(e.id) === etapaActualNorm || 
     normalizeString(e.nombre) === etapaActualNorm
   );
@@ -2581,7 +2611,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   onDownloadDocument={handleDescargarDocumento}
                   onDownloadAll={handleDescargarTodos}
                   onDeleteDocument={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) ? handleDeleteDocument : undefined}
-                  allowSigning={requiereAprobacion}
+                  allowSigning={requiereAprobacion && puedeAprobarEtapa}
                 />
               </TabsContent>
 
@@ -2597,7 +2627,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         onClick: () => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); },
                         color: '#003DA5'
                       },
-                      ...(requiereAprobacion ? [
+                      ...(requiereAprobacion && puedeAprobarEtapa ? [
                         {
                           label: 'Aprobar Etapa',
                           icono: <CheckCircle className="w-3 h-3 mr-1" />,
@@ -2640,8 +2670,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); }}
                   expedienteId={String(expediente.uuid || expediente.id)}
+                  radicadoExpediente={expediente.radicado || String(expediente.id)}
                   onReloadExpediente={() => loadActuaciones(String(expediente.uuid || expediente.id))}
                   onViewDocument={handleVerDocumento}
+                  onPreviewDocument={handlePrevisualizarDocumento}
                   onAutoAdvanceStage={handleAutoAdvanceStage}
                   aprobacionEtapaActual={requiereAprobacion && colActual ? {
                     aprobacionTipo: colActual.aprobacionTipo,
@@ -3357,17 +3389,29 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         icono="eliminar"
       />
 
+      <DialogoConfirmacion
+        isOpen={!!docPendienteEliminar}
+        onClose={() => setDocPendienteEliminar(null)}
+        onConfirm={confirmarEliminarDocumento}
+        titulo="Eliminar Documento"
+        mensaje={`¿Está seguro de que desea eliminar el documento "${docPendienteEliminar?.nombre ?? ''}"? Esta acción no se puede deshacer.`}
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
       {/* VISOR INLINE DE DOCUMENTOS */}
       {docParaVisor && (
         <VisorDocumentoModal
           isOpen={visorAbierto}
-          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); }}
+          onClose={() => { setVisorAbierto(false); setDocParaVisor(null); setVisorSoloLectura(false); }}
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={docParaVisor.asunto}
           descripcion={docParaVisor.descripcion}
           docId={docParaVisor.id}
-          allowSigning={requiereAprobacion}
+          allowSigning={requiereAprobacion && puedeAprobarEtapa && !visorSoloLectura}
           onSignComplete={async (docId, signedData, pdfFile) => {
             try {
               const originalDocName = docParaVisor.nombre;

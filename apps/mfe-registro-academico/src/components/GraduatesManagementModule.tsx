@@ -1117,20 +1117,34 @@ export function GraduatesManagementModule() {
   const programCatalogOptions = useMemo(() => {
     return uniqueSortedText(programasCatalog);
   }, [programasCatalog]);
-  const selectedCatalogProgram = useMemo(
+  // Programas provenientes de la integración: se toman de los graduados creados
+  // por ese medio (enrollmentMethod === 'integration'), se descartan los vacíos
+  // y "No especificado", y se muestran sin repetidos. Son la fuente dinámica de
+  // los selects de programa (filtro y edición). En local, donde normalmente no
+  // hay integración, esta lista queda vacía; en los servidores se llena sola.
+  const integrationProgramOptions = useMemo(
     () =>
-      programCatalogOptions.find(
+      uniqueSortedText(
+        graduatesOnly
+          .filter((graduate) => graduate.enrollmentMethod === 'integration')
+          .map((graduate) => graduate.program),
+      ).filter((programa) => normalizeKey(programa) !== 'no especificado'),
+    [graduatesOnly, normalizeKey],
+  );
+  const selectedIntegrationProgram = useMemo(
+    () =>
+      integrationProgramOptions.find(
         (programa) => normalizeKey(programa) === normalizeKey(editForm.program),
       ),
-    [editForm.program, programCatalogOptions, normalizeKey],
+    [editForm.program, integrationProgramOptions, normalizeKey],
   );
   const externalEditProgram =
-    editForm.program.trim() && !selectedCatalogProgram
+    editForm.program.trim() && !selectedIntegrationProgram
       ? editForm.program
       : '';
   const editProgramOptions = useMemo(
-    () => uniqueSortedText([externalEditProgram, ...programCatalogOptions]),
-    [externalEditProgram, programCatalogOptions],
+    () => uniqueSortedText([externalEditProgram, ...integrationProgramOptions]),
+    [externalEditProgram, integrationProgramOptions],
   );
 
   const catalogTerritorialOptions = useMemo(
@@ -1370,13 +1384,13 @@ export function GraduatesManagementModule() {
   useEffect(() => {
     if (
       programFilter !== 'all' &&
-      !programCatalogOptions.some(
+      !integrationProgramOptions.some(
         (programa) => normalizeKey(programa) === normalizeKey(programFilter),
       )
     ) {
       setProgramFilter('all');
     }
-  }, [programFilter, programCatalogOptions, normalizeKey]);
+  }, [programFilter, integrationProgramOptions, normalizeKey]);
 
   useEffect(() => {
     if (
@@ -2134,7 +2148,7 @@ export function GraduatesManagementModule() {
         onOpenChange={setIsBulkUploadModalOpen}
         onImported={handleBulkGraduatesImported}
         createdBy={bulkUploadCreatedBy}
-        programOptions={programCatalogOptions}
+        programOptions={integrationProgramOptions}
         territorialOptions={territorialOptions}
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
         programsPeriod={programasPeriodoCatalogo}
@@ -2310,7 +2324,7 @@ export function GraduatesManagementModule() {
                 }}
               >
                 <option value="all">Todos los programas</option>
-                {programCatalogOptions.map(prog => (
+                {integrationProgramOptions.map(prog => (
                   <option key={prog} value={prog}>{prog}</option>
                 ))}
               </select>
@@ -3616,7 +3630,7 @@ export function GraduatesManagementModule() {
 
                 id="edit-program"
 
-                value={selectedCatalogProgram || editForm.program}
+                value={selectedIntegrationProgram || editForm.program}
 
                 onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
 
@@ -3640,7 +3654,7 @@ export function GraduatesManagementModule() {
 
               {externalEditProgram && externalEditProgram !== 'No especificado' && (
                 <p className="text-xs text-gray-500">
-                  Este programa proviene de la integración y no coincide con el catálogo actual.
+                  Este programa no está dentro de los programas integrados; se conserva el valor actual del graduado.
                 </p>
               )}
 
