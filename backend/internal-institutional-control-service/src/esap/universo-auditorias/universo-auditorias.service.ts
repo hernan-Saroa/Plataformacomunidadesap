@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
-import { ProcesoAuditable, TipoProceso, NivelRiesgo } from './entities/proceso-auditable.entity';
+import { ProcesoAuditable, NivelRiesgo } from './entities/proceso-auditable.entity';
 import { CreateProcesoAuditableDto } from './dto/create-proceso-auditable.dto';
 import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
 
@@ -308,7 +308,7 @@ export class UniversoAuditoriasService {
     // Actualizar campos básicos
     if (updateDto.nombre) proceso.nombre = updateDto.nombre;
     if (updateDto.descripcion) proceso.descripcion = updateDto.descripcion;
-    if (updateDto.tipo) proceso.tipo = updateDto.tipo as TipoProceso;
+    if (updateDto.tipo) proceso.tipo = updateDto.tipo;
     if (updateDto.macroproceso) proceso.macroproceso = updateDto.macroproceso;
     if (updateDto.unidadesAuditables !== undefined) proceso.unidadesAuditables = updateDto.unidadesAuditables;
     if (updateDto.responsable) proceso.responsable = updateDto.responsable;

@@ -7,12 +7,7 @@ import {
   Index,
 } from 'typeorm';
 
-export enum TipoProceso {
-  ESTRATEGICO = 'estrategico',
-  MISIONAL = 'misional',
-  APOYO = 'apoyo',
-  EVALUACION = 'evaluacion',
-}
+
 
 export enum NivelRiesgo {
   BAJO = 'bajo',
@@ -43,7 +38,7 @@ export class ProcesoAuditable {
     length: 50,
     nullable: false,
   })
-  tipo: TipoProceso;
+  tipo: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   macroproceso?: string;

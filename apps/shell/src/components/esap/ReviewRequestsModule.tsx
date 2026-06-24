@@ -145,6 +145,10 @@ export function ReviewRequestsModule({
   });
   const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
   const [programasOptions, setProgramasOptions] = useState<string[]>([]);
+  // Programas que llegan por integración (graduados creados por ese medio en
+  // Registro Académico). Son la fuente del select de programa de este modal.
+  const [integrationProgramOptions, setIntegrationProgramOptions] = useState<string[]>([]);
+  const [isLoadingIntegrationPrograms, setIsLoadingIntegrationPrograms] = useState(true);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
@@ -319,6 +323,29 @@ export function ReviewRequestsModule({
       normalized === 'no disponible' ||
       normalized === 'no especificado' ||
       normalized === 'sin programa'
+    );
+  };
+
+  // Un graduado proviene de la integración cuando no fue creado manualmente ni
+  // por carga masiva ni por una solicitud de revisión. normalizeKey ya quita los
+  // acentos, así que basta comparar contra las variantes sin tilde.
+  const isIntegrationSource = (createdBy?: string | null) => {
+    const normalized = normalizeKey(createdBy || '');
+    if (
+      normalized.startsWith('bulk_upload') ||
+      normalized.includes('manual_review') ||
+      normalized.includes('revision') ||
+      normalized.includes('manual')
+    ) {
+      return false;
+    }
+    return (
+      !normalized ||
+      normalized === 'system' ||
+      normalized === 'sistema' ||
+      normalized === 'registro academico' ||
+      normalized.includes('integracion') ||
+      normalized.includes('integration')
     );
   };
 
@@ -1071,6 +1098,50 @@ export function ReviewRequestsModule({
     loadRequests();
   }, []);
 
+  // Carga los programas que traen los graduados integrados desde Registro
+  // Académico, sin repetidos, para ofrecerlos en el select de programa.
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadIntegrationPrograms = async () => {
+      setIsLoadingIntegrationPrograms(true);
+      try {
+        const graduados =
+          await graduadosService.graduados.listarRegistroAcademico();
+        if (!isMounted) return;
+
+        const programas = (graduados || [])
+          .filter((graduado) => isIntegrationSource(graduado?.createdBy))
+          .map((graduado) =>
+            normalizeName(graduado?.programName || graduado?.degreeTitle),
+          )
+          .filter((programa) => !!programa && !isUnavailableCatalogValue(programa));
+
+        const unicos = Array.from(
+          new Map(
+            programas.map((programa) => [normalizeKey(programa), programa]),
+          ).values(),
+        ).sort((a, b) => a.localeCompare(b, 'es'));
+
+        setIntegrationProgramOptions(unicos);
+      } catch (error) {
+        console.warn(
+          'No se pudieron cargar los programas de los graduados integrados:',
+          error,
+        );
+        if (isMounted) setIntegrationProgramOptions([]);
+      } finally {
+        if (isMounted) setIsLoadingIntegrationPrograms(false);
+      }
+    };
+
+    loadIntegrationPrograms();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [catalogRefreshToken]);
+
   useEffect(() => {
     const intervalId = setInterval(() => {
       setTimeNow(Date.now());
@@ -1316,13 +1387,13 @@ export function ReviewRequestsModule({
 
       return Array.from(
         new Set(
-          [currentProgram, ...programasOptions]
+          [currentProgram, ...integrationProgramOptions]
             .map((programa) => normalizeName(programa))
             .filter(Boolean),
         ),
       ).sort((a, b) => a.localeCompare(b, 'es'));
     },
-    [approvalForm.programName, programasOptions],
+    [approvalForm.programName, integrationProgramOptions],
   );
   const selectedProgramIsInCurrentCatalog = useMemo(() => {
     if (!approvalForm.programName || programasOptions.length === 0) {
@@ -3572,16 +3643,13 @@ export function ReviewRequestsModule({
                           ? 'border-red-300 bg-red-50 focus:border-red-500'
                           : 'border-gray-300'
                       }`}
-                      disabled={isLoadingApprovalData || isLoadingCatalogs}
+                      disabled={isLoadingApprovalData || isLoadingIntegrationPrograms}
                     >
                       <option value="">
-                        {isLoadingCatalogs ? 'Cargando programas...' : 'Seleccionar programa'}
+                        {isLoadingIntegrationPrograms ? 'Cargando programas...' : 'Seleccionar programa'}
                       </option>
                       {programNameOptions.map((programa) => {
                         const alreadyExists = programAlreadyExistsForGraduate(programa);
-                        const belongsToCurrentCatalog = programasOptions.some(
-                          (option) => normalizeKey(option) === normalizeKey(programa),
-                        );
                         return (
                         <option
                           key={programa}
@@ -3590,7 +3658,6 @@ export function ReviewRequestsModule({
                         >
                           {programa}
                           {alreadyExists ? ' (ya existe)' : ''}
-                          {!belongsToCurrentCatalog ? ' (dato integrado)' : ''}
                         </option>
                         );
                       })}

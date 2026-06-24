@@ -1778,7 +1778,14 @@ export function ExpedienteAuditoriaCompleto({
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {activeTab === 'general' && <TabGeneral auditoria={auditoria} readOnly={auditoria.estado === 'finalizada'} />}
+                    {activeTab === 'general' && (
+                      <TabGeneral
+                        auditoria={auditoria}
+                        readOnly={auditoria.estado === 'finalizada'}
+                        onAuditoriaUpdated={(auditoriaActualizada) => setAuditoria(auditoriaActualizada)}
+                        onReload={() => setRecargarTrigger((prev) => prev + 1)}
+                      />
+                    )}
                     {activeTab === 'planeacion' && (
                       <TabPlaneacion
                         auditoria={auditoria}
@@ -1879,7 +1886,7 @@ export function ExpedienteAuditoriaCompleto({
                     variant="outline"
                     size="sm"
                     onClick={generarInformePDF}
-                    className="font-bold text-xs border-blue-600 text-blue-700 hover:bg-blue-50 shrink-0 self-start sm:self-center px-2.5"
+                    className="font-bold text-xs border-blue-600 text-blue-700 hover:bg-[#003DA5] shrink-0 self-start sm:self-center px-2.5"
                     style={{ minHeight: 0, height: '28px' }}
                   >
                     <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -1899,7 +1906,17 @@ export function ExpedienteAuditoriaCompleto({
 // TABS INDIVIDUALES
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; readOnly?: boolean; onReload?: () => void }) {
+function TabGeneral({
+  auditoria,
+  readOnly,
+  onReload,
+  onAuditoriaUpdated,
+}: {
+  auditoria: Auditoria;
+  readOnly?: boolean;
+  onReload?: () => void;
+  onAuditoriaUpdated?: (auditoria: Auditoria) => void;
+}) {
   const iniciales = (nombre: string) => {
     const parts = (nombre || '').split(' ').filter(Boolean);
     return parts.length >= 2
@@ -2099,7 +2116,56 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
   const handleSave = async () => {
     setSaving(true);
     try {
-      await controlInternoService.updateAuditoria(auditoria.id, editData);
+      const auditoriaGuardada = await controlInternoService.updateAuditoria(auditoria.id, editData);
+      const toTextArray = (value: any): string[] =>
+        Array.isArray(value)
+          ? value
+            .map((item) =>
+              typeof item === 'string'
+                ? item
+                : item?.descripcion || item?.criterio || item?.texto || item?.nombre || '',
+            )
+            .filter(Boolean)
+          : [];
+      const objetivosGuardados = toTextArray(auditoriaGuardada?.objetivos);
+      const criteriosGuardados = toTextArray(auditoriaGuardada?.criterios);
+
+      onAuditoriaUpdated?.({
+        ...auditoria,
+        nombre: auditoriaGuardada?.nombre ?? editData.nombre ?? auditoria.nombre,
+        territorial: auditoriaGuardada?.territorial || auditoriaGuardada?.sede || editData.territorial || auditoria.territorial,
+        tipo: (editData.tipo || auditoriaGuardada?.tipo || auditoria.tipo) as TipoAuditoria,
+        areaAuditable: auditoriaGuardada?.areaObjetivo || editData.areaAuditable || auditoria.areaAuditable,
+        procesoNombre: auditoriaGuardada?.procesoAuditado || editData.procesoAuditado || auditoria.procesoNombre,
+        nivelRiesgo: (auditoriaGuardada?.riesgoKanban || editData.nivelRiesgo || auditoria.nivelRiesgo) as NivelRiesgo,
+        responsableArea: {
+          ...auditoria.responsableArea,
+          nombre: auditoriaGuardada?.responsableAreaNombre || editData.responsableAreaNombre || auditoria.responsableArea.nombre,
+          cargo: auditoriaGuardada?.responsableAreaCargo || editData.responsableAreaCargo || auditoria.responsableArea.cargo,
+          email: auditoriaGuardada?.responsableAreaEmail || editData.responsableAreaEmail || auditoria.responsableArea.email,
+        },
+        descripcion: auditoriaGuardada?.descripcion ?? editData.descripcion ?? auditoria.descripcion,
+        alcance: auditoriaGuardada?.alcance ?? editData.alcance ?? auditoria.alcance,
+        metodologia: auditoriaGuardada?.metodologia ?? editData.metodologia ?? auditoria.metodologia,
+        presupuestoEstimado: auditoriaGuardada?.presupuestoEstimado ?? editData.presupuestoEstimado ?? auditoria.presupuestoEstimado,
+        observacionesAdicionales: auditoriaGuardada?.observacionesAdicionales ?? editData.observacionesAdicionales ?? auditoria.observacionesAdicionales,
+        calificacionRiesgo: auditoriaGuardada?.calificacionRiesgo ?? editData.calificacionRiesgo ?? auditoria.calificacionRiesgo,
+        objetivos: objetivosGuardados.length ? objetivosGuardados : editData.objetivos,
+        criteriosAuditoria: criteriosGuardados.length ? criteriosGuardados : editData.criteriosAuditoria,
+        normatividadAplicable: Array.isArray(auditoriaGuardada?.normatividadAplicable)
+          ? auditoriaGuardada.normatividadAplicable
+          : editData.normatividadAplicable,
+        riesgosIdentificados: Array.isArray(auditoriaGuardada?.riesgosIdentificados)
+          ? auditoriaGuardada.riesgosIdentificados
+          : editData.riesgosIdentificados,
+        controlesAplicar: Array.isArray(auditoriaGuardada?.controlesAplicar)
+          ? auditoriaGuardada.controlesAplicar
+          : editData.controlesAplicar,
+        metadata: {
+          ...auditoria.metadata,
+          ultimaModificacion: auditoriaGuardada?.updatedAt ? new Date(auditoriaGuardada.updatedAt) : new Date(),
+        },
+      });
       toast.success('✅ Auditoría actualizada', { description: 'Los cambios fueron guardados exitosamente' });
       setIsEditing(false);
       if (onReload) onReload();
@@ -3126,7 +3192,7 @@ function TabEjecucion({
               variant="outline"
               size="sm"
               onClick={() => setModalAperturaOpen(true)}
-              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-gray-50 text-gray-700 shrink-0"
+              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-[#003DA5] text-gray-700 shrink-0"
             >
               <Users className="w-3.5 h-3.5 mr-1" />
               {reunionApertura ? 'Editar' : 'Registrar'}
@@ -3155,7 +3221,7 @@ function TabEjecucion({
               variant="outline"
               size="sm"
               onClick={() => setModalCierreOpen(true)}
-              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-gray-50 text-gray-700 shrink-0"
+              className="font-bold text-[10px] h-7 px-2.5 py-0 border-gray-300 hover:bg-[#003DA5] text-gray-700 shrink-0"
             >
               <Users className="w-3.5 h-3.5 mr-1" />
               {reunionCierre ? 'Editar' : 'Registrar'}
