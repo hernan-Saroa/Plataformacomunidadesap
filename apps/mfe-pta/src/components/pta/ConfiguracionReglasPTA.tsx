@@ -96,79 +96,10 @@ export interface PTARules {
   inv_resolucion_obligatoria: boolean;
   inv_adjunto_obligatorio: boolean;
 
-  // Extensión
+  // Extensión: tope global del Enlace. Los topes por actividad SNPI viven en
+  // ext_actividades[].max_horas (única fuente real). Los antiguos campos sueltos
+  // ext_sel_*/ext_fag_*/ext_lab_*/ext_inv_*/ext_eag_* se eliminaron por ser código muerto.
   ext_max_horas_enlace: number;
-  ext_max_pct_enlace: number;
-  ext_construccion_contenidos_max: number;
-  ext_talleres_ejec_base: number;
-  ext_seminarios_ejec_base: number;
-  ext_cursos_ejec_max: number;
-  ext_diplomados_ejec_max: number;
-
-  // Extensión: Procesos Selección (Tablas 6, 7, 8)
-  ext_sel_revision_prueba: number;
-  ext_sel_validacion_prueba: number;
-  ext_sel_construccion_casos: number;
-  ext_sel_revision_casos: number;
-  ext_sel_item_validacion: number;
-  ext_sel_analisis_evidencias: number;
-  ext_sel_grupos_discusion: number;
-  ext_sel_jurado_con_asis: number;
-  ext_sel_jurado_con_cal: number;
-  ext_sel_jurado_apt_vir: number;
-  ext_sel_jurado_apt_apl: number;
-
-  // Extensión: Fortalecimiento (Tablas 9, 10)
-  ext_fag_asistencia_tecnica: number;
-  ext_fag_bateria_indicadores: number;
-  ext_fag_red_plan_1: number;
-  ext_fag_red_plan_2: number;
-  ext_fag_red_analisis_1: number;
-  ext_fag_red_analisis_2: number;
-  ext_fag_red_analisis_3: number;
-  ext_fag_red_arq_1: number;
-  ext_fag_red_arq_2: number;
-
-  // Extensión: Laboratorio (Tabla 11)
-  ext_lab_fijo_participacion: number;
-  ext_lab_fijo_administrativo: number;
-  ext_lab_var_planear: number;
-  ext_lab_var_elab_1: number;
-  ext_lab_var_elab_2: number;
-  ext_lab_var_disenar: number;
-  ext_lab_var_campo: number;
-  ext_lab_var_acomp_eventos: number;
-  ext_lab_var_acomp_campo: number;
-  ext_lab_var_representar: number;
-  ext_lab_var_charlas: number;
-  ext_lab_var_coord: number;
-  ext_lab_var_diseno_est: number;
-
-  // Extensión: Investigación Aplicada (Tabla 12)
-  ext_inv_doc_tec_min: number;
-  ext_inv_doc_tec_max: number;
-  ext_inv_plan_trabajo_min: number;
-  ext_inv_plan_trabajo_max: number;
-  ext_inv_prod_nuevo_con_min: number;
-  ext_inv_prod_nuevo_con_max: number;
-  ext_inv_prod_des_tec_min: number;
-  ext_inv_prod_des_tec_max: number;
-  ext_inv_prod_apropiacion_min: number;
-  ext_inv_prod_apropiacion_max: number;
-  ext_inv_prod_formacion_min: number;
-  ext_inv_prod_formacion_max: number;
-  ext_inv_eventos_max: number;
-  ext_inv_procesos_eval_max: number;
-
-  // Extensión: Escuela de Alto Gobierno (Tabla 13)
-  ext_eag_coaching_min: number;
-  ext_eag_coaching_max: number;
-  ext_eag_formacion_min: number;
-  ext_eag_formacion_max: number;
-  ext_eag_gestion_con_min: number;
-  ext_eag_gestion_con_max: number;
-  ext_eag_desarrollo_con_min: number;
-  ext_eag_desarrollo_con_max: number;
 
   // Actividades Complementarias (Tabla 14)
   comp_acomp_pregrado_ap: number;
@@ -297,72 +228,6 @@ export const defaultPTARules: PTARules = {
   inv_adjunto_obligatorio: true,
 
   ext_max_horas_enlace: 200,
-  ext_max_pct_enlace: 25,
-  ext_construccion_contenidos_max: 160,
-  ext_talleres_ejec_base: 8,
-  ext_seminarios_ejec_base: 16,
-  ext_cursos_ejec_max: 32,
-  ext_diplomados_ejec_max: 80,
-
-  ext_sel_revision_prueba: 1,
-  ext_sel_validacion_prueba: 2,
-  ext_sel_construccion_casos: 4,
-  ext_sel_revision_casos: 3,
-  ext_sel_item_validacion: 1,
-  ext_sel_analisis_evidencias: 1.5,
-  ext_sel_grupos_discusion: 1.5,
-  ext_sel_jurado_con_asis: 2,
-  ext_sel_jurado_con_cal: 3,
-  ext_sel_jurado_apt_vir: 2,
-  ext_sel_jurado_apt_apl: 2,
-
-  ext_fag_asistencia_tecnica: 80,
-  ext_fag_bateria_indicadores: 80,
-  ext_fag_red_plan_1: 40,
-  ext_fag_red_plan_2: 40,
-  ext_fag_red_analisis_1: 80,
-  ext_fag_red_analisis_2: 80,
-  ext_fag_red_analisis_3: 100,
-  ext_fag_red_arq_1: 100,
-  ext_fag_red_arq_2: 40,
-
-  ext_lab_fijo_participacion: 100,
-  ext_lab_fijo_administrativo: 120,
-  ext_lab_var_planear: 80,
-  ext_lab_var_elab_1: 40,
-  ext_lab_var_elab_2: 80,
-  ext_lab_var_disenar: 120,
-  ext_lab_var_campo: 40,
-  ext_lab_var_acomp_eventos: 20,
-  ext_lab_var_acomp_campo: 40,
-  ext_lab_var_representar: 20,
-  ext_lab_var_charlas: 20,
-  ext_lab_var_coord: 60,
-  ext_lab_var_diseno_est: 60,
-
-  ext_inv_doc_tec_min: 40,
-  ext_inv_doc_tec_max: 60,
-  ext_inv_plan_trabajo_min: 2,
-  ext_inv_plan_trabajo_max: 6,
-  ext_inv_prod_nuevo_con_min: 40,
-  ext_inv_prod_nuevo_con_max: 60,
-  ext_inv_prod_des_tec_min: 40,
-  ext_inv_prod_des_tec_max: 60,
-  ext_inv_prod_apropiacion_min: 40,
-  ext_inv_prod_apropiacion_max: 60,
-  ext_inv_prod_formacion_min: 40,
-  ext_inv_prod_formacion_max: 60,
-  ext_inv_eventos_max: 8,
-  ext_inv_procesos_eval_max: 4,
-
-  ext_eag_coaching_min: 80,
-  ext_eag_coaching_max: 200,
-  ext_eag_formacion_min: 80,
-  ext_eag_formacion_max: 200,
-  ext_eag_gestion_con_min: 80,
-  ext_eag_gestion_con_max: 200,
-  ext_eag_desarrollo_con_min: 40,
-  ext_eag_desarrollo_con_max: 120,
 
   comp_acomp_pregrado_ap: 20,
   comp_acomp_pregrado_apt_9: 10,
@@ -573,7 +438,7 @@ export function usePTARules() {
       if (res.success) {
         toast.success('Configuración guardada exitosamente en la base de datos.');
       } else {
-        toast.error(res.message || 'Error al guardar la configuración.');
+        toast.error('Error al guardar la configuración.');
       }
     } catch (e) {
       toast.error('Error de conexión al guardar la configuración.');

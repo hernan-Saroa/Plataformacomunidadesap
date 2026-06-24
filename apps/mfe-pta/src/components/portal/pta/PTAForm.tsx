@@ -569,13 +569,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (roles.success) setRolesInvestigacion(roles.data);
       if (config.success && config.data) setPtaRules(config.data);
       if (secciones.success && Array.isArray(secciones.data) && secciones.data.length > 0) {
-        // Merge: la config en BD puede no traer 'multiplicador'. El backend hardcodea
-        // capacitación x2 al calcular horas, así que rellenamos el multiplicador desde
-        // los defaults por key para que el formulario coincida con el cálculo real.
+        // El multiplicador de la config (ext_secciones[].multiplicador) es la fuente de verdad
+        // y el backend ya lo aplica. Solo usamos el default por key si la config NO trae el campo,
+        // respetando un multiplicador explícito (incluido 1) configurado por el admin.
         const merged = secciones.data.map((s: any) => {
           const def = DEFAULT_EXT_SECCIONES.find(d => d.key === s.key);
-          const mult = (s.multiplicador && s.multiplicador > 1)
-            ? s.multiplicador
+          const mult = (s.multiplicador != null && Number(s.multiplicador) > 0)
+            ? Number(s.multiplicador)
             : (def?.multiplicador || 1);
           return { ...s, multiplicador: mult };
         });
@@ -1484,7 +1484,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
         : undefined,
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
-      extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || e.horas_ejecutadas > 0))),
+      extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
       complementarias: complementarias.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       academico_admin: academicoAdmin.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       observaciones_docente: observacionesDocente,
@@ -1680,7 +1680,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       setShowFirmaDocente(true);
       if (res.data.devCode) {
         console.log('🔑 [PRUEBAS] Código de validación OTP recibido:', res.data.devCode);
-        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { autoClose: false });
+        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
       }
       toast.success('Código de validación enviado al correo registrado.');
     } catch (error: any) {
@@ -2472,7 +2472,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                         Observación ({ (asig.observaciones || '').length }/50)
                                       </label>
                                       <button onClick={() => handleAsigChange(asig.id, '_showObs', false)} className="text-slate-400 hover:text-slate-600">
-                                        <X className="w-3 h-3" />
+                                        <XIcon className="w-3 h-3" />
                                       </button>
                                     </div>
                                     <input

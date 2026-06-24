@@ -297,7 +297,12 @@ export class PtaService {
     const semanas = Number(input?.semanas_vinculacion) || 16;
 
     // Lee las horas base configuradas (Términos Generales). Fallback a los valores normativos.
-    const rules = (await this.getConfiguracionPTAGlobal()) || {};
+    let rules: any = {};
+    try {
+      rules = (await this.getConfiguracionPTAGlobal()) || {};
+    } catch {
+      rules = {}; // config no disponible: usa los valores normativos por defecto
+    }
     const base009 = Number(rules.horas_base_carrera_009) || 720;
     const base003 = Number(rules.horas_base_carrera_003) || 800;
     const hSemTC = Number(rules.horas_semanales_tc) || 40;
@@ -314,7 +319,48 @@ export class PtaService {
     return hSem * semanas;
   }
 
-  private computeHorasTotales(body: any) {
+  // ── Multiplicadores de secciones de extensión (config-driven) ──────────────
+  // Antes el ×2 de Capacitación estaba hardcodeado. Ahora se lee de la config
+  // (ext_secciones[].multiplicador). Se cachea y se invalida al guardar config.
+  private extMultCache: Record<string, number> | null = null;
+
+  private async getExtMultiplicadores(): Promise<Record<string, number>> {
+    if (this.extMultCache) return this.extMultCache;
+    let rules: any = {};
+    try {
+      rules = (await this.getConfiguracionPTAGlobal()) || {};
+    } catch {
+      // Config no disponible aún (p.ej. tabla no creada en este ambiente): fallback sin cachear.
+      return { capacitacion: 2 };
+    }
+    // Multiplicadores normativos por defecto (cuando la config no trae el campo).
+    const DEFAULTS: Record<string, number> = { capacitacion: 2 };
+    const secciones = Array.isArray((rules as any).ext_secciones) ? (rules as any).ext_secciones : null;
+    const map: Record<string, number> = {};
+    if (secciones && secciones.length) {
+      for (const s of secciones) {
+        const key = String(s?.key || '');
+        if (!key) continue;
+        // Respeta el multiplicador explícito (incluido 1); si falta, usa el default normativo de la sección.
+        map[key] = Number(s?.multiplicador) > 0 ? Number(s.multiplicador) : (DEFAULTS[key] ?? 1);
+      }
+    } else {
+      this.extMultCache = { ...DEFAULTS };
+      return this.extMultCache;
+    }
+    this.extMultCache = map;
+    return map;
+  }
+
+  private multiplicadorDeExt(a: any, mult: Record<string, number>): number {
+    const actId = String(a?.actividad_id || a?.id || '');
+    let seccion = String(a?.seccion || '');
+    if (!seccion && actId.startsWith('CAP_')) seccion = 'capacitacion';
+    const m = Number(mult?.[seccion]);
+    return m > 0 ? m : 1;
+  }
+
+  private computeHorasTotales(body: any, extMult: Record<string, number> = { capacitacion: 2 }) {
     const asignaturas = Array.isArray(body?.asignaturas) ? body.asignaturas : [];
     const sumDocencia = asignaturas.reduce((sum: number, a: any) => sum + Number(a?.total_horas ?? a?.horas ?? 0), 0);
 
@@ -328,12 +374,10 @@ export class PtaService {
 
     const extActsRaw = Array.isArray(body?.extension_actividades) ? body.extension_actividades : [];
     const extActs = extActsRaw.map((a: any) => {
-      const actId = String(a?.actividad_id || a?.id || '');
-      const seccion = String(a?.seccion || '');
-      const esCapacitacion = actId.startsWith('CAP_') || seccion === 'capacitacion';
-      if (!esCapacitacion) return a;
+      const m = this.multiplicadorDeExt(a, extMult);
+      if (m === 1) return a;
       const horasEjec = Number(a?.horas_ejecutadas ?? a?.horas ?? 0);
-      return { ...a, horas: horasEjec * 2 };
+      return { ...a, horas: horasEjec * m };
     });
     const sumExt = extActs.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
@@ -347,7 +391,7 @@ export class PtaService {
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
   }
 
-  private toPtaDto(entity: PlanTrabajoAcademicoEntity) {
+  private toPtaDto(entity: PlanTrabajoAcademicoEntity, extMult: Record<string, number> = { capacitacion: 2 }) {
     const {
       id: _id, pta_id: _ptaId, ptaId: _ptaId2,
       estado: _estado, periodo: _periodo, version: _version,
@@ -368,14 +412,12 @@ export class PtaService {
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    // Aplicar multiplicador x2 para capacitación (igual que computeHorasTotales) para mantener consistencia
+    // Aplicar multiplicador de sección (config-driven) para mantener consistencia con computeHorasTotales
     const extActsNorm = extActs.map((a: any) => {
-      const actId = String(a?.actividad_id || a?.id || '');
-      const seccion = String(a?.seccion || '');
-      const esCapacitacion = actId.startsWith('CAP_') || seccion === 'capacitacion';
-      if (!esCapacitacion) return a;
+      const m = this.multiplicadorDeExt(a, extMult);
+      if (m === 1) return a;
       const horasEjec = Number(a?.horas_ejecutadas ?? a?.horas ?? 0);
-      return { ...a, horas: horasEjec * 2 };
+      return { ...a, horas: horasEjec * m };
     });
     const hExt = extActsNorm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
@@ -463,7 +505,8 @@ export class PtaService {
     qb.take(Math.min(Number(filters?.limit || 200), 500));
 
     const rows = await qb.getMany();
-    return rows.map((row) => this.toPtaDto(row));
+    const extMult = await this.getExtMultiplicadores();
+    return rows.map((row) => this.toPtaDto(row, extMult));
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
@@ -473,7 +516,8 @@ export class PtaService {
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
     qb.orderBy('pta.updatedAt', 'DESC');
     const rows = await qb.getMany();
-    return rows.map((row) => this.toPtaDto(row));
+    const extMult = await this.getExtMultiplicadores();
+    return rows.map((row) => this.toPtaDto(row, extMult));
   }
 
   async getPTAById(id: string) {
@@ -485,7 +529,7 @@ export class PtaService {
       this.historialRepo.find({ where: { ptaId: id }, order: { createdAt: 'DESC' } }),
     ]);
 
-    const dto = this.toPtaDto(pta) as any;
+    const dto = this.toPtaDto(pta, await this.getExtMultiplicadores()) as any;
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
       const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
@@ -621,7 +665,8 @@ export class PtaService {
       }
     }
 
-    const horas = this.computeHorasTotales(input);
+    const extMult = await this.getExtMultiplicadores();
+    const horas = this.computeHorasTotales(input, extMult);
     const horasAProgramar =
       Number(input?.horas_a_programar ?? input?.horasAsignables ?? input?.horas_asignables) ||
       (await this.calcHorasProgramables({
@@ -692,7 +737,7 @@ export class PtaService {
       mensaje: tipoAccionSave === 'CREACION' ? 'PTA creado' : tipoAccionSave === 'CAMBIO_ESTADO' ? `Estado: ${estadoAnteriorSave} → ${saved.estado}` : 'PTA guardado',
     });
 
-    return this.toPtaDto(saved);
+    return this.toPtaDto(saved, extMult);
   }
 
   async updatePTAStatus(
@@ -869,7 +914,7 @@ export class PtaService {
               message: 'Tu aprobación fue registrada. Esperando aprobación de otras jefaturas.',
               nuevoEstado: existing.estado,
               aprobaciones: pendientes,
-              pta: this.toPtaDto(existing),
+              pta: this.toPtaDto(existing, await this.getExtMultiplicadores()),
             };
           }
 
@@ -943,7 +988,7 @@ export class PtaService {
     return {
       version: updated.version,
       nuevoEstado,
-      pta: this.toPtaDto(updated),
+      pta: this.toPtaDto(updated, await this.getExtMultiplicadores()),
     };
   }
 
@@ -1062,8 +1107,9 @@ export class PtaService {
     const ptas = await qb.getMany();
     const now = Date.now();
 
+    const extMult = await this.getExtMultiplicadores();
     const detalle = ptas.map(p => {
-      const dto = this.toPtaDto(p);
+      const dto = this.toPtaDto(p, extMult);
       const diasSinMovimiento = p.updatedAt ? Math.floor((now - new Date(p.updatedAt).getTime()) / 86400000) : 0;
       return { ...dto, diasSinMovimiento };
     });
@@ -1220,8 +1266,9 @@ export class PtaService {
       evidenciasByPta[ev.ptaId].push(this.toEvidenciaDto(ev));
     }
 
+    const extMult = await this.getExtMultiplicadores();
     return ptas.map((pta) => ({
-      ...this.toPtaDto(pta),
+      ...this.toPtaDto(pta, extMult),
       evidencias: evidenciasByPta[pta.id] || [],
     }));
   }
@@ -1236,6 +1283,7 @@ export class PtaService {
   }
 
   async saveConfiguracionPTAGlobal(rules: any) {
+    this.extMultCache = null; // invalidar caché de multiplicadores al cambiar la config
     const key = 'pta_rules_v2';
     const existing = await this.configuracionRepo.findOne({ where: { id: key } });
     const saved = await this.configuracionRepo.save(
@@ -1507,10 +1555,11 @@ export class PtaService {
         })
       : [];
 
+    const extMult = await this.getExtMultiplicadores();
     const ptasByDocente: Record<string, any[]> = {};
     for (const pta of ptas) {
       ptasByDocente[pta.docenteId] ||= [];
-      ptasByDocente[pta.docenteId].push(this.toPtaDto(pta));
+      ptasByDocente[pta.docenteId].push(this.toPtaDto(pta, extMult));
     }
 
     return docentes.map((d: any) => ({
@@ -1972,13 +2021,15 @@ export class PtaService {
     const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
 
+    const extMult = await this.getExtMultiplicadores();
     const extBySeccion = (seccion: string) =>
       extActs
         .filter((a: any) => String(a?.seccion || '') === seccion)
         .reduce((s: number, a: any) => {
-          const h = seccion === 'capacitacion'
-            ? Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * 2
-            : Number(a?.horas ?? 0);
+          const m = this.multiplicadorDeExt(a, extMult);
+          const h = m === 1
+            ? Number(a?.horas ?? 0)
+            : Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * m;
           return s + h;
         }, 0);
 
