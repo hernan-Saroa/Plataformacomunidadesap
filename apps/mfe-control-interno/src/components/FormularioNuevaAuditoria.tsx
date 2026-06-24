@@ -1265,6 +1265,9 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                           })}
                         </div>
                       )}
+                      {mostrarSugerencias && (
+                        <div className="h-64 pointer-events-none" />
+                      )}
                     </div>
                   )}
 

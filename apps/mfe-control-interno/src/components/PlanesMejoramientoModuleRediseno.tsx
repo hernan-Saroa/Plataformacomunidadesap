@@ -938,18 +938,23 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
           borrador: '__AUDITADO__',
           FORMULACION: '__AUDITADO__',
           // Solo REVISION aparece en la primera columna del backoffice
-          revision: 'REVISION',
-          REVISION: 'REVISION',
-          aprobado: 'APROBADO',
-          APROBADO: 'APROBADO',
-          en_ejecucion: 'EN_EJECUCION',
-          EN_EJECUCION: 'EN_EJECUCION',
-          CON_RETRASO: 'CON_RETRASO',
-          completado: 'COMPLETADO',
-          COMPLETADO: 'COMPLETADO',
-          rechazado: 'SUSPENDIDO',
-          RECHAZADO: 'SUSPENDIDO',
-          SUSPENDIDO: 'SUSPENDIDO',
+          revision: 'SUSCRIPCION_Y_FORMULACION',
+          REVISION: 'SUSCRIPCION_Y_FORMULACION',
+          aprobado: 'EJECUCION_DE_ACCIONES',
+          APROBADO: 'EJECUCION_DE_ACCIONES',
+          en_ejecucion: 'EJECUCION_DE_ACCIONES',
+          EN_EJECUCION: 'EJECUCION_DE_ACCIONES',
+          CON_RETRASO: 'EJECUCION_DE_ACCIONES',
+          completado: 'VERIFICACION',
+          COMPLETADO: 'VERIFICACION',
+          rechazado: 'SUSCRIPCION_Y_FORMULACION',
+          RECHAZADO: 'SUSCRIPCION_Y_FORMULACION',
+          SUSPENDIDO: 'SUSCRIPCION_Y_FORMULACION',
+          // Nuevos IDs
+          SUSCRIPCION_Y_FORMULACION: 'SUSCRIPCION_Y_FORMULACION',
+          EJECUCION_DE_ACCIONES: 'EJECUCION_DE_ACCIONES',
+          VERIFICACION: 'VERIFICACION',
+          CERRADO: 'CERRADO',
         };
         const planesColumna = planes.filter(p => {
           const mappedEstado = estadoToColumna[p.estado] ?? p.estado.toUpperCase();
@@ -993,7 +998,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'PLAN',
     drop: (item: { planId: string; plan?: PlanMejoramiento }) => {
-      if (columna.id === 'COMPLETADO' && onCompletarPlan && item.plan) {
+      if ((columna.id === 'CERRADO' || columna.id === 'VERIFICACION' || columna.id === 'COMPLETADO') && onCompletarPlan && item.plan) {
         onCompletarPlan(item.plan);
       } else {
         onMoverPlan(item.planId, columna.id as EstadoPlan);

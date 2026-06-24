@@ -2149,6 +2149,9 @@ function Paso2ClasificacionAlcance({
                     })}
                   </div>
                 )}
+                {mostrarSugerenciasResponsable && (
+                  <div className="h-64 pointer-events-none" />
+                )}
               </div>
             )}
           </FieldWrapper>

@@ -11,7 +11,7 @@ import {
   LayoutGrid, List, Plus, MoreVertical, Calendar, User, Clock,
   AlertCircle, CheckCircle, FileText, Eye, MessageSquare, History,
   Filter, Search, ChevronDown, TrendingUp, Target, Shield, Activity,
-  Download, Columns3, ClipboardCheck, CheckSquare,
+  Download, Columns3, ClipboardCheck, CheckSquare, PlayCircle,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
   ChevronsDown, ChevronsUp, Move, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { exportarAuditoriaPDF, type AuditoriaPDFData } from './services/exportarAuditoriaPDF';
 import { exportarAuditoriasExcel } from './services/exportarAuditoriasExcel';
 import { estructuraService } from '../../services/estructuraService';
+import { isPlanAprobado, etiquetaEstadoPlan } from '../utils/estadoPlanUtils';
 
 // ✅ Importar modales desde carpeta modales/
 import {
@@ -1185,10 +1186,13 @@ function TarjetaAuditoria({
                   onVerDetalle(auditoria);
                 }}
                 className="flex-1 px-3 py-2.5 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm shadow-sm hover:opacity-90"
-                style={{ background: '#FF6B2C', color: '#FFFFFF' }}
+                style={{ background: (auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') ? '#16a34a' : '#FF6B2C', color: '#FFFFFF' }}
               >
-                <Eye className="w-4 h-4" />
-                Ver Expediente
+                {(auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') ? (
+                  <><PlayCircle className="w-4 h-4" /> Iniciar Auditoría</>
+                ) : (
+                  <><Eye className="w-4 h-4" /> Ver Expediente</>
+                )}
               </Button>
               
               {/* Eliminar - SOLO visible en la etapa de Programa Anual / Plan Anual */}
@@ -2119,9 +2123,20 @@ export function GestionAuditoriasKanbanSimple() {
   const handleVerDetalle = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
 
-    // Si la auditoría está en Planeación, abrimos el wizard de inicio (RF004)
-    // De lo contrario, abrimos el expediente completo
+    // Si la auditoría está en Programa Anual, verificamos si el plan está aprobado antes de abrir el wizard de inicio
     if (auditoria.estado === 'Programa Anual') {
+      // Verificar que el Plan Anual esté aprobado o vigente antes de permitir iniciar la auditoría
+      const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+
+      if (!planAprobado) {
+        toast.warning('⚠️ Plan Anual no aprobado', {
+          description: 'El Plan Anual de Auditoría debe estar aprobado o vigente antes de poder iniciar una auditoría. Por favor, complete primero el proceso de aprobación del plan.',
+          duration: 6000,
+        });
+        setAuditoriaSeleccionada(null);
+        return;
+      }
+
       setModalInicioAuditoriaOpen(true);
     } else {
       setModalExpedienteOpen(true);
@@ -3259,6 +3274,33 @@ export function GestionAuditoriasKanbanSimple() {
         />
 
         {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* ALERTA — Plan Anual pendiente de aprobación                   */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {(() => {
+          const estadoPlan = vigenciaCtx?.planActivo?.estado;
+          const planAprobado = isPlanAprobado(estadoPlan);
+          if (!planAprobado && !vigenciaCtx?.loading && vigenciaCtx?.planActivo) {
+            return (
+              <div className="flex items-start gap-3 p-2 bg-amber-50 border border-amber-300 rounded-xl shadow-sm">
+                <div className="flex-shrink-0 mt-0.5">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800">
+                    Plan Anual pendiente de aprobación
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    El Plan Anual de Auditoría (Vigencia {vigenciaCtx.vigencia}) se encuentra en estado <strong>{etiquetaEstadoPlan(estadoPlan)}</strong>.
+                    Debe ser aprobado por el Comité PAI antes de poder iniciar auditorías.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
         {/* TOOLBAR — Controles de vista, búsqueda, filtros               */}
         {/* ═══════════════════════════════════════════════════════════════ */}
         <Card className="p-2.5 border border-gray-200 shadow-sm">
@@ -4088,6 +4130,15 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             onIniciar={async (auditoria) => {
+              // ✅ Verificación de seguridad: Plan Anual debe estar aprobado/vigente
+              const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+              if (!planAprobado) {
+                toast.error('No se puede iniciar la auditoría', {
+                  description: 'El Plan Anual de Auditoría aún no ha sido aprobado. Apruebe el plan primero.',
+                });
+                return;
+              }
+
               // ✅ Conectar con backend para cambiar fase a "Planeación" (primera fase)
               console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
 

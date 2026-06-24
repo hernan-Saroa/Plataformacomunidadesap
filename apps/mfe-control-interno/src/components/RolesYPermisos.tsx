@@ -253,6 +253,13 @@ const PERMISOS_SISTEMA: Permiso[] = [
     funcionalidad: 'Ver Auditoría de Cambios',
     descripcion: 'Visualizar log de auditoría',
     nivelAcceso: 'Lectura'
+  },
+  {
+    id: 'perm-024',
+    modulo: 'Configuración',
+    funcionalidad: 'Eliminar Rol Personalizado',
+    descripcion: 'Permitir o no eliminar un rol personalizado en el plan anual',
+    nivelAcceso: 'Eliminación'
   }
 ];
 

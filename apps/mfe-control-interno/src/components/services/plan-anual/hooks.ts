@@ -373,15 +373,20 @@ export function useActividadesMutations(onSuccess?: () => void): UseActividadesR
  * } = usePlanAnualCompleto(2026);
  * ```
  */
+const EMPTY_AUDITORES: any[] = [];
+
 export function usePlanAnualCompleto(year: number) {
   const planQuery = usePlanAnualByYear(year);
   const auditoresQuery = useAuditores();
   const mutations = useActividadesMutations(planQuery.refetch);
 
+  // Stable reference: avoid creating a new [] on every render when data is null
+  const auditores = auditoresQuery.data ?? EMPTY_AUDITORES;
+
   return {
     // Datos
     plan: planQuery.data,
-    auditores: auditoresQuery.data || [],
+    auditores,
     estadisticas: planQuery.estadisticas,
     
     // Estados (loadingPlan / loadingAuditores evitan bloquear toda la UI mientras cargan auditores)

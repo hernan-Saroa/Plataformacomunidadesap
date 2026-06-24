@@ -386,6 +386,7 @@ export enum Permissions {
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_DELETE = 'control-interno.configuraciones.kanban.audit.delete',
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_EDIT = 'control-interno.configuraciones.kanban.plan.edit',
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_DELETE = 'control-interno.configuraciones.kanban.plan.delete',
+  CONTROL_INTERNO_ROLES_DELETE = 'control-interno.roles.delete',
   // Registro Único Nacional Docente (RUND)
   BANCO_DOCENTES_RUND_MANAGE = 'banco-docentes.rund.manage',
   BANCO_DOCENTES_RUND_VIEW = 'banco-docentes.rund.view',
