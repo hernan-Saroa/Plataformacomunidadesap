@@ -55,7 +55,13 @@ export class HistorialAuditoria {
   hora: string;
 
   @Column({ name: 'usuario_id', type: 'uuid', nullable: true })
-  usuarioId: string | null; // FK a auth.personas (UUID) - puede ser null
+  usuarioId: string | null; // FK a auth.user.id_user (UUID) - puede ser null
+
+  @Column({ name: 'nombre_usuario', type: 'varchar', length: 255, nullable: true })
+  nombreUsuario?: string | null; // Nombre desnormalizado del usuario (evita JOIN en lectura)
+
+  @Column({ name: 'user_email', type: 'varchar', length: 255, nullable: true })
+  userEmail?: string | null; // Email del usuario (desnormalizado)
 
   @Column({ type: 'varchar', length: 255, nullable: false })
   accion: string;

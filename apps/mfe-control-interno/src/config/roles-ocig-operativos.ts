@@ -4,7 +4,9 @@ export const ROLES_OCIG_OPERATIVOS = [
   'Auditor Líder',
   'Auditor',
   'Auditor Júnior',
+  'Profesional OCI',
   'Apoyo Técnico',
+  'Aprobador PAI',
 ] as const;
 
 export type RolOCIGOperativo = (typeof ROLES_OCIG_OPERATIVOS)[number];

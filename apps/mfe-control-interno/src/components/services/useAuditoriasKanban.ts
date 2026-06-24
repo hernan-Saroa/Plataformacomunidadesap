@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { controlInternoService } from '../../../../services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { auditoresApi } from './plan-anual/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -96,9 +96,17 @@ export interface AuditoriaKanban {
   criterios?: CriterioAuditoria[];
   // ID del auditor líder asignado
   auditorLiderId?: string | number;
+  // ✅ Responsable del Área Auditada (viene del backend)
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   // Vigencia asociada
   planAnualAño?: number;
   vigencia?: number;
+  // ✅ RESPONSABLE DEL ÁREA AUDITADA
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
 }
 
 export interface CriterioAuditoria {
@@ -205,14 +213,25 @@ function calcularSemaforo(progreso: number, diasRestantes: number, porcentajeTie
  */
 function calcularTiempos(fechaInicio: string, fechaFin: string): { diasRestantes: number; porcentajeTiempo: number } {
   const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
   const inicio = new Date(fechaInicio);
   const fin = new Date(fechaFin);
   
   const totalDias = Math.max(1, Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)));
-  const diasTranscurridos = Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
-  const diasRestantes = Math.max(0, Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
   
-  const porcentajeTiempo = Math.min(100, Math.round((diasTranscurridos / totalDias) * 100));
+  let diasRestantes = 0;
+  let porcentajeTiempo = 0;
+  
+  if (hoy < inicio) {
+    // Si la auditoría es en el futuro, no ha empezado el consumo de tiempo
+    diasRestantes = totalDias;
+    porcentajeTiempo = 0;
+  } else {
+    const diasTranscurridos = Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+    diasRestantes = Math.max(0, Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)));
+    porcentajeTiempo = Math.min(100, Math.round((diasTranscurridos / totalDias) * 100));
+  }
   
   return { diasRestantes, porcentajeTiempo };
 }
@@ -495,6 +514,11 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     actividadesCompletas: true,
     actividadesPendientes: 0,
     auditorLiderId: auditoriaBackend.auditorLiderId,
+    // ✅ Responsable del Área Auditada (datos reales del backend)
+    // NO usar 'responsable' como fallback ya que ese campo contiene el auditor líder, no el auditado.
+    responsableAreaNombre: auditoriaBackend.responsableAreaNombre || auditoriaBackend.responsable_area_nombre || undefined,
+    responsableAreaCargo: auditoriaBackend.responsableAreaCargo || auditoriaBackend.responsable_area_cargo || undefined,
+    responsableAreaEmail: auditoriaBackend.responsableAreaEmail || auditoriaBackend.responsable_area_email || undefined,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
     planAnualAño:
@@ -738,17 +762,18 @@ export function useAuditoriasKanban(planFilters?: {
   // ─────────────────────────────────────────────────────────────────────────
   const cambiarFase = useCallback(async (id: string, estadoKanban: string): Promise<boolean> => {
     try {
-      // ✅ MEJORADO: Usar endpoint de estado Kanban que soporta todos los estados
+      // ✅ Usar endpoint de estado Kanban que soporta todos los estados
       await controlInternoService.updateEstadoKanbanAuditoria(id, estadoKanban);
       const nuevoEstado = mapearFaseAEstado(estadoKanban);
       setAuditorias(prev =>
         prev.map(a => (a.id === id ? { ...a, estado: nuevoEstado } : a)),
       );
-      toast.success(`Estado actualizado a: ${estadoKanban}`);
+      // ✅ NO mostrar toast aquí — el componente Kanban ya maneja sus propios toasts
+      // para evitar alertas duplicadas apiladas
       return true;
     } catch (err) {
       console.error('[useAuditoriasKanban] Error al cambiar estado:', err);
-      toast.error('Error al cambiar estado');
+      // ✅ NO mostrar toast aquí — el componente Kanban ya maneja el toast de error
       return false;
     }
   }, []);

@@ -55,10 +55,19 @@ export class AsignaturasImportService {
     const startTime = Date.now();
 
     // PASO 1 - Parsear el Excel
-    const { asignaturas: rawAsignaturas, programas: rawProgramas, matrizOferta } = this.excelParser.parseExcel(buffer);
+    const {
+      asignaturas: rawAsignaturas,
+      programas: rawProgramas,
+      matrizOferta,
+      matrizProgramCodes,
+    } = this.excelParser.parseExcel(buffer);
 
     // PASO 2 - Reglas de validación pre-insert
-    const preInsertReport = ImportValidator.validarPreInsert(rawAsignaturas, rawProgramas);
+    const preInsertReport = ImportValidator.validarPreInsert(
+      rawAsignaturas,
+      rawProgramas,
+      matrizProgramCodes,
+    );
     if (!preInsertReport.isValid) {
       throw new BadRequestException({
         success: false,
@@ -74,7 +83,10 @@ export class AsignaturasImportService {
     const result = new ImportResultDto();
     result.dry_run = dryRun;
     result.periodo = periodCodigo;
-    result.advertencias = [...circularWarnings];
+    result.advertencias = [
+      ...preInsertReport.warnings,
+      ...circularWarnings,
+    ];
 
     // Obtener CETAPs y catálogos de la BD para validación estricta y comparación de duplicados
     const dbCetaps = await this.dataSource.query('SELECT id, codigo FROM academic_work_plan.cetap');
@@ -222,7 +234,17 @@ export class AsignaturasImportService {
       if (m.codigo_cetap) cetapsSet.add(m.codigo_cetap.trim().toUpperCase());
       ofertasCount += m.programas_ofertados.length;
     }
-    
+
+    // AUTO-CREACIÓN DE CETAPs: los CETAPs de la MATRIZ_OFERTA que aún no existan
+    // se crearán durante la importación con los datos del propio archivo, por lo que
+    // se consideran válidos aquí (no se bloquea ni se descartan sus ofertas).
+    const cetapsNuevosCodigos = [...cetapsSet].filter(
+      (code) => !validCetapsMap.has(code.toLowerCase().trim()),
+    );
+    for (const code of cetapsSet) {
+      validCetapsMap.set(code.toLowerCase().trim(), true);
+    }
+
     let newOfertasCount = 0;
     let existingOfertasCount = 0;
     const dbPeriodo = await this.dataSource.query('SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1', [periodCodigo]);
@@ -237,7 +259,11 @@ export class AsignaturasImportService {
 
       for (const m of matrizOferta) {
         const cetapId = cetapsMap.get(m.codigo_cetap.toLowerCase().trim());
-        if (!cetapId) continue;
+        if (!cetapId) {
+          // CETAP nuevo (se creará durante la importación): todas sus ofertas son nuevas.
+          newOfertasCount += m.programas_ofertados.length;
+          continue;
+        }
         for (const progCode of m.programas_ofertados) {
           const progId = progIdLookupMap.get(progCode.toLowerCase().trim());
           if (!progId || progId === 'NEW_PROG') {
@@ -253,15 +279,44 @@ export class AsignaturasImportService {
         }
       }
     } else {
-      newOfertasCount = ofertasCount;
+      newOfertasCount = matrizOferta.reduce(
+        (count, row) =>
+          validCetapsMap.has(row.codigo_cetap.toLowerCase().trim())
+            ? count + row.programas_ofertados.length
+            : count,
+        0,
+      );
     }
     result.carga.ofertas_cetap_programa.creados = newOfertasCount;
     result.carga.ofertas_cetap_programa.actualizados = 0;
     result.carga.ofertas_cetap_programa.omitidos = existingOfertasCount;
 
-    result.carga.cetaps.creados = cetapsSet.size;
+    // Todos los CETAPs del archivo cuentan como válidos (los faltantes se crearán),
+    // por lo que todas las ofertas con "X" son válidas.
+    const validOffersCount = matrizOferta.reduce(
+      (count, row) =>
+        validCetapsMap.has(row.codigo_cetap.toLowerCase().trim())
+          ? count + row.programas_ofertados.length
+          : count,
+      0,
+    );
+
+    result.carga.cetaps.creados = cetapsNuevosCodigos.length;
     result.carga.cetaps.actualizados = 0;
-    result.carga.cetaps.omitidos = 0;
+    result.carga.cetaps.omitidos = cetapsSet.size - cetapsNuevosCodigos.length;
+
+    if (cetapsNuevosCodigos.length > 0) {
+      const examples = cetapsNuevosCodigos.slice(0, 10).join(', ');
+      result.advertencias.push(
+        `Se crearán ${cetapsNuevosCodigos.length} CETAP nuevos a partir de la MATRIZ_OFERTA del archivo` +
+          ` (ej.: ${examples}${cetapsNuevosCodigos.length > 10 ? ', ...' : ''}).`,
+      );
+    }
+    if (validOffersCount === 0) {
+      result.errores.push(
+        'La MATRIZ_OFERTA no contiene ninguna oferta (ningún programa marcado con "X").',
+      );
+    }
 
     // Resumen detallado de duplicados
     (result as any).analisis_duplicados = {
@@ -275,7 +330,14 @@ export class AsignaturasImportService {
 
     this.buildRelationsAndSimulateCarga(rawAsignaturas, rawProgramas, matrizOferta, result, dryRun, validCetapsMap, omitErrors);
 
-    if (allIdentical) {
+    // allIdentical sólo bloquea si además no hay ofertas nuevas para ESTE periodo.
+    // Si los programas/asignaturas ya existen pero es un periodo nuevo, las
+    // oferta_cetap_programa todavía deben crearse para el nuevo periodo.
+    if (
+      allIdentical &&
+      newOfertasCount === 0 &&
+      result.errores.length === 0
+    ) {
       (result as any).blocked_reason = 'ALL_IDENTICAL';
       result.success = true; // El archivo es válido, pero no hay nada nuevo
       result.tiempo_ms = Date.now() - startTime;
@@ -285,9 +347,27 @@ export class AsignaturasImportService {
 
     if (dryRun) {
       this.calculateIndicators(rawAsignaturas, rawProgramas, matrizOferta, result);
-      result.success = true;
+      result.success = result.errores.length === 0;
       result.tiempo_ms = Date.now() - startTime;
       return result;
+    }
+
+    if (result.errores.length > 0 && !omitErrors) {
+      throw new BadRequestException({
+        success: false,
+        message:
+          'La importación no puede continuar hasta corregir los errores de validación.',
+        errors: result.errores,
+      });
+    }
+
+    if (validOffersCount === 0) {
+      throw new BadRequestException({
+        success: false,
+        message:
+          'La importación no puede continuar sin al menos una oferta territorial válida.',
+        errors: result.errores,
+      });
     }
 
     // PASO 4 - Iniciar transacción manual
@@ -305,7 +385,7 @@ export class AsignaturasImportService {
       const dummyCount = new ImportCountDto();
 
       // 6. Cargar PROGRAMAS (solo nuevos y modificados)
-      const dbProgramasMap = await this.loadProgramas(queryRunner, [...newProgs, ...modifiedProgs], dummyCount);
+      const dbProgramasMap = await this.loadProgramas(queryRunner, [...newProgs, ...modifiedProgs], dummyCount, periodId);
       const programasMapBase = new Map<string, string>();
       for (const p of existingProgramas) {
         programasMapBase.set(p.nombre.toLowerCase().trim(), p.id);
@@ -333,6 +413,11 @@ export class AsignaturasImportService {
       for (const c of cetaps) {
         cetapsMapTransaction.set(c.codigo.toLowerCase().trim(), c.id);
       }
+
+      // 8.5. Crear los CETAPs (y su Dirección Territorial) de la MATRIZ_OFERTA que
+      // aún no existan, a partir de los datos del propio archivo. Así ninguna oferta
+      // se descarta por "CETAP inexistente".
+      await this.ensureCetapsFromMatriz(queryRunner, matrizOferta, cetapsMapTransaction);
 
       // 9. Cargar OFERTA_CETAP_PROGRAMA
       await this.loadOfertasCetapPrograma(
@@ -387,6 +472,43 @@ export class AsignaturasImportService {
       await queryRunner.commitTransaction();
       result.success = true;
 
+      // Resumen REAL del período tras la importación: lo que QUEDÓ en este período
+      // (no solo lo "creado" en la BD). Así, reimportar el mismo catálogo en otro
+      // período muestra el total correcto en el aviso, no ceros.
+      try {
+        const resumen = await this.dataSource.query(
+          `WITH per AS (
+             SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1
+           ),
+           progs AS (
+             SELECT p.id FROM academic_work_plan.programa p CROSS JOIN per
+             WHERE EXISTS (
+                     SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+                     WHERE ocp.id_programa = p.id AND ocp.activa = TRUE
+                       AND ocp.id_periodo_academico = per.id
+                   )
+                OR p.id_periodo_academico = per.id
+           )
+           SELECT
+             (SELECT COUNT(*) FROM progs) AS programas,
+             (SELECT COUNT(*) FROM academic_work_plan.asignatura a
+               WHERE a.id_programa IN (SELECT id FROM progs) AND a.activa = TRUE) AS asignaturas,
+             (SELECT COUNT(DISTINCT id_cetap) FROM academic_work_plan.oferta_cetap_programa
+               WHERE id_periodo_academico = (SELECT id FROM per) AND activa = TRUE) AS cetaps,
+             (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa
+               WHERE id_periodo_academico = (SELECT id FROM per) AND activa = TRUE) AS ofertas`,
+          [periodCodigo],
+        );
+        (result as any).resumen_periodo = {
+          programas: parseInt(resumen[0]?.programas || '0', 10),
+          asignaturas: parseInt(resumen[0]?.asignaturas || '0', 10),
+          cetaps: parseInt(resumen[0]?.cetaps || '0', 10),
+          ofertas: parseInt(resumen[0]?.ofertas || '0', 10),
+        };
+      } catch (e: any) {
+        this.logger.warn(`No se pudo calcular el resumen del período: ${e.message}`);
+      }
+
       // Calcular indicadores finales con datos reales
       this.calculateIndicators(rawAsignaturas, rawProgramas, matrizOferta, result);
 
@@ -413,25 +535,95 @@ export class AsignaturasImportService {
    * Obtiene el reporte de la última carga ejecutada consultando la base de datos.
    */
   async getLastImport(periodo: string = '2025-2'): Promise<any> {
-    const counts = await this.dataSource.query(`
-      SELECT 
-        (SELECT COUNT(*) FROM academic_work_plan.programa) AS programas,
-        (SELECT COUNT(*) FROM academic_work_plan.nucleo_tematico) AS nucleos_tematicos,
-        (SELECT COUNT(*) FROM academic_work_plan.cetap) AS cetaps,
-        (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas,
-        (SELECT COUNT(*) FROM academic_work_plan.asignatura) AS asignaturas
-    `, [periodo]);
+    let stats: any = {};
+    try {
+      // Conteo REAL del período (mismo criterio que el listado y el detalle):
+      // un programa pertenece al período si tiene oferta activa en él, si fue
+      // creado para él (id_periodo_academico), o —solo en el período activo—
+      // si no tiene período propio ni ofertas.
+      const counts = await this.dataSource.query(`
+        WITH per AS (
+          SELECT id, (estado = 'en_curso') AS activo
+          FROM academic_work_plan.periodo_academico
+          WHERE codigo = $1
+          LIMIT 1
+        ),
+        progs AS (
+          SELECT p.id
+          FROM academic_work_plan.programa p
+          CROSS JOIN per
+          WHERE EXISTS (
+                  SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+                  WHERE ocp.id_programa = p.id AND ocp.activa = TRUE
+                    AND ocp.id_periodo_academico = per.id
+                )
+             OR p.id_periodo_academico = per.id
+             OR (
+                  per.activo
+                  AND p.id_periodo_academico IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM academic_work_plan.oferta_cetap_programa o
+                    WHERE o.id_programa = p.id AND o.activa = TRUE
+                  )
+                )
+        )
+        SELECT
+          (SELECT COUNT(*) FROM progs) AS programas,
+          (SELECT COUNT(*) FROM academic_work_plan.asignatura a
+            WHERE a.id_programa IN (SELECT id FROM progs) AND a.activa = TRUE) AS asignaturas,
+          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa
+            WHERE id_periodo_academico = (SELECT id FROM per)) AS ofertas,
+          -- CETAPs del período = SOLO los que OFRECEN programas (oferta activa),
+          -- mismo criterio que el detalle. NO se cuentan los CETAP de la activación
+          -- estructural (periodo_cetap): en este módulo un CETAP sin programas no
+          -- tiene sentido, por eso un período sin ofertas muestra 0 CETAP.
+          (SELECT COUNT(DISTINCT o.id_cetap)
+             FROM academic_work_plan.oferta_cetap_programa o
+            WHERE o.id_periodo_academico = (SELECT id FROM per) AND o.activa = TRUE
+              AND NOT EXISTS (
+                SELECT 1 FROM academic_work_plan.periodo_cetap ov
+                 WHERE ov.id_periodo_academico = o.id_periodo_academico
+                   AND ov.id_cetap = o.id_cetap AND ov.activo = FALSE)
+          ) AS cetaps
+      `, [periodo]);
+      stats = counts[0] || {};
+    } catch (e) {
+      // Respaldo si la columna id_periodo_academico no existe (migración no aplicada):
+      // conteo basado solo en ofertas, como antes.
+      const counts = await this.dataSource.query(`
+        SELECT
+          (SELECT COUNT(DISTINCT ocp.id_programa)
+           FROM academic_work_plan.oferta_cetap_programa ocp
+           WHERE ocp.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS programas,
+          (SELECT COUNT(*)
+           FROM academic_work_plan.asignatura a
+           WHERE a.id_programa IN (
+             SELECT DISTINCT ocp2.id_programa
+             FROM academic_work_plan.oferta_cetap_programa ocp2
+             WHERE ocp2.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)
+           )) AS asignaturas,
+          (SELECT COUNT(*) FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1)) AS ofertas,
+          (SELECT COUNT(DISTINCT o.id_cetap)
+             FROM academic_work_plan.oferta_cetap_programa o
+            WHERE o.id_periodo_academico = (SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1) AND o.activa = TRUE
+              AND NOT EXISTS (
+                SELECT 1 FROM academic_work_plan.periodo_cetap ov
+                 WHERE ov.id_periodo_academico = o.id_periodo_academico
+                   AND ov.id_cetap = o.id_cetap AND ov.activo = FALSE)
+          ) AS cetaps
+      `, [periodo]);
+      stats = counts[0] || {};
+    }
 
-    const stats = counts[0] || {};
     return {
       success: true,
       periodo,
       counts: {
         programas: parseInt(stats.programas || 0, 10),
-        nucleos_tematicos: parseInt(stats.nucleos_tematicos || 0, 10),
-        cetaps: parseInt(stats.cetaps || 0, 10),
         ofertas_cetap_programa: parseInt(stats.ofertas || 0, 10),
         asignaturas: parseInt(stats.asignaturas || 0, 10),
+        // CETAPs activos reales del período (coincide con el detalle).
+        cetaps: parseInt(stats.cetaps || 0, 10),
       },
     };
   }
@@ -542,6 +734,7 @@ export class AsignaturasImportService {
     queryRunner: QueryRunner,
     rawProgramas: ProgramaRow[],
     countDto: ImportCountDto,
+    periodId: string,
   ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
 
@@ -561,10 +754,13 @@ export class AsignaturasImportService {
         else facId = '1';
       }
 
+      // Se asigna id_periodo_academico = período de la importación. En re-importaciones
+      // se usa COALESCE para conservar el período propio que ya tenga el programa
+      // (no se "mueve" un programa que ya pertenece a otro período).
       const SQL = `
-        INSERT INTO academic_work_plan.programa (
-          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO academic_work_plan.programa AS p (
+          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo, id_periodo_academico
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (codigo) DO UPDATE SET
           nombre = EXCLUDED.nombre,
           nombre_excel = EXCLUDED.nombre_excel,
@@ -574,7 +770,8 @@ export class AsignaturasImportService {
           modalidad = EXCLUDED.modalidad,
           horas_base_por_credito = EXCLUDED.horas_base_por_credito,
           horas_pregrado_central = EXCLUDED.horas_pregrado_central,
-          activo = EXCLUDED.activo
+          activo = EXCLUDED.activo,
+          id_periodo_academico = COALESCE(p.id_periodo_academico, EXCLUDED.id_periodo_academico)
         RETURNING id;
       `;
       const rows = await queryRunner.query(SQL, [
@@ -588,6 +785,7 @@ export class AsignaturasImportService {
         p.horas_base_por_credito,
         p.horas_pregrado_central,
         p.activo === false || p.activo === 0 || String(p.activo).toLowerCase().trim() === 'false' || String(p.activo).toLowerCase().trim() === 'no' || String(p.activo).toLowerCase().trim() === 'inactivo' ? false : true,
+        periodId,
       ]);
 
       const insertedId = rows[0].id;
@@ -619,26 +817,157 @@ export class AsignaturasImportService {
       }
     }
 
-    let i = 1;
+    // Los núcleos temáticos son GLOBALES (no por período). Se reutilizan los que ya
+    // existen (por nombre) sin reasignar su código, y los nuevos se numeran a partir
+    // del máximo NT-### existente. Así no se choca con «nucleo_tematico_codigo_key»
+    // al reimportar o al importar en otro período.
+    const existentes = await queryRunner.query(
+      'SELECT id, codigo, nombre FROM academic_work_plan.nucleo_tematico',
+    );
+    const nucleosPorNombre = new Map<string, string>();
+    let maxNum = 0;
+    for (const nt of existentes) {
+      nucleosPorNombre.set(String(nt.nombre).toLowerCase().trim(), nt.id);
+      const m = /^NT-(\d+)$/i.exec(String(nt.codigo || ''));
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+    }
+
+    let next = maxNum + 1;
     for (const name of uniqueNucleos) {
-      const code = `NT-${String(i).padStart(3, '0')}`;
+      const key = name.toLowerCase().trim();
+
+      // Si ya existe (por nombre), se reutiliza sin tocar su código.
+      const existenteId = nucleosPorNombre.get(key);
+      if (existenteId) {
+        map.set(key, existenteId);
+        continue;
+      }
+
+      // Núcleo nuevo: código siguiente disponible (no colisiona con los existentes).
+      const code = `NT-${String(next).padStart(3, '0')}`;
+      next++;
       const SQL = `
         INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, descripcion, activo)
         VALUES ($1, $2, $3, TRUE)
-        ON CONFLICT (nombre) DO UPDATE SET
-          codigo = EXCLUDED.codigo
+        ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
         RETURNING id;
       `;
       const rows = await queryRunner.query(SQL, [code, name, `Núcleo temático: ${name}`]);
-      map.set(name.toLowerCase().trim(), rows[0].id);
+      map.set(key, rows[0].id);
+      nucleosPorNombre.set(key, rows[0].id);
       countDto.creados++;
-      i++;
     }
 
     return map;
   }
 
-  // El método syncCetaps se ha eliminado porque ya no es necesario; 
+  private normalizarNombre(value: string): string {
+    return (value || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  /**
+   * Crea (si no existen) los CETAPs y Direcciones Territoriales referenciados en la
+   * MATRIZ_OFERTA, usando los datos del propio archivo, y actualiza `cetapsMap`
+   * (codigo_cetap en minúsculas -> id). Es aditivo: si ya existen, los reutiliza.
+   */
+  private async ensureCetapsFromMatriz(
+    queryRunner: QueryRunner,
+    matrizOferta: import('./parsers/matriz-oferta.parser').OfertaMatrizResult[],
+    cetapsMap: Map<string, string>,
+  ): Promise<void> {
+    const dtRows = await queryRunner.query(
+      'SELECT id, codigo FROM academic_work_plan.direccion_territorial',
+    );
+    const dtMap = new Map<string, string>();
+    for (const dt of dtRows) {
+      dtMap.set(String(dt.codigo).toLowerCase().trim(), dt.id);
+    }
+
+    for (const m of matrizOferta) {
+      const cetapKey = m.codigo_cetap.toLowerCase().trim();
+      if (cetapsMap.has(cetapKey)) continue;
+
+      const dtKey = (m.codigo_dt || '').toLowerCase().trim();
+      let dtId = dtMap.get(dtKey);
+      if (!dtId) {
+        dtId = await this.ensureDireccionTerritorial(queryRunner, m.codigo_dt, m.nombre_dt);
+        dtMap.set(dtKey, dtId);
+      }
+
+      const cetapId = await this.ensureCetap(queryRunner, m.codigo_cetap, m.nombre_cetap, dtId);
+      cetapsMap.set(cetapKey, cetapId);
+    }
+  }
+
+  private async ensureDireccionTerritorial(
+    queryRunner: QueryRunner,
+    codigo: string,
+    nombre: string,
+  ): Promise<string> {
+    const cod = (codigo || '').trim();
+    const nom = (nombre || '').trim() || cod;
+    const norm = this.normalizarNombre(nom);
+
+    let rows = await queryRunner.query(
+      'SELECT id FROM academic_work_plan.direccion_territorial WHERE codigo = $1 LIMIT 1',
+      [cod],
+    );
+    if (rows.length) return rows[0].id;
+    rows = await queryRunner.query(
+      'SELECT id FROM academic_work_plan.direccion_territorial WHERE nombre_normalizado = $1 LIMIT 1',
+      [norm],
+    );
+    if (rows.length) return rows[0].id;
+
+    rows = await queryRunner.query(
+      `INSERT INTO academic_work_plan.direccion_territorial
+         (codigo, nombre, nombre_normalizado, activo, orden_visualizacion)
+       VALUES ($1, $2, $3, TRUE, 999)
+       ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre
+       RETURNING id`,
+      [cod, nom, norm],
+    );
+    return rows[0].id;
+  }
+
+  private async ensureCetap(
+    queryRunner: QueryRunner,
+    codigo: string,
+    nombre: string,
+    dtId: string,
+  ): Promise<string> {
+    const cod = (codigo || '').trim();
+    const nom = (nombre || '').trim() || cod;
+    const norm = this.normalizarNombre(nom);
+
+    let rows = await queryRunner.query(
+      'SELECT id FROM academic_work_plan.cetap WHERE codigo = $1 LIMIT 1',
+      [cod],
+    );
+    if (rows.length) return rows[0].id;
+    rows = await queryRunner.query(
+      'SELECT id FROM academic_work_plan.cetap WHERE id_direccion_territorial = $1 AND nombre_normalizado = $2 LIMIT 1',
+      [dtId, norm],
+    );
+    if (rows.length) return rows[0].id;
+
+    rows = await queryRunner.query(
+      `INSERT INTO academic_work_plan.cetap
+         (codigo, nombre, nombre_normalizado, id_direccion_territorial, tipo, activo)
+       VALUES ($1, $2, $3, $4, 'cetap', TRUE)
+       ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre
+       RETURNING id`,
+      [cod, nom, norm, dtId],
+    );
+    return rows[0].id;
+  }
+
+  // El método syncCetaps se ha eliminado porque ya no es necesario;
   // los CETAPs vienen listos de estructura-import.
 
   private async loadOfertasCetapPrograma(
@@ -890,8 +1219,10 @@ export class AsignaturasImportService {
           
           if (!isValidCetap) {
             pRelation.valido = false;
-            pRelation.errores.push(`El CETAP ${m.codigo_cetap} no existe en la base de datos.`);
-            result.errores.push(`Programa ${progOfertado} intenta ofertarse en CETAP inexistente: ${m.codigo_cetap}`);
+            const relationError = `El CETAP ${m.codigo_cetap} no existe en la base de datos.`;
+            if (!pRelation.errores.includes(relationError)) {
+              pRelation.errores.push(relationError);
+            }
             if (!omitErrors) {
               validOfertados.push(progOfertado);
             }

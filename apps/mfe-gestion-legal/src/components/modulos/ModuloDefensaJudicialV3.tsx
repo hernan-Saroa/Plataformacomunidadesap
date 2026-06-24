@@ -15,7 +15,7 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, DollarSign, Filter, Search,
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2, Gavel
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2, Gavel, Loader2
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -304,12 +304,14 @@ export function ModuloDefensaJudicialV3() {
     try {
       setLoading(true);
 
-      // Cargar expedientes y abogados en paralelo; usuarios se carga aparte para no bloquear si falla
-      const [data, abogadosData] = await Promise.all([
+      // Cargar expedientes, abogados y usuarios en paralelo. Antes los usuarios se cargaban
+      // secuencialmente DESPUÉS del Promise.all, sumando su latencia al tiempo total del kanban.
+      // El .catch en usuarios evita que un fallo en esa carga bloquee la lista de expedientes.
+      const [data, abogadosData, todosLosUsuarios] = await Promise.all([
         legalService.getExpedientes(),
         legalService.getAbogadosDashboard(),
+        authService.getTodosLosUsuariosActivos().catch(() => []),
       ]);
-      const todosLosUsuarios = await authService.getTodosLosUsuariosActivos().catch(() => []);
 
       // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
       const abogadosMap = new Map();
@@ -496,12 +498,10 @@ export function ModuloDefensaJudicialV3() {
           // Clasificación Penal
           esDelitoAdminPublica: exp.esDelitoAdminPublica || false,
           esConductaPatrimonioPublico: exp.esConductaPatrimonioPublico || false,
-          // Territorial, CETAP y Dependencia
+          // Territorial y Dependencia
           territorial: exp.territorial || exp.camposAdicionales?.territorial,
-          cetap: exp.cetap || exp.camposAdicionales?.cetap,
           dependencia: exp.dependencia || exp.camposAdicionales?.dependencia,
           territorialNombre: exp.territorialNombre || exp.camposAdicionales?.territorialNombre,
-          cetapNombre: exp.cetapNombre || exp.camposAdicionales?.cetapNombre,
           dependenciaNombre: exp.dependenciaNombre || exp.camposAdicionales?.dependenciaNombre,
         }
       });
@@ -972,12 +972,10 @@ export function ModuloDefensaJudicialV3() {
                 ])
               )
             : {}),
-          // IDs y nombres de territorial/cetap/dependencia como respaldo si el backend no tiene columnas directas
+          // IDs y nombres de territorial/dependencia como respaldo si el backend no tiene columnas directas
           ...(demandaData.territorial ? { territorial: demandaData.territorial } : {}),
-          ...(demandaData.cetap ? { cetap: demandaData.cetap } : {}),
           ...(demandaData.dependencia ? { dependencia: demandaData.dependencia } : {}),
           ...((demandaData as any).territorialNombre ? { territorialNombre: (demandaData as any).territorialNombre } : {}),
-          ...((demandaData as any).cetapNombre ? { cetapNombre: (demandaData as any).cetapNombre } : {}),
           ...((demandaData as any).dependenciaNombre ? { dependenciaNombre: (demandaData as any).dependenciaNombre } : {}),
         },
 
@@ -1034,48 +1032,19 @@ export function ModuloDefensaJudicialV3() {
         esDelitoAdminPublica: demandaData.esDelitoAdminPublica || false,
         esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
 
-        // Territorial, CETAP y Dependencia (del paso 3)
+        // Territorial y Dependencia (del paso 3)
         territorial: demandaData.territorial,
-        cetap: demandaData.cetap,
         dependencia: demandaData.dependencia,
         territorialNombre: (demandaData as any).territorialNombre,
-        cetapNombre: (demandaData as any).cetapNombre,
         dependenciaNombre: (demandaData as any).dependenciaNombre,
       };
 
-      const created = await legalService.crearExpediente(expedienteData);
+      await legalService.crearExpediente(expedienteData);
 
-      // Subir documentos de campos adicionales dinámicos si son nuevos
-      const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
-      if (id && demandaData.camposAdicionales) {
-        for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
-          const docs: any[] = Array.isArray(val)
-            ? val
-            : (val && typeof val === 'object' && (val as any).base64 ? [val] : []);
-          for (const doc of docs) {
-            if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
-              try {
-                const res = await fetch(doc.base64);
-                const blob = await res.blob();
-                const file = new File([blob], doc.nombre, { type: doc.tipoMime || blob.type });
-
-                const formDataDoc = new FormData();
-                formDataDoc.append('archivo', file);
-                formDataDoc.append('expedienteId', id);
-                formDataDoc.append('nombre', doc.nombre);
-                formDataDoc.append('tipo', 'DATO_ADICIONAL');
-                formDataDoc.append('origen', 'CARGA_DIRECTA');
-                formDataDoc.append('categoria', 'documentos');
-                formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
-
-                await legalService.crearDocumento(formDataDoc);
-              } catch (err) {
-                console.error('Error uploading dynamic document:', err);
-              }
-            }
-          }
-        }
-      }
+      // Los documentos cargados en campos adicionales (base64) viajan dentro de
+      // camposAdicionales y ahora los persiste el backend al crear el expediente
+      // (ver ExpedienteService.persistirDocumentosCamposAdicionales). De esa forma
+      // quedan en la pestaña de Documentos sin depender de un fetch(data:) que el CSP bloquea.
 
       toast.success('Demanda registrada exitosamente', {
         description: `Radicado: ${demandaData.numeroRadicado}`
@@ -1240,8 +1209,16 @@ export function ModuloDefensaJudicialV3() {
         }
       />
 
+      {loading && (
+        <div style={{ padding: '48px 0', textAlign: 'center' }}>
+          <Loader2 style={{ width: 28, height: 28, color: '#003DA5', margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
+          <div style={{ fontSize: 14, color: '#6B7280' }}>Cargando expedientes...</div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
+
       {/* Tablero Kanban - Diseño migrado desde SuperApp Gestión Legal */}
-      {tipoVista === 'kanban' && (
+      {!loading && tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
           <div className="relative">
             {isMobile ? (
@@ -1339,7 +1316,7 @@ export function ModuloDefensaJudicialV3() {
       )}
 
       {/* Vista de Lista - NUEVA IMPLEMENTACIÓN */}
-      {tipoVista === 'lista' && (
+      {!loading && tipoVista === 'lista' && (
         <VistaListaDefensaJudicial
           expedientes={etapas.flatMap((e: any) => e.expedientes)}
           isMobile={isMobile}
@@ -1350,7 +1327,7 @@ export function ModuloDefensaJudicialV3() {
       )}
 
       {/* Vista de Archivados */}
-      {tipoVista === 'archivados' && (
+      {!loading && tipoVista === 'archivados' && (
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Defensa Judicial"

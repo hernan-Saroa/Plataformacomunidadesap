@@ -174,6 +174,12 @@ export function ModuleFilters({
               <input
                 ref={inputRef}
                 type="text"
+                name="module-filter-search"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-1p-ignore
+                data-lpignore="true"
                 placeholder={searchPlaceholder}
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}

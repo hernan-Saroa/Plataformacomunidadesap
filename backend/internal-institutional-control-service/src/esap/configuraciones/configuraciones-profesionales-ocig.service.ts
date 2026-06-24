@@ -434,7 +434,7 @@ export class ConfiguracionesProfesionalesOCIGService {
 
   /**
    * Personas que pueden integrar el comité de aprobación del PAI:
-   * usuarios activos con permiso control-interno.plan-anual.approve (sin rol OCIG "Aprobador PAI").
+   * SOLO profesionales configurados con rol_ocig = 'Aprobador PAI'.
    */
   async buscarAprobadoresPlanAnual(busqueda?: string): Promise<
     Array<{
@@ -448,7 +448,7 @@ export class ConfiguracionesProfesionalesOCIGService {
     }>
   > {
     try {
-      const params: string[] = [CIP.PLAN_ANUAL_APPROVE];
+      const params: string[] = ['Aprobador PAI'];
       let query = `
         SELECT DISTINCT
           p.id_person,
@@ -456,21 +456,13 @@ export class ConfiguracionesProfesionalesOCIGService {
           p.dir_email,
           p.num_identificacion,
           cfg.rol_ocig AS cargo_ocig
-        FROM auth.personas p
+        FROM control_interno.configuracion_profesionales_ocig cfg
+        INNER JOIN auth.personas p ON p.id_person = cfg.id_tercero::uuid
         INNER JOIN auth."user" u ON u.id_person = p.id_person
-        LEFT JOIN control_interno.configuracion_profesionales_ocig cfg
-          ON cfg.id_tercero = p.id_person::text AND cfg.activo = true
-        WHERE p.nom_largo IS NOT NULL
+        WHERE cfg.activo = true
+          AND cfg.rol_ocig = $1
           AND u.is_active = true
-          AND EXISTS (
-            SELECT 1
-            FROM auth.user_roles ur
-            INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
-            INNER JOIN auth.permission perm ON perm.id_permission = rp.id_permission
-            WHERE ur.id_user = u.id_user
-              AND COALESCE(ur.is_active, true) = true
-              AND perm.code = $1
-          )
+          AND p.nom_largo IS NOT NULL
       `;
 
       if (busqueda?.trim()) {
@@ -514,7 +506,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: p.nom_largo || 'Sin Nombre',
         email: p.dir_email || '',
         identificacion: p.num_identificacion || '',
-        cargo: p.cargo_ocig || rolesMap.get(p.id_person)?.[0] || 'Aprobador plan anual',
+        cargo: p.cargo_ocig || 'Aprobador PAI',
         roles: rolesMap.get(p.id_person) || [],
       }));
     } catch (error) {
@@ -541,12 +533,14 @@ export class ConfiguracionesProfesionalesOCIGService {
     // Separar UUIDs válidos (nuevos) de IDs legacy (viejos enteros guardados como string)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const uuids = idsTerceros.filter((id) => uuidRegex.test(id));
+    const legacyIds = idsTerceros.filter((id) => !uuidRegex.test(id) && /^\d+$/.test(id));
 
     const personasMap = new Map<
       string,
       { nombre: string; email: string; identificacion: string; roles: string[] }
     >();
 
+    // 1. Consultar personas por UUID (id_person)
     if (uuids.length > 0) {
       try {
         const rows: Array<{
@@ -591,7 +585,39 @@ export class ConfiguracionesProfesionalesOCIGService {
           });
         }
       } catch (err) {
-        console.error('[enrichWithPersonaData] Error al consultar personas:', err);
+        console.error('[enrichWithPersonaData] Error al consultar personas por UUID:', err);
+      }
+    }
+
+    // 2. Consultar personas legacy por id_tercero (BIGINT)
+    if (legacyIds.length > 0) {
+      try {
+        const legacyNums = legacyIds.map(Number);
+        const rows: Array<{
+          id_tercero: string;
+          id_person: string;
+          nom_largo: string | null;
+          dir_email: string | null;
+          num_identificacion: string | null;
+        }> = await this.configRepository.query(
+          `SELECT id_tercero::text, id_person, nom_largo, dir_email, num_identificacion
+           FROM auth.personas
+           WHERE id_tercero = ANY($1::bigint[])`,
+          [legacyNums],
+        );
+
+        for (const row of rows) {
+          // Map by the legacy id_tercero string so it matches config.idTercero
+          personasMap.set(row.id_tercero, {
+            nombre: row.nom_largo || 'Sin Nombre',
+            email: row.dir_email || '',
+            identificacion: row.num_identificacion || '',
+            roles: [],
+          });
+        }
+        console.log(`[enrichWithPersonaData] Resolved ${rows.length}/${legacyIds.length} legacy id_tercero entries`);
+      } catch (err) {
+        console.error('[enrichWithPersonaData] Error al consultar personas legacy:', err);
       }
     }
 

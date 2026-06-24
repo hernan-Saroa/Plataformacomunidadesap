@@ -38,6 +38,17 @@ interface MulterFile {
   path: string;
   buffer: Buffer;
 }
+
+const safeHeaderFilename = (filename?: string | null): string => {
+  const sanitized = (filename || 'documento')
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/["\\;\r\n]/g, '_')
+    .trim();
+
+  return sanitized || 'documento';
+};
+
 import { DocumentosService } from './documentos.service';
 import { CreateDocumentoDto } from './dto/create-documento.dto';
 import { UpdateDocumentoDto } from './dto/update-documento.dto';
@@ -268,11 +279,12 @@ export class DocumentosController {
     }
 
     // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+    const safeFilename = safeHeaderFilename(documento.nombreArchivo);
     const encodedFilename = encodeURIComponent(documento.nombreArchivo);
     const filenameStar = `filename*=UTF-8''${encodedFilename}`;
     
     res.setHeader('Content-Type', `${documento.tipoMime}; charset=utf-8`);
-    res.setHeader('Content-Disposition', `attachment; filename="${documento.nombreArchivo}"; ${filenameStar}`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; ${filenameStar}`);
     res.setHeader('Content-Length', documento.tamanioBytes.toString());
 
     return res.sendFile(path.resolve(documento.rutaArchivo));
@@ -301,11 +313,12 @@ export class DocumentosController {
     }
 
     // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+    const safeFilename = safeHeaderFilename(documento.nombreArchivo);
     const encodedFilename = encodeURIComponent(documento.nombreArchivo);
     const filenameStar = `filename*=UTF-8''${encodedFilename}`;
     
     res.setHeader('Content-Type', `${documento.tipoMime}; charset=utf-8`);
-    res.setHeader('Content-Disposition', `inline; filename="${documento.nombreArchivo}"; ${filenameStar}`);
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"; ${filenameStar}`);
 
     return res.sendFile(path.resolve(documento.rutaArchivo));
   }
@@ -335,4 +348,3 @@ export class DocumentosController {
     return this.documentosService.marcarSincronizado(id, body.rutaServidorG);
   }
 }
-

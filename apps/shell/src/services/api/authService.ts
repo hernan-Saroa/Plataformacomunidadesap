@@ -14,6 +14,13 @@ import type {
   AuthUser 
 } from '../../types';
 
+/**
+ * Permiso que habilita a una persona para ser responsable de una actuación procesal.
+ * Debe coincidir con el code insertado en la migración 347.
+ */
+export const PERMISO_RESPONSABLE_ACTUACION =
+  'gestion-legal.defensa-judicial.actuacion.responsable';
+
 class AuthService {
   // In-memory user cache — never written to sessionStorage/localStorage (OTIC-002)
   private _cachedUser: AuthUser | null = null;
@@ -373,6 +380,32 @@ class AuthService {
     }));
   }
 
+  /**
+   * Devuelve las personas que tienen algún rol con el permiso indicado.
+   * El backend resuelve el join rol→permiso, así que aquí solo mapeamos.
+   */
+  async getUsuariosConPermiso(permissionCode: string): Promise<AbogadoResuelve[]> {
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users/by-permission',
+      { code: permissionCode }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    return users.map((u: any) => ({
+      id: u.user?.id_user ?? u.id_user ?? u.id ?? u.person?.id,
+      nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      email: u.email ?? u.person?.email ?? '',
+    }));
+  }
+
+  /**
+   * Personas habilitadas para ser responsables de una actuación procesal
+   * (tienen un rol con el permiso 'gestion-legal.defensa-judicial.actuacion.responsable').
+   */
+  async getResponsablesActuacion(): Promise<AbogadoResuelve[]> {
+    return this.getUsuariosConPermiso(PERMISO_RESPONSABLE_ACTUACION);
+  }
+
   async getTodosLosUsuariosActivos(): Promise<AbogadoResuelve[]> {
     const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
       '/auth/api/v1/users',
@@ -385,6 +418,27 @@ class AuthService {
       nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
       email: u.email ?? u.person?.email ?? '',
     }));
+  }
+
+  /**
+   * Obtener configuración de login (público, sin auth)
+   */
+  async getLoginSettings(): Promise<{ credentialLoginEnabled: boolean }> {
+    return apiClient.get<{ credentialLoginEnabled: boolean }>(
+      API_ENDPOINTS.AUTH.LOGIN_SETTINGS,
+      undefined,
+      { skipAuth: true },
+    );
+  }
+
+  /**
+   * Actualizar configuración de login (solo Super Admin)
+   */
+  async updateLoginSettings(data: { credentialLoginEnabled: boolean }): Promise<{ credentialLoginEnabled: boolean }> {
+    return apiClient.put<{ credentialLoginEnabled: boolean }>(
+      API_ENDPOINTS.AUTH.LOGIN_SETTINGS,
+      data,
+    );
   }
 }
 

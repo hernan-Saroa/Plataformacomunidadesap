@@ -113,7 +113,6 @@ export interface NuevaDemandaData {
   departamento: string;
   ciudad: string;
   territorial: string;
-  cetap: string;
   dependencia: string;
   tipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas';
   termino: number;
@@ -137,6 +136,21 @@ interface ModalNuevaDemandaRESTAURADOProps {
   expedienteEdit?: ExpedienteJudicial;
   tableroSeleccionado?: string;
 }
+
+// ==================== DEMANDADO POR DEFECTO (ESAP) ====================
+// El primer demandado se pre-rellena con la información de la ESAP.
+// Los datos quedan editables y el demandado puede eliminarse manualmente.
+const crearDemandadoESAPPorDefecto = (): Demandado => ({
+  id: 'DEMA-ESAP-DEFAULT',
+  tipoPersona: 'Juridica',
+  cedula: '899999054-9',
+  nombreCompleto: 'Escuela Superior de Administración Pública - ESAP',
+  cargoFuncion: '',
+  telefono: '6012202790',
+  correo: 'ventanillaunica@esap.gov.co',
+  direccion: 'Calle 44 N.º 53-37, CAN, Bogotá D.C.',
+  tieneApoderado: false
+});
 
 // ==================== DATOS PARAMETRIZABLES ====================
 // MEDIOS_CONTROL, TIPOS_PROCESO y ETAPAS_PROCESALES ahora se obtienen
@@ -314,7 +328,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   }, [allTiposProcesos, tableroSeleccionado]);
 
   const [pasoActual, setPasoActual] = useState(1);
-  const totalPasos = 7;
   const lastTipoProcesoRef = useRef<string>('');
 
   const [formData, setFormData] = useState<NuevaDemandaData>({
@@ -334,7 +347,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     departamento: '',
     ciudad: '',
     territorial: '',
-    cetap: '',
     dependencia: '',
     tipoPlazo: 'Dias Habiles',
     termino: 30,
@@ -372,6 +384,51 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       if (configured !== undefined) return configured;
     }
     return defaultRequired;
+  };
+
+  // ¿El paso tiene al menos un campo adicional configurado?
+  const pasoTieneCamposAdicionales = (stepNum: number): boolean =>
+    !!activeTipoProceso?.camposAdicionalesConfig?.some(c => (c.paso || 1) === stepNum);
+
+  // Determina si un paso del wizard tiene contenido visible. Los pasos 5 (Juzgado)
+  // y 7 (Detalles) solo contienen campos del sistema configurables; si todos se
+  // ocultan desde configuración (y no hay campos adicionales en ese paso), el paso
+  // debe omitirse por completo del flujo en lugar de mostrar un espacio vacío.
+  const pasoTieneContenido = (stepNum: number): boolean => {
+    switch (stepNum) {
+      case 5:
+        return isFieldVisible('juzgadoTribunal', true)
+          || isFieldVisible('departamentoCiudad', true)
+          || pasoTieneCamposAdicionales(5);
+      case 7:
+        return isFieldVisible('pretensiones', true)
+          || isFieldVisible('hechos', true)
+          || isFieldVisible('observaciones', true)
+          || pasoTieneCamposAdicionales(7);
+      default:
+        // Pasos 1-4 y 6 siempre tienen campos fijos o gestión de actores.
+        return true;
+    }
+  };
+
+  // Lista ordenada de los pasos realmente visibles en el flujo actual. La navegación,
+  // el breadcrumb, el progreso y la numeración se calculan sobre esta lista para que
+  // los pasos ocultos desaparezcan por completo y los activos se reorganicen de forma continua.
+  const pasosActivos = [1, 2, 3, 4, 5, 6, 7].filter(pasoTieneContenido);
+  const totalPasosActivos = pasosActivos.length;
+  const indicePasoActual = pasosActivos.indexOf(pasoActual);
+  const esPrimerPaso = indicePasoActual <= 0;
+  const esUltimoPaso = indicePasoActual === totalPasosActivos - 1;
+
+  // Etiquetas cortas para el breadcrumb, indexadas por número de paso.
+  const ETIQUETAS_PASO: Record<number, string> = {
+    1: 'Proceso',
+    2: 'Demandantes',
+    3: 'Demandados',
+    4: 'Otros',
+    5: 'Juzgado',
+    6: 'Fechas',
+    7: 'Detalles',
   };
 
   const renderCamposAdicionales = (stepNum: number) => {
@@ -731,8 +788,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [seccionales, setSeccionales] = useState<{ idSeccional: number; nomSeccional: string }[]>([]);
-  const [sedesFiltradas, setSedesFiltradas] = useState<{ idSede: number; nomSede: string }[]>([]);
-  const [cargandoSedes, setCargandoSedes] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
@@ -811,7 +866,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
           territorial: (expedienteEdit as any).territorial || '',
-          cetap: (expedienteEdit as any).cetap || '',
           dependencia: (expedienteEdit as any).dependencia || '',
           tipoPlazo: expedienteEdit.tipoConteoTermino === 'HORAS' ? 'Horas' : expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
           termino: expedienteEdit.terminoProcesalDias || expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
@@ -862,13 +916,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           fechaEstimacionProvision: '',
           observacionesProvision: '',
           demandantes: [],
-          demandados: [],
+          demandados: [crearDemandadoESAPPorDefecto()],
           otrosActores: [],
           juzgadoTribunal: '',
           departamento: '',
           ciudad: '',
           territorial: '',
-          cetap: '',
           dependencia: '',
           tipoPlazo: defaultTipoPlazo,
           termino: defaultTermino,
@@ -969,24 +1022,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       })
       .catch(() => {});
   }, []);
-
-  // Cargar CETAPs (sedes) cuando cambia la territorial seleccionada
-  useEffect(() => {
-    if (!formData.territorial) {
-      setSedesFiltradas([]);
-      return;
-    }
-    setCargandoSedes(true);
-    estructuraService.sedes.listar({ idSeccional: Number(formData.territorial) })
-      .then(res => {
-        setSedesFiltradas((res.data || []).map((s: any) => ({
-          idSede: s.idSede,
-          nomSede: s.nomSede,
-        })));
-      })
-      .catch(() => { setSedesFiltradas([]); })
-      .finally(() => setCargandoSedes(false));
-  }, [formData.territorial]);
 
   // Cargar abogados con rol resuelve desde el servicio de auth
   useEffect(() => {
@@ -1578,12 +1613,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   const siguiente = () => {
     if (validarPasoActual()) {
-      setPasoActual(prev => Math.min(prev + 1, totalPasos));
+      const siguientePaso = pasosActivos[indicePasoActual + 1];
+      if (siguientePaso !== undefined) setPasoActual(siguientePaso);
     }
   };
 
   const anterior = () => {
-    setPasoActual(prev => Math.max(prev - 1, 1));
+    const pasoPrevio = pasosActivos[indicePasoActual - 1];
+    if (pasoPrevio !== undefined) setPasoActual(pasoPrevio);
   };
 
   const handleSubmit = async () => {
@@ -1661,7 +1698,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         finalPayload = {
           ...formData,
           territorialNombre: seccionales.find(s => String(s.idSeccional) === formData.territorial)?.nomSeccional,
-          cetapNombre: sedesFiltradas.find(s => String(s.idSede) === formData.cetap)?.nomSede,
           dependenciaNombre: dependenciasActivas.find((d: any) => d.id === formData.dependencia)?.nombre,
         };
       }
@@ -1726,11 +1762,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     onClose();
   };
 
-  const porcentajeProgreso = (pasoActual / totalPasos) * 100;
+  const porcentajeProgreso = totalPasosActivos > 0 ? ((indicePasoActual + 1) / totalPasosActivos) * 100 : 0;
 
   const getBadgesPorPaso = () => {
     const badges: Array<{ texto: string; color: 'azul' | 'verde' | 'rojo' }> = [
-      { texto: `Paso ${pasoActual} de ${totalPasos}`, color: 'azul' },
+      { texto: `Paso ${indicePasoActual + 1} de ${totalPasosActivos}`, color: 'azul' },
       { texto: `${Math.round(porcentajeProgreso)}% Completado`, color: 'verde' }
     ];
     return badges;
@@ -1749,7 +1785,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
             <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
           <DialogDescription className="sr-only">
-            Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
+            Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {indicePasoActual + 1} de {totalPasosActivos}
           </DialogDescription>
 
           {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
@@ -1779,32 +1815,28 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             />
           </div>
 
-          {/* Breadcrumb de pasos */}
+          {/* Breadcrumb de pasos (solo los pasos activos, renumerados de forma continua) */}
           <div className="flex items-center justify-between mt-3 mb-2 text-xs">
-            {[
-              { num: 1, label: 'Proceso' },
-              { num: 2, label: 'Demandantes' },
-              { num: 3, label: 'Demandados' },
-              { num: 4, label: 'Otros' },
-              { num: 5, label: 'Juzgado' },
-              { num: 6, label: 'Fechas' },
-              { num: 7, label: 'Detalles' }
-            ].map((paso) => (
-              <div key={paso.num} className="flex flex-col items-center">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${pasoActual === paso.num
-                  ? 'bg-blue-600 text-white'
-                  : pasoActual > paso.num
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-500'
-                  }`}>
-                  {pasoActual > paso.num ? <Check className="w-4 h-4" /> : paso.num}
+            {pasosActivos.map((num, idx) => {
+              const esActual = pasoActual === num;
+              const completado = indicePasoActual > idx;
+              return (
+                <div key={num} className="flex flex-col items-center">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${esActual
+                    ? 'bg-blue-600 text-white'
+                    : completado
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-200 text-gray-500'
+                    }`}>
+                    {completado ? <Check className="w-4 h-4" /> : idx + 1}
+                  </div>
+                  <span className={`text-[10px] mt-1 ${esActual ? 'text-blue-600 font-bold' : 'text-gray-500'
+                    }`}>
+                    {ETIQUETAS_PASO[num]}
+                  </span>
                 </div>
-                <span className={`text-[10px] mt-1 ${pasoActual === paso.num ? 'text-blue-600 font-bold' : 'text-gray-500'
-                  }`}>
-                  {paso.label}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -1834,7 +1866,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         placeholder="Ej: 66001233300020260012300"
                         value={formData.numeroRadicado}
                         maxLength={23}
-                        className={erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                        className={`bg-white ${erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                         onChange={(e) => {
                           // Solo permitir dígitos, máximo 23
                           const valor = e.target.value.replace(/[^0-9]/g, '').slice(0, 23);
@@ -1987,7 +2019,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             inputMode="numeric"
                             placeholder="0"
                             value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
-                            className={erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                            className={`bg-white ${erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                             onChange={(e) => {
                               const raw = e.target.value.replace(/[^0-9]/g, '');
                               // Si está vacío, poner 0
@@ -2256,13 +2288,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             {/* PASO 3: DATOS DEMANDADOS */}
             {pasoActual === 3 && (
               <>
-                {/* CAMPOS DE SISTEMA: Territorial, CETAP y Dependencia */}
+                {/* CAMPOS DE SISTEMA: Territorial y Dependencia */}
                 <Card className="p-4 bg-blue-50 border-blue-200 mb-4">
                   <div className="flex items-center gap-2 mb-4">
                     <MapPin className="w-5 h-5 text-blue-600" />
-                    <h3 className="font-bold text-gray-900">Territorial, CETAP y Dependencia</h3>
+                    <h3 className="font-bold text-gray-900">Territorial y Dependencia</h3>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Territorial */}
                     <div className="space-y-2">
                       <Label className="text-sm font-bold text-gray-700">
@@ -2270,7 +2302,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       </Label>
                       <Select
                         value={formData.territorial}
-                        onValueChange={(val) => setFormData(prev => ({ ...prev, territorial: val, cetap: '' }))}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, territorial: val }))}
                       >
                         <SelectTrigger className="bg-white">
                           <SelectValue placeholder="Seleccione territorial..." />
@@ -2279,33 +2311,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           {seccionales.map(s => (
                             <SelectItem key={s.idSeccional} value={String(s.idSeccional)}>
                               {s.nomSeccional}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* CETAP */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-bold text-gray-700">CETAP</Label>
-                      <Select
-                        value={formData.cetap}
-                        onValueChange={(val) => setFormData(prev => ({ ...prev, cetap: val }))}
-                        disabled={!formData.territorial || cargandoSedes}
-                      >
-                        <SelectTrigger className="bg-white">
-                          <SelectValue placeholder={
-                            !formData.territorial
-                              ? 'Seleccione territorial primero'
-                              : cargandoSedes
-                              ? 'Cargando...'
-                              : 'Seleccione CETAP...'
-                          } />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100000]">
-                          {sedesFiltradas.map(s => (
-                            <SelectItem key={s.idSede} value={String(s.idSede)}>
-                              {s.nomSede}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -3130,7 +3135,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
           </p>
           <div className="flex gap-3">
-            {pasoActual > 1 && (
+            {!esPrimerPaso && (
               <Button
                 type="button"
                 variant="outline"
@@ -3152,7 +3157,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
               Cancelar
             </Button>
 
-            {pasoActual < totalPasos ? (
+            {!esUltimoPaso ? (
               <Button
                 type="button"
                 onClick={siguiente}

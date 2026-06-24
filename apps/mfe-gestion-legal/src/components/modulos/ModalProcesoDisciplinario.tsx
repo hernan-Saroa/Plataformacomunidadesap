@@ -185,6 +185,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
+  // Cuando es true, el visor se abre en modo previsualización (sin firma ni código OTP).
+  const [visorSoloLectura, setVisorSoloLectura] = useState(false);
 
   // ✅ Estado para modo edición del proceso
   const [modoEdicion, setModoEdicion] = useState(false);
@@ -1048,9 +1050,10 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
   // Document Handler Logic
   // Updated: now uses the built-in VisorDocumentoModal instead of window.open
-  const handleVerDocumento = (doc: any) => {
+  const handleVerDocumento = (doc: any, soloLectura: boolean = false) => {
     const url = doc.documentoUrl || doc.url || doc.archivoUrl;
     if (url) {
+      setVisorSoloLectura(soloLectura);
       setDocumentoSeleccionado({
         documentoUrl: getFileUrl(url), // Aseguramos usar la URL final formateada
         documentoNombre: doc.nombre || doc.documentoNombre || 'Documento',
@@ -1063,6 +1066,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
       toast.error('No hay documento para visualizar');
     }
   };
+
+  // Previsualización en modo solo lectura (roles que no pueden firmar/aprobar).
+  const handlePrevisualizarDocumento = (doc: any) => handleVerDocumento(doc, true);
 
   const handleDescargarDocumento = async (doc: any) => {
     const rawUrl = doc.documentoUrl || doc.url || doc.archivoUrl;
@@ -1202,7 +1208,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCerrar}>
-        <DialogContent hideCloseButton className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden" style={{ width: '80vw', maxWidth: '80vw' }}>
+        <DialogContent hideCloseButton className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col !p-0 overflow-hidden" style={{ width: '80vw', maxWidth: '80vw', top: '2.5vh', padding: 0 }}>
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">
             Proceso Disciplinario {proceso.id}
@@ -1556,6 +1562,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 labelRegistrar="Registrar Primera Actuación"
                 onRegistrarPrimera={canRegistrarActuacion ? () => setModalNuevaActuacionOpen(true) : undefined}
                 expedienteId={proceso.id}
+                radicadoExpediente={proceso.id}
                 onDeleteActuacion={canEditProceso ? handleDeleteActuacion : undefined}
                 onReloadExpediente={() => {
                   legalService.getJuzgamientoActuaciones(proceso.id)
@@ -1570,6 +1577,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   }
                 }}
                 onViewDocument={handleVerDocumento}
+                onPreviewDocument={handlePrevisualizarDocumento}
                 onSendEmail={(initialData) => {
                   setEmailInitialData(initialData);
                   setModalNuevaComunicacionOpen(true);
@@ -1952,13 +1960,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         {documentoSeleccionado && (
           <VisorDocumentoModal
             isOpen={visorAbierto}
-            onClose={() => { setVisorAbierto(false); setDocumentoSeleccionado(null); }}
+            onClose={() => { setVisorAbierto(false); setDocumentoSeleccionado(null); setVisorSoloLectura(false); }}
             archivo={getFileUrl(documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo || documentoSeleccionado.url)}
             numero={documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre}
             asunto={`Documento del proceso ${proceso.id}`}
             descripcion={documentoSeleccionado.descripcion}
             docId={documentoSeleccionado.id}
-            allowSigning={true}
+            allowSigning={!visorSoloLectura}
             onSignComplete={async (docId, signedData, pdfFile) => {
               try {
                 const originalDocName = documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre || 'documento.pdf';

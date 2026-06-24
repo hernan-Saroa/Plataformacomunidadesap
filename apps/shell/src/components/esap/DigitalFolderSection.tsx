@@ -9,9 +9,9 @@
  */
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { ArrowLeft, FolderOpen, Users, Tag, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, FolderOpen, Users, Tag, X, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabaseService } from '../../services/api/supabase.service';
+import { supabaseService, tiposDocumentosService } from '../../services/api/supabase.service';
 import {
   CarpetaDigitalSharedView,
   type CarpetaDocumento,
@@ -60,6 +60,12 @@ export function DigitalFolderSection({
   const [isLoading, setIsLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const auth = { userRole: 'Administrador' };
+
+  // ── Tipo de documento INDIVIDUAL (específico de este docente) ──
+  const [carpetaDigitalId, setCarpetaDigitalId] = useState<string | null>(null);
+  const [showAddTipo, setShowAddTipo] = useState(false);
+  const [savingTipo, setSavingTipo] = useState(false);
+  const [newTipo, setNewTipo] = useState({ nombre: '', descripcion: '', categoria: 'otros', obligatorio: true });
 
 
 
@@ -114,6 +120,9 @@ export function DigitalFolderSection({
       // 1. Try persona-specific checklist
       try {
         const checklistResult = await supabaseService.documentos.getChecklistForPersona(personaIdClean);
+        // Capturar el UUID real de la carpeta para poder crear tipos individuales.
+        const carpetaUuid = checklistResult?.data?.carpeta?.carpeta_digital_id || null;
+        if (carpetaUuid) setCarpetaDigitalId(carpetaUuid);
         if (checklistResult.success && checklistResult.data && !checklistResult.data.useGlobalTypes && checklistResult.data.tiposDocumentos.length > 0) {
           tiposRaw = checklistResult.data.tiposDocumentos;
         }
@@ -150,6 +159,8 @@ export function DigitalFolderSection({
           icono: tipo.icono || 'file-text',
           completado: !!matchedDoc,
           documento: matchedDoc || null,
+          // Individual = tiene carpeta_digital_id (no es general).
+          esEspecifico: !!(tipo.carpeta_digital_id || tipo.carpetaDigitalId),
         };
       });
       setTiposDocumentos(tiposChecklist);
@@ -161,6 +172,23 @@ export function DigitalFolderSection({
   useEffect(() => { if (selectedUserId) cargarDocumentos(selectedUserId); }, [selectedUserId, cargarDocumentos]);
   const docsFingerprint = documentos.map(d => `${d.id}:${d.tipo_documento_id || ''}:${d.estado}`).join('|');
   useEffect(() => { loadTiposDocumentos(); }, [docsFingerprint, selectedUserId]);
+
+  // Carga ROBUSTA del UUID de la carpeta para habilitar "Documento específico".
+  // Independiente del checklist (que puede caer al fallback sin devolver carpeta).
+  // getCarpetaByPersona hace ensureCarpetaForPersona → siempre devuelve un id válido.
+  useEffect(() => {
+    const personaIdClean = selectedUserId?.replace('persona:', '') || '';
+    if (!personaIdClean) { setCarpetaDigitalId(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await supabaseService.documentos.getCarpetaByPersona(personaIdClean);
+        const uuid = res?.data?.carpeta_digital_id || res?.data?.id || null;
+        if (!cancelled && uuid && !String(uuid).startsWith('carpeta:')) setCarpetaDigitalId(uuid);
+      } catch { /* el checklist puede haberlo seteado igual */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedUserId]);
 
   const handleChangeUser = (userId: string) => {
     setSelectedUserId(userId);
@@ -216,6 +244,36 @@ export function DigitalFolderSection({
     }
   }, [reclassifyDoc, reclassifyTipoId, activeCarpetaId, tiposDocumentos, refreshDocs]);
 
+  // Crear un tipo de documento ESPECÍFICO para este docente (parte del general + este extra).
+  const handleCreateTipoIndividual = useCallback(async () => {
+    if (!newTipo.nombre.trim()) { toast.error('Indica el nombre del documento'); return; }
+    if (!carpetaDigitalId) { toast.error('No se pudo identificar la carpeta del docente. Intenta recargar.'); return; }
+    setSavingTipo(true);
+    try {
+      const res = await tiposDocumentosService.create({
+        nombre: newTipo.nombre.trim(),
+        descripcion: newTipo.descripcion.trim(),
+        categoria: newTipo.categoria,
+        obligatorio: newTipo.obligatorio,
+        carpetaDigitalId, // ← vincula el tipo a ESTE docente (individual)
+        activo: true,
+      });
+      if ((res as any).success) {
+        toast.success('Documento específico agregado', { description: `"${newTipo.nombre.trim()}" solo aplica a este docente.` });
+        setShowAddTipo(false);
+        setNewTipo({ nombre: '', descripcion: '', categoria: 'otros', obligatorio: true });
+        loadTiposDocumentos();
+      } else {
+        toast.error('No se pudo crear el documento', { description: (res as any).error });
+      }
+    } catch (err: any) {
+      console.error('Error creando tipo individual:', err);
+      toast.error('Error al crear el documento específico');
+    } finally {
+      setSavingTipo(false);
+    }
+  }, [newTipo, carpetaDigitalId, loadTiposDocumentos]);
+
   if (!selectedUser) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 384 }}>
@@ -261,6 +319,17 @@ export function DigitalFolderSection({
             ))}
           </select>
         </div>
+
+        {canUpload && (
+          <button
+            onClick={() => setShowAddTipo(true)}
+            disabled={!carpetaDigitalId}
+            title={carpetaDigitalId ? 'Agregar un documento exigido solo a este docente' : 'Cargando carpeta del docente…'}
+            className="flex items-center justify-center gap-1.5 h-11 sm:h-10 px-3 rounded-lg border border-[#003DA5] bg-[#003DA5] text-white text-[13px] font-bold cursor-pointer flex-shrink-0 transition-all hover:bg-[#002B75] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Documento específico</span>
+          </button>
+        )}
       </div>
 
       {/* ═══ UNIFIED SHARED VIEW ═══ */}
@@ -414,6 +483,102 @@ export function DigitalFolderSection({
                 >
                   {reclassifying && <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />}
                   {reclassifying ? 'Vinculando...' : 'Vincular a tipo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL: AGREGAR DOCUMENTO ESPECÍFICO (individual) ═══ */}
+      {showAddTipo && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999,
+          }}
+          onClick={() => !savingTipo && setShowAddTipo(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 16, width: 460, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}
+          >
+            <div style={{ padding: '20px 24px 14px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Plus style={{ width: 16, height: 16, color: '#7C3AED' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1F2937' }}>Documento específico</div>
+                  <div style={{ fontSize: 11, color: '#9CA3AF' }}>Se exigirá solo a <strong>{persona.nombre}</strong>, además de los generales</div>
+                </div>
+              </div>
+              <button onClick={() => !savingTipo && setShowAddTipo(false)} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: '#F3F4F6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X style={{ width: 14, height: 14, color: '#6B7280' }} />
+              </button>
+            </div>
+            <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Nombre del documento *</label>
+                <input
+                  value={newTipo.nombre}
+                  onChange={e => setNewTipo({ ...newTipo, nombre: e.target.value })}
+                  placeholder="Ej: Certificado médico ocupacional"
+                  style={{ width: '100%', height: 38, borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 13, padding: '0 12px', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Descripción (opcional)</label>
+                <textarea
+                  value={newTipo.descripcion}
+                  onChange={e => setNewTipo({ ...newTipo, descripcion: e.target.value })}
+                  rows={2}
+                  placeholder="Indicaciones para el docente…"
+                  style={{ width: '100%', borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Categoría</label>
+                  <select
+                    value={newTipo.categoria}
+                    onChange={e => setNewTipo({ ...newTipo, categoria: e.target.value })}
+                    style={{ width: '100%', height: 38, borderRadius: 10, border: '1px solid #D1D5DB', fontSize: 13, padding: '0 10px', background: 'white', outline: 'none' }}
+                  >
+                    <option value="otros">General</option>
+                    <option value="personal">Personal / Vinculación</option>
+                    <option value="academico">Académico / Formación</option>
+                    <option value="certificados">Certificados</option>
+                    <option value="laboral">Laboral</option>
+                  </select>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#374151', alignSelf: 'flex-end', height: 38, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={newTipo.obligatorio} onChange={e => setNewTipo({ ...newTipo, obligatorio: e.target.checked })} style={{ width: 16, height: 16, accentColor: '#7C3AED' }} />
+                  Obligatorio
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <button
+                  onClick={() => setShowAddTipo(false)}
+                  disabled={savingTipo}
+                  style={{ flex: 1, height: 40, borderRadius: 10, border: '1px solid #E5E7EB', background: 'white', color: '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCreateTipoIndividual}
+                  disabled={savingTipo || !newTipo.nombre.trim()}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10, border: 'none',
+                    background: !newTipo.nombre.trim() ? '#D1D5DB' : '#7C3AED',
+                    color: 'white', fontSize: 13, fontWeight: 700,
+                    cursor: !newTipo.nombre.trim() ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: savingTipo ? 0.7 : 1,
+                  }}
+                >
+                  {savingTipo && <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />}
+                  {savingTipo ? 'Agregando…' : 'Agregar documento'}
                 </button>
               </div>
             </div>

@@ -32,6 +32,11 @@ export class PtaService {
   private readonly otpStore = new Map<string, { code: string; expiresAt: Date }>();
   private readonly logger = new Logger(PtaService.name);
 
+  // MOCK de firma OTP: mientras esté activo, cualquier código de 6 dígitos es válido
+  // para avanzar (no se valida contra el código generado). Se desactiva con
+  // PTA_MOCK_FIRMA_OTP=false. Por ahora viene mockeado por defecto para pruebas.
+  private readonly MOCK_FIRMA_OTP = process.env.PTA_MOCK_FIRMA_OTP !== 'false';
+
   constructor(
     @InjectRepository(PlanTrabajoAcademicoEntity)
     private readonly ptaRepo: Repository<PlanTrabajoAcademicoEntity>,
@@ -356,7 +361,16 @@ export class PtaService {
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    const hExt = extActs.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    // Aplicar multiplicador x2 para capacitación (igual que computeHorasTotales) para mantener consistencia
+    const extActsNorm = extActs.map((a: any) => {
+      const actId = String(a?.actividad_id || a?.id || '');
+      const seccion = String(a?.seccion || '');
+      const esCapacitacion = actId.startsWith('CAP_') || seccion === 'capacitacion';
+      if (!esCapacitacion) return a;
+      const horasEjec = Number(a?.horas_ejecutadas ?? a?.horas ?? 0);
+      return { ...a, horas: horasEjec * 2 };
+    });
+    const hExt = extActsNorm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp + hAcad);
@@ -366,7 +380,7 @@ export class PtaService {
       id: entity.id,
       docente_id: entity.docenteId,
       periodo: entity.periodo,
-      estado: entity.estado,
+      estado: entity.estado === 'BORRADOR' ? 'Borrador' : entity.estado,
       version: entity.version,
       horas_totales: horasTotal,
       // Aliases usados por la tabla del backoffice
@@ -502,7 +516,7 @@ export class PtaService {
   }
 
   async savePTA(input: SavePtaInput) {
-    const id = coalesceString(input?.id);
+    let id = coalesceString(input?.id);
     const docenteKey = coalesceString(
       input?.docente_id,
       input?.docenteId,
@@ -540,6 +554,7 @@ export class PtaService {
         'Pendiente Jefatura',
         'Pendiente Decanatura',
         'Pendiente Gestión Profesoral',
+        'PENDIENTE_APROBACION',
         'REVISION_DOCENTE_N1',
         'REVISION_DOCENTE_N2',
         'REVISION_DOCENTE_N3',
@@ -553,14 +568,22 @@ export class PtaService {
       });
 
       if (ptaActivo) {
-        const solicitud = await this.solicitudRepo.findOne({
-          where: { docenteId, estado: 'aprobado' } as any,
-          order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
-        });
-        if (!solicitud) {
-          throw new BadRequestException(
-            'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
-          );
+        const estadoActivo = String(ptaActivo.estado || '').toLowerCase();
+        // Si el único PTA activo es un BORRADOR, el docente lo está editando/enviando:
+        // reutilizamos su id para ACTUALIZARLO en vez de bloquear (el front a veces no
+        // reenvía el id al guardar). Solo bloqueamos si ya hay un PTA enviado/en proceso.
+        if (estadoActivo === 'borrador') {
+          id = ptaActivo.id;
+        } else {
+          const solicitud = await this.solicitudRepo.findOne({
+            where: { docenteId, estado: 'aprobado' } as any,
+            order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
+          });
+          if (!solicitud) {
+            throw new BadRequestException(
+              'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
+            );
+          }
         }
       }
     }
@@ -850,8 +873,22 @@ export class PtaService {
       }
     }
 
-    // ── Cuando el PTA llega a Pendiente Jefatura, inicializar aprobaciones ──────
-    if (nuevoEstado === 'Pendiente Jefatura' && existing.estado !== 'Pendiente Jefatura') {
+    // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
+    if (nuevoEstado === 'PENDIENTE_APROBACION') {
+      const ds = existing.datosEstructurados as any || {};
+      const tieneTotalidad = Array.isArray(ds.academico_admin) &&
+        ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+      const horasActuales = existing.horasTotales || 0;
+      if (!tieneTotalidad && horasActuales === 0) {
+        throw new BadRequestException(
+          'El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobación.',
+        );
+      }
+    }
+
+    // ── Cuando el PTA llega a Pendiente Jefatura o PENDIENTE_APROBACION, inicializar aprobaciones ──────
+    const estadosQueInicializan = ['Pendiente Jefatura', 'PENDIENTE_APROBACION'];
+    if (estadosQueInicializan.includes(nuevoEstado) && !estadosQueInicializan.includes(existing.estado)) {
       await this.initAprobacionesJefatura(ptaId, existing.datosEstructurados);
     }
 
@@ -1801,7 +1838,7 @@ export class PtaService {
     if (!docenteId) throw new BadRequestException('docenteId es requerido para enviar el código de firma.');
 
     const docente = await this.fetchAuthDocenteInfo(docenteId);
-    if (!docente.email) {
+    if (!docente.email && !this.MOCK_FIRMA_OTP) {
       throw new BadRequestException('El docente no tiene correo registrado para enviar el código de validación.');
     }
 
@@ -1809,24 +1846,27 @@ export class PtaService {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     const verificationId = this.buildFirmaOtpKey({ ptaId: payload?.ptaId, docenteId });
 
-    this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email}: ${code}`);
+    this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
 
-    try {
-      await this.sendFirmaOtpEmail({
-        to: docente.email,
-        code,
-        fullName: docente.fullName,
-        periodo: payload?.periodo,
-        etapaLabel: payload?.etapaLabel,
-        expiresAt,
-      });
-    } catch (emailError) {
-      const isDev = (process.env.NODE_ENV || 'development') !== 'production';
-      if (isDev) {
-        this.logger.warn(`⚠️  [DEV] Email de firma OTP falló — código OTP para ${docente.email}: ${code}`);
-        this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
-      } else {
-        throw emailError;
+    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
+    if (!this.MOCK_FIRMA_OTP && docente.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: docente.email,
+          code,
+          fullName: docente.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP falló — código OTP para ${docente.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
       }
     }
 
@@ -1835,7 +1875,7 @@ export class PtaService {
     return {
       verificationId,
       expiresAt: expiresAt.toISOString(),
-      email: this.maskEmail(docente.email),
+      email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
       devCode: code,
     };
   }
@@ -1862,6 +1902,15 @@ export class PtaService {
       throw new Error('OTP inválido. Debe tener 6 dígitos.');
     }
 
+    // MOCK: cualquier código de 6 dígitos avanza el flujo. No se valida contra
+    // el código generado ni la expiración. Útil para pruebas mientras el envío
+    // real de correo no esté disponible.
+    if (this.MOCK_FIRMA_OTP) {
+      this.logger.warn(`[MOCK-OTP] Validación de firma mockeada para "${ptaId}" — cualquier código de 6 dígitos es aceptado.`);
+      if (consume) this.otpStore.delete(ptaId);
+      return true;
+    }
+
     const stored = this.otpStore.get(ptaId);
     if (!stored) {
       throw new Error('No hay código activo para este PTA. Genera uno nuevo.');
@@ -1884,7 +1933,7 @@ export class PtaService {
     const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existing) throw new NotFoundException('PTA no encontrado');
 
-    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'Pendiente Jefatura';
+    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'PENDIENTE_APROBACION';
     const updated = await this.updatePTAStatus(ptaId, { estado: estadoDestino, actorId: existing.docenteId, actorRol: 'Docente' });
 
     const certNumber =
@@ -1899,28 +1948,74 @@ export class PtaService {
 
   async getComponentesAprobacion(ptaId: string) {
     const list = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+
+    // Fetch PTA content to determine which components have hours
+    const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    const ds = (ptaEntity?.datosEstructurados as any) || {};
+
+    const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
+    const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
+    const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
+    const comp: any[] = Array.isArray(ds.complementarias) ? ds.complementarias : [];
+    const acadAdmin: any[] = Array.isArray(ds.academico_admin) ? ds.academico_admin : [];
+
+    const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+      invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
+    const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+
+    const extBySeccion = (seccion: string) =>
+      extActs
+        .filter((a: any) => String(a?.seccion || '') === seccion)
+        .reduce((s: number, a: any) => {
+          const h = seccion === 'capacitacion'
+            ? Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * 2
+            : Number(a?.horas ?? 0);
+          return s + h;
+        }, 0);
+
+    const horasPorComponente: Record<string, number> = {
+      academica: hDocencia,
+      investigacion: hInv,
+      ext_capacitacion: extBySeccion('capacitacion'),
+      ext_procesos: extBySeccion('procesos_seleccion'),
+      ext_fortalecimiento: extBySeccion('fortalecimiento'),
+      ext_gobierno: extBySeccion('gobierno_territorial'),
+      ext_secciones: extBySeccion('otras_secciones'),
+      complementarias: hComp,
+      academicas_admin: hAcad,
+    };
+
+    const todosComponentes = Object.keys(horasPorComponente);
+
+    // Si todos los arrays están vacíos, probablemente hay un problema de datos
+    // (e.g. actividades filtradas incorrectamente al guardar). No auto-aprobar nada.
+    const totalActividades =
+      asignaturas.length + invActs.length + extActs.length + comp.length + acadAdmin.length;
+    const hayActividades = totalActividades > 0;
+
     if (list.length === 0) {
-      const componentes = [
-        'academica',
-        'investigacion',
-        'ext_capacitacion',
-        'ext_procesos',
-        'ext_fortalecimiento',
-        'ext_gobierno',
-        'ext_secciones',
-        'complementarias',
-        'academicas_admin',
-      ];
-      const items = componentes.map(comp =>
-        this.ptaComponentApprovalRepo.create({
+      // Auto-aprobar componentes con 0h SOLO si el PTA tiene datos estructurados.
+      // Si todos los arrays están vacíos, dejar todo como 'pendiente' para revisión manual.
+      const items = todosComponentes.map(c => {
+        const tieneHoras = horasPorComponente[c] > 0;
+        const autoAprobar = hayActividades && !tieneHoras;
+        return this.ptaComponentApprovalRepo.create({
           ptaId,
-          componente: comp,
-          estado: 'pendiente',
-        }),
-      );
+          componente: c,
+          estado: autoAprobar ? 'aprobado' : 'pendiente',
+          ...(autoAprobar ? {
+            aprobadorNombre: 'Sistema',
+            comentarios: 'Sin actividades — aprobación automática',
+            fechaAprobacion: new Date(),
+          } : {}),
+        });
+      });
       await this.ptaComponentApprovalRepo.save(items);
       return items;
     }
+
     return list;
   }
 

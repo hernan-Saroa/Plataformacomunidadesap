@@ -62,5 +62,8 @@ export class RolPlanAnual5 {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @Column({ type: 'boolean', default: true, name: 'activo' })
+  activo: boolean;
 }
 

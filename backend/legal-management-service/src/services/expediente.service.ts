@@ -2,6 +2,9 @@ import { Injectable, ConflictException, NotFoundException, Logger } from '@nestj
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository, Like } from 'typeorm';
+import { randomBytes } from 'node:crypto';
+import { extname, join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
@@ -22,6 +25,8 @@ export class ExpedienteService {
         private expedienteRepository: Repository<Expediente>,
         @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
+        @InjectRepository(Documento)
+        private documentoRepository: Repository<Documento>,
         @InjectRepository(DecisionDisciplinaria)
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
@@ -136,6 +141,15 @@ export class ExpedienteService {
         const nuevoExpediente = this.expedienteRepository.create(data);
         const saved = await this.expedienteRepository.save(nuevoExpediente);
 
+        // Persistir como Documentos del expediente los archivos cargados en campos adicionales
+        // (llegan como base64 dentro de camposAdicionales). Así aparecen en la pestaña de Documentos.
+        // Reemplaza el base64 pesado por metadata liviana en camposAdicionales.
+        try {
+            await this.persistirDocumentosCamposAdicionales(saved, creadoPor);
+        } catch (err: any) {
+            Logger.warn(`[ExpedienteService] Falló persistencia de documentos de campos adicionales: ${err?.message || err}`);
+        }
+
         const esDisciplinario =
             saved.jurisdiccion === 'DISCIPLINARIO' ||
             saved.jurisdiccion === 'Disciplinaria' ||
@@ -143,25 +157,113 @@ export class ExpedienteService {
             saved.tipoProceso === 'Disciplinario';
         const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
 
-        await this.legalNotifications.notifyProcesoCreado({
-            modulo,
-            radicado: saved.radicado,
-            procesoId: saved.id,
-            creadoPor,
-        });
+        // Notificaciones en segundo plano: NO deben bloquear la respuesta del POST.
+        // Antes esto se hacía con await y, si el notifications-service estaba caído/lento,
+        // cada llamada esperaba hasta el timeout de axios (~3s), retrasando varios segundos
+        // la creación visible para el usuario. Ahora se disparan sin bloquear (fire-and-forget).
+        void (async () => {
+            try {
+                await this.legalNotifications.notifyProcesoCreado({
+                    modulo,
+                    radicado: saved.radicado,
+                    procesoId: saved.id,
+                    creadoPor,
+                });
 
-        if (saved.abogadoSustanciador) {
-            await this.legalNotifications.notifyProfesionalAsignado({
-                modulo,
-                radicado: saved.radicado,
-                procesoId: saved.id,
-                abogadoId: saved.abogadoSustanciador,
-                asignadoPor: creadoPor,
-                esReasignacion: false,
-            });
-        }
+                if (saved.abogadoSustanciador) {
+                    await this.legalNotifications.notifyProfesionalAsignado({
+                        modulo,
+                        radicado: saved.radicado,
+                        procesoId: saved.id,
+                        abogadoId: saved.abogadoSustanciador,
+                        asignadoPor: creadoPor,
+                        esReasignacion: false,
+                    });
+                }
+            } catch (err: any) {
+                Logger.warn(`[ExpedienteService] Notificación de creación falló (no bloqueante): ${err?.message || err}`);
+            }
+        })();
 
         return saved;
+    }
+
+    /**
+     * Extrae los archivos cargados (base64) en `camposAdicionales` y los persiste como
+     * Documentos del expediente, para que aparezcan en la pestaña de Documentos.
+     * Luego reemplaza el base64 pesado por metadata liviana dentro de camposAdicionales.
+     */
+    private async persistirDocumentosCamposAdicionales(expediente: Expediente, creadoPor: string): Promise<void> {
+        const campos = expediente.camposAdicionales as Record<string, any> | undefined | null;
+        if (!campos || typeof campos !== 'object') return;
+
+        const uploadsDir = join(process.cwd(), 'uploads');
+        if (!existsSync(uploadsDir)) {
+            mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        let huboCambios = false;
+        const camposLimpios: Record<string, any> = {};
+
+        for (const [key, val] of Object.entries(campos)) {
+            const esArray = Array.isArray(val);
+            const docs: any[] = esArray
+                ? val
+                : (val && typeof val === 'object' && val.base64 ? [val] : []);
+
+            if (docs.length === 0) {
+                camposLimpios[key] = val;
+                continue;
+            }
+
+            const docsResultantes: any[] = [];
+            for (const doc of docs) {
+                if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
+                    try {
+                        const base64Str = String(doc.base64);
+                        const comma = base64Str.indexOf(',');
+                        const soloBase64 = comma >= 0 ? base64Str.slice(comma + 1) : base64Str;
+                        const buffer = Buffer.from(soloBase64, 'base64');
+                        const filename = `${randomBytes(16).toString('hex')}${extname(doc.nombre) || ''}`;
+                        writeFileSync(join(uploadsDir, filename), buffer);
+
+                        const documento = this.documentoRepository.create({
+                            expedienteId: expediente.id,
+                            nombre: doc.nombre,
+                            tipo: 'DATO_ADICIONAL',
+                            categoria: 'documentos',
+                            subidoPor: creadoPor || 'Sistema (Campo Dinámico)',
+                            archivoUrl: `files/${filename}`,
+                            archivoNombreOriginal: doc.nombre,
+                            archivoMimeType: doc.tipoMime || undefined,
+                            archivoTamano: doc.tamano ?? buffer.length,
+                        });
+                        await this.documentoRepository.save(documento);
+
+                        // Metadata liviana para no dejar el base64 dentro de camposAdicionales (JSON pesado).
+                        docsResultantes.push({
+                            nombre: doc.nombre,
+                            tipoMime: doc.tipoMime,
+                            tamano: doc.tamano ?? buffer.length,
+                            cargado: true,
+                        });
+                        huboCambios = true;
+                    } catch (err: any) {
+                        Logger.warn(`[ExpedienteService] No se pudo persistir documento "${doc.nombre}" del campo "${key}": ${err?.message || err}`);
+                        docsResultantes.push(doc); // conservar tal cual si falla
+                    }
+                } else {
+                    docsResultantes.push(doc);
+                }
+            }
+
+            camposLimpios[key] = esArray ? docsResultantes : (docsResultantes[0] ?? val);
+        }
+
+        if (huboCambios) {
+            expediente.camposAdicionales = camposLimpios;
+            await this.expedienteRepository.save(expediente);
+        }
     }
 
     private addBusinessDays(startDate: Date, days: number): Date {
@@ -226,112 +328,93 @@ export class ExpedienteService {
     }
 
     async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<any[]> {
-        const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
-        // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
-        queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
-        queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
-        queryBuilder.leftJoinAndSelect('expediente.procesosAnexados', 'procesosAnexados', "procesosAnexados.estadoArchivo = 'ACTIVO'");
-        queryBuilder.leftJoinAndSelect('procesosAnexados.actors', 'procesosAnexadosActors');
+        try {
+            const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
+            queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
+            queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
+            queryBuilder.leftJoinAndSelect('expediente.procesosAnexados', 'procesosAnexados', "procesosAnexados.estado_archivo = 'ACTIVO'");
+            queryBuilder.leftJoinAndSelect('procesosAnexados.actors', 'procesosAnexadosActors');
 
-        // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
-        queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
+            // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
+            queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
 
-        // No mostrar expedientes anexados como tarjetas independientes en el Kanban
-        queryBuilder.andWhere("expediente.procesoPrincipalId IS NULL");
+            // No mostrar expedientes anexados como tarjetas independientes en el Kanban
+            queryBuilder.andWhere("expediente.procesoPrincipalId IS NULL");
 
-        queryBuilder.addSelect((subQuery) => {
-            return subQuery
-                .select("COUNT(doc.id)", "count")
-                .from(Documento, "doc")
-                .where("doc.expedienteId = expediente.id");
-        }, "conteo_docs");
+            queryBuilder.addSelect((subQuery) => {
+                return subQuery
+                    .select("COUNT(doc.id)", "count")
+                    .from(Documento, "doc")
+                    .where("doc.expedienteId = expediente.id");
+            }, "conteo_docs");
 
-        if (filtros.estado) {
-            queryBuilder.andWhere('expediente.estado = :estado', { estado: filtros.estado });
-        }
-
-        if (filtros.jurisdiccion) {
-            queryBuilder.andWhere('expediente.jurisdiccion = :jurisdiccion', { jurisdiccion: filtros.jurisdiccion });
-        }
-
-        if (filtros.search) {
-            queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
-        }
-
-        if (filtros.abogadoSustanciadorKeys?.length) {
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            const uuidKey = filtros.abogadoSustanciadorKeys.find(k => uuidRegex.test(k));
-            const normalizedKeys = filtros.abogadoSustanciadorKeys.map(k => k.toLowerCase());
-            if (uuidKey) {
-                queryBuilder.andWhere(
-                    `(LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)
-                      OR LOWER(expediente.abogadoSustanciador) = (
-                          SELECT LOWER(u.public_id::text)
-                          FROM auth."user" u
-                          WHERE u.id_user::text = :userId
-                          LIMIT 1
-                      )
-                      OR LOWER(expediente.abogadoSustanciador) = (
-                          SELECT LOWER(p.nom_largo)
-                          FROM auth."user" u
-                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
-                          WHERE u.id_user::text = :userId
-                          LIMIT 1
-                      ))`,
-                    { normalizedKeys, userId: uuidKey },
-                );
-            } else {
-                queryBuilder.andWhere(
-                    'LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)',
-                    { normalizedKeys },
-                );
+            if (filtros.estado) {
+                queryBuilder.andWhere('expediente.estado = :estado', { estado: filtros.estado });
             }
+
+            if (filtros.jurisdiccion) {
+                queryBuilder.andWhere('expediente.jurisdiccion = :jurisdiccion', { jurisdiccion: filtros.jurisdiccion });
+            }
+
+            if (filtros.search) {
+                queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
+            }
+
+            if (filtros.abogadoSustanciadorKeys?.length) {
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const uuidKey = filtros.abogadoSustanciadorKeys.find(k => uuidRegex.test(k));
+                const normalizedKeys = filtros.abogadoSustanciadorKeys.map(k => k.toLowerCase());
+                if (uuidKey) {
+                    queryBuilder.andWhere(
+                        `(LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)
+                          OR LOWER(expediente.abogadoSustanciador) = (
+                              SELECT LOWER(u.public_id::text)
+                              FROM auth."user" u
+                              WHERE u.id_user::text = :userId
+                              LIMIT 1
+                          )
+                          OR LOWER(expediente.abogadoSustanciador) = (
+                              SELECT LOWER(p.nom_largo)
+                              FROM auth."user" u
+                              LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                              WHERE u.id_user::text = :userId
+                              LIMIT 1
+                          ))`,
+                        { normalizedKeys, userId: uuidKey },
+                    );
+                } else {
+                    queryBuilder.andWhere(
+                        'LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)',
+                        { normalizedKeys },
+                    );
+                }
+            }
+
+            const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
+
+            const profesionalIds = [...new Set(entities.map((entity) => entity.abogadoSustanciador).filter(Boolean))];
+            const profesionalesMap = await this.resolveProfesionalesDesdeAuth(profesionalIds);
+
+            return entities.map((entity) => {
+                const rawRow = raw.find(r => r.expediente_id === entity.id);
+                const count = rawRow ? Number(rawRow.conteo_docs) : 0;
+                entity.documentosCount = count;
+                if (!entity.actuaciones) entity.actuaciones = [];
+                const abogadoId = entity.abogadoSustanciador || null;
+                const abogadoAuth = abogadoId ? profesionalesMap.get(abogadoId) : undefined;
+                return {
+                    ...entity,
+                    abogadoAsignado: {
+                        id: abogadoId,
+                        nombre: abogadoAuth?.nombre ?? 'Sin asignar',
+                        identificacion: abogadoAuth?.identificacion ?? '',
+                    },
+                };
+            });
+        } catch (error) {
+            Logger.error(`[ExpedienteService] Error en listarExpedientes: ${error?.message || error}`, error?.stack);
+            throw error;
         }
-
-        const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
-
-        // // Populate actuaciones manually
-        // // Optimization: Fetch all needed actuaciones in one query
-        // const ids = entities.map(e => e.id);
-        // const radicados = entities.map(e => e.radicado).filter(r => r); // Filter out null/undefined radicados
-
-        // if (ids.length > 0) {
-        //     const query = this.actuacionRepository.createQueryBuilder('act')
-        //         .where('act.expedienteId IN (:...ids)', { ids });
-
-        //     if (radicados.length > 0) {
-        //         query.orWhere('act.expedienteId IN (:...radicados)', { radicados });
-        //     }
-
-        //     const allActuaciones = await query.orderBy('act.fechaActuacion', 'DESC').getMany();
-
-        //     entities.forEach(entity => {
-        //         // Attach if it matches either ID or Radicado
-        //         entity.actuaciones = allActuaciones.filter(a =>
-        //             a.expedienteId === entity.id || a.expedienteId === entity.radicado
-        //         );
-        //     });
-        // }
-
-        const profesionalIds = [...new Set(entities.map((entity) => entity.abogadoSustanciador).filter(Boolean))];
-        const profesionalesMap = await this.resolveProfesionalesDesdeAuth(profesionalIds);
-
-        return entities.map((entity) => {
-            const rawRow = raw.find(r => r.expediente_id === entity.id);
-            const count = rawRow ? Number(rawRow.conteo_docs) : 0;
-            entity.documentosCount = count;
-            if (!entity.actuaciones) entity.actuaciones = [];
-            const abogadoId = entity.abogadoSustanciador || null;
-            const abogadoAuth = abogadoId ? profesionalesMap.get(abogadoId) : undefined;
-            return {
-                ...entity,
-                abogadoAsignado: {
-                    id: abogadoId,
-                    nombre: abogadoAuth?.nombre ?? 'Sin asignar',
-                    identificacion: abogadoAuth?.identificacion ?? '',
-                },
-            };
-        });
     }
 
     private async resolveProfesionalesDesdeAuth(ids: string[]): Promise<Map<string, { nombre: string; identificacion: string }>> {

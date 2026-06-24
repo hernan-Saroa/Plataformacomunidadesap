@@ -10,6 +10,10 @@ import {
   AccionCorrectivaEstado,
   AccionCorrectivaTipo,
 } from './entities/accion-correctiva.entity';
+import { EvidenciaAccion, EstadoValidacionEvidencia } from './entities/evidencia-accion.entity';
+import { AlertaPlan, TipoAlertaPlan } from './entities/alerta-plan.entity';
+import { CierrePlan } from './entities/cierre-plan.entity';
+import { SeguimientoPlan } from './entities/seguimiento-plan.entity';
 import { SeguimientoTrimestral } from './entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './entities/registro-seguimiento.entity';
 import { EventoTimeline, TipoEventoTimeline } from './entities/evento-timeline.entity';
@@ -26,6 +30,7 @@ import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } fro
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { PlanMejoramientoRol4TareaSyncService } from './plan-mejoramiento-rol4-tarea-sync.service';
+import { calcularCumplimiento, calcularEfectividad, colorSemaforo } from './evaluacion.utils';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -46,6 +51,14 @@ export class PlanesMejoramientoService {
     private readonly auditoriaRepository: Repository<Auditoria>,
     @InjectRepository(Aprobacion)
     private readonly aprobacionRepository: Repository<Aprobacion>,
+    @InjectRepository(EvidenciaAccion)
+    private readonly evidenciaAccionRepository: Repository<EvidenciaAccion>,
+    @InjectRepository(AlertaPlan)
+    private readonly alertaPlanRepository: Repository<AlertaPlan>,
+    @InjectRepository(CierrePlan)
+    private readonly cierrePlanRepository: Repository<CierrePlan>,
+    @InjectRepository(SeguimientoPlan)
+    private readonly seguimientoPlanRepository: Repository<SeguimientoPlan>,
     private readonly notificacionesService: NotificacionesService,
     private readonly dataSource: DataSource,
     private readonly rol4TareaSync: PlanMejoramientoRol4TareaSyncService,
@@ -353,9 +366,10 @@ export class PlanesMejoramientoService {
     }
 
     // 2. Si la fecha límite ya pasó y no está completado, es VENCIDO (Con Retraso en FE)
-    if (esVencido) {
-      return PlanMejoramientoEstado.VENCIDO;
-    }
+    // Comentado temporalmente para permitir seguir con el plan de mejoramiento independientemente de la fecha
+    // if (esVencido) {
+    //   return PlanMejoramientoEstado.VENCIDO;
+    // }
 
     // 3. Estados de flujo de aprobación
     if (plan.estado === PlanMejoramientoEstado.RECHAZADO) {
@@ -678,6 +692,23 @@ export class PlanesMejoramientoService {
     const vigenciaCodigo = await this.resolverVigenciaCodigoPlan(auditoriaId);
     const codigo = await this.generarCodigo(vigenciaCodigo);
 
+    // ── Auto-populate responsableImplementacion from auditoría ownership ──
+    let responsableImpl = createDto.responsableImplementacion || '';
+    if (!responsableImpl && auditoriaId) {
+      try {
+        const aud = await this.dataSource.query(
+          'SELECT responsable_area_email FROM control_interno.auditoria WHERE id = $1',
+          [auditoriaId],
+        );
+        if (aud?.[0]?.responsable_area_email) {
+          responsableImpl = aud[0].responsable_area_email;
+          console.log(`[PlanesMejoramientoService] Auto-assigned responsableImplementacion from auditoría: ${responsableImpl}`);
+        }
+      } catch (e: any) {
+        console.warn(`[PlanesMejoramientoService] Could not resolve auditoría responsable: ${e.message}`);
+      }
+    }
+
     const plan = this.planRepository.create({
       codigo,
       titulo: createDto.titulo || `Plan de Mejoramiento ${codigo}`,
@@ -686,10 +717,11 @@ export class PlanesMejoramientoService {
       hallazgoId,
       auditoriaId,
       areaResponsable: createDto.areaResponsable,
-      responsableImplementacion: createDto.responsableImplementacion,
+      responsableImplementacion: responsableImpl,
       fechaLimite: this.parseDateOnly(createDto.fechaLimite),
       estado: PlanMejoramientoEstado.BORRADOR,
     });
+
 
     const savedPlan = await this.planRepository.save(plan);
 
@@ -1932,5 +1964,405 @@ export class PlanesMejoramientoService {
       return [];
     }
   }
-}
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVIDENCIAS DE ACCIONES (RF-SG-01 a RF-SG-04)
+  // Fuente: EM-PT-002 v3 act. 4-5, US-032
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Carga una evidencia para una acción de mejora (auditado).
+   * RF-SG-01: El auditado carga evidencias por cada acción de mejora.
+   */
+  async cargarEvidenciaAccion(
+    accionId: string,
+    data: {
+      archivoRef: string;
+      archivoNombre: string;
+      archivoTipo?: string;
+      archivoTamanio?: number;
+      descripcion?: string;
+      cargadaPorId: string;
+      cargadaPorNombre?: string;
+    },
+  ): Promise<EvidenciaAccion> {
+    const accion = await this.accionRepository.findOne({ where: { id: accionId } });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
+    }
+
+    const evidencia = this.evidenciaAccionRepository.create({
+      accionId,
+      archivoRef: data.archivoRef,
+      archivoNombre: data.archivoNombre,
+      archivoTipo: data.archivoTipo,
+      archivoTamanio: data.archivoTamanio,
+      descripcion: data.descripcion,
+      cargadaPorId: data.cargadaPorId,
+      cargadaPorNombre: data.cargadaPorNombre,
+      estadoValidacion: EstadoValidacionEvidencia.PENDIENTE,
+    });
+
+    const saved = await this.evidenciaAccionRepository.save(evidencia);
+    console.log(`[EvidenciaAccion] Evidencia cargada: ${saved.id} para acción ${accionId}`);
+    return saved;
+  }
+
+  /**
+   * Lista evidencias de una acción.
+   */
+  async listarEvidenciasAccion(accionId: string): Promise<EvidenciaAccion[]> {
+    return this.evidenciaAccionRepository.find({
+      where: { accionId },
+      order: { cargadaAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Califica una evidencia (auditor OCI).
+   * RF-SG-02: El auditor califica como "Aceptado" o "Con Observaciones".
+   * RF-SG-03: Si hay observaciones, puede solicitar nueva evidencia.
+   * RF-SG-13: Registra fecha/hora/usuario para trazabilidad.
+   */
+  async calificarEvidencia(
+    evidenciaId: string,
+    data: {
+      calificacion: 'aceptado' | 'con_observaciones';
+      comentarios?: string;
+      solicitaNuevaEvidencia?: boolean;
+      calificadaPorId: string;
+      calificadaPorNombre?: string;
+    },
+  ): Promise<EvidenciaAccion> {
+    const evidencia = await this.evidenciaAccionRepository.findOne({
+      where: { id: evidenciaId },
+    });
+    if (!evidencia) {
+      throw new NotFoundException(`Evidencia con ID ${evidenciaId} no encontrada`);
+    }
+
+    evidencia.estadoValidacion = data.calificacion as EstadoValidacionEvidencia;
+    evidencia.comentarios = data.comentarios ?? undefined;
+    evidencia.solicitaNuevaEvidencia = data.solicitaNuevaEvidencia ?? false;
+    evidencia.calificadaPorId = data.calificadaPorId;
+    evidencia.calificadaPorNombre = data.calificadaPorNombre ?? undefined;
+    evidencia.calificadaAt = new Date();
+
+    const saved = await this.evidenciaAccionRepository.save(evidencia);
+    console.log(`[EvidenciaAccion] Calificada: ${evidenciaId} → ${data.calificacion} por ${data.calificadaPorId}`);
+
+    // ── US-024 / RF-SG-03: Notificar al auditado sobre la calificación ──
+    try {
+      const accion = await this.accionRepository.findOne({
+        where: { id: evidencia.accionId },
+        relations: ['plan'],
+      });
+      if (accion?.plan) {
+        const esObservacion = data.calificacion === 'con_observaciones';
+        await this.notificacionesService.create({
+          usuarioId: accion.plan.responsableImplementacion || 'AUDITADO',
+          tipoNotificacion: esObservacion
+            ? TipoNotificacion.SOLICITUD_EVIDENCIA
+            : TipoNotificacion.VALIDACION_EVIDENCIA,
+          titulo: esObservacion
+            ? 'Evidencia con observaciones — Acción de mejora'
+            : 'Evidencia aceptada — Acción de mejora',
+          mensaje: esObservacion
+            ? `Su evidencia "${evidencia.archivoNombre}" fue calificada con observaciones: ${data.comentarios || 'Ver detalles en el portal'}. ${data.solicitaNuevaEvidencia ? 'Se solicita nueva evidencia.' : ''}`
+            : `Su evidencia "${evidencia.archivoNombre}" fue aceptada para la acción de mejora.`,
+          prioridad: esObservacion ? PrioridadNotificacion.ALTA : PrioridadNotificacion.NORMAL,
+          metadata: {
+            planId: accion.planId,
+            accionId: accion.id,
+            evidenciaId: saved.id,
+            calificacion: data.calificacion,
+            comentarios: data.comentarios,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn(`[EvidenciaAccion] No se pudo notificar al auditado: ${notifErr.message}`);
+    }
+
+    return saved;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUIMIENTO Y EVALUACIÓN (RF-SG-05 a RF-SG-07)
+  // Fuente: EM-FO-002 v3 (escalas de cumplimiento y efectividad)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Registra el seguimiento de una acción: cantidad implementada y calcula cumplimiento.
+   * RF-SG-05: Cumplimiento calculado, no editable manualmente.
+   */
+  async registrarSeguimientoAccion(
+    accionId: string,
+    data: {
+      cantidadImplementada: number;
+      observacionCumplimiento?: string;
+      responsableSeguimiento?: string;
+    },
+  ): Promise<AccionCorrectiva> {
+    const accion = await this.accionRepository.findOne({ where: { id: accionId } });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
+    }
+
+    const programadas = accion.cantidadAccionesProgramadas ?? 0;
+    const cumplimiento = calcularCumplimiento(data.cantidadImplementada, programadas);
+
+    accion.cantidadAccionesImplementadas = data.cantidadImplementada;
+    accion.cumplimientoEmfo = cumplimiento;
+    accion.observacionCumplimiento = data.observacionCumplimiento ?? undefined;
+    accion.responsableSeguimiento = data.responsableSeguimiento ?? undefined;
+
+    if (cumplimiento === 2) {
+      accion.estadoAccionSeguimiento = 'cerrada';
+    }
+
+    const saved = await this.accionRepository.save(accion);
+    console.log(`[Seguimiento] Acción ${accionId}: implementadas=${data.cantidadImplementada}, cumplimiento=${cumplimiento}`);
+    return saved;
+  }
+
+  /**
+   * Registra la efectividad de una acción.
+   * RF-SG-07: Efectividad con dos criterios SI/NO.
+   */
+  async registrarEfectividad(
+    accionId: string,
+    data: {
+      evaluarAplicacionControles: boolean;
+      validarSituacionNoRepitio: boolean;
+      observacionEfectividad?: string;
+    },
+  ): Promise<AccionCorrectiva> {
+    const accion = await this.accionRepository.findOne({ where: { id: accionId } });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
+    }
+
+    const efectividad = calcularEfectividad(
+      data.evaluarAplicacionControles,
+      data.validarSituacionNoRepitio,
+    );
+
+    accion.evaluarAplicacionControles = data.evaluarAplicacionControles;
+    accion.validarSituacionNoRepitio = data.validarSituacionNoRepitio;
+    accion.efectividadEmfo = efectividad;
+    accion.efectividadVerificada = true;
+    accion.observacionEfectividad = data.observacionEfectividad ?? undefined;
+
+    const saved = await this.accionRepository.save(accion);
+    console.log(`[Efectividad] Acción ${accionId}: efectividad=${efectividad}`);
+    return saved;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ALERTAS (RF-SG-08) — EM-PT-002 v3 act. 6
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async generarAlertas(planId: string): Promise<AlertaPlan[]> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['acciones'],
+    });
+    if (!plan) {
+      throw new NotFoundException(`Plan con ID ${planId} no encontrado`);
+    }
+
+    const hoy = new Date();
+    const mesActual = hoy.getMonth();
+    const anioActual = hoy.getFullYear();
+    const alertasGeneradas: AlertaPlan[] = [];
+
+    for (const accion of (plan.acciones ?? [])) {
+      const fechaFin = accion.fechaFin ? new Date(accion.fechaFin) : null;
+
+      // Alerta 1: VENCIDA_SIN_EVIDENCIA
+      if (fechaFin && fechaFin < hoy) {
+        const evidencias = await this.evidenciaAccionRepository.count({ where: { accionId: accion.id } });
+        if (evidencias === 0) {
+          alertasGeneradas.push(await this.alertaPlanRepository.save(
+            this.alertaPlanRepository.create({
+              planId, accionId: accion.id,
+              tipo: TipoAlertaPlan.VENCIDA_SIN_EVIDENCIA,
+              descripcion: `Acción vencida sin evidencia: ${accion.descripcion?.substring(0, 100)}`,
+            }),
+          ));
+        }
+      }
+
+      // Alerta 2: INEFECTIVA
+      if (accion.efectividadVerificada && accion.efectividadEmfo === 0) {
+        alertasGeneradas.push(await this.alertaPlanRepository.save(
+          this.alertaPlanRepository.create({
+            planId, accionId: accion.id,
+            tipo: TipoAlertaPlan.INEFECTIVA,
+            descripcion: `Acción inefectiva: ${accion.descripcion?.substring(0, 100)}`,
+          }),
+        ));
+      }
+
+      // Alerta 3 y 4: CUMPLIMIENTO_MES_ACTUAL / MES_SIGUIENTE
+      if (fechaFin) {
+        const mesFin = fechaFin.getMonth();
+        const anioFin = fechaFin.getFullYear();
+        if (mesFin === mesActual && anioFin === anioActual) {
+          alertasGeneradas.push(await this.alertaPlanRepository.save(
+            this.alertaPlanRepository.create({
+              planId, accionId: accion.id,
+              tipo: TipoAlertaPlan.CUMPLIMIENTO_MES_ACTUAL,
+              descripcion: `Cumplimiento este mes: ${accion.descripcion?.substring(0, 100)}`,
+            }),
+          ));
+        }
+        const mesSig = (mesActual + 1) % 12;
+        const anioSig = mesActual === 11 ? anioActual + 1 : anioActual;
+        if (mesFin === mesSig && anioFin === anioSig) {
+          alertasGeneradas.push(await this.alertaPlanRepository.save(
+            this.alertaPlanRepository.create({
+              planId, accionId: accion.id,
+              tipo: TipoAlertaPlan.CUMPLIMIENTO_MES_SIGUIENTE,
+              descripcion: `Cumplimiento próximo mes: ${accion.descripcion?.substring(0, 100)}`,
+            }),
+          ));
+        }
+      }
+    }
+
+    console.log(`[Alertas] Plan ${planId}: ${alertasGeneradas.length} alertas generadas`);
+    return alertasGeneradas;
+  }
+
+  async getAlertas(planId: string): Promise<AlertaPlan[]> {
+    return this.alertaPlanRepository.find({
+      where: { planId },
+      relations: ['accion'],
+      order: { generadaAt: 'DESC' },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CIERRE Y ARCHIVO (RF-SG-11, RF-SG-12) — EM-PT-002 act. 8-10
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async cerrarPlan(
+    planId: string,
+    data: { cerradoPorId: string; cerradoPorNombre?: string; observacionesCierre?: string },
+  ): Promise<CierrePlan> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['acciones'],
+    });
+    if (!plan) throw new NotFoundException(`Plan con ID ${planId} no encontrado`);
+
+    const sinCumplir = (plan.acciones ?? []).filter(
+      (a) => (a.cumplimientoEmfo ?? 0) === 0 && a.estadoAccionSeguimiento !== 'cerrada',
+    );
+    if (sinCumplir.length > 0) {
+      throw new BadRequestException(`No se puede cerrar: ${sinCumplir.length} acción(es) sin cumplimiento`);
+    }
+
+    let cierre = await this.cierrePlanRepository.findOne({ where: { planId } });
+    if (!cierre) cierre = this.cierrePlanRepository.create({ planId });
+
+    cierre.cerrado = true;
+    cierre.fechaCierre = new Date();
+    cierre.cerradoPorId = data.cerradoPorId;
+    cierre.cerradoPorNombre = data.cerradoPorNombre ?? undefined;
+    cierre.observacionesCierre = data.observacionesCierre ?? undefined;
+
+    const saved = await this.cierrePlanRepository.save(cierre);
+    plan.estado = PlanMejoramientoEstado.COMPLETADO;
+    await this.planRepository.save(plan);
+
+    console.log(`[Cierre] Plan ${planId} cerrado por ${data.cerradoPorId}`);
+    return saved;
+  }
+
+  async archivarExpediente(
+    planId: string,
+    data: { indiceElectronicoRef: string },
+  ): Promise<CierrePlan> {
+    const cierre = await this.cierrePlanRepository.findOne({ where: { planId } });
+    if (!cierre || !cierre.cerrado) {
+      throw new BadRequestException('El plan debe estar cerrado antes de archivar');
+    }
+    cierre.archivado = true;
+    cierre.indiceElectronicoRef = data.indiceElectronicoRef;
+    cierre.fechaArchivo = new Date();
+    const saved = await this.cierrePlanRepository.save(cierre);
+    console.log(`[Archivo] Plan ${planId} archivado`);
+    return saved;
+  }
+
+  async getCierre(planId: string): Promise<CierrePlan | null> {
+    return this.cierrePlanRepository.findOne({ where: { planId } });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUIMIENTO PERIÓDICO (RF-SG-09 / EM-PT-002 act. 5 y 7)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Lista todos los seguimientos periódicos de un plan.
+   */
+  async getSeguimientosPlan(planId: string): Promise<SeguimientoPlan[]> {
+    return this.seguimientoPlanRepository.find({
+      where: { planId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Registra un seguimiento periódico manual.
+   * RF-SG-10: Informe de seguimiento.
+   */
+  async registrarSeguimientoPeriodico(
+    planId: string,
+    data: {
+      periodicidad: 'TRIMESTRAL' | 'SEMESTRAL';
+      tipoControl: 'INTERNO' | 'ENTE_EXTERNO';
+      fechaCorte: string;
+      responsableId: string;
+      responsableNombre?: string;
+      resumen?: string;
+      informeRef?: string;
+    },
+  ): Promise<SeguimientoPlan> {
+    // Calcular métricas actuales de las acciones del plan
+    const acciones = await this.accionRepository.find({
+      where: { planMejoramientoId: planId } as any,
+    });
+
+    let cumplen = 0, parcial = 0, noCumplen = 0;
+    for (const a of acciones) {
+      const c = (a as any).cumplimientoEmfo;
+      if (c === 2) cumplen++;
+      else if (c === 1) parcial++;
+      else noCumplen++;
+    }
+
+    const seguimiento = this.seguimientoPlanRepository.create({
+      planId,
+      periodicidad: data.periodicidad,
+      tipoControl: data.tipoControl,
+      fechaCorte: new Date(data.fechaCorte),
+      responsableId: data.responsableId,
+      responsableNombre: data.responsableNombre,
+      resumen: data.resumen,
+      informeRef: data.informeRef,
+      totalAccionesEvaluadas: acciones.length,
+      accionesCumplen: cumplen,
+      accionesParcial: parcial,
+      accionesNoCumplen: noCumplen,
+      automatico: false,
+    });
+
+    const saved = await this.seguimientoPlanRepository.save(seguimiento);
+    console.log(`[Seguimiento] Plan ${planId}: seguimiento ${data.periodicidad} registrado`);
+    return saved;
+  }
+}

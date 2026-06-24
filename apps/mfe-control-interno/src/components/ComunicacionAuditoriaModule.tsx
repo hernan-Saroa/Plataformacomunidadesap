@@ -68,6 +68,8 @@ interface Hallazgo {
   /** Estado del flujo comunicación: notificado | aceptado | en-controversia | ratificado | modificado | retirado | cerrado */
   estado?: string;
   argumentosControversia?: string;
+  observacionesControversia?: string;
+  controversiaTurno?: 'auditor' | 'auditado' | null;
   documentoControversiaUrl?: string;
   documentoControversiaNombre?: string;
   decisionAuditor?: string;
@@ -144,20 +146,53 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     fechaEjecucionInicio: (auditoria as any).fechaInicioEjecucion || auditoria.fechaInicio,
     fechaEjecucionFin: (auditoria as any).fechaFinEjecucion || auditoria.fechaFin,
     // Período auditado (qué vigencia se evaluó)
-    periodoAuditoria: (auditoria as any).periodoAuditoria
-      || (auditoria as any).programaAnualMetadata?.periodoAuditado
-      || (auditoria.fechaInicio && auditoria.fechaFin
-          ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}`
-          : undefined),
-    periodoAuditadoTexto: (auditoria as any).periodoAuditadoTexto
-      || (auditoria as any).programaAnualMetadata?.periodoAuditado
-      || (auditoria as any).periodoAuditoria,
+    periodoAuditoria: (() => {
+      const formatFechaSimple = (fechaStr: string) => {
+        if (!fechaStr) return '';
+        if (fechaStr.includes('/')) return fechaStr;
+        const parts = fechaStr.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return fechaStr;
+      };
+      const planInicioFormato = (auditoria as any).planAnualInicio ? formatFechaSimple((auditoria as any).planAnualInicio) : null;
+      const planFinFormato = (auditoria as any).planAnualFin ? formatFechaSimple((auditoria as any).planAnualFin) : null;
+      const planPeriodoRango = (planInicioFormato && planFinFormato) ? `${planInicioFormato} al ${planFinFormato}` : null;
+      return planPeriodoRango
+        || (auditoria as any).periodoAuditoria
+        || (auditoria as any).programaAnualMetadata?.periodoAuditado
+        || (auditoria.fechaInicio && auditoria.fechaFin
+            ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}`
+            : undefined);
+    })(),
+    periodoAuditadoTexto: (() => {
+      const formatFechaSimple = (fechaStr: string) => {
+        if (!fechaStr) return '';
+        if (fechaStr.includes('/')) return fechaStr;
+        const parts = fechaStr.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return fechaStr;
+      };
+      const planInicioFormato = (auditoria as any).planAnualInicio ? formatFechaSimple((auditoria as any).planAnualInicio) : null;
+      const planFinFormato = (auditoria as any).planAnualFin ? formatFechaSimple((auditoria as any).planAnualFin) : null;
+      const planPeriodoRango = (planInicioFormato && planFinFormato) ? `${planInicioFormato} al ${planFinFormato}` : null;
+      return planPeriodoRango
+        || (auditoria as any).periodoAuditadoTexto
+        || (auditoria as any).programaAnualMetadata?.periodoAuditado
+        || (auditoria as any).periodoAuditoria;
+    })(),
     // Año del Plan Anual
-    planAnualAño: (auditoria as any).planAnualAño
+    planAnualAño: (auditoria as any).planAnualAñoVal
+      || (auditoria as any).planAnualAño
       || (auditoria as any).programaAnualMetadata?.año
       || (auditoria.fechaInicio
           ? new Date(auditoria.fechaInicio).getFullYear()
           : new Date().getFullYear()),
+    planAnualInicio: (auditoria as any).planAnualInicio,
+    planAnualFin: (auditoria as any).planAnualFin,
     equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ 
       nombre: a.nombreCompleto || a.nombre || a.persona?.nombre || a.name || a, 
       rol: a.rol || a.cargo || a.persona?.cargo || 'Auditor',
@@ -243,7 +278,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
   onSubirDocumento?: (file: File, metadata: { nombre: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
   /** Recargar documentos tras subir */
   onRecargarDocumentos?: () => Promise<void>;
-}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada, readOnly = false, documentos = [], onSubirDocumento, onRecargarDocumentos }) => {
+  /** Registra acciones callback en el padre */
+  onRegisterActions?: (actions: { generarInforme: () => Promise<boolean> }) => void;
+}> = ({ auditoriaId, auditoriaInfo, estadoAuditoria: estadoAuditoriaProp, soloSeguimiento = false, embedded = false, onComunicacionCompletada, readOnly = false, documentos = [], onSubirDocumento, onRecargarDocumentos, onRegisterActions }) => {
   const id = auditoriaId || 'aud-001';
   const useAPI = isValidUUID(id);
 
@@ -412,12 +449,14 @@ export const ComunicacionAuditoriaModule: React.FC<{
         id: x.id,
         codigo: x.codigo,
         titulo: x.titulo || x.descripcion?.substring(0, 80),
-        gravedad: (x.categoria === 'critico' ? 'CRITICO' : 'MODERADO') as any,
+        gravedad: (x.categoria ? x.categoria.toUpperCase() : 'MODERADO') as any,
         descripcion: x.descripcion || '',
         criterioIncumplido: x.criterioIncumplido,
         causas, efectos, recomendaciones: recs,
         estado: x.estado,
-        argumentosControversia: x.argumentosControversia || x.observacionesControversia,
+        argumentosControversia: x.argumentosControversia,
+        observacionesControversia: x.observacionesControversia,
+        controversiaTurno: x.controversiaTurno,
         documentoControversiaNombre: x.documentoControversiaNombre,
         decisionAuditor: x.decisionAuditor,
         fundamentacionTecnica: x.fundamentacionTecnica,
@@ -517,10 +556,13 @@ export const ComunicacionAuditoriaModule: React.FC<{
           proceso: audData.procesoAuditado || audData.proceso || prev.proceso,
           auditorLider: typeof audData.auditorLider === 'object' && audData.auditorLider?.nombre 
             ? audData.auditorLider.nombre 
-            : (typeof audData.auditorLider === 'string' ? audData.auditorLider : (prev.auditorLider?.nombre || prev.auditorLider || '—')),
+            : (typeof audData.auditorLider === 'string' ? audData.auditorLider : (typeof prev.auditorLider === 'object' ? (prev.auditorLider as any)?.nombre : prev.auditorLider) || '—'),
           fechaInicio: audData.fechaInicio || prev.fechaInicio,
           fechaFin: audData.fechaFin || prev.fechaFin,
           hallazgos: h,
+          planAnualInicio: audData.planAnualInicio,
+          planAnualFin: audData.planAnualFin,
+          planAnualAñoVal: audData.planAnualAñoVal,
           ...(audData.tipo && { tipo: audData.tipo }),
           ...((audData.estadoKanban || audData.fase) && { estado: audData.estadoKanban || audData.fase }),
           ...((audData.nivelRiesgo || audData.riesgoKanban || audData.calificacionRiesgo) && { nivelRiesgo: audData.nivelRiesgo || audData.riesgoKanban || audData.calificacionRiesgo }),
@@ -565,7 +607,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
         // Búsqueda de emails de profesionales por nombre si faltan
         try {
           const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
-          console.log('🔍 Buscando emails para el equipo:', { leader: prev.auditorLider, team: prev.equipoAuditores?.length });
+          console.log('🔍 Buscando emails para el equipo:', { leader: audData.auditorLider, team: audData.equipoAuditores?.length });
           const profs = Array.isArray(profsRes.data) ? profsRes.data : (Array.isArray(profsRes) ? profsRes : []);
           
           if (profs.length > 0) {
@@ -574,7 +616,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               
               // Email del líder
               let leaderEmail = prev.auditorLiderEmail;
-              const leaderName = (prev.auditorLider || '').trim().toLowerCase();
+              const leaderName = (typeof prev.auditorLider === 'string' ? prev.auditorLider : (prev.auditorLider as any)?.nombre || '').trim().toLowerCase();
               const leaderId = audData?.auditorLiderId || audData?.auditor_lider_id;
 
               if (!leaderEmail || leaderEmail === '—') {
@@ -639,6 +681,172 @@ export const ComunicacionAuditoriaModule: React.FC<{
   }, [id, useAPI]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  const handleDescargarPDFPreliminar = useCallback(async () => {
+    if (!informePreliminar.generado) return;
+    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+    const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
+    let hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
+      codigo: h.codigo,
+      titulo: h.titulo,
+      gravedad: h.gravedad,
+      descripcion: h.descripcion || '',
+      criterioIncumplido: h.criterioIncumplido,
+      causas: h.causas,
+      efectos: h.efectos,
+      recomendaciones: h.recomendaciones,
+    }));
+
+    const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informePreliminar);
+    let auditoriaFinal = { ...auditoriaBase };
+
+    toast.loading('Generando contenido del informe...', { id: 'pdf-gen' });
+    let informeFinalTmp = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
+    try {
+      const contenidoIA = await generarContenidoInformeIA(
+        auditoriaBase,
+        hallazgosParaPDF,
+        (msg) => toast.loading(msg, { id: 'pdf-gen' })
+      );
+      auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
+      if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
+        hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
+      }
+      if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
+        informeFinalTmp = { ...informeFinalTmp, observaciones: contenidoIA.conclusiones };
+      }
+      toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
+    } catch {
+      toast.dismiss('pdf-gen');
+    }
+
+    await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinalTmp, hallazgosParaPDF);
+    toast.dismiss('pdf-gen');
+  }, [auditoria, informePreliminar]);
+
+  const handleDescargarPDFFinal = useCallback(async () => {
+    if (!informeFinal.generado) return;
+    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+    const hallazgosParaPDF = (hallazgos || []).map((h) => ({
+      codigo: h.codigo,
+      titulo: h.titulo,
+      gravedad: h.gravedad,
+      descripcion: h.descripcion || '',
+      criterioIncumplido: h.criterioIncumplido,
+      causas: h.causas,
+      efectos: h.efectos,
+      recomendaciones: h.recomendaciones,
+      estadoFinal: h.estado,
+      decisionAuditor: h.decisionAuditor,
+      fundamentacionTecnica: (h as any).fundamentacionTecnica,
+    }));
+    const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
+    
+    const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informeFinal);
+    let auditoriaFinal = { ...auditoriaBase };
+
+    toast.loading('Generando contenido del informe...', { id: 'pdf-gen-final' });
+    try {
+      const contenidoIA = await generarContenidoInformeIA(
+        auditoriaBase,
+        hallazgosParaPDF,
+        (msg) => toast.loading(msg, { id: 'pdf-gen-final' })
+      );
+      auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
+      
+      let informeFinalMapeado = { ...informeFinal };
+      if (!informeFinal.observacionesFinales && contenidoIA.conclusiones) {
+        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: contenidoIA.conclusiones };
+      }
+
+      toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-final' });
+      await exportarPDFInformeAuditoria('final', auditoriaFinal, informeFinalMapeado, hallazgosParaPDF);
+    } catch (err) {
+      console.error('Error IA Final:', err);
+      await exportarPDFInformeAuditoria('final', auditoriaBase, informeFinal, hallazgosParaPDF);
+    } finally {
+      toast.dismiss('pdf-gen-final');
+    }
+  }, [auditoria, hallazgos, informeFinal]);
+
+  const handleGenerarInformePreliminar = useCallback(async () => {
+    if (useAPI) {
+      try {
+        const res = await controlInternoService.generarInformePreliminar(id);
+        toast.success(res?.mensaje || 'Informe preliminar generado');
+        setInformePreliminar(prev => ({ ...prev, generado: true }));
+        await cargarDatos();
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al generar');
+      }
+    } else {
+      setInformePreliminar(prev => ({ ...prev, generado: true }));
+      toast.success('Informe Preliminar generado (demo)');
+    }
+  }, [useAPI, id, cargarDatos]);
+
+  const handleGenerarInformeFinal = useCallback(async () => {
+    if (estadoComunicacion?.hayControversiasPendientes) {
+      toast.error('No se puede generar el Informe Final mientras existan controversias pendientes de decisión');
+      return;
+    }
+    
+    if (useAPI) {
+      try {
+        await controlInternoService.generarInformeFinal(id);
+        setInformeFinal(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
+        await cargarDatos();
+        toast.success('Informe Final generado exitosamente');
+        setSeccionActual(4); // Pasar a Plan de Mejoramiento
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al generar');
+      }
+    } else {
+      setInformeFinal(prev => ({
+        ...prev,
+        fecha: new Date().toISOString(),
+        controversiasResueltas: hallazgos.filter(h => ['ratificado', 'modificado', 'retirado'].includes(h.estado || '')).length,
+        hallazgosAjustados: hallazgos.filter(h => h.estado === 'retirado').length,
+        generado: true
+      }));
+      toast.success('Informe Final generado (demo)');
+      setSeccionActual(4);
+    }
+  }, [estadoComunicacion, useAPI, id, cargarDatos, hallazgos]);
+
+  useEffect(() => {
+    if (onRegisterActions) {
+      onRegisterActions({
+        generarInforme: async () => {
+          if (seccionActual === 1) {
+            if (!informePreliminar.generado) {
+              await handleGenerarInformePreliminar();
+            } else {
+              await handleDescargarPDFPreliminar();
+            }
+            return true;
+          } else if (seccionActual === 3) {
+            if (!informeFinal.generado) {
+              await handleGenerarInformeFinal();
+            } else {
+              await handleDescargarPDFFinal();
+            }
+            return true;
+          }
+          return false;
+        }
+      });
+    }
+  }, [
+    seccionActual,
+    informePreliminar.generado,
+    informeFinal.generado,
+    handleGenerarInformePreliminar,
+    handleDescargarPDFPreliminar,
+    handleGenerarInformeFinal,
+    handleDescargarPDFFinal,
+    onRegisterActions
+  ]);
 
   const cargarPlanesParaVerificacion = useCallback(async () => {
     if (!useAPI || !enSeguimiento) return;
@@ -736,41 +944,33 @@ export const ComunicacionAuditoriaModule: React.FC<{
     return total === 0 || (sinVerificar === 0 && incumplidas === 0);
   }, [planesParaVerificacion]);
 
-  const handleGenerarInformePreliminar = async () => {
-    if (useAPI) {
-      try {
-        const res = await controlInternoService.generarInformePreliminar(id);
-        toast.success(res?.mensaje || 'Informe preliminar generado');
-        setInformePreliminar(prev => ({ ...prev, generado: true }));
-        await cargarDatos();
-      } catch (err: any) {
-        toast.error(err?.message || 'Error al generar');
-      }
-    } else {
-      setInformePreliminar(prev => ({ ...prev, generado: true }));
-      toast.success('Informe Preliminar generado (demo)');
-    }
-  };
+
 
   // NOTA: las acciones `aceptarHallazgo` y `presentarControversia` son del AUDITADO
   // y se invocan desde el Portal Transaccional (MisAuditoriasControlInterno.tsx).
   // El backoffice del auditor NO las expone — solo consume sus resultados (estado del
   // hallazgo + argumentos + documento adjunto) para luego tomar la decisión.
 
-  const handleDecisionAuditor = async (hallazgoId: string, tipoDecision: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => {
+  const handleDecisionAuditor = async (hallazgoId: string, tipoDecision: 'ratificado' | 'modificado' | 'retirado' | 'devolver', fundamentacion: string) => {
     if (!fundamentacion?.trim()) {
-      toast.error('La fundamentación técnica es obligatoria');
+      toast.error('La fundamentación técnica/observación es obligatoria');
       return;
     }
     if (!useAPI) {
-      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { ...h, estado: tipoDecision, decisionAuditor: tipoDecision, fundamentacionTecnica: fundamentacion } : h));
+      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { 
+        ...h, 
+        estado: tipoDecision === 'devolver' ? 'en-controversia' : tipoDecision, 
+        controversiaTurno: tipoDecision === 'devolver' ? 'auditado' : null,
+        decisionAuditor: tipoDecision === 'devolver' ? undefined : tipoDecision, 
+        fundamentacionTecnica: fundamentacion 
+      } : h));
       setModalDecisionHallazgoId(null);
-      toast.success(`Decisión registrada: ${tipoDecision}`);
+      toast.success(tipoDecision === 'devolver' ? 'Controversia devuelta con observaciones' : `Decisión registrada: ${tipoDecision}`);
       return;
     }
     try {
       await controlInternoService.decisionAuditor(hallazgoId, { tipoDecision, fundamentacionTecnica: fundamentacion });
-      toast.success(`Decisión registrada: ${tipoDecision}`);
+      toast.success(tipoDecision === 'devolver' ? 'Controversia devuelta con observaciones' : `Decisión registrada: ${tipoDecision}`);
       setModalDecisionHallazgoId(null);
       await cargarDatos();
     } catch (err: any) {
@@ -778,34 +978,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
     }
   };
 
-  const handleGenerarInformeFinal = async () => {
-    if (estadoComunicacion?.hayControversiasPendientes) {
-      toast.error('No se puede generar el Informe Final mientras existan controversias pendientes de decisión');
-      return;
-    }
-    
-    if (useAPI) {
-      try {
-        await controlInternoService.generarInformeFinal(id);
-        setInformeFinal(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
-        await cargarDatos();
-        toast.success('Informe Final generado exitosamente');
-        setSeccionActual(4); // Pasar a Plan de Mejoramiento
-      } catch (err: any) {
-        toast.error(err?.message || 'Error al generar');
-      }
-    } else {
-      setInformeFinal(prev => ({
-        ...prev,
-        fecha: new Date().toISOString(),
-        controversiasResueltas: hallazgos.filter(h => ['ratificado', 'modificado', 'retirado'].includes(h.estado || '')).length,
-        hallazgosAjustados: hallazgos.filter(h => h.estado === 'retirado').length,
-        generado: true
-      }));
-      toast.success('Informe Final generado (demo)');
-      setSeccionActual(4);
-    }
-  };
+
 
   const handleGenerarInformeEjecutivo = async () => {
     if (!informeEjecutivo.observacionesFinales?.trim()) {
@@ -837,7 +1010,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
     }
   };
 
-  const handleFinalizarComunicacion = async () => {
+  const handleFinalizarComunicacion = useCallback(async () => {
     if (!puedeAvanzar) {
       toast.error('Debe completar todas las secciones antes de finalizar');
       return;
@@ -859,7 +1032,14 @@ export const ComunicacionAuditoriaModule: React.FC<{
       setSeccionActual(5);
       onComunicacionCompletada?.();
     }
-  };
+  }, [puedeAvanzar, useAPI, id, onComunicacionCompletada]);
+
+  // Autoguardar el avance a Seguimiento cuando se cumplan las condiciones (Plan creado y finalizado)
+  useEffect(() => {
+    if (puedeAvanzar && !enSeguimiento && !pasamosASeguimiento) {
+      handleFinalizarComunicacion();
+    }
+  }, [puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion]);
 
   // ====================================
   // RENDER
@@ -1031,51 +1211,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 setInforme={setInformePreliminar}
                 onGenerar={handleGenerarInformePreliminar}
                 onPreview={() => setModalPreview({ tipo: 'preliminar', abierto: true })}
-                onDescargarPDF={async () => {
-                  if (!informePreliminar.generado) return;
-                  const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-                  const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
-                  let hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
-                    codigo: h.codigo,
-                    titulo: h.titulo,
-                    gravedad: h.gravedad,
-                    descripcion: h.descripcion || '',
-                    criterioIncumplido: h.criterioIncumplido,
-                    causas: h.causas,
-                    efectos: h.efectos,
-                    recomendaciones: h.recomendaciones,
-                  }));
-
-                  const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informePreliminar);
-                    
-                  let auditoriaFinal = { ...auditoriaBase };
-
-                  // Generar contenido IA y aplicarlo (enriquece los campos vacíos)
-                  toast.loading('Generando contenido del informe...', { id: 'pdf-gen' });
-                  let informeFinal = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
-                  try {
-                    const contenidoIA = await generarContenidoInformeIA(
-                      auditoriaBase,
-                      hallazgosParaPDF,
-                      (msg) => toast.loading(msg, { id: 'pdf-gen' })
-                    );
-                    auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
-                    // Si la IA generó hallazgos (o usamos los por defecto) y no tenemos en el estado, usarlos
-                    if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
-                      hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
-                    }
-                    // Usar conclusiones generadas si no hay observaciones propias
-                    if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
-                      informeFinal = { ...informeFinal, observaciones: contenidoIA.conclusiones };
-                    }
-                    toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
-                  } catch {
-                    toast.dismiss('pdf-gen');
-                  }
-
-                  await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinal, hallazgosParaPDF);
-                  toast.dismiss('pdf-gen');
-                }}
+                onDescargarPDF={handleDescargarPDFPreliminar}
                 loading={loading}
                 puedeGenerar={!informePreliminar.generado}
                 embedded={embedded}
@@ -1102,6 +1238,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 setInforme={setInformeFinal}
                 onGenerar={handleGenerarInformeFinal}
                 onPreview={() => setModalPreview({ tipo: 'final', abierto: true })}
+                onDescargarPDF={handleDescargarPDFFinal}
               />
             )}
 
@@ -1377,7 +1514,7 @@ const SeccionInformePreliminar: React.FC<{
           <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
           <div>
             <p className="font-bold text-green-900 text-lg">Informe Preliminar ya terminado</p>
-            <p className="text-sm text-green-700">Área auditada notificada. Período de controversias cerrado.</p>
+            <p className="text-sm text-green-700">Área auditada notificada. Período de controversias en curso (5 días hábiles).</p>
           </div>
         </div>
       )}
@@ -1575,7 +1712,7 @@ const SeccionInformePreliminar: React.FC<{
             <div className="flex flex-wrap gap-2">
               <span className="px-2 py-1 bg-green-200 text-green-800 rounded text-sm">{informe.hallazgos} hallazgos incluidos</span>
               <span className="px-2 py-1 bg-green-200 text-green-800 rounded text-sm">Área auditada notificada</span>
-              <span className="px-2 py-1 bg-amber-200 text-amber-800 rounded text-sm">Período de controversias cerrado</span>
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm font-semibold">Período de controversias en curso (5 días hábiles)</span>
             </div>
           </div>
         </CardSIGL>
@@ -1639,7 +1776,7 @@ const SeccionGestionHallazgos: React.FC<{
         <div className="p-6 bg-gradient-to-r from-purple-50 to-blue-50">
           <h3 className="font-semibold text-gray-900 mb-2">Gestión de Hallazgos — Área Auditada</h3>
           <p className="text-sm text-gray-700 mb-4">
-            El área auditada debe responder cada hallazgo dentro del período de 10 días hábiles: aceptarlo o presentar controversia con argumento escrito y documento adjunto obligatorio.
+            El área auditada debe responder cada hallazgo dentro del período de 5 días hábiles: aceptarlo o presentar controversia con argumento escrito y documento adjunto obligatorio.
           </p>
           <div className="flex gap-4 text-sm">
             <div className="flex items-center gap-2">
@@ -1690,7 +1827,7 @@ const SeccionGestionHallazgos: React.FC<{
                     <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-900 leading-snug">
                       <span className="font-medium">Esperando respuesta del área auditada.</span>
-                      {' '}Tiene 10 días hábiles desde la notificación para aceptar el hallazgo o
+                      {' '}Tiene 5 días hábiles desde la notificación para aceptar el hallazgo o
                       presentar controversia con argumentos y documento adjunto desde su Portal Transaccional.
                     </div>
                   </div>
@@ -1698,18 +1835,27 @@ const SeccionGestionHallazgos: React.FC<{
 
                 {enControv && !conDec && (
                   <div className="mt-4">
-                    {hallazgo.argumentosControversia && (
+                    {(hallazgo.observacionesControversia || hallazgo.argumentosControversia) && (
                       <div className="bg-amber-50 border border-amber-200 rounded p-3 mb-3">
-                        <p className="text-sm font-medium text-amber-800">Argumentos:</p>
-                        <p className="text-sm text-amber-900">{hallazgo.argumentosControversia}</p>
+                        <p className="text-sm font-medium text-amber-800">Historial de la controversia:</p>
+                        <p className="text-sm text-amber-900 whitespace-pre-wrap">{hallazgo.observacionesControversia || hallazgo.argumentosControversia}</p>
                         {hallazgo.documentoControversiaNombre && (
                           <p className="text-xs text-amber-700 mt-1">Doc: {hallazgo.documentoControversiaNombre}</p>
                         )}
                       </div>
                     )}
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onDecisionAuditor(hallazgo.id)} disabled={loading}>
-                      Decisión del auditor
-                    </Button>
+                    {hallazgo.controversiaTurno === 'auditado' ? (
+                      <div className="p-3 rounded border border-blue-200 bg-blue-50 flex items-start gap-2">
+                        <Clock className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-blue-900 leading-snug">
+                          <span className="font-medium">Esperando respuesta del área auditada (devolución con observaciones).</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onDecisionAuditor(hallazgo.id)} disabled={loading}>
+                        Decisión del auditor
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -1746,7 +1892,8 @@ const SeccionInformeFinal: React.FC<{
   setInforme: React.Dispatch<React.SetStateAction<InformeFinal>>;
   onGenerar: () => void;
   onPreview: () => void;
-}> = ({ auditoria, hallazgos = [], estadoComunicacion, informe, setInforme, onGenerar, onPreview }) => {
+  onDescargarPDF?: () => void;
+}> = ({ auditoria, hallazgos = [], estadoComunicacion, informe, setInforme, onGenerar, onPreview, onDescargarPDF }) => {
   const hayBloqueo = estadoComunicacion?.hayControversiasPendientes ?? (hallazgos.filter(h => h.estado === 'en-controversia').length > 0);
   const enControversia = hallazgos.filter(h => h.estado === 'en-controversia').length;
   const calcularFechaLimiteEstimada = () => {
@@ -1765,7 +1912,11 @@ const SeccionInformeFinal: React.FC<{
           <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
           <div>
             <p className="font-bold text-green-900 text-lg">Informe Final ya terminado</p>
-            <p className="text-sm text-green-700">Se han consolidado los hallazgos definitivos y plazos del plan.</p>
+            <div className="flex flex-wrap gap-2 mt-1">
+              <span className="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs font-semibold">Informe Final Generado</span>
+              <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded text-xs font-semibold">Período de controversias cerrado</span>
+              <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded text-xs font-semibold">Se han consolidado los hallazgos definitivos</span>
+            </div>
           </div>
         </div>
       )}
@@ -1902,51 +2053,7 @@ const SeccionInformeFinal: React.FC<{
           size="sm"
           disabled={!informe.generado}
           className="font-medium"
-          onClick={async () => {
-            if (!informe.generado) return;
-            const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-            const hallazgosParaPDF = (hallazgos || []).map((h) => ({
-              codigo: h.codigo,
-              titulo: h.titulo,
-              gravedad: h.gravedad,
-              descripcion: h.descripcion || '',
-              criterioIncumplido: h.criterioIncumplido,
-              causas: h.causas,
-              efectos: h.efectos,
-              recomendaciones: h.recomendaciones,
-              estadoFinal: h.estado,
-              decisionAuditor: h.decisionAuditor,
-              fundamentacionTecnica: (h as any).fundamentacionTecnica,
-            }));
-            const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
-            
-            const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informe);
-            let auditoriaFinal = { ...auditoriaBase };
-
-            toast.loading('Generando contenido del informe...', { id: 'pdf-gen-final' });
-            try {
-              const contenidoIA = await generarContenidoInformeIA(
-                auditoriaBase,
-                hallazgosParaPDF,
-                (msg) => toast.loading(msg, { id: 'pdf-gen-final' })
-              );
-              auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
-              
-              // Usar conclusiones generadas si no hay observaciones propias
-              let informeFinalMapeado = { ...informe };
-              if (!informe.observacionesFinales && contenidoIA.conclusiones) {
-                informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: contenidoIA.conclusiones };
-              }
-
-              toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-final' });
-              await exportarPDFInformeAuditoria('final', auditoriaFinal, informeFinalMapeado, hallazgosParaPDF);
-            } catch (err) {
-              console.error('Error IA Final:', err);
-              await exportarPDFInformeAuditoria('final', auditoriaBase, informe, hallazgosParaPDF);
-            } finally {
-              toast.dismiss('pdf-gen-final');
-            }
-          }}
+          onClick={onDescargarPDF}
         >
           <Download className="w-4 h-4 mr-2" />
           Descargar Informe Final
@@ -2622,9 +2729,9 @@ const SeccionInformeCierre: React.FC<{
 const ModalDecisionAuditor: React.FC<{
   hallazgo?: Hallazgo | null;
   onClose: () => void;
-  onConfirmar: (hallazgoId: string, tipo: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => void;
+  onConfirmar: (hallazgoId: string, tipo: 'ratificado' | 'modificado' | 'retirado' | 'devolver', fundamentacion: string) => void;
 }> = ({ hallazgo, onClose, onConfirmar }) => {
-  const [tipo, setTipo] = useState<'ratificado' | 'modificado' | 'retirado'>('ratificado');
+  const [tipo, setTipo] = useState<'ratificado' | 'modificado' | 'retirado' | 'devolver'>('ratificado');
   const [fundamentacion, setFundamentacion] = useState('');
 
   const handleConfirmar = () => {
@@ -2633,38 +2740,103 @@ const ModalDecisionAuditor: React.FC<{
   };
 
   if (!hallazgo) return null;
+
+  const labelFundamentacion = tipo === 'devolver' ? 'Observaciones de la devolución *' : 'Fundamentación técnica *';
+  const placeholderFundamentacion = tipo === 'devolver' ? 'Describe las observaciones o requerimientos para el área auditada...' : 'Describe la fundamentación de la decisión...';
+
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Decisión del auditor</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <p className="text-sm text-gray-600">{hallazgo.titulo || hallazgo.descripcion}</p>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-            La decisión no puede modificarse una vez aplicada.
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]" style={{ zIndex: 9999 }} onClick={onClose}>
+      <div 
+        style={{ maxWidth: '560px', width: '95vw', borderRadius: '1rem', padding: 0, overflow: 'hidden' }} 
+        className="bg-white shadow-2xl border border-slate-200 flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-slate-50 border-b border-slate-100 px-6 py-5 flex flex-col items-start gap-1">
+          <div className="text-xl font-bold text-slate-800 flex items-center gap-3 w-full">
+            <span className="p-2 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
+              <ClipboardCheck className="w-5 h-5" />
+            </span>
+            Decisión sobre Controversia
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de decisión *</label>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-              <option value="ratificado">Ratificado</option>
-              <option value="modificado">Modificado</option>
-              <option value="retirado">Retirado</option>
-            </select>
+          <p className="text-slate-500 text-sm ml-[44px]">Registra la resolución final o devuelve para ajustes.</p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Hallazgo en revisión</span>
+              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200">{hallazgo.codigo || 'S/N'}</span>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed font-medium bg-slate-50 p-3 rounded-lg border border-slate-100 line-clamp-3">
+              {hallazgo.titulo || hallazgo.descripcion}
+            </p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Fundamentación técnica *</label>
-            <TextareaSIGL value={fundamentacion} onChange={(val) => setFundamentacion(val)} rows={4} placeholder="Fundamentación..." />
+
+          <div className="flex items-start gap-3 bg-amber-50/80 border border-amber-200/60 rounded-xl p-4">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800 leading-relaxed">
+              <strong>Atención:</strong> La decisión tomada será notificada al área auditada y <strong>no podrá modificarse</strong> una vez confirmada.
+            </div>
           </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleConfirmar} disabled={!fundamentacion.trim()}>
-              Confirmar decisión
-            </Button>
+
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Resolución de la controversia <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <select 
+                  value={tipo} 
+                  onChange={(e) => setTipo(e.target.value as any)} 
+                  className="w-full pl-4 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 shadow-sm transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 appearance-none outline-none cursor-pointer font-medium"
+                >
+                  <option value="ratificado">Rechazar controversia (Ratificar hallazgo)</option>
+                  <option value="retirado">Aceptar controversia (Retirar hallazgo)</option>
+                  <option value="modificado">Aceptar controversia (Modificar hallazgo)</option>
+                  <option value="devolver">Devolver a área auditada con observaciones</option>
+                </select>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                  <ChevronRight className="w-4 h-4 rotate-90" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{labelFundamentacion}</label>
+              <TextareaSIGL 
+                value={fundamentacion} 
+                onChange={(val) => setFundamentacion(val)} 
+                rows={4} 
+                placeholder={placeholderFundamentacion}
+                className="w-full bg-white border-slate-200 rounded-xl shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-sm p-3 transition-all outline-none resize-none"
+              />
+            </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex justify-end gap-3 items-center">
+          <button 
+            type="button" 
+            className="text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg font-medium px-4 py-2 text-sm transition-all" 
+            onClick={onClose}
+          >
+            Cancelar
+          </button>
+          <button 
+            type="button"
+            className="rounded-lg shadow-sm font-semibold px-6 py-2 text-sm transition-all flex items-center gap-2 hover:opacity-90 active:scale-[0.98]" 
+            style={{
+              backgroundColor: !fundamentacion.trim() ? '#E2E8F0' : '#4F46E5',
+              color: !fundamentacion.trim() ? '#64748B' : '#FFFFFF',
+              cursor: !fundamentacion.trim() ? 'not-allowed' : 'pointer'
+            }}
+            onClick={handleConfirmar} 
+            disabled={!fundamentacion.trim()}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            Confirmar Resolución
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

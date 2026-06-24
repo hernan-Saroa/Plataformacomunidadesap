@@ -10,11 +10,13 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import type { Request } from 'express';
+import { AnyFilesInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'node:fs';
@@ -188,8 +190,63 @@ export class PtaController {
   }
 
   @Post('save')
-  async save(@Body() body: any) {
-    const data = await this.ptaService.savePTA(body || {});
+  @UseInterceptors(
+    // El front envía multipart/form-data cuando hay archivos de resolución de
+    // investigación (campos con nombres variables: inv_proyecto_resolucion,
+    // inv_actividad_N_resolucion). Sin este interceptor, NestJS no parsea el body
+    // multipart y se pierden TODOS los datos del PTA (quedaba en 0 horas).
+    AnyFilesInterceptor({
+      storage: buildDiskStorage('pta-resoluciones', 'pta-resolucion'),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  async save(@Body() body: any, @UploadedFiles() files: any[], @Req() req: Request) {
+    // En multipart el payload real viene como string JSON en el campo "payload".
+    // En application/json, body ya es el objeto completo.
+    let payload: any = body || {};
+    if (typeof payload.payload === 'string') {
+      try {
+        payload = JSON.parse(payload.payload);
+      } catch {
+        // Si no se puede parsear, conservar el body tal cual para no romper el flujo.
+      }
+    }
+
+    // Mapear los archivos subidos de vuelta a su actividad por nombre de campo.
+    if (Array.isArray(files) && files.length > 0) {
+      for (const f of files) {
+        const url = `/uploads/pta-resoluciones/${f.filename}`;
+        if (f.fieldname === 'inv_proyecto_resolucion') {
+          payload.investigacion_proyecto = {
+            ...(payload.investigacion_proyecto || {}),
+            resolucion_archivo_url: url,
+            resolucion_nombre: f.originalname,
+          };
+        } else {
+          const m = /^inv_actividad_(\d+)_resolucion$/.exec(f.fieldname || '');
+          if (m && Array.isArray(payload.investigacion_actividades)) {
+            const idx = Number(m[1]);
+            if (payload.investigacion_actividades[idx]) {
+              payload.investigacion_actividades[idx] = {
+                ...payload.investigacion_actividades[idx],
+                resolucion_archivo_url: url,
+                resolucion_nombre: f.originalname,
+              };
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: si el front no envió docente_id (userPersonId vacío en el portal),
+    // usar el usuario autenticado que el gateway inyecta en x-user-id. fetchAuthDocenteInfo
+    // acepta tanto id_person/id_tercero como id_user como clave de búsqueda.
+    const hasDocente = payload.docente_id || payload.docenteId || payload?.docente?.id || payload?.docente?.personaId;
+    if (!hasDocente && !payload._adminEdit) {
+      const headerUserId = (req.headers['x-user-id'] as string) || '';
+      if (headerUserId) payload.docente_id = headerUserId;
+    }
+    const data = await this.ptaService.savePTA(payload);
     return { success: true, data };
   }
 
@@ -288,10 +345,12 @@ export class PtaController {
   // Firma electrónica OTP (legacy)
   // ─────────────────────────────
   @Post('firma-docente/request-code')
-  async requestFirmaDocenteCode(@Body() body: any) {
+  async requestFirmaDocenteCode(@Body() body: any, @Req() req: Request) {
+    // Fallback al usuario autenticado (x-user-id) cuando el front no envía docenteId.
+    const docenteId = body?.docenteId || (req.headers['x-user-id'] as string) || '';
     const data = await this.ptaService.requestFirmaDocenteOtp({
       ptaId: body?.ptaId,
-      docenteId: body?.docenteId,
+      docenteId,
       periodo: body?.periodo,
       etapaLabel: body?.etapaLabel,
     });

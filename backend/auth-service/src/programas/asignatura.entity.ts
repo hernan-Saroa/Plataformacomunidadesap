@@ -31,10 +31,13 @@ export class Asignatura {
   modalidad?: string;
 
   @Column({ name: 'horas_fijas_pta', type: 'int', nullable: true })
-  horasFijasPta?: number;
+  horasFijasPta: number | null;
+
+  @Column({ name: 'tipo_asignatura', type: 'varchar', length: 30, default: 'teorica' })
+  tipoAsignatura: string;
 
   @Column({ name: 'tipo_excepcion', type: 'varchar', length: 40, nullable: true })
-  tipoExcepcion?: string;
+  tipoExcepcion: string | null;
 
   @Column({ type: 'boolean', default: true })
   activa: boolean;
@@ -58,4 +61,4 @@ export class Asignatura {
   @ManyToOne(() => ProgramaAcademico, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'id_programa' })
   programa?: ProgramaAcademico;
-}
+}

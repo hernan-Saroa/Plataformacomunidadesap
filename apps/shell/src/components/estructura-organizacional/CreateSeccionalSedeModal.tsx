@@ -186,8 +186,8 @@ export function CreateSeccionalSedeModal({
       } else if (seccionalForm.nomSeccional.length > 100) {
         newErrors.nomSeccional = 'El nombre no puede exceder 100 caracteres';
       }
-      if (seccionalForm.codSeccional && seccionalForm.codSeccional.length > 5) {
-        newErrors.codSeccional = 'El codigo no puede exceder 5 caracteres';
+      if (seccionalForm.codSeccional && seccionalForm.codSeccional.length > 20) {
+        newErrors.codSeccional = 'El codigo no puede exceder 20 caracteres';
       }
     } else {
       if (!sedeForm.nomSede.trim()) {
@@ -195,8 +195,8 @@ export function CreateSeccionalSedeModal({
       } else if (sedeForm.nomSede.length > 50) {
         newErrors.nomSede = 'El nombre no puede exceder 50 caracteres';
       }
-      if (sedeForm.codSede && sedeForm.codSede.length > 5) {
-        newErrors.codSede = 'El codigo no puede exceder 5 caracteres';
+      if (sedeForm.codSede && sedeForm.codSede.length > 20) {
+        newErrors.codSede = 'El codigo no puede exceder 20 caracteres';
       }
       if (!sedeForm.idSeccional) {
         newErrors.idSeccional = 'Debe seleccionar una seccional';
@@ -234,7 +234,11 @@ export function CreateSeccionalSedeModal({
         const data: CreateSeccionalData = {
           codSeccional: seccionalForm.codSeccional.trim() || undefined,
           nomSeccional: seccionalForm.nomSeccional.trim(),
-          idUbiSeccional: seccionalForm.idUbiSeccional,
+          // Coerción a número: el id_ubi_seccional (bigint) llega como string del
+          // backend y @IsNumber() lo rechazaría al guardar.
+          idUbiSeccional: seccionalForm.idUbiSeccional
+            ? Number(seccionalForm.idUbiSeccional)
+            : undefined,
         };
 
         if (isEditMode) {
@@ -346,7 +350,7 @@ export function CreateSeccionalSedeModal({
                           value={seccionalForm.codSeccional}
                           onChange={(e) => setSeccionalForm(prev => ({ ...prev, codSeccional: e.target.value.toUpperCase() }))}
                           placeholder="SEC01"
-                          maxLength={5}
+                          maxLength={20}
                           className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
                         />
                       </div>
@@ -460,7 +464,7 @@ export function CreateSeccionalSedeModal({
                               value={sedeForm.codSede}
                               onChange={(e) => setSedeForm(prev => ({ ...prev, codSede: e.target.value.toUpperCase() }))}
                               placeholder="SD001"
-                              maxLength={5}
+                              maxLength={20}
                               className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
                             />
                           </div>

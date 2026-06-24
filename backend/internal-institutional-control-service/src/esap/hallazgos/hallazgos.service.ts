@@ -134,6 +134,7 @@ export class HallazgosService {
     tipoEvento: TipoEvento,
     accion: string,
     descripcion: string,
+    usuarioId?: string,
   ): Promise<void> {
     if (!auditoriaId) return;
     
@@ -142,12 +143,16 @@ export class HallazgosService {
       const fecha = ahora.toISOString().split('T')[0];
       const hora = ahora.toTimeString().split(' ')[0];
       
+      // Sanitizar usuarioId: la columna es UUID, el JWT puede enviar un número
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const sanitizedUserId = usuarioId && uuidRegex.test(String(usuarioId)) ? String(usuarioId) : null;
+      
       const historial = new HistorialAuditoria();
       historial.auditoriaId = auditoriaId;
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      historial.usuarioId = null; // TODO: UUID de auth.personas desde contexto de autenticación
+      historial.usuarioId = sanitizedUserId;
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.cambios = [];
@@ -234,23 +239,20 @@ export class HallazgosService {
   /**
    * Genera un código único para el hallazgo en formato HAL-YYYY-###
    */
-  private async generarCodigo(): Promise<string> {
+  private async generarCodigo(intentos = 0): Promise<string> {
     const year = new Date().getFullYear();
     const prefix = `HAL-${year}-`;
 
-    const ultimo = await this.hallazgoRepository
-      .createQueryBuilder('hallazgo')
-      .where('hallazgo.codigo LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy('hallazgo.codigo', 'DESC')
-      .getOne();
+    // Usar raw query para obtener el número máximo de forma confiable
+    const result = await this.hallazgoRepository.query(
+      `SELECT MAX(CAST(SUBSTRING(codigo FROM 'HAL-${year}-(\\d+)') AS INTEGER)) AS max_num 
+       FROM control_interno.hallazgo 
+       WHERE codigo LIKE $1`,
+      [`${prefix}%`],
+    );
 
-    let siguiente = 1;
-    if (ultimo?.codigo) {
-      const numero = parseInt(ultimo.codigo.split('-')[2], 10);
-      if (!isNaN(numero)) {
-        siguiente = numero + 1;
-      }
-    }
+    const maxNum = result?.[0]?.max_num || 0;
+    const siguiente = maxNum + 1 + intentos; // Sumar intentos para saltar duplicados
 
     return `${prefix}${String(siguiente).padStart(3, '0')}`;
   }
@@ -332,52 +334,64 @@ export class HallazgosService {
     return hallazgos.map(h => this.serializeHallazgo(h));
   }
 
-  async create(createDto: CreateHallazgoDto): Promise<Hallazgo> {
-    const codigo = await this.generarCodigo();
+  async create(createDto: CreateHallazgoDto, usuarioId?: string, _retryCount = 0): Promise<Hallazgo> {
+    try {
+      const codigo = await this.generarCodigo(_retryCount);
 
-    // Intentar enlazar la auditoría por ID o por código
-    let auditoriaId: string | null = createDto.auditoriaId || null;
-    if (!auditoriaId && createDto.auditoria) {
-      const auditoria = await this.auditoriaRepository.findOne({
-        where: { codigo: createDto.auditoria },
+      // Intentar enlazar la auditoría por ID o por código
+      let auditoriaId: string | null = createDto.auditoriaId || null;
+      if (!auditoriaId && createDto.auditoria) {
+        const auditoria = await this.auditoriaRepository.findOne({
+          where: { codigo: createDto.auditoria },
+        });
+        auditoriaId = auditoria?.id ?? null;
+      }
+
+      const hallazgo = this.hallazgoRepository.create({
+        ...createDto,
+        codigo,
+        titulo: createDto.titulo || createDto.descripcion?.split('.')[0] || 'Hallazgo sin título',
+        auditoriaId,
+        categoria: createDto.categoria || HallazgoCategoria.BORRADOR,
+        estado: createDto.estado || HallazgoEstado.BORRADOR,
+        normativaRelacionada: createDto.normativaRelacionada || [],
+        evidencias: createDto.evidencias || [],
+        recomendaciones: createDto.recomendaciones || [],
+        // Parsear fechas sin conversión de zona horaria
+        fechaDeteccion: createDto.fechaDeteccion ? this.parseDateOnly(createDto.fechaDeteccion) : new Date(),
+        fechaNotificacion: createDto.fechaNotificacion ? this.parseDateOnly(createDto.fechaNotificacion) : undefined,
+        fechaLimiteCorreccion: createDto.fechaLimiteCorreccion ? this.parseDateOnly(createDto.fechaLimiteCorreccion) : undefined,
       });
-      auditoriaId = auditoria?.id ?? null;
+
+      const saved = await this.hallazgoRepository.save(hallazgo);
+      await this.ajustarContadorAuditoria(saved.auditoriaId, 1);
+
+      // ✅ Registrar en historial de auditoría
+      await this.registrarHistorial(
+        saved.auditoriaId,
+        TipoEvento.HALLAZGO,
+        'Hallazgo creado',
+        `Se creó el hallazgo ${saved.codigo} - ${saved.titulo}`,
+        usuarioId,
+      );
+
+      // El hallazgo queda en BORRADOR: no se notifica al auditado (aún no es visible en el portal).
+      // El área auditada recibe aviso al generar el informe preliminar (estado NOTIFICADO).
+
+      return this.findOne(saved.id);
+    } catch (err) {
+      // Retry on unique constraint violations (duplicate codigo)
+      if (err.code === '23505' && _retryCount < 3) {
+        console.warn(`[HallazgosService] Código duplicado, reintentando (intento ${_retryCount + 1})...`);
+        return this.create(createDto, usuarioId, _retryCount + 1);
+      }
+      console.error('[HallazgosService] ❌ Error creando hallazgo:', err.message || err);
+      console.error('[HallazgosService] 📋 DTO recibido:', JSON.stringify(createDto, null, 2));
+      throw err;
     }
-
-    const hallazgo = this.hallazgoRepository.create({
-      ...createDto,
-      codigo,
-      titulo: createDto.titulo || createDto.descripcion?.split('.')[0] || 'Hallazgo sin título',
-      auditoriaId,
-      categoria: createDto.categoria || HallazgoCategoria.BORRADOR,
-      estado: createDto.estado || HallazgoEstado.BORRADOR,
-      normativaRelacionada: createDto.normativaRelacionada || [],
-      evidencias: createDto.evidencias || [],
-      recomendaciones: createDto.recomendaciones || [],
-      // Parsear fechas sin conversión de zona horaria
-      fechaDeteccion: createDto.fechaDeteccion ? this.parseDateOnly(createDto.fechaDeteccion) : new Date(),
-      fechaNotificacion: createDto.fechaNotificacion ? this.parseDateOnly(createDto.fechaNotificacion) : undefined,
-      fechaLimiteCorreccion: createDto.fechaLimiteCorreccion ? this.parseDateOnly(createDto.fechaLimiteCorreccion) : undefined,
-    });
-
-    const saved = await this.hallazgoRepository.save(hallazgo);
-    await this.ajustarContadorAuditoria(saved.auditoriaId, 1);
-
-    // ✅ Registrar en historial de auditoría
-    await this.registrarHistorial(
-      saved.auditoriaId,
-      TipoEvento.HALLAZGO,
-      'Hallazgo creado',
-      `Se creó el hallazgo ${saved.codigo} - ${saved.titulo}`,
-    );
-
-    // El hallazgo queda en BORRADOR: no se notifica al auditado (aún no es visible en el portal).
-    // El área auditada recibe aviso al generar el informe preliminar (estado NOTIFICADO).
-
-    return this.findOne(saved.id);
   }
 
-  async update(id: string, updateDto: UpdateHallazgoDto): Promise<Hallazgo> {
+  async update(id: string, updateDto: UpdateHallazgoDto, usuarioId?: string): Promise<Hallazgo> {
     const hallazgo = await this.findOne(id);
     const auditoriaAnterior = hallazgo.auditoriaId;
 
@@ -468,12 +482,13 @@ export class HallazgosService {
       TipoEvento.HALLAZGO,
       'Hallazgo actualizado',
       `Se actualizó el hallazgo ${actualizado.codigo} - ${actualizado.titulo}`,
+      usuarioId,
     );
 
     return this.findOne(actualizado.id);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, usuarioId?: string): Promise<void> {
     const hallazgo = await this.findOne(id);
     const auditoriaId = hallazgo.auditoriaId;
     const codigo = hallazgo.codigo;
@@ -488,6 +503,7 @@ export class HallazgosService {
       TipoEvento.ELIMINACION,
       'Hallazgo eliminado',
       `Se eliminó el hallazgo ${codigo} - ${titulo}`,
+      usuarioId,
     );
   }
 
@@ -504,22 +520,28 @@ export class HallazgosService {
   /**
    * Área auditada acepta el hallazgo (estado → ACEPTADO)
    */
-  async aceptar(id: string): Promise<Hallazgo> {
+  async aceptar(id: string, usuarioId?: string): Promise<Hallazgo> {
     const hallazgo = await this.findOne(id);
-    if (hallazgo.estado !== HallazgoEstado.NOTIFICADO) {
+    
+    const isFirstTime = hallazgo.estado === HallazgoEstado.NOTIFICADO;
+    const isEnControversiaTurnoAuditado = hallazgo.estado === HallazgoEstado.EN_CONTROVERSIA && (hallazgo as any).controversiaTurno === 'auditado';
+
+    if (!isFirstTime && !isEnControversiaTurnoAuditado) {
       throw new BadRequestException(
-        `Solo se puede aceptar un hallazgo en estado "notificado". Estado actual: ${hallazgo.estado}`,
+        `Solo se puede aceptar un hallazgo en estado "notificado" o en controversia cuando es su turno. Estado actual: ${hallazgo.estado}`,
       );
     }
 
     hallazgo.estado = HallazgoEstado.ACEPTADO;
+    (hallazgo as any).controversiaTurno = null; // Cierra la controversia
     const actualizado = await this.hallazgoRepository.save(hallazgo);
 
     await this.registrarHistorial(
       hallazgo.auditoriaId,
       TipoEvento.HALLAZGO,
-      'Hallazgo aceptado',
-      `El área auditada aceptó el hallazgo ${hallazgo.codigo}`,
+      'Hallazgo/controversia aceptada',
+      `El área auditada aceptó el hallazgo/controversia del hallazgo ${hallazgo.codigo}`,
+      usuarioId,
     );
 
     try {
@@ -539,11 +561,16 @@ export class HallazgosService {
     argumentos: string,
     documentoId: string,
     documentoNombre: string,
+    usuarioId?: string,
   ): Promise<Hallazgo> {
     const hallazgo = await this.findOne(id);
-    if (hallazgo.estado !== HallazgoEstado.NOTIFICADO) {
+    
+    const isFirstTime = hallazgo.estado === HallazgoEstado.NOTIFICADO;
+    const isEnControversiaTurnoAuditado = hallazgo.estado === HallazgoEstado.EN_CONTROVERSIA && (hallazgo as any).controversiaTurno === 'auditado';
+
+    if (!isFirstTime && !isEnControversiaTurnoAuditado) {
       throw new BadRequestException(
-        `Solo se puede presentar controversia sobre un hallazgo en estado "notificado". Estado actual: ${hallazgo.estado}`,
+        `Solo se puede presentar controversia sobre un hallazgo en estado "notificado" o cuando es el turno del auditado. Estado actual: ${hallazgo.estado}`,
       );
     }
 
@@ -551,19 +578,45 @@ export class HallazgosService {
       throw new BadRequestException('Los argumentos técnicos son obligatorios');
     }
 
-    (hallazgo as any).argumentosControversia = argumentos.trim();
-    (hallazgo as any).observacionesControversia = argumentos.trim(); // Compatibilidad
+    const hoyStr = new Date().toLocaleDateString('es-CO');
+    const nuevosArgumentos = argumentos.trim();
+    
+    // Append to observations history if it's a reply
+    if (!isFirstTime) {
+      (hallazgo as any).observacionesControversia = (hallazgo as any).observacionesControversia 
+        ? `${(hallazgo as any).observacionesControversia}\n\n[Auditado - ${hoyStr}]: ${nuevosArgumentos}`
+        : `[Auditado - ${hoyStr}]: ${nuevosArgumentos}`;
+    } else {
+      (hallazgo as any).observacionesControversia = nuevosArgumentos;
+    }
+
+    (hallazgo as any).argumentosControversia = nuevosArgumentos; // Último argumento
     (hallazgo as any).documentoControversiaUrl = documentoId; // ID para URL de descarga
     (hallazgo as any).documentoControversiaNombre = documentoNombre;
+    (hallazgo as any).controversiaTurno = 'auditor';
     hallazgo.estado = HallazgoEstado.EN_CONTROVERSIA;
 
     const actualizado = await this.hallazgoRepository.save(hallazgo);
 
+    // Reset response time of the audit (fechaInicioComunicacion = today)
+    if (hallazgo.auditoriaId) {
+      try {
+        const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+        if (auditoria) {
+          auditoria.fechaInicioComunicacion = new Date();
+          await this.auditoriaRepository.save(auditoria);
+        }
+      } catch (err: any) {
+        console.error('[HallazgosService] Error reseteando fechaInicioComunicacion en la auditoria:', err.message);
+      }
+    }
+
     await this.registrarHistorial(
       hallazgo.auditoriaId,
       TipoEvento.HALLAZGO,
-      'Controversia presentada',
-      `El área auditada presentó controversia sobre el hallazgo ${hallazgo.codigo}`,
+      'Controversia presentada/devuelta con observaciones',
+      `El área auditada presentó/devolvió controversia sobre el hallazgo ${hallazgo.codigo}`,
+      usuarioId,
     );
 
     try {
@@ -576,13 +629,14 @@ export class HallazgosService {
   }
 
   /**
-   * Auditor toma decisión sobre controversia: ratificado | modificado | retirado
+   * Auditor toma decisión sobre controversia: ratificado | modificado | retirado | devolver
    */
   async decisionAuditor(
     id: string,
-    tipoDecision: 'ratificado' | 'modificado' | 'retirado',
+    tipoDecision: 'ratificado' | 'modificado' | 'retirado' | 'devolver',
     fundamentacionTecnica: string,
     auditorId?: number,
+    usuarioId?: string,
   ): Promise<Hallazgo> {
     const hallazgo = await this.findOne(id);
     if (hallazgo.estado !== HallazgoEstado.EN_CONTROVERSIA) {
@@ -592,60 +646,87 @@ export class HallazgosService {
     }
 
     if (!fundamentacionTecnica || !fundamentacionTecnica.trim()) {
-      throw new BadRequestException('La fundamentación técnica es obligatoria');
+      throw new BadRequestException('La fundamentación técnica/observación es obligatoria');
     }
 
-    const estadoMap = {
-      ratificado: HallazgoEstado.RATIFICADO,
-      modificado: HallazgoEstado.MODIFICADO,
-      retirado: HallazgoEstado.RETIRADO,
-    };
+    const hoyStr = new Date().toLocaleDateString('es-CO');
+    const observaciones = fundamentacionTecnica.trim();
 
-    (hallazgo as any).decisionAuditor = tipoDecision;
-    (hallazgo as any).fundamentacionTecnica = fundamentacionTecnica.trim();
-    (hallazgo as any).fechaDecision = new Date();
-    (hallazgo as any).auditorDecisionId = auditorId ?? 1;
-    hallazgo.estado = estadoMap[tipoDecision];
+    if (tipoDecision === 'devolver') {
+      (hallazgo as any).controversiaTurno = 'auditado';
+      (hallazgo as any).fundamentacionTecnica = observaciones;
+      (hallazgo as any).observacionesControversia = (hallazgo as any).observacionesControversia
+        ? `${(hallazgo as any).observacionesControversia}\n\n[Auditor - ${hoyStr}]: ${observaciones}`
+        : `[Auditor - ${hoyStr}]: ${observaciones}`;
+      
+      // Reset response time of the audit (fechaInicioComunicacion = today)
+      if (hallazgo.auditoriaId) {
+        try {
+          const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+          if (auditoria) {
+            auditoria.fechaInicioComunicacion = new Date();
+            await this.auditoriaRepository.save(auditoria);
+          }
+        } catch (err: any) {
+          console.error('[HallazgosService] Error reseteando fechaInicioComunicacion en la auditoria:', err.message);
+        }
+      }
+    } else {
+      const estadoMap = {
+        ratificado: HallazgoEstado.RATIFICADO,
+        modificado: HallazgoEstado.MODIFICADO,
+        retirado: HallazgoEstado.RETIRADO,
+      };
+
+      (hallazgo as any).decisionAuditor = tipoDecision;
+      (hallazgo as any).fundamentacionTecnica = observaciones;
+      (hallazgo as any).fechaDecision = new Date();
+      (hallazgo as any).auditorDecisionId = auditorId ?? 1;
+      (hallazgo as any).controversiaTurno = null; // Cierra la controversia
+      hallazgo.estado = estadoMap[tipoDecision];
+    }
 
     const actualizado = await this.hallazgoRepository.save(hallazgo);
 
     await this.registrarHistorial(
       hallazgo.auditoriaId,
       TipoEvento.HALLAZGO,
-      `Decisión del auditor: ${tipoDecision}`,
-      `El auditor ${tipoDecision} el hallazgo ${hallazgo.codigo}. Fundamentación: ${fundamentacionTecnica.substring(0, 100)}...`,
+      tipoDecision === 'devolver' ? 'Controversia devuelta con observaciones' : `Decisión del auditor: ${tipoDecision}`,
+      tipoDecision === 'devolver'
+        ? `El auditor devolvió el hallazgo ${hallazgo.codigo} con observaciones: ${observaciones.substring(0, 100)}...`
+        : `El auditor ${tipoDecision} el hallazgo ${hallazgo.codigo}. Fundamentación: ${observaciones.substring(0, 100)}...`,
+      usuarioId,
     );
 
     try {
       if (hallazgo.auditoriaId) {
-      const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
-      if (auditoria?.responsableAreaEmail) {
-        const etiquetaDecision =
-          tipoDecision === 'ratificado'
-            ? 'ratificado (se mantiene el hallazgo)'
-            : tipoDecision === 'modificado'
-              ? 'modificado'
-              : 'retirado';
-        await this.notificacionesService.notificarAuditadoPortal({
-          responsableAreaEmail: auditoria.responsableAreaEmail,
-          responsableAreaNombre: auditoria.responsableAreaNombre,
-          auditoriaId: auditoria.id,
-          auditoriaCodigo: auditoria.codigo,
-          auditoriaNombre: auditoria.nombre,
-          tipoNotificacion: TipoNotificacion.OTRO,
-          titulo: `Decisión sobre su controversia — ${hallazgo.codigo}`,
-          mensaje:
-            `Usted presentó controversia sobre el hallazgo "${hallazgo.titulo || hallazgo.codigo}". ` +
-            `La OCI ha ${etiquetaDecision} el hallazgo en la auditoría ${auditoria.codigo}. ` +
-            `Revise la fundamentación en el portal.`,
-          prioridad: PrioridadNotificacion.ALTA,
-          metadata: {
-            hallazgoId: hallazgo.id,
-            decision: tipoDecision,
-            quienPresentoControversia: 'area_auditada',
-          },
-        });
-      }
+        const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+        if (auditoria?.responsableAreaEmail) {
+          const tituloNotif = tipoDecision === 'devolver'
+            ? `Observaciones sobre su controversia — ${hallazgo.codigo}`
+            : `Decisión sobre su controversia — ${hallazgo.codigo}`;
+          
+          const mensajeNotif = tipoDecision === 'devolver'
+            ? `El auditor ha devuelto con observaciones el hallazgo "${hallazgo.titulo || hallazgo.codigo}" en la auditoría ${auditoria.codigo}. Revise en el portal y responda.`
+            : `La OCI ha ${tipoDecision === 'ratificado' ? 'ratificado' : tipoDecision === 'modificado' ? 'modificado' : 'retirado'} el hallazgo "${hallazgo.titulo || hallazgo.codigo}" en la auditoría ${auditoria.codigo}.`;
+
+          await this.notificacionesService.notificarAuditadoPortal({
+            responsableAreaEmail: auditoria.responsableAreaEmail,
+            responsableAreaNombre: auditoria.responsableAreaNombre,
+            auditoriaId: auditoria.id,
+            auditoriaCodigo: auditoria.codigo,
+            auditoriaNombre: auditoria.nombre,
+            tipoNotificacion: TipoNotificacion.OTRO,
+            titulo: tituloNotif,
+            mensaje: mensajeNotif,
+            prioridad: PrioridadNotificacion.ALTA,
+            metadata: {
+              hallazgoId: hallazgo.id,
+              decision: tipoDecision,
+              quienPresentoControversia: 'auditor',
+            },
+          });
+        }
       }
     } catch (notifErr) {
       console.error('[HallazgosService] Error notificando decisión al auditado:', notifErr.message);
@@ -671,7 +752,7 @@ export class HallazgosService {
    * Notifica hallazgos (actualiza BORRADOR → NOTIFICADO) al generar informe preliminar.
    * Solo los que están en BORRADOR pasan a NOTIFICADO. Los ya en aceptado/ratificado/modificado/retirado no se tocan.
    */
-  async notificarHallazgosAuditoria(auditoriaId: string): Promise<{ count: number; total: number }> {
+  async notificarHallazgosAuditoria(auditoriaId: string, usuarioId?: string): Promise<{ count: number; total: number }> {
     const [pendientes, todos] = await Promise.all([
       this.hallazgoRepository.find({ where: { auditoriaId, estado: HallazgoEstado.BORRADOR } }),
       this.hallazgoRepository.count({ where: { auditoriaId } }),
@@ -687,6 +768,7 @@ export class HallazgosService {
       TipoEvento.HALLAZGO,
       'Informe preliminar generado',
       `${pendientes.length} hallazgos notificados al área auditada`,
+      usuarioId,
     );
 
     try {
@@ -695,7 +777,7 @@ export class HallazgosService {
         const n = pendientes.length;
         const mensajeHallazgos =
           n > 0
-            ? `Se notificaron ${n} hallazgo(s). Tiene 10 días hábiles para aceptar cada uno o presentar controversia con documento adjunto.`
+            ? `Se notificaron ${n} hallazgo(s). Tiene 5 días hábiles para aceptar cada uno o presentar controversia con documento adjunto.`
             : todos > 0
               ? `Los hallazgos de esta auditoría ya estaban en trámite. Revise el estado en el portal.`
               : `No hay hallazgos registrados aún; el área será informada cuando se publiquen.`;
@@ -714,11 +796,11 @@ export class HallazgosService {
           metadata: {
             hallazgosNotificados: n,
             totalHallazgos: todos,
-            plazoDiasHabiles: 10,
+            plazoDiasHabiles: 5,
           },
         });
       }
-    } catch (notifErr) {
+    } catch (notifErr: any) {
       console.error('[HallazgosService] Error notificando informe preliminar al auditado:', notifErr.message);
     }
 

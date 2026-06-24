@@ -227,6 +227,13 @@ interface FormularioNuevaAuditoriaProps {
   loading?: boolean;
 }
 
+// Helper to parse YYYY-MM-DD local dates avoiding UTC timezone shift
+const parseLocalDate = (dateString: string) => {
+  if (!dateString) return new Date();
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditoriaExistente, loading: externalLoading }: FormularioNuevaAuditoriaProps) {
   const [paso, setPaso] = useState(1);
   const [errores, setErrores] = useState<Record<string, string>>({});
@@ -298,7 +305,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   // Auto-calcular duración y fecha fin cuando cambia la fecha de inicio (PROMPT: 4-4-5 semanas)
   useEffect(() => {
     if (fechaInicio) {
-      const inicio = new Date(fechaInicio);
+      const inicio = parseLocalDate(fechaInicio);
       // El ciclo estándar es de 13 semanas (4 + 4 + 5)
       const DURACION_TOTAL_SEMANAS = 13;
       const fin = new Date(inicio);
@@ -315,8 +322,8 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   // Si el usuario cambia manualmente la fecha de fin, recalculamos la duración
   useEffect(() => {
     if (fechaInicio && fechaFin) {
-      const inicio = new Date(fechaInicio);
-      const fin = new Date(fechaFin);
+      const inicio = parseLocalDate(fechaInicio);
+      const fin = parseLocalDate(fechaFin);
       const diferencia = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
       setDuracionDias(Math.max(1, diferencia));
     }
@@ -487,10 +494,9 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
     if (!fechaFin) nuevosErrores.fechaFin = 'La fecha de fin es obligatoria';
     
     if (fechaInicio && fechaFin) {
-      const inicio = new Date(fechaInicio);
-      const fin = new Date(fechaFin);
-      
-      if (fin <= inicio) {
+      const inicio = parseLocalDate(fechaInicio);
+      const fin = parseLocalDate(fechaFin);
+      if (fin < inicio) {
         nuevosErrores.fechas = 'La fecha de fin debe ser posterior a la de inicio';
       }
       
@@ -669,10 +675,10 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
       return;
     }
 
-    // 13. Persistir etapas calculadas (OCI 4-4-5)
-    const inicioDate = new Date(fechaInicio);
+    // Construimos fechas completas para guardar en el backend
+    const inicioDate = parseLocalDate(fechaInicio);
     
-    // Etapa 1: Planeación (4 semanas)
+    // Planeación (4 semanas)
     const finPlaneacion = new Date(inicioDate);
     finPlaneacion.setDate(finPlaneacion.getDate() + 27);
     
@@ -1258,6 +1264,9 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                             );
                           })}
                         </div>
+                      )}
+                      {mostrarSugerencias && (
+                        <div className="h-64 pointer-events-none" />
                       )}
                     </div>
                   )}

@@ -20,7 +20,7 @@ interface ModalAgregarHallazgoRapidoProps {
 interface HallazgoFormData {
   titulo: string;
   descripcion: string;
-  categoria: 'critico' | 'controversia' | 'borrador';
+  categoria: 'borrador' | 'leve' | 'moderado' | 'grave' | 'critico';
   area: string;
   criterioIncumplido: string;
   causa: string;
@@ -30,7 +30,9 @@ interface HallazgoFormData {
 
 const CATEGORIAS = [
   { value: 'borrador', label: 'Por clasificar', color: 'gray' },
-  { value: 'controversia', label: 'En Controversia', color: 'yellow' },
+  { value: 'leve', label: 'Leve', color: 'blue' },
+  { value: 'moderado', label: 'Moderado', color: 'yellow' },
+  { value: 'grave', label: 'Grave', color: 'orange' },
   { value: 'critico', label: 'Crítico', color: 'red' },
 ];
 

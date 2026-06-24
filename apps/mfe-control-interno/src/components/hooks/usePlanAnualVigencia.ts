@@ -107,15 +107,54 @@ export function usePlanAnualVigencia() {
       }
       const resp = await planAnualApi.getAll({ light: true, skipCache: forzarRecarga });
       if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
-        let lista = resp.data
+        let datosFiltrados = resp.data;
+
+        // Un usuario comité (Aprobador PAI) solo ve planes donde es miembro
+        // del equipo de aprobación (equipo_aprobacion / equipoAprobacion).
+        if (esSoloComite) {
+          try {
+            const authCache = (window as any).__esap_auth_cache;
+            const userEmail = (
+              authCache?.person?.email ||
+              authCache?.email ||
+              authCache?.dir_email ||
+              authCache?.username ||
+              ''
+            ).toLowerCase().trim();
+            const userId = String(
+              authCache?.person?.id ||
+              authCache?.person?.idPerson ||
+              authCache?.person?.id_person ||
+              authCache?.idPerson ||
+              authCache?.id_person ||
+              authCache?.id ||
+              ''
+            ).toLowerCase();
+
+            datosFiltrados = resp.data.filter((plan: PlanAnual) => {
+              const equipo: any[] = (plan as any).equipoAprobacion
+                || (plan as any).equipo_aprobacion
+                || [];
+              if (!Array.isArray(equipo) || equipo.length === 0) return false;
+              return equipo.some((m: any) => {
+                const mEmail = (m.email || '').toLowerCase().trim();
+                const mId = String(m.id || m.idPerson || m.idTercero || '').toLowerCase();
+                const mIdPerson = String(m.idPerson || m.idTercero || m.id || '').toLowerCase();
+                return (userEmail && mEmail === userEmail)
+                  || (userId && (mId === userId || mIdPerson === userId));
+              });
+            });
+          } catch (filterErr) {
+            console.warn('[usePlanAnualVigencia] Error filtrando por equipo_aprobacion:', filterErr);
+            // Fallback: mostrar todos los planes en estados razonables
+            datosFiltrados = resp.data;
+          }
+        }
+
+        let lista = datosFiltrados
           .map(mapPlanBackend)
           .sort((a, b) => b.vigencia - a.vigencia);
 
-        // Bugfix: un usuario que solo firma en comité no debe “navegar” por borradores/otros estados.
-        // Evita confusión y accesos indebidos en módulos que usan la vigencia activa como contexto global.
-        if (esSoloComite) {
-          lista = lista.filter((p) => p.estado === 'EN_REVISION');
-        }
         setPlanes(lista);
 
         const storedNow = leerPlanAnualActivoStorage();

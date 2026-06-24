@@ -103,7 +103,7 @@ async function seed() {
       email: 'admin@esap.edu.co',
       phone: '1234567890',
       username: 'admin',
-      password: '123456',
+      password: 'Esap2026*',
       roles: ['ADMIN'],
     },
     {
@@ -113,7 +113,7 @@ async function seed() {
       email: 'estudiante@esap.edu.co',
       phone: '1234567891',
       username: 'estudiante',
-      password: '123456',
+      password: 'Esap2026*',
       roles: ['USER'],
     },
     {
@@ -123,7 +123,7 @@ async function seed() {
       email: 'planta@esap.edu.co',
       phone: '1234567892',
       username: 'planta',
-      password: '123456',
+      password: 'Esap2026*',
       roles: ['USER'],
     },
     {
@@ -133,7 +133,7 @@ async function seed() {
       email: 'catedra@esap.edu.co',
       phone: '1234567893',
       username: 'catedra',
-      password: '123456',
+      password: 'Esap2026*',
       roles: ['USER'],
     },
     {
@@ -143,7 +143,7 @@ async function seed() {
       email: 'cerlaboral@esap.edu.co',
       phone: '1234567894',
       username: 'cerlaboral',
-      password: '123456',
+      password: 'Esap2026*',
       roles: ['USER'],
     },
   ];

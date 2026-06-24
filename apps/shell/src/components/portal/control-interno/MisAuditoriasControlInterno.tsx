@@ -10,7 +10,7 @@
  *
  *   1. NOTIFICACIÓN   El auditor genera el Informe Preliminar.
  *                     -> Llegan los hallazgos al portal (estado 'notificado').
- *                     -> Plazo: 10 días hábiles para responder cada hallazgo.
+ *                     -> Plazo: 5 días hábiles para responder cada hallazgo.
  *
  *   2. RESPUESTA      Por cada hallazgo el auditado decide:
  *                       (a) Aceptar  -> hallazgo.estado = 'aceptado'.
@@ -86,6 +86,10 @@ import {
   Rocket,
   Trophy,
   Download,
+  Lightbulb,
+  Building2,
+  Tag,
+  FileCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { colors } from '../../esap/shared/designTokens';
@@ -115,7 +119,7 @@ const USE_API_ESTADO     = true;
 // ════════════════════════════════════════════════════════════════════════════
 
 /** Plazo para responder cada hallazgo (Comunicación de la auditoría). */
-const PLAZO_RESPUESTA_DIAS_HABILES = 10;
+const PLAZO_RESPUESTA_DIAS_HABILES = 5;
 
 /** Plazo para formular el Plan de Mejoramiento desde el Informe Final. */
 const PLAZO_PLAN_DIAS_HABILES = 30;
@@ -190,7 +194,7 @@ function calcularPlazoActivo(auditoria: AuditoriaItem, hoy: Date = new Date()): 
       vencido: restantes < 0,
     };
   }
-  // Etapa "Comunicación": 10 días hábiles desde la Notificación.
+  // Etapa "Comunicación": 5 días hábiles desde la Notificación.
   if (auditoria.estado === 'Notificada' || auditoria.estado === 'En Respuesta') {
     const base = parseFechaCO(auditoria.fechaNotificacion);
     if (!base) return null;
@@ -284,9 +288,11 @@ interface HallazgoItem {
   recomendaciones?: string[];
   // Respuesta del auditado (controversia)
   argumentosControversia?: string;
+  observacionesControversia?: string;
   documentoControversiaNombre?: string;
   documentoControversiaUrl?: string;
   fechaPresentacion?: string;
+  controversiaTurno?: 'auditor' | 'auditado' | null;
   // Decisión del auditor (luego de la controversia)
   decisionAuditor?: 'ratificado' | 'modificado' | 'retirado';
   fundamentacionTecnica?: string;
@@ -318,7 +324,7 @@ interface MisAuditoriasControlInternoProps {
 const AUDITORIAS_MOCK: AuditoriaItem[] = [
   {
     // Notificada hace pocos días: el auditado todavía está dentro del plazo
-    // de 10 días hábiles para responder hallazgos.
+    // de 5 días hábiles para responder hallazgos.
     id: 'aud-001',
     codigo: 'AUD-2026-004',
     titulo: 'Auditoría de Gestión Administrativa',
@@ -613,9 +619,11 @@ function mapHallazgoApi(raw: any): HallazgoItem {
     efectos: Array.isArray(raw.efectos) ? raw.efectos : raw.efecto ? [raw.efecto] : undefined,
     recomendaciones: Array.isArray(raw.recomendaciones) ? raw.recomendaciones : undefined,
     argumentosControversia: raw.argumentosControversia ?? undefined,
+    observacionesControversia: raw.observacionesControversia ?? undefined,
     documentoControversiaNombre: raw.documentoControversiaNombre ?? undefined,
     documentoControversiaUrl: raw.documentoControversiaUrl ?? undefined,
     fechaPresentacion: fechaCO(raw.fechaPresentacionControversia ?? raw.fechaAceptacion ?? raw.updatedAt) || undefined,
+    controversiaTurno: raw.controversiaTurno ?? undefined,
     decisionAuditor: ['ratificado','modificado','retirado'].includes(estadoRaw) ? estadoRaw as any : raw.decisionAuditor ?? undefined,
     fundamentacionTecnica: raw.fundamentacionTecnica ?? undefined,
     fechaDecision: fechaCO(raw.fechaDecisionAuditor ?? raw.fechaDecision) || undefined,
@@ -1059,11 +1067,11 @@ export function MisAuditoriasControlInterno({ personaId, userName, onBack }: Mis
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: '#1F2937', letterSpacing: '-0.02em' }}>
-            Control Interno de Gestión
+            Mis Auditorías
           </div>
-          <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
             <Shield style={{ width: 13, height: 13 }} />
-            Mis auditorías y hallazgos
+            Auditorías de control interno asignadas a tu área
           </div>
         </div>
         <button
@@ -1081,10 +1089,10 @@ export function MisAuditoriasControlInterno({ personaId, userName, onBack }: Mis
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
-        <StatCard label="Total"          value={stats.total}        bg="#EFF6FF" color="#1D4ED8" icon={<ClipboardList style={{ width: 16, height: 16 }} />} />
-        <StatCard label="En Respuesta"   value={stats.enRespuesta}  bg="#FFFBEB" color="#B45309" icon={<AlertCircle    style={{ width: 16, height: 16 }} />} />
-        <StatCard label="Docs por subir" value={stats.pendientes}   bg="#FEF2F2" color="#DC2626" icon={<Upload         style={{ width: 16, height: 16 }} />} />
-        <StatCard label="Finalizadas"    value={stats.finalizadas}  bg="#ECFDF5" color="#047857" icon={<CheckCircle2   style={{ width: 16, height: 16 }} />} />
+        <StatCard label="Auditorías"        value={stats.total}        bg="#EFF6FF" color="#1D4ED8" icon={<ClipboardList style={{ width: 16, height: 16 }} />} />
+        <StatCard label="En respuesta"      value={stats.enRespuesta}  bg="#FFFBEB" color="#B45309" icon={<AlertCircle    style={{ width: 16, height: 16 }} />} />
+        <StatCard label="Docs por subir"    value={stats.pendientes}   bg="#FEF2F2" color="#DC2626" icon={<Upload         style={{ width: 16, height: 16 }} />} />
+        <StatCard label="Finalizadas"       value={stats.finalizadas}  bg="#ECFDF5" color="#047857" icon={<CheckCircle2   style={{ width: 16, height: 16 }} />} />
       </div>
 
       {/* Search + filtros */}
@@ -1138,24 +1146,44 @@ export function MisAuditoriasControlInterno({ personaId, userName, onBack }: Mis
         </div>
       </div>
 
+      {/* Encabezado de sección */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ClipboardList style={{ width: 16, height: 16, color: '#374151' }} />
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>
+            Auditorías asignadas
+          </span>
+          <span style={{
+            fontSize: 11, fontWeight: 600, color: '#6B7280',
+            background: '#F3F4F6', padding: '2px 8px', borderRadius: 10,
+          }}>
+            {filtradas.length} proceso{filtradas.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse-urgency { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }`}</style>
+
       {/* Lista */}
-      <div style={{ background: 'white', borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+      <div>
         {loading ? (
-          <div style={{ padding: '48px 0', textAlign: 'center' }}>
+          <div style={{ padding: '48px 0', textAlign: 'center', background: 'white', borderRadius: 14 }}>
             <Loader2 style={{ width: 28, height: 28, color: colors.brand, margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
             <div style={{ fontSize: 14, color: '#6B7280' }}>Cargando auditorías...</div>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         ) : filtradas.length === 0 ? (
-          <div style={{ padding: '48px 0', textAlign: 'center' }}>
+          <div style={{ padding: '48px 0', textAlign: 'center', background: 'white', borderRadius: 14 }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <ClipboardList style={{ width: 24, height: 24, color: '#9CA3AF' }} />
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#374151' }}>Sin auditorías</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#374151' }}>Sin auditorías asignadas</div>
             <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>
               {search || filtroEstado !== 'todos'
                 ? 'No hay resultados que coincidan con los filtros aplicados.'
-                : 'Aún no tienes procesos de auditoría asignados.'}
+                : 'Aún no tienes procesos de auditoría asignados a tu área.'}
             </div>
           </div>
         ) : (
@@ -1276,93 +1304,156 @@ function AuditoriaRow({
   const plazo = calcularPlazoActivo(auditoria);
   const isOverdue = !!plazo?.vencido;
 
+  // Icon por tipo de auditoría
+  const tipoIcon = auditoria.tipo?.toLowerCase().includes('seg') ? '🔄'
+    : auditoria.tipo?.toLowerCase().includes('reg') ? '📋'
+    : '🔍';
+
   return (
     <button
       onClick={onClick}
       style={{
         width: '100%', textAlign: 'left',
-        padding: '18px 20px',
+        padding: 0,
         background: 'white',
         border: 'none',
-        borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-        cursor: 'pointer', transition: 'background 0.15s',
-        display: 'flex', alignItems: 'center', gap: 16,
+        cursor: 'pointer',
+        display: 'block',
+        marginBottom: 10,
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = '#FAFAFA')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
     >
-      <div style={{ width: 4, height: 56, borderRadius: 4, background: urgencia.color, flexShrink: 0 }} />
+      <div
+        style={{
+          display: 'flex',
+          borderRadius: 14,
+          border: `1px solid ${isOverdue ? '#FCA5A5' : '#E5E7EB'}`,
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+          boxShadow: isOverdue
+            ? '0 0 0 1px #FCA5A5, 0 2px 8px rgba(220,38,38,0.1)'
+            : '0 1px 3px rgba(0,0,0,0.04)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)';
+          e.currentTarget.style.transform = 'translateY(-1px)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = isOverdue
+            ? '0 0 0 1px #FCA5A5, 0 2px 8px rgba(220,38,38,0.1)'
+            : '0 1px 3px rgba(0,0,0,0.04)';
+          e.currentTarget.style.transform = 'none';
+        }}
+      >
+        {/* Barra lateral de estado — gruesa y con color */}
+        <div style={{
+          width: 5, flexShrink: 0,
+          background: isOverdue ? '#DC2626' : urgencia.color,
+        }} />
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, letterSpacing: 0.3 }}>
-            {auditoria.codigo}
-          </span>
-          <span style={{
-            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
-            color: estado.color, background: estado.bg, border: `1px solid ${estado.border}`,
-          }}>
-            {auditoria.estado}
-          </span>
-          <span style={{ fontSize: 11, color: '#9CA3AF' }}>•</span>
-          <span style={{ fontSize: 11, color: '#6B7280' }}>{auditoria.tipo}</span>
-        </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#1F2937', marginBottom: 6 }}>
-          {auditoria.titulo}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: '#6B7280', flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <User style={{ width: 12, height: 12 }} />
-            {auditoria.auditorLider}
-          </span>
-          {plazo && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <Calendar style={{ width: 12, height: 12 }} />
-              Vence {formatearFechaCO(plazo.fechaLimite)}
+        {/* Contenido principal */}
+        <div style={{ flex: 1, padding: '16px 18px', minWidth: 0 }}>
+          {/* Fila 1: Código + Estado + Tipo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 12, fontWeight: 800, color: '#374151',
+              background: '#F3F4F6', padding: '2px 8px', borderRadius: 6,
+              letterSpacing: 0.3, fontFamily: 'monospace',
+            }}>
+              {auditoria.codigo}
             </span>
-          )}
-          {auditoria.hallazgos > 0 && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#D97706' }}>
-              <AlertCircle style={{ width: 12, height: 12 }} />
-              {auditoria.hallazgos} hallazgo{auditoria.hallazgos === 1 ? '' : 's'}
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+              color: estado.color, background: estado.bg, border: `1px solid ${estado.border}`,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: estado.color }} />
+              {auditoria.estado}
             </span>
-          )}
-          {docPorSubir > 0 && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#B45309' }}>
-              <Upload style={{ width: 12, height: 12 }} />
-              {docPorSubir} doc{docPorSubir === 1 ? '' : 's'} pendientes
-            </span>
-          )}
-        </div>
-
-        {auditoria.documentosSolicitados > 0 && (
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#F3F4F6', overflow: 'hidden' }}>
-              <div style={{
-                width: `${progreso}%`, height: '100%',
-                background: progreso === 100 ? '#10B981' : '#3B82F6',
-                transition: 'width 0.4s ease',
-              }} />
-            </div>
-            <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, minWidth: 36, textAlign: 'right' }}>
-              {progreso}%
+            <span style={{ fontSize: 11, color: '#9CA3AF', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {tipoIcon} {auditoria.tipo}
             </span>
           </div>
-        )}
-      </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-        {plazo && auditoria.estado !== 'Finalizada' && (
-          <span style={{
-            fontSize: 11, fontWeight: 700,
-            color: isOverdue ? '#DC2626' : '#1F2937',
+          {/* Fila 2: Título */}
+          <div style={{
+            fontSize: 15, fontWeight: 700, color: '#111827',
+            marginBottom: 10, lineHeight: 1.4,
           }}>
-            {isOverdue
-              ? 'Plazo vencido'
-              : `${plazo.diasHabilesRestantes} día${plazo.diasHabilesRestantes === 1 ? '' : 's'} hábil${plazo.diasHabilesRestantes === 1 ? '' : 'es'}`}
-          </span>
-        )}
-        <ChevronRight style={{ width: 18, height: 18, color: '#9CA3AF' }} />
+            {auditoria.titulo}
+          </div>
+
+          {/* Fila 3: Metadata chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: '#6B7280', flexWrap: 'wrap' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: '#F9FAFB', padding: '3px 8px', borderRadius: 6,
+            }}>
+              <User style={{ width: 12, height: 12, color: '#9CA3AF' }} />
+              {auditoria.auditorLider}
+            </span>
+            {plazo && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                background: '#F9FAFB', padding: '3px 8px', borderRadius: 6,
+              }}>
+                <Calendar style={{ width: 12, height: 12, color: '#9CA3AF' }} />
+                Vence {formatearFechaCO(plazo.fechaLimite)}
+              </span>
+            )}
+            {auditoria.hallazgos > 0 && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                background: '#FFFBEB', padding: '3px 8px', borderRadius: 6,
+                color: '#B45309', fontWeight: 600,
+              }}>
+                <AlertCircle style={{ width: 12, height: 12 }} />
+                {auditoria.hallazgos} hallazgo{auditoria.hallazgos === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
+
+          {/* Fila 4: Barra de progreso (si aplica) */}
+          {auditoria.documentosSolicitados > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#F3F4F6', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${progreso}%`, height: '100%',
+                  background: progreso === 100 ? '#10B981' : '#3B82F6',
+                  borderRadius: 3,
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+              <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, minWidth: 36, textAlign: 'right' }}>
+                {progreso}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Columna derecha: Urgencia + Chevron */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+          justifyContent: 'center', gap: 8, flexShrink: 0,
+          padding: '16px 14px 16px 0',
+        }}>
+          {plazo && auditoria.estado !== 'Finalizada' && (
+            <span style={{
+              fontSize: 11, fontWeight: 800,
+              padding: '4px 10px', borderRadius: 8,
+              color: isOverdue ? 'white' : plazo.diasHabilesRestantes <= 5 ? '#B45309' : '#374151',
+              background: isOverdue ? '#DC2626' : plazo.diasHabilesRestantes <= 5 ? '#FEF3C7' : '#F9FAFB',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              ...(isOverdue ? { animation: 'pulse-urgency 2s ease-in-out infinite' } : {}),
+            }}>
+              {isOverdue ? (
+                <><AlertTriangle style={{ width: 12, height: 12 }} /> Vencido</>
+              ) : (
+                <><Clock style={{ width: 12, height: 12 }} /> {plazo.diasHabilesRestantes} día{plazo.diasHabilesRestantes === 1 ? '' : 's'}</>
+              )}
+            </span>
+          )}
+          <ChevronRight style={{ width: 18, height: 18, color: '#D1D5DB' }} />
+        </div>
       </div>
     </button>
   );
@@ -1529,6 +1620,18 @@ function TabPlanMejoramientoAuditado({
   const [subiendoEvidencia, setSubiendoEvidencia] = useState<string | null>(null);
   const [eliminandoEvidencia, setEliminandoEvidencia] = useState<string | null>(null);
 
+  // Custom confirm modal state (replaces native confirm())
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    accent?: string;
+    icon?: 'send' | 'trash' | 'warning';
+    onConfirm: () => void;
+  }>({ open: false, title: '', message: '', onConfirm: () => {} });
+
   // Estado del formulario para crear nueva acción
   const [showNewAccion, setShowNewAccion] = useState<Record<string, boolean>>({});
   const [newAccionDraft, setNewAccionDraft] = useState<Record<string, {
@@ -1539,11 +1642,84 @@ function TabPlanMejoramientoAuditado({
     indicador: string;
     metaIndicador: string;
     hallazgoId: string;
+    tipo: string;
+    causaRaiz: string;
+    recursos: string;
   }>>({});
   const [savingNew, setSavingNew] = useState<string | null>(null);
 
+  // Estado para el wizard de 5 Porqués por plan
+  const [porques, setPorques] = useState<Record<string, string[]>>({});
+  const getPorques = (planId: string) => porques[planId] || ['', '', '', '', ''];
+  const setPorque = (planId: string, idx: number, val: string) => {
+    setPorques((prev) => {
+      const arr = [...(prev[planId] || ['', '', '', '', ''])];
+      arr[idx] = val;
+      return { ...prev, [planId]: arr };
+    });
+  };
+
+  // Plantillas de acciones correctivas comunes
+  const PLANTILLAS_ACCIONES = [
+    {
+      nombre: 'Foliación de documentos',
+      tipo: 'correctiva',
+      descripcion: 'Implementar el proceso de foliación de documentos según las Tablas de Retención Documental (TRD) vigentes.',
+      indicador: '% de expedientes foliados correctamente',
+      metaIndicador: 'Lograr el 100% de expedientes foliados al cierre del trimestre',
+      recursos: 'Personal de gestión documental, capacitación en TRD',
+    },
+    {
+      nombre: 'Actualización de procedimientos',
+      tipo: 'correctiva',
+      descripcion: 'Revisar y actualizar los procedimientos del proceso para alinearlos con la normatividad vigente y las necesidades operativas.',
+      indicador: '% de procedimientos actualizados',
+      metaIndicador: 'Actualizar el 100% de los procedimientos identificados',
+      recursos: 'Líder de proceso, equipo de calidad, sistema de gestión documental',
+    },
+    {
+      nombre: 'Capacitación del equipo',
+      tipo: 'preventiva',
+      descripcion: 'Diseñar y ejecutar un plan de capacitación para fortalecer las competencias del equipo en las áreas identificadas como debilidades.',
+      indicador: '% de funcionarios capacitados',
+      metaIndicador: 'Capacitar al 100% de los funcionarios del área',
+      recursos: 'Presupuesto de capacitación, facilitadores internos/externos',
+    },
+    {
+      nombre: 'Implementación de controles',
+      tipo: 'preventiva',
+      descripcion: 'Diseñar e implementar controles preventivos y detectivos para mitigar los riesgos identificados en el hallazgo.',
+      indicador: 'N° de controles implementados vs. programados',
+      metaIndicador: 'Implementar el 100% de los controles diseñados',
+      recursos: 'Líder de proceso, gestión de riesgos',
+    },
+    {
+      nombre: 'Digitalización de expedientes',
+      tipo: 'mejora',
+      descripcion: 'Digitalizar los expedientes del proceso para garantizar su preservación, acceso y cumplimiento de la política de cero papel.',
+      indicador: '% de expedientes digitalizados',
+      metaIndicador: 'Digitalizar el 100% de los expedientes activos',
+      recursos: 'Escáner, personal TIC, sistema de gestión documental electrónico',
+    },
+  ];
+
+  const aplicarPlantilla = (planId: string, plantilla: typeof PLANTILLAS_ACCIONES[0]) => {
+    setNewAccionDraft((prev) => ({
+      ...prev,
+      [planId]: {
+        ...prev[planId],
+        descripcion: plantilla.descripcion,
+        tipo: plantilla.tipo,
+        indicador: plantilla.indicador,
+        metaIndicador: plantilla.metaIndicador,
+        recursos: plantilla.recursos,
+      },
+    }));
+    toast.success(`Plantilla "${plantilla.nombre}" aplicada`);
+  };
+
   // Usuarios del sistema para el select de responsable — cargados del auth-service
-  const [usuarios, setUsuarios] = useState<Array<{ id: string; nombre: string; email: string }>>([]);
+  const [usuarios, setUsuarios] = useState<Array<{ id: string; nombre: string; email: string; rol: string }>>([]);
   const [busquedaResponsable, setBusquedaResponsable] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1565,7 +1741,19 @@ function TabPlanMejoramientoAuditado({
     setLoading(true);
     setError(null);
     try {
-      const data = await controlInternoService.getPlanesMejoramientoAuditado(auditoriaId);
+      // Intentar primero con el endpoint del auditado (valida ownership por JWT)
+      let data: any[];
+      try {
+        data = await controlInternoService.getPlanesMejoramientoAuditado(auditoriaId);
+      } catch (ownerErr) {
+        // Si falla por ownership (403) o not found, fallback al endpoint general
+        console.warn('[TabPlanMejoramiento] Endpoint auditado falló, usando fallback:', ownerErr);
+        try {
+          data = await controlInternoService.getPlanesMejoramientoByAuditoria(auditoriaId);
+        } catch {
+          data = [];
+        }
+      }
       const list = Array.isArray(data) ? data : [];
       setPlanes(list);
       const d: Record<string, { porcentaje: number; obs: string; estado: string }> = {};
@@ -1640,20 +1828,31 @@ function TabPlanMejoramientoAuditado({
 
   /** Elimina una evidencia del backend y la quita del estado local. */
   const eliminarEvidencia = async (accionId: string, evidenciaId: string) => {
-    if (!window.confirm('¿Eliminar esta evidencia?')) return;
-    setEliminandoEvidencia(evidenciaId);
-    try {
-      await controlInternoService.deleteEvidencia(evidenciaId);
-      setEvidenciasSubidas((prev) => ({
-        ...prev,
-        [accionId]: (prev[accionId] ?? []).filter((e: any) => e.id !== evidenciaId),
-      }));
-      toast.success('Evidencia eliminada');
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
-    } finally {
-      setEliminandoEvidencia(null);
-    }
+    setConfirmModal({
+      open: true,
+      title: 'Eliminar evidencia',
+      message: '¿Estás seguro de eliminar esta evidencia? Esta acción no se puede deshacer.',
+      confirmLabel: 'Sí, eliminar',
+      cancelLabel: 'Cancelar',
+      accent: '#DC2626',
+      icon: 'trash',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, open: false }));
+        setEliminandoEvidencia(evidenciaId);
+        try {
+          await controlInternoService.deleteEvidencia(evidenciaId);
+          setEvidenciasSubidas((prev) => ({
+            ...prev,
+            [accionId]: (prev[accionId] ?? []).filter((e: any) => e.id !== evidenciaId),
+          }));
+          toast.success('Evidencia eliminada');
+        } catch (e: unknown) {
+          toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
+        } finally {
+          setEliminandoEvidencia(null);
+        }
+      },
+    });
   };
 
   const setDraft = (accionId: string, patch: Partial<{ porcentaje: number; obs: string; estado: string }>) => {
@@ -1741,6 +1940,10 @@ function TabPlanMejoramientoAuditado({
       toast.error('El responsable de la acción es obligatorio');
       return;
     }
+    if (!d.hallazgoId) {
+      toast.error('Debe vincular la acción a un hallazgo obligatoriamente');
+      return;
+    }
     if (!d.fechaInicio || !d.fechaFin) {
       toast.error('Las fechas de inicio y fin son obligatorias');
       return;
@@ -1759,10 +1962,20 @@ function TabPlanMejoramientoAuditado({
         indicador: d.indicador.trim() || undefined,
         metaIndicador: d.metaIndicador?.trim() || undefined,
         hallazgoId: d.hallazgoId || undefined,
+        tipo: d.tipo || 'correctiva',
+        recursos: d.recursos?.trim() || undefined,
+        observaciones: (() => {
+          // Combinar los 5 porqués en un texto estructurado
+          const pqs = getPorques(planId).filter((p) => p.trim());
+          if (pqs.length > 0) {
+            return pqs.map((p, i) => `¿Por qué ${i + 1}? ${p}`).join('\n');
+          }
+          return d.causaRaiz?.trim() || undefined;
+        })(),
       });
       toast.success('Acción creada exitosamente');
       setShowNewAccion((prev) => ({ ...prev, [planId]: false }));
-      setNewAccionDraft((prev) => ({ ...prev, [planId]: { descripcion: '', responsable: '', fechaInicio: '', fechaFin: '', indicador: '', metaIndicador: '', hallazgoId: '' } }));
+      setNewAccionDraft((prev) => ({ ...prev, [planId]: { descripcion: '', responsable: '', fechaInicio: '', fechaFin: '', indicador: '', metaIndicador: '', hallazgoId: '', tipo: 'correctiva', causaRaiz: '', recursos: '' } }));
       await load();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'No se pudo crear la acción';
@@ -1796,31 +2009,71 @@ function TabPlanMejoramientoAuditado({
   };
 
   const eliminarAccion = async (planId: string, accionId: string) => {
-    if (!confirm('¿Eliminar esta acción correctiva? Esta acción no se puede deshacer.')) return;
-    setDeletingId(accionId);
-    try {
-      await controlInternoService.eliminarAccionPlanAuditado(auditoriaId, planId, accionId);
-      toast.success('Acción eliminada');
-      await load();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
-    } finally {
-      setDeletingId(null);
-    }
+    setConfirmModal({
+      open: true,
+      title: 'Eliminar acción correctiva',
+      message: '¿Estás seguro de eliminar esta acción correctiva? Esta acción no se puede deshacer.',
+      confirmLabel: 'Sí, eliminar',
+      cancelLabel: 'Cancelar',
+      accent: '#DC2626',
+      icon: 'trash',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, open: false }));
+        setDeletingId(accionId);
+        try {
+          await controlInternoService.eliminarAccionPlanAuditado(auditoriaId, planId, accionId);
+          toast.success('Acción eliminada');
+          await load();
+        } catch (e: unknown) {
+          toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
   };
 
   const enviarARevision = async (planId: string) => {
-    if (!confirm('¿Enviar el plan a revisión por parte de la OCI? Una vez enviado, no podrás agregar más acciones hasta que sea aprobado o devuelto.')) return;
-    setSendingRevision(planId);
-    try {
-      await controlInternoService.enviarPlanRevision(auditoriaId, planId);
-      toast.success('Plan enviado a revisión', { description: 'La OCI revisará tu plan y lo aprobará o devolverá con observaciones.' });
-      await load();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo enviar a revisión');
-    } finally {
-      setSendingRevision(null);
+    const plan = planes.find(p => p.id === planId);
+    if (!plan) return;
+
+    // Verificar que todos los hallazgos requeridos tengan al menos una acción
+    const estadosRequeridos = ['aceptado', 'ratificado', 'modificado'];
+    const hallazgosRequeridos = hallazgos.filter(h => estadosRequeridos.includes(h.estado.toLowerCase()));
+    
+    const hallazgosSinAccion = hallazgosRequeridos.filter(h => 
+      !plan.acciones?.some((a: any) => a.hallazgoId === h.id)
+    );
+
+    if (hallazgosSinAccion.length > 0) {
+      toast.error(`Faltan acciones para ${hallazgosSinAccion.length} hallazgo(s)`, {
+        description: 'Debe formular al menos una acción para cada hallazgo aceptado/ratificado antes de enviar a revisión.',
+      });
+      return;
     }
+
+    setConfirmModal({
+      open: true,
+      title: 'Enviar plan a revisión',
+      message: '¿Enviar el plan a revisión por parte de la OCI? Una vez enviado, no podrás agregar más acciones hasta que sea aprobado o devuelto.',
+      confirmLabel: 'Sí, enviar a revisión',
+      cancelLabel: 'Cancelar',
+      accent: colors.brand,
+      icon: 'send',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, open: false }));
+        setSendingRevision(planId);
+        try {
+          await controlInternoService.enviarPlanRevision(auditoriaId, planId);
+          toast.success('Plan enviado a revisión', { description: 'La OCI revisará tu plan y lo aprobará o devolverá con observaciones.' });
+          await load();
+        } catch (e: unknown) {
+          toast.error(e instanceof Error ? e.message : 'No se pudo enviar a revisión');
+        } finally {
+          setSendingRevision(null);
+        }
+      },
+    });
   };
 
   if (loading) {
@@ -1871,18 +2124,19 @@ function TabPlanMejoramientoAuditado({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {planes.map((plan) => {
         const estadoPlan = String(plan.estado || '').toLowerCase();
-        const enFormulacion = estadoPlan === 'borrador';
+        const esRechazado = ['rechazado', 'devuelto'].includes(estadoPlan);
+        const enFormulacion = estadoPlan === 'borrador' || esRechazado;
         const enRevision = estadoPlan === 'revision';
         const enEjecucion = ['aprobado', 'en_ejecucion', 'en-ejecucion'].includes(estadoPlan);
-        const planCerrado = ['completado', 'vencido', 'rechazado'].includes(estadoPlan);
+        const planCerrado = ['completado', 'vencido'].includes(estadoPlan);
 
         // Colores según estado del plan
-        const estadoColor = (enFormulacion || enRevision)
+        const estadoColor = esRechazado
+          ? { bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C', label: 'Rechazado — Requiere ajustes' }
+          : (enFormulacion || enRevision)
           ? { bg: '#FFFBEB', border: '#FDE68A', color: '#B45309', label: enRevision ? 'En revisión OCI' : 'En formulación' }
           : enEjecucion
           ? { bg: '#ECFDF5', border: '#A7F3D0', color: '#047857', label: estadoPlan === 'aprobado' ? 'Aprobado — En ejecución' : 'En ejecución' }
-          : planCerrado && estadoPlan === 'rechazado'
-          ? { bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C', label: 'Rechazado' }
           : { bg: '#ECFDF5', border: '#A7F3D0', color: '#047857', label: 'Completado' };
 
         return (
@@ -1919,32 +2173,193 @@ function TabPlanMejoramientoAuditado({
               )}
             </div>
 
+            {/* ═══ STEPPER VISUAL + DASHBOARD RESUMEN ═══ */}
+            {(() => {
+              const acciones = plan.acciones || [];
+              const totalAcc = acciones.length;
+              const completadas = acciones.filter((a: any) => a.estado === 'completada').length;
+              const conEvidencia = acciones.filter((a: any) => a.evidencias?.length > 0 || a.documentos?.length > 0).length;
+              const pctAvance = totalAcc > 0 ? Math.round((completadas / totalAcc) * 100) : 0;
+
+              // Días restantes (desde fecha límite del plan)
+              const fechaLimite = plan.fechaLimite || plan.fechaFin || plan.fechaCompromiso;
+              let diasRestantes: number | null = null;
+              if (fechaLimite) {
+                const diff = new Date(fechaLimite).getTime() - Date.now();
+                diasRestantes = Math.ceil(diff / (1000 * 60 * 60 * 24));
+              }
+
+              // Stepper stages
+              const stages = [
+                { key: 'formulacion', label: 'Formulación', icon: '📝' },
+                { key: 'revision', label: 'Revisión OCI', icon: '👁️' },
+                { key: 'aprobado', label: 'Aprobado', icon: '✅' },
+                { key: 'ejecucion', label: 'En ejecución', icon: '⚡' },
+                { key: 'cierre', label: 'Cierre', icon: '🔒' },
+              ];
+              const currentStageIdx = estadoPlan === 'borrador' ? 0
+                : estadoPlan === 'revision' ? 1
+                : estadoPlan === 'aprobado' ? 3
+                : ['en_ejecucion', 'en-ejecucion'].includes(estadoPlan) ? 3
+                : estadoPlan === 'completado' ? 4
+                : estadoPlan === 'rechazado' ? 1
+                : 0;
+
+              return (
+                <>
+                  {/* STEPPER */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 0,
+                    padding: '12px 16px', marginBottom: 12,
+                    background: '#F9FAFB', borderRadius: 12, border: '1px solid #E5E7EB',
+                    overflow: 'hidden',
+                  }}>
+                    {stages.map((s, i) => {
+                      const isCompleted = i < currentStageIdx;
+                      const isCurrent = i === currentStageIdx;
+                      const isFuture = i > currentStageIdx;
+
+                      return (
+                        <React.Fragment key={s.key}>
+                          {/* Stage */}
+                          <div style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                            flex: 1, minWidth: 0,
+                          }}>
+                            <div style={{
+                              width: 28, height: 28, borderRadius: '50%',
+                              background: isCompleted ? '#2563EB' : isCurrent ? '#2563EB' : '#E5E7EB',
+                              color: isCompleted || isCurrent ? 'white' : '#9CA3AF',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: isCompleted ? 12 : 11,
+                              fontWeight: 800,
+                              boxShadow: isCurrent ? '0 0 0 3px #93C5FD' : 'none',
+                              transition: 'all 0.3s ease',
+                            }}>
+                              {isCompleted ? '✓' : s.icon}
+                            </div>
+                            <span style={{
+                              fontSize: 9, fontWeight: isCurrent ? 800 : 600,
+                              color: isCurrent ? '#1D4ED8' : isCompleted ? '#2563EB' : '#9CA3AF',
+                              textAlign: 'center', lineHeight: 1.2,
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                              maxWidth: '100%',
+                            }}>
+                              {s.label}
+                            </span>
+                          </div>
+                          {/* Connector line */}
+                          {i < stages.length - 1 && (
+                            <div style={{
+                              flex: '0 0 auto', width: 24, height: 2,
+                              background: i < currentStageIdx ? '#2563EB' : '#E5E7EB',
+                              borderRadius: 2, marginTop: -12,
+                              transition: 'background 0.3s ease',
+                            }} />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+
+                  {/* DASHBOARD RESUMEN — solo si hay acciones */}
+                  {totalAcc > 0 && (
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: diasRestantes !== null ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr',
+                      gap: 10, marginBottom: 14,
+                    }}>
+                      {/* Avance global */}
+                      <div style={{
+                        padding: '10px 12px', borderRadius: 10,
+                        background: '#F9FAFB', border: '1px solid #E5E7EB',
+                        textAlign: 'center',
+                      }}>
+                        <div style={{
+                          fontSize: 22, fontWeight: 900,
+                          color: pctAvance === 100 ? '#047857' : pctAvance >= 50 ? '#B45309' : '#374151',
+                        }}>
+                          {pctAvance}%
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: '#6B7280', marginTop: 2 }}>Avance global</div>
+                      </div>
+
+                      {/* Acciones */}
+                      <div style={{
+                        padding: '10px 12px', borderRadius: 10,
+                        background: '#F9FAFB', border: '1px solid #E5E7EB',
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: '#374151' }}>
+                          <span style={{ color: '#047857' }}>{completadas}</span>
+                          <span style={{ fontSize: 13, color: '#9CA3AF' }}>/{totalAcc}</span>
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: '#6B7280', marginTop: 2 }}>Acciones completadas</div>
+                      </div>
+
+                      {/* Evidencias */}
+                      <div style={{
+                        padding: '10px 12px', borderRadius: 10,
+                        background: '#F9FAFB', border: '1px solid #E5E7EB',
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: '#374151' }}>
+                          <span style={{ color: '#2563EB' }}>{conEvidencia}</span>
+                          <span style={{ fontSize: 13, color: '#9CA3AF' }}>/{totalAcc}</span>
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: '#6B7280', marginTop: 2 }}>Con evidencia</div>
+                      </div>
+
+                      {/* Días restantes */}
+                      {diasRestantes !== null && (
+                        <div style={{
+                          padding: '10px 12px', borderRadius: 10,
+                          background: diasRestantes <= 0 ? '#FEF2F2' : diasRestantes <= 10 ? '#FFFBEB' : '#F9FAFB',
+                          border: `1px solid ${diasRestantes <= 0 ? '#FCA5A5' : diasRestantes <= 10 ? '#FDE68A' : '#E5E7EB'}`,
+                          textAlign: 'center',
+                        }}>
+                          <div style={{
+                            fontSize: 22, fontWeight: 900,
+                            color: diasRestantes <= 0 ? '#DC2626' : diasRestantes <= 10 ? '#B45309' : '#047857',
+                          }}>
+                            {diasRestantes <= 0 ? 'Vencido' : diasRestantes}
+                          </div>
+                          <div style={{ fontSize: 9, fontWeight: 600, color: '#6B7280', marginTop: 2 }}>
+                            {diasRestantes <= 0 ? 'Plazo cumplido' : 'Días restantes'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
             {/* ── Banners de fase ─────────────────────────────────── */}
-            {estadoPlan === 'rechazado' && (
+            {esRechazado && (
               <div style={{
-                background: 'linear-gradient(135deg, #FEF2F2 0%, #FFF5F5 100%)',
+                background: '#FEF2F2',
                 border: '1.5px solid #F87171', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
                 display: 'flex', gap: 14, alignItems: 'flex-start',
               }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><XCircle style={{ width: 20, height: 20, color: '#DC2626' }} /></div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#7F1D1D', marginBottom: 4 }}>Plan rechazado por la OCI</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#7F1D1D', marginBottom: 4 }}>Plan devuelto por la OCI — Requiere ajustes</div>
                   {plan.motivoRechazo || plan.observaciones ? (
-                    <div style={{ fontSize: 12, color: '#991B1B', lineHeight: 1.6 }}>
-                      <strong>Motivo:</strong> {plan.motivoRechazo || plan.observaciones}
+                    <div style={{ fontSize: 12, color: '#991B1B', lineHeight: 1.6, marginBottom: 6 }}>
+                      <strong>Observaciones:</strong> {plan.motivoRechazo || plan.observaciones}
                     </div>
                   ) : (
-                    <div style={{ fontSize: 12, color: '#991B1B' }}>Consulta con tu área de Control Interno para obtener más información.</div>
+                    <div style={{ fontSize: 12, color: '#991B1B', marginBottom: 6 }}>Consulta con tu área de Control Interno para obtener más información.</div>
                   )}
-                  <div style={{ marginTop: 8, fontSize: 11, color: '#B91C1C', fontWeight: 600 }}>
-                    ↩️ Puedes crear un nuevo plan corrigiendo los puntos observados.
+                  <div style={{ fontSize: 11, color: '#92400E', fontWeight: 600, background: '#FEF3C7', padding: '6px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    ✏️ Edita las acciones según las observaciones y vuelve a enviar a revisión.
                   </div>
                 </div>
               </div>
             )}
             {enFormulacion && (
               <div style={{
-                background: 'linear-gradient(135deg, #FFFBEB 0%, #FEFCE8 100%)',
+                background: '#FFFBEB',
                 border: '1.5px solid #FDE68A', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
                 display: 'flex', gap: 14, alignItems: 'flex-start',
               }}>
@@ -1959,7 +2374,7 @@ function TabPlanMejoramientoAuditado({
             )}
             {enRevision && (
               <div style={{
-                background: 'linear-gradient(135deg, #EFF6FF 0%, #F0F9FF 100%)',
+                background: '#EFF6FF',
                 border: '1.5px solid #93C5FD', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
                 display: 'flex', gap: 14, alignItems: 'flex-start',
               }}>
@@ -1974,7 +2389,7 @@ function TabPlanMejoramientoAuditado({
             )}
             {enEjecucion && (
               <div style={{
-                background: 'linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%)',
+                background: '#ECFDF5',
                 border: '1.5px solid #6EE7B7', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
                 display: 'flex', gap: 14, alignItems: 'flex-start',
               }}>
@@ -1994,7 +2409,7 @@ function TabPlanMejoramientoAuditado({
             )}
             {estadoPlan === 'completado' && (
               <div style={{
-                background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                background: '#ECFDF5',
                 border: '1.5px solid #34D399', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
                 display: 'flex', gap: 14, alignItems: 'center',
               }}>
@@ -2143,6 +2558,20 @@ function TabPlanMejoramientoAuditado({
                         </div>
 
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                          {/* Tipo de acción — badge EM-FO-002 */}
+                          {accion.tipo && (() => {
+                            const tipoMap: Record<string, { emoji: string; label: string; bg: string; color: string }> = {
+                              correctiva: { emoji: '🔧', label: 'Correctiva', bg: '#FEF2F2', color: '#B91C1C' },
+                              preventiva: { emoji: '🛡️', label: 'Preventiva', bg: '#EFF6FF', color: '#1D4ED8' },
+                              mejora: { emoji: '📈', label: 'De mejora', bg: '#F0FDF4', color: '#047857' },
+                            };
+                            const t = tipoMap[accion.tipo] || tipoMap.correctiva;
+                            return (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: t.bg, color: t.color, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                {t.emoji} {t.label}
+                              </span>
+                            );
+                          })()}
                           {accion.responsable && (
                             <MetaChip icon={<User2 style={{ width: 11, height: 11 }} />}>{accion.responsable}</MetaChip>
                           )}
@@ -2153,7 +2582,7 @@ function TabPlanMejoramientoAuditado({
                           )}
                           {hallazgoVinculado && (
                             <MetaChip icon={<Link2 style={{ width: 11, height: 11 }} />} tone="hallazgo">
-                              {hallazgoVinculado.codigo}:{' '}
+                              Subsana hallazgo: {hallazgoVinculado.codigo} -{' '}
                               {hallazgoVinculado.titulo?.substring(0, 36)}
                               {hallazgoVinculado.titulo && hallazgoVinculado.titulo.length > 36 ? '…' : ''}
                             </MetaChip>
@@ -2510,28 +2939,210 @@ function TabPlanMejoramientoAuditado({
                   </button>
                 ) : (
                   <div style={{ background: '#F8FAFF', borderRadius: 12, border: `1.5px solid ${colors.brand}30`, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>Nueva acción correctiva</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1F2937', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 28, height: 28, borderRadius: 8, background: `${colors.brand}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ClipboardList style={{ width: 15, height: 15, color: colors.brand }} />
+                      </span>
+                      Nueva acción de mejora
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#6B7280', background: '#F3F4F6', padding: '2px 8px', borderRadius: 10 }}>EM-FO-002</span>
+                    </div>
 
-                    {/* Vincular a hallazgo */}
-                    {hallazgos.length > 0 && (
+                    {/* ═══ PLANTILLA RÁPIDA — Select discreto ═══ */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, color: '#9CA3AF', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Lightbulb style={{ width: 12, height: 12 }} />
+                        Inicio rápido:
+                      </span>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const pl = PLANTILLAS_ACCIONES.find((p) => p.nombre === e.target.value);
+                          if (pl) aplicarPlantilla(plan.id, pl);
+                        }}
+                        style={{
+                          height: 30, borderRadius: 8, border: '1px solid #E5E7EB',
+                          padding: '0 8px', fontSize: 11, color: '#6B7280',
+                          background: 'white', cursor: 'pointer', maxWidth: 260,
+                        }}
+                      >
+                        <option value="">Usar plantilla predefinida…</option>
+                        {PLANTILLAS_ACCIONES.map((pl) => (
+                          <option key={pl.nombre} value={pl.nombre}>
+                            {pl.tipo === 'correctiva' ? '🔧' : pl.tipo === 'preventiva' ? '🛡️' : '📈'} {pl.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Fila 1: Tipo de acción + Hallazgo */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        Hallazgo que subsana (opcional)
-                        <select value={newAccionDraft[plan.id]?.hallazgoId ?? ''}
-                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], hallazgoId: e.target.value } }))}
-                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }}>
-                          <option value="">— Sin vincular a hallazgo —</option>
-                          {hallazgos.map((h) => (
-                            <option key={h.id} value={h.id}>{h.codigo}: {h.titulo?.substring(0, 60)}</option>
-                          ))}
+                        <span>Tipo de acción <span style={{ color: '#DC2626' }}>*</span></span>
+                        <select value={newAccionDraft[plan.id]?.tipo ?? 'correctiva'}
+                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], tipo: e.target.value } }))}
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, background: 'white' }}>
+                          <option value="correctiva">🔧 Correctiva</option>
+                          <option value="preventiva">🛡️ Preventiva</option>
+                          <option value="mejora">📈 De mejora</option>
                         </select>
                       </label>
-                    )}
+                      {hallazgos.length > 0 && (
+                        <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          Hallazgo que subsana (opcional)
+                          <select value={newAccionDraft[plan.id]?.hallazgoId ?? ''}
+                            onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], hallazgoId: e.target.value } }))}
+                            style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }}>
+                            <option value="">— Sin vincular a hallazgo —</option>
+                            {hallazgos.map((h) => (
+                              <option key={h.id} value={h.id}>{h.codigo}: {h.titulo?.substring(0, 60)}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </div>
 
+                    {/* Descripción */}
                     <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span>Descripción <span style={{ color: '#DC2626' }}>*</span></span>
+                      <span>Descripción de la acción <span style={{ color: '#DC2626' }}>*</span></span>
                       <textarea rows={2} placeholder="Describe la acción que se ejecutará para subsanar el hallazgo..."
                         value={newAccionDraft[plan.id]?.descripcion ?? ''}
                         onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], descripcion: e.target.value } }))}
+                        style={{ borderRadius: 8, border: '1px solid #D1D5DB', padding: 8, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+                    </label>
+
+                    {/* ═══ 5 PORQUÉS — TODOS LOS NIVELES VISIBLES ═══ */}
+                    {(() => {
+                      const pqs = getPorques(plan.id);
+                      const filledCount = pqs.filter((p) => p.trim()).length;
+                      const levelLabels = [
+                        '¿Por qué ocurrió el hallazgo?',
+                        '¿Por qué sucedió eso?',
+                        '¿Cuál fue la causa de lo anterior?',
+                        '¿Qué originó esa situación?',
+                        '¿Cuál es la causa raíz fundamental?',
+                      ];
+
+                      return (
+                        <div style={{ borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+                          {/* Header compacto */}
+                          <div style={{
+                            padding: '10px 16px',
+                            background: '#F9FAFB',
+                            borderBottom: '1px solid #E5E7EB',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 14 }}>🔍</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Análisis de causa raíz</span>
+                              <span style={{ fontSize: 9, fontWeight: 600, color: '#6B7280', background: '#F3F4F6', padding: '2px 6px', borderRadius: 6 }}>5 Porqués</span>
+                            </div>
+                            {filledCount > 0 && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 700,
+                                color: filledCount >= 3 ? '#047857' : '#B45309',
+                                background: filledCount >= 3 ? '#ECFDF5' : '#FFFBEB',
+                                padding: '2px 8px', borderRadius: 10,
+                              }}>
+                                {filledCount}/5 completados
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Los 5 niveles — SIEMPRE visibles */}
+                          <div style={{ padding: '12px 16px' }}>
+                            {pqs.map((val, idx) => {
+                              const isFilled = val.trim().length > 0;
+                              const isEnabled = idx === 0 || pqs[idx - 1]?.trim();
+                              const isDeepest = isFilled && (idx === 4 || !pqs.slice(idx + 1).some((v) => v.trim()));
+                              const isNext = !isFilled && isEnabled; // El campo activo donde debe escribir
+
+                              // Pregunta dinámica basada en respuesta anterior
+                              const pregunta = idx === 0
+                                ? levelLabels[0]
+                                : pqs[idx - 1]?.trim()
+                                  ? `¿Por qué ${pqs[idx - 1].substring(0, 55).toLowerCase().replace(/[\.\?]$/, '')}${pqs[idx - 1].length > 55 ? '…' : ''}?`
+                                  : levelLabels[idx];
+
+                              return (
+                                <div key={idx} style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                                  padding: '8px 0',
+                                  borderBottom: idx < 4 ? '1px solid #F3F4F6' : 'none',
+                                  opacity: isEnabled ? 1 : 0.35,
+                                  transition: 'opacity 0.3s ease',
+                                }}>
+                                  {/* Número */}
+                                  <div style={{
+                                    width: 26, minWidth: 26, height: 26, borderRadius: 8,
+                                    background: isFilled
+                                      ? (isDeepest ? '#DC2626' : '#2563EB')
+                                      : isNext ? '#F3F4F6' : '#FAFAFA',
+                                    color: isFilled ? 'white' : isNext ? '#374151' : '#D1D5DB',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 11, fontWeight: 800, marginTop: 1,
+                                    transition: 'all 0.2s ease',
+                                    border: isNext ? '1.5px solid #D1D5DB' : 'none',
+                                  }}>
+                                    {isFilled && isDeepest ? '✓' : idx + 1}
+                                  </div>
+
+                                  {/* Contenido */}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{
+                                      fontSize: 11, fontWeight: 600,
+                                      color: isEnabled ? '#374151' : '#D1D5DB',
+                                      marginBottom: 4,
+                                      display: 'flex', alignItems: 'center', gap: 6,
+                                    }}>
+                                      {pregunta}
+                                      {isDeepest && idx > 0 && (
+                                        <span style={{
+                                          fontSize: 9, fontWeight: 800, color: 'white',
+                                          background: '#DC2626', padding: '1px 7px', borderRadius: 4,
+                                        }}>
+                                          CAUSA RAÍZ
+                                        </span>
+                                      )}
+                                    </div>
+                                    <input
+                                      type="text"
+                                      disabled={!isEnabled}
+                                      value={val}
+                                      onChange={(e) => setPorque(plan.id, idx, e.target.value)}
+                                      placeholder={
+                                        !isEnabled
+                                          ? 'Completa el nivel anterior…'
+                                          : idx === 0
+                                          ? 'Ej: No se realizó la foliación de los documentos'
+                                          : 'Profundiza en la causa…'
+                                      }
+                                      style={{
+                                        width: '100%', height: 34, borderRadius: 8,
+                                        border: `1.5px solid ${isDeepest ? '#FCA5A5' : isNext ? '#93C5FD' : '#E5E7EB'}`,
+                                        background: isDeepest ? '#FEF2F2' : !isEnabled ? '#FAFAFA' : 'white',
+                                        padding: '0 10px', fontSize: 12, fontFamily: 'inherit',
+                                        boxSizing: 'border-box' as const,
+                                        color: !isEnabled ? '#D1D5DB' : isDeepest ? '#991B1B' : '#1F2937',
+                                        fontWeight: isDeepest ? 600 : 400,
+                                        transition: 'all 0.2s ease',
+                                        outline: 'none',
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Recursos necesarios */}
+                    <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      Recursos necesarios
+                      <textarea rows={1} placeholder="Ej: Personal TIC, presupuesto para digitalización, capacitación..."
+                        value={newAccionDraft[plan.id]?.recursos ?? ''}
+                        onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], recursos: e.target.value } }))}
                         style={{ borderRadius: 8, border: '1px solid #D1D5DB', padding: 8, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
                     </label>
 
@@ -2560,45 +3171,43 @@ function TabPlanMejoramientoAuditado({
                         ) : (
                           /* Sin persona — input con dropdown filtrable */
                           <div style={{ position: 'relative' }}>
-                            <input
-                              type="text"
-                              placeholder="Escribe 3 letras para buscar..."
-                              value={busquedaResponsable[plan.id] ?? ''}
-                              autoComplete="off"
-                              onChange={(e) => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: e.target.value }))}
-                              onFocus={() => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: prev[plan.id] ?? '' }))}
-                              onBlur={() => setTimeout(() => setBusquedaResponsable((prev) => {
-                                const { [plan.id]: _, ...rest } = prev;
-                                return rest;
-                              }), 200)}
-                              style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
-                            {/* Dropdown — solo con 3+ caracteres */}
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="text"
+                                placeholder="Buscar o seleccionar responsable…"
+                                value={busquedaResponsable[plan.id] ?? ''}
+                                autoComplete="off"
+                                onChange={(e) => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: e.target.value }))}
+                                onFocus={() => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: prev[plan.id] ?? '' }))}
+                                onBlur={() => setTimeout(() => setBusquedaResponsable((prev) => {
+                                  const { [plan.id]: _, ...rest } = prev;
+                                  return rest;
+                                }), 200)}
+                                style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 30px 0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                              {/* Chevron para indicar que es dropdown */}
+                              <ChevronDown style={{
+                                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                                width: 14, height: 14, color: '#9CA3AF', pointerEvents: 'none',
+                              }} />
+                            </div>
+                            {/* Dropdown — aparece inmediatamente al focus */}
                             {busquedaResponsable[plan.id] !== undefined && (() => {
-                              const q = (busquedaResponsable[plan.id] || '').trim();
-                              // Hint cuando escribe pero aún no llega a 3 letras
-                              if (q.length > 0 && q.length < 3) {
-                                return (
-                                  <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 60, padding: '10px 12px', fontSize: 12, color: '#9CA3AF', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <span style={{ fontSize: 14 }}>🔍</span>
-                                    Escribe {3 - q.length} letra{3 - q.length !== 1 ? 's' : ''} más para buscar...
-                                  </div>
-                                );
-                              }
-                              // Con 3+ letras → filtrar y mostrar
-                              if (q.length < 3) return null;
-                              const qL = q.toLowerCase();
-                              const lista = usuarios.filter(u =>
-                                u.nombre.toLowerCase().includes(qL) || u.email.toLowerCase().includes(qL)
-                              );
+                              const q = (busquedaResponsable[plan.id] || '').trim().toLowerCase();
+                              const lista = q.length > 0
+                                ? usuarios.filter(u =>
+                                    u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.rol.toLowerCase().includes(q)
+                                  )
+                                : usuarios; // Sin filtro → mostrar todos
                               return (
                                 <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.12)', zIndex: 60, maxHeight: 220, overflowY: 'auto' }}>
                                   {/* Header */}
-                                  <div style={{ padding: '6px 10px', background: '#F9FAFB', borderBottom: '1px solid #F3F4F6', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    {lista.length} resultado{lista.length !== 1 ? 's' : ''}
+                                  <div style={{ padding: '6px 10px', background: '#F9FAFB', borderBottom: '1px solid #F3F4F6', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>{lista.length} resultado{lista.length !== 1 ? 's' : ''}</span>
+                                    {q.length === 0 && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>Escribe para filtrar…</span>}
                                   </div>
                                   {lista.length === 0 && (
                                     <div style={{ padding: '12px 10px', textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>
-                                      Sin resultados para "<strong>{q}</strong>"
+                                      Sin resultados para "<strong>{busquedaResponsable[plan.id]}</strong>"
                                     </div>
                                   )}
                                   {lista.map((u) => (
@@ -2614,8 +3223,19 @@ function TabPlanMejoramientoAuditado({
                                       <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                                         {u.nombre.split(' ').slice(0,2).map(s=>s[0]).join('').toUpperCase() || '?'}
                                       </div>
-                                      <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nombre}</div>
+                                      <div style={{ minWidth: 0, flex: 1 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nombre}</span>
+                                          {u.rol && (
+                                            <span style={{
+                                              fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                                              background: '#F3F4F6', color: '#6B7280',
+                                              whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: 0.3,
+                                            }}>
+                                              {u.rol}
+                                            </span>
+                                          )}
+                                        </div>
                                         {u.email && <div style={{ fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>}
                                       </div>
                                     </button>
@@ -2677,8 +3297,8 @@ function TabPlanMejoramientoAuditado({
                 )}
               </div>
             )}
-            {/* Botón Enviar a revisión: solo en BORRADOR (no en revision, ya fue enviado) */}
-            {!readOnly && estadoPlan === 'borrador' && (
+            {/* Botón Enviar a revisión: en BORRADOR o RECHAZADO (para reenviar tras correcciones) */}
+            {!readOnly && (estadoPlan === 'borrador' || esRechazado) && (
               <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="button"
                   disabled={sendingRevision === plan.id}
@@ -2704,6 +3324,97 @@ function TabPlanMejoramientoAuditado({
           </div>
         );
       })}
+
+      {/* Custom confirm modal */}
+      <AnimatePresence>
+        {confirmModal.open && (
+          <motion.div
+            key="confirm-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 20,
+            }}
+            onClick={() => setConfirmModal(prev => ({ ...prev, open: false }))}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 10 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'white', borderRadius: 16, padding: '28px 28px 20px',
+                width: '100%', maxWidth: 420,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.05)',
+              }}
+            >
+              {/* Icon */}
+              <div style={{
+                width: 48, height: 48, borderRadius: 14, margin: '0 auto 16px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: confirmModal.icon === 'trash' ? '#FEF2F2'
+                  : confirmModal.icon === 'send' ? '#EFF6FF' : '#FFFBEB',
+              }}>
+                {confirmModal.icon === 'trash' && <Trash2 style={{ width: 22, height: 22, color: '#DC2626' }} />}
+                {confirmModal.icon === 'send' && <SendHorizontal style={{ width: 22, height: 22, color: colors.brand }} />}
+                {confirmModal.icon === 'warning' && <AlertTriangle style={{ width: 22, height: 22, color: '#D97706' }} />}
+              </div>
+
+              {/* Title */}
+              <div style={{
+                fontSize: 16, fontWeight: 700, color: '#111827',
+                textAlign: 'center', marginBottom: 8,
+              }}>
+                {confirmModal.title}
+              </div>
+
+              {/* Message */}
+              <div style={{
+                fontSize: 13, color: '#6B7280', textAlign: 'center',
+                lineHeight: 1.6, marginBottom: 24,
+              }}>
+                {confirmModal.message}
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(prev => ({ ...prev, open: false }))}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10,
+                    border: '1px solid #E5E7EB', background: 'white',
+                    color: '#374151', fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}
+                >
+                  {confirmModal.cancelLabel || 'Cancelar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => confirmModal.onConfirm()}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10,
+                    border: 'none',
+                    background: confirmModal.accent || colors.brand,
+                    color: 'white', fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    boxShadow: `0 2px 8px ${confirmModal.accent || colors.brand}40`,
+                  }}
+                >
+                  {confirmModal.confirmLabel || 'Confirmar'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -2729,7 +3440,10 @@ function DetalleAuditoria({
       loadHallazgosAuditoria(auditoriaInicial.id),
       loadDocumentosAuditoria(auditoriaInicial.id),
       // Cargar planes para mostrar acciones en la pestaña Hallazgos
-      controlInternoService.getPlanesMejoramientoAuditado(auditoriaInicial.id).catch(() => []),
+      // Fallback: si el endpoint auditado falla (ownership), usar el general
+      controlInternoService.getPlanesMejoramientoAuditado(auditoriaInicial.id)
+        .catch(() => controlInternoService.getPlanesMejoramientoByAuditoria(auditoriaInicial.id))
+        .catch(() => []),
     ];
     if (USE_API_ESTADO) {
       tasks.push(
@@ -2947,11 +3661,11 @@ function DetalleAuditoria({
       {/* Banner de etapa actual con plazo */}
       <BannerEtapaActual auditoria={auditoria} />
 
-      {/* Tabs */}
+      {/* Tabs — underline style */}
       <div style={{
-        background: 'white', borderRadius: 14, padding: 4,
-        marginBottom: 16, display: 'flex', gap: 2,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        background: 'white', borderRadius: '14px 14px 0 0', padding: '0 4px',
+        marginBottom: 16, display: 'flex', gap: 0,
+        borderBottom: '2px solid #F3F4F6',
       }}>
         <TabButton active={tab === 'info'}       onClick={() => setTab('info')}       label="Información" icon={<Info style={{ width: 14, height: 14 }} />} />
         <TabButton active={tab === 'hallazgos'}  onClick={() => setTab('hallazgos')}  label={`Hallazgos${hallazgosNotificados ? ` (${hallazgosNotificados})` : ''}`} icon={<AlertTriangle style={{ width: 14, height: 14 }} />} />
@@ -3046,12 +3760,14 @@ function TabButton({ active, onClick, label, icon }: { active: boolean; onClick:
     <button
       onClick={onClick}
       style={{
-        flex: 1, height: 38, borderRadius: 10, border: 'none',
-        background: active ? colors.brand : 'transparent',
-        color: active ? 'white' : '#6B7280',
-        fontSize: 12, fontWeight: active ? 600 : 500, cursor: 'pointer',
+        flex: 1, height: 44, border: 'none',
+        borderBottom: active ? `2px solid ${colors.brand}` : '2px solid transparent',
+        background: 'transparent',
+        color: active ? colors.brand : '#6B7280',
+        fontSize: 13, fontWeight: active ? 700 : 500, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        transition: 'all 0.15s',
+        transition: 'all 0.2s',
+        marginBottom: -2, // overlap container border
       }}
     >
       {icon}
@@ -3072,34 +3788,137 @@ function TabInfo({ auditoria }: { auditoria: AuditoriaItem }) {
         : `${plazo.diasHabilesRestantes} día${plazo.diasHabilesRestantes === 1 ? '' : 's'} hábil${plazo.diasHabilesRestantes === 1 ? '' : 'es'} restantes`})`
     : 'No aplica';
   return (
-    <div style={{ background: 'white', borderRadius: 14, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-      <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6, marginBottom: 20 }}>
-        {auditoria.descripcion}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Descripción */}
+      {auditoria.descripcion && (
+        <div style={{
+          background: 'white', borderRadius: 14, padding: '16px 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)', border: '1px solid #F3F4F6',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <FileText style={{ width: 12, height: 12 }} />
+            Descripción de la auditoría
+          </div>
+          <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>
+            {auditoria.descripcion}
+          </div>
+        </div>
+      )}
+
+      {/* Sección 1: Datos generales */}
+      <div style={{
+        background: 'white', borderRadius: 14, padding: '16px 20px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)', border: '1px solid #F3F4F6',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ClipboardList style={{ width: 12, height: 12 }} />
+          Datos de la auditoría
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+          <InfoField icon={<User style={{ width: 13, height: 13, color: '#2563EB' }} />} label="Auditor líder" value={auditoria.auditorLider} />
+          <InfoField icon={<Building2 style={{ width: 13, height: 13, color: '#7C3AED' }} />} label="Área auditada" value={auditoria.area} />
+          <InfoField icon={<Tag style={{ width: 13, height: 13, color: '#0891B2' }} />} label="Tipo de auditoría" value={auditoria.tipo} />
+          <InfoField icon={<Calendar style={{ width: 13, height: 13, color: '#059669' }} />} label="Fecha de notificación" value={auditoria.fechaNotificacion} />
+          {auditoria.informeFinalGenerado && (
+            <InfoField icon={<FileCheck style={{ width: 13, height: 13, color: '#047857' }} />} label="Informe final" value={auditoria.fechaInformeFinal || 'Generado'} />
+          )}
+          {plazo && (
+            <InfoField icon={<Clock style={{ width: 13, height: 13, color: plazo.vencido ? '#DC2626' : '#B45309' }} />} label={plazo.etapa} value={plazoTexto} highlight={plazo.vencido ? 'danger' : undefined} />
+          )}
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-        <InfoField label="Auditor líder"    value={auditoria.auditorLider} />
-        <InfoField label="Área auditada"    value={auditoria.area} />
-        <InfoField label="Tipo"             value={auditoria.tipo} />
-        <InfoField label="Notificada"       value={auditoria.fechaNotificacion} />
-        {plazo && <InfoField label={plazo.etapa} value={plazoTexto} />}
-        {auditoria.informeFinalGenerado && (
-          <InfoField label="Informe Final" value={auditoria.fechaInformeFinal || 'Generado'} />
-        )}
-        <InfoField label="Hallazgos"        value={String(auditoria.hallazgos)} />
-        <InfoField label="Docs solicitados" value={String(auditoria.documentosSolicitados)} />
-        <InfoField label="Docs subidos"     value={String(auditoria.documentosSubidos)} />
+
+      {/* Sección 2: Métricas clave */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12,
+      }}>
+        <div style={{
+          background: 'white', borderRadius: 14, padding: '16px 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)', border: '1px solid #F3F4F6',
+          display: 'flex', alignItems: 'center', gap: 14,
+        }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 12,
+            background: '#FFFBEB', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <AlertCircle style={{ width: 20, height: 20, color: '#B45309' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: '#B45309' }}>{auditoria.hallazgos}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#6B7280' }}>Hallazgos</div>
+          </div>
+        </div>
+
+        <div style={{
+          background: 'white', borderRadius: 14, padding: '16px 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)', border: '1px solid #F3F4F6',
+          display: 'flex', alignItems: 'center', gap: 14,
+        }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 12,
+            background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Upload style={{ width: 20, height: 20, color: '#2563EB' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: '#2563EB' }}>
+              {auditoria.documentosSubidos}<span style={{ fontSize: 14, color: '#9CA3AF' }}>/{auditoria.documentosSolicitados}</span>
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#6B7280' }}>Documentos subidos</div>
+          </div>
+        </div>
+
+        <div style={{
+          background: 'white', borderRadius: 14, padding: '16px 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)', border: '1px solid #F3F4F6',
+          display: 'flex', alignItems: 'center', gap: 14,
+        }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 12,
+            background: auditoria.documentosSolicitados > 0 && auditoria.documentosSubidos >= auditoria.documentosSolicitados ? '#ECFDF5' : '#FEF2F2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <CheckCircle2 style={{
+              width: 20, height: 20,
+              color: auditoria.documentosSolicitados > 0 && auditoria.documentosSubidos >= auditoria.documentosSolicitados ? '#047857' : '#DC2626',
+            }} />
+          </div>
+          <div>
+            <div style={{
+              fontSize: 14, fontWeight: 700,
+              color: auditoria.documentosSolicitados > 0 && auditoria.documentosSubidos >= auditoria.documentosSolicitados ? '#047857' : '#DC2626',
+            }}>
+              {auditoria.documentosSolicitados > 0 && auditoria.documentosSubidos >= auditoria.documentosSolicitados ? 'Completo' : `${Math.max(0, auditoria.documentosSolicitados - auditoria.documentosSubidos)} pendiente${Math.max(0, auditoria.documentosSolicitados - auditoria.documentosSubidos) !== 1 ? 's' : ''}`}
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#6B7280' }}>Estado documentos</div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function InfoField({ label, value }: { label: string; value: string }) {
+function InfoField({ label, value, icon, highlight }: { label: string; value: string; icon?: React.ReactNode; highlight?: 'danger' }) {
   return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+    <div style={{
+      padding: '10px 12px', borderRadius: 10,
+      background: highlight === 'danger' ? '#FEF2F2' : '#F9FAFB',
+      border: `1px solid ${highlight === 'danger' ? '#FCA5A5' : '#F3F4F6'}`,
+    }}>
+      <div style={{
+        fontSize: 10, fontWeight: 600, color: '#9CA3AF',
+        textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 5,
+        display: 'flex', alignItems: 'center', gap: 5,
+      }}>
+        {icon}
         {label}
       </div>
-      <div style={{ fontSize: 14, color: '#1F2937', fontWeight: 500 }}>{value}</div>
+      <div style={{
+        fontSize: 13, color: highlight === 'danger' ? '#DC2626' : '#1F2937',
+        fontWeight: 600,
+      }}>
+        {value || '—'}
+      </div>
     </div>
   );
 }
@@ -3350,7 +4169,7 @@ function TabHallazgos({
         }}>
           <AlertTriangle style={{ width: 18, height: 18, color: '#DC2626', flexShrink: 0, marginTop: 2 }} />
           <div style={{ fontSize: 13, color: '#7F1D1D', lineHeight: 1.5 }}>
-            <strong>El plazo de 10 días hábiles para responder los hallazgos venció.</strong>{' '}
+            <strong>El plazo de {PLAZO_RESPUESTA_DIAS_HABILES} días hábiles para responder los hallazgos venció.</strong>{' '}
             Los hallazgos sin respuesta podrán ser ratificados por el equipo auditor sin
             controversia, según el procedimiento de Control Interno.
           </div>
@@ -3440,7 +4259,8 @@ function TabHallazgos({
             <div key={h.id}>
               <HallazgoCard
                 hallazgo={h}
-                readOnly={readOnly || plazoVencido}
+                readOnly={readOnly}
+                plazoVencido={plazoVencido}
                 onAceptar={onAceptar}
                 onSubirDocumentoControversia={onSubirDocumentoControversia}
                 onPresentarControversia={onPresentarControversia}
@@ -3506,7 +4326,7 @@ function ConsecuenciaHallazgo({ hallazgo }: { hallazgo: HallazgoItem }) {
     tone = 'warn'; Icono = Clock;
     titulo = 'Hallazgo en preparación';
     mensaje =
-      'El equipo auditor aún no ha notificado este hallazgo al área. Cuando se publique el Informe Preliminar podrás aceptarlo o presentar controversia (plazo de 10 días hábiles).';
+      `El equipo auditor aún no ha notificado este hallazgo al área. Cuando se publique el Informe Preliminar podrás aceptarlo o presentar controversia (plazo de ${PLAZO_RESPUESTA_DIAS_HABILES} días hábiles).`;
   } else {
     return null; // 'notificado' no muestra mensaje (los botones se muestran abajo)
   }
@@ -3530,6 +4350,7 @@ function ConsecuenciaHallazgo({ hallazgo }: { hallazgo: HallazgoItem }) {
 function HallazgoCard({
   hallazgo,
   readOnly,
+  plazoVencido = false,
   onAceptar,
   onSubirDocumentoControversia,
   onPresentarControversia,
@@ -3539,6 +4360,7 @@ function HallazgoCard({
 }: {
   hallazgo: HallazgoItem;
   readOnly: boolean;
+  plazoVencido?: boolean;
   onAceptar: (id: string) => Promise<void>;
   onSubirDocumentoControversia: (file: File, hallazgoId: string) => Promise<{ documentoId: string; nombre: string }>;
   onPresentarControversia: (id: string, argumentos: string, documentoId: string, documentoNombre: string) => Promise<void>;
@@ -3568,7 +4390,9 @@ function HallazgoCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const estadoCol = ESTADO_HALLAZGO[hallazgo.estado];
-  const puedeResponder = !readOnly && hallazgo.estado === 'notificado';
+  const esTurnoAuditado = hallazgo.estado === 'en-controversia' && hallazgo.controversiaTurno === 'auditado';
+  const puedeResponder = !readOnly && !plazoVencido && (hallazgo.estado === 'notificado' || esTurnoAuditado);
+  const mostrarBotones = !readOnly && (hallazgo.estado === 'notificado' || esTurnoAuditado);
 
   const handleAceptar = async () => {
     setSubmitting(true);
@@ -3717,18 +4541,18 @@ function HallazgoCard({
               <DetalleHallazgoCampos hallazgo={hallazgo} />
 
               {/* Respuesta del auditado (si ya la presentó) */}
-              {(hallazgo.argumentosControversia || hallazgo.documentoControversiaNombre) && (
+              {(hallazgo.observacionesControversia || hallazgo.argumentosControversia || hallazgo.documentoControversiaNombre) && (
                 <div style={{
                   marginTop: 14, padding: 14, borderRadius: 10,
                   background: '#EFF6FF', border: '1px solid #BFDBFE',
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#1D4ED8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Scale style={{ width: 12, height: 12 }} />
-                    Tu controversia {hallazgo.fechaPresentacion ? `· ${hallazgo.fechaPresentacion}` : ''}
+                    Historial de la controversia {hallazgo.fechaPresentacion ? `· ${hallazgo.fechaPresentacion}` : ''}
                   </div>
-                  {hallazgo.argumentosControversia && (
-                    <div style={{ fontSize: 13, color: '#1F2937', lineHeight: 1.5, marginBottom: hallazgo.documentoControversiaNombre ? 8 : 0 }}>
-                      {hallazgo.argumentosControversia}
+                  {(hallazgo.observacionesControversia || hallazgo.argumentosControversia) && (
+                    <div style={{ fontSize: 13, color: '#1F2937', lineHeight: 1.5, marginBottom: hallazgo.documentoControversiaNombre ? 8 : 0, whiteSpace: 'pre-wrap' }}>
+                      {hallazgo.observacionesControversia || hallazgo.argumentosControversia}
                     </div>
                   )}
                   {hallazgo.documentoControversiaNombre && (
@@ -3762,37 +4586,42 @@ function HallazgoCard({
                 </div>
               )}
 
-              {/* Acciones del auditado: solo si está en 'notificado' */}
-              {puedeResponder && !showControversiaForm && (
+              {/* Acciones del auditado: si está en 'notificado' o es su turno en controversia */}
+              {mostrarBotones && !showControversiaForm && (
                 <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button
-                    onClick={handleAceptar}
-                    disabled={submitting}
+                    onClick={plazoVencido ? undefined : handleAceptar}
+                    disabled={submitting || plazoVencido}
+                    title={plazoVencido ? 'El plazo de respuesta ha vencido' : undefined}
                     style={{
                       height: 38, padding: '0 16px', borderRadius: 10, border: 'none',
-                      background: submitting ? '#9CA3AF' : '#047857',
-                      color: 'white', fontSize: 13, fontWeight: 600,
-                      cursor: submitting ? 'wait' : 'pointer',
+                      background: submitting || plazoVencido ? '#D1D5DB' : '#047857',
+                      color: submitting || plazoVencido ? '#9CA3AF' : 'white',
+                      fontSize: 13, fontWeight: 600,
+                      cursor: submitting ? 'wait' : plazoVencido ? 'not-allowed' : 'pointer',
                       display: 'inline-flex', alignItems: 'center', gap: 8,
-                      boxShadow: '0 2px 8px rgba(4,120,87,0.18)',
+                      boxShadow: submitting || plazoVencido ? 'none' : '0 2px 8px rgba(4,120,87,0.18)',
                     }}
                   >
                     <ThumbsUp style={{ width: 14, height: 14 }} />
-                    Aceptar hallazgo
+                    {esTurnoAuditado ? 'Aceptar controversia' : 'Aceptar hallazgo'}
                   </button>
                   <button
-                    onClick={() => setShowControversiaForm(true)}
-                    disabled={submitting}
+                    onClick={plazoVencido ? undefined : () => setShowControversiaForm(true)}
+                    disabled={submitting || plazoVencido}
+                    title={plazoVencido ? 'El plazo de respuesta ha vencido' : undefined}
                     style={{
                       height: 38, padding: '0 16px', borderRadius: 10,
-                      border: '1px solid #1D4ED8', background: 'white',
-                      color: '#1D4ED8', fontSize: 13, fontWeight: 600,
-                      cursor: 'pointer',
+                      border: `1px solid ${plazoVencido ? '#D1D5DB' : '#1D4ED8'}`,
+                      background: 'white',
+                      color: plazoVencido ? '#9CA3AF' : '#1D4ED8',
+                      fontSize: 13, fontWeight: 600,
+                      cursor: plazoVencido ? 'not-allowed' : 'pointer',
                       display: 'inline-flex', alignItems: 'center', gap: 8,
                     }}
                   >
                     <Scale style={{ width: 14, height: 14 }} />
-                    Presentar controversia
+                    {esTurnoAuditado ? 'Devolver con observaciones' : 'Presentar controversia'}
                   </button>
                 </div>
               )}
@@ -3963,44 +4792,101 @@ function HallazgoCard({
 
 function DetalleHallazgoCampos({ hallazgo }: { hallazgo: HallazgoItem }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <CampoBloque label="Descripción" value={hallazgo.descripcion} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <CampoBloque
+        icon={<FileText style={{ width: 14, height: 14, color: '#2563EB' }} />}
+        accent="#2563EB"
+        label="Descripción"
+        value={hallazgo.descripcion}
+      />
       {hallazgo.criterioIncumplido && (
-        <CampoBloque label="Criterio incumplido" value={hallazgo.criterioIncumplido} />
+        <CampoBloque
+          icon={<Scale style={{ width: 14, height: 14, color: '#7C3AED' }} />}
+          accent="#7C3AED"
+          label="Criterio incumplido"
+          value={hallazgo.criterioIncumplido}
+        />
       )}
       {hallazgo.causas && hallazgo.causas.length > 0 && (
-        <CampoLista label="Causas identificadas" items={hallazgo.causas} />
+        <CampoLista
+          icon={<AlertTriangle style={{ width: 14, height: 14, color: '#D97706' }} />}
+          accent="#D97706"
+          label="Causas identificadas"
+          items={hallazgo.causas}
+        />
       )}
       {hallazgo.efectos && hallazgo.efectos.length > 0 && (
-        <CampoLista label="Efectos / consecuencias" items={hallazgo.efectos} />
+        <CampoLista
+          icon={<AlertCircle style={{ width: 14, height: 14, color: '#DC2626' }} />}
+          accent="#DC2626"
+          label="Efectos y consecuencias"
+          items={hallazgo.efectos}
+        />
       )}
       {hallazgo.recomendaciones && hallazgo.recomendaciones.length > 0 && (
-        <CampoLista label="Recomendaciones del auditor" items={hallazgo.recomendaciones} />
+        <CampoLista
+          icon={<Lightbulb style={{ width: 14, height: 14, color: '#059669' }} />}
+          accent="#059669"
+          label="Recomendaciones del auditor"
+          items={hallazgo.recomendaciones}
+        />
       )}
     </div>
   );
 }
 
-function CampoBloque({ label, value }: { label: string; value: string }) {
+function CampoBloque({ label, value, icon, accent }: { label: string; value: string; icon?: React.ReactNode; accent?: string }) {
   return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
-        {label}
+    <div style={{
+      display: 'flex', borderRadius: 10, overflow: 'hidden',
+      background: '#FAFAFA', border: '1px solid #F3F4F6',
+    }}>
+      <div style={{ width: 4, background: accent || '#D1D5DB', flexShrink: 0 }} />
+      <div style={{ padding: '10px 14px', flex: 1 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: accent || '#6B7280',
+          marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          {icon}
+          {label}
+        </div>
+        <div style={{ fontSize: 13, color: '#1F2937', lineHeight: 1.6 }}>{value}</div>
       </div>
-      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.55 }}>{value}</div>
     </div>
   );
 }
 
-function CampoLista({ label, items }: { label: string; items: string[] }) {
+function CampoLista({ label, items, icon, accent }: { label: string; items: string[]; icon?: React.ReactNode; accent?: string }) {
   return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
-        {label}
+    <div style={{
+      display: 'flex', borderRadius: 10, overflow: 'hidden',
+      background: '#FAFAFA', border: '1px solid #F3F4F6',
+    }}>
+      <div style={{ width: 4, background: accent || '#D1D5DB', flexShrink: 0 }} />
+      <div style={{ padding: '10px 14px', flex: 1 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: accent || '#6B7280',
+          marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          {icon}
+          {label}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{
+              fontSize: 13, color: '#374151', lineHeight: 1.5,
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: accent || '#D1D5DB',
+                marginTop: 7, flexShrink: 0,
+              }} />
+              {it}
+            </div>
+          ))}
+        </div>
       </div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#374151', lineHeight: 1.55 }}>
-        {items.map((it, i) => <li key={i}>{it}</li>)}
-      </ul>
     </div>
   );
 }

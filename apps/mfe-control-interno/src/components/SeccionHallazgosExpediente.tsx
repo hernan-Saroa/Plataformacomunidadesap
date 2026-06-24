@@ -29,7 +29,7 @@ import { controlInternoService, type Hallazgo } from '../../../services/api/cont
 import { toast } from 'sonner';
 
 // Tipos locales para UI
-type CategoriaHallazgo = 'critico' | 'controversia' | 'borrador';
+type CategoriaHallazgo = 'borrador' | 'leve' | 'moderado' | 'grave' | 'critico' | 'controversia';
 type EstadoHallazgo = 'borrador' | 'notificado' | 'aceptado' | 'en-controversia' | 'ratificado' | 'modificado' | 'retirado' | 'cerrado';
 
 // Áreas/Dependencias de la ESAP
@@ -55,6 +55,8 @@ interface Props {
   auditoriaNombre: string;
   /** Tras subir evidencias, refrescar tab Documentación del expediente */
   onEvidenciasActualizadas?: () => void;
+  /** Callback para notificar que los hallazgos se han creado o modificado */
+  onHallazgosActualizados?: () => void;
   /** Si true, muestra selector Tipo (Preliminar/Identificado). Preliminar oculta el bloque de evidencia */
   permitirTipoPreliminar?: boolean;
   /** Datos ya cargados por el expediente (evita GET hallazgos + N×evidencias) */
@@ -74,6 +76,7 @@ export function SeccionHallazgosExpediente({
   auditoriaNombre,
   permitirTipoPreliminar,
   onEvidenciasActualizadas,
+  onHallazgosActualizados,
   hallazgosPrecargados,
   evidenciasPorHallazgoPrecargadas,
 }: Props) {
@@ -215,11 +218,17 @@ export function SeccionHallazgosExpediente({
         const { auditoriasApi } = await import('./services/api');
         const response = await auditoriasApi.getPersonasDisponibles();
         if (response.success && response.data) {
-          const personas = response.data.map((p: any) => ({
-            id: String(p.idPersona || p.id_tercero || p.id),
-            nombre: p.nombre || p.nom_largo || 'Sin nombre',
-            cargo: p.cargo || 'Auditor'
-          }));
+          const personas = response.data
+            .map((p: any) => ({
+              id: String(p.idPersona || p.id_tercero || p.id),
+              nombre: p.nombre || p.nom_largo || '',
+              cargo: p.cargo || 'Auditor'
+            }))
+            // Filter out entries without a valid name
+            .filter((p: PersonaDisponible) => {
+              const n = (p.nombre || '').trim();
+              return n && n !== 'Sin nombre' && n !== 'Usuario Sin Nombre' && n !== 'Sin Nombre';
+            });
           setPersonasDisponibles(personas);
         }
       } catch (err) {
@@ -344,9 +353,32 @@ export function SeccionHallazgosExpediente({
       setArchivosEvidencia([]);
       setTipoHallazgo('identificado');
       cargarHallazgos();
+      onHallazgosActualizados?.();
     } catch (err: any) {
       console.error('Error creando hallazgo:', err);
-      toast.error('Error al crear hallazgo');
+      // Intentar extraer detalles del error del backend
+      const backendMsg = err?.response?.data?.message
+        || err?.response?.message
+        || err?.message
+        || 'Error desconocido';
+      const statusCode = err?.response?.status || err?.statusCode || '';
+      console.error('📋 Payload enviado:', JSON.stringify({
+        titulo: nuevoHallazgo.descripcion?.substring(0, 100),
+        categoria: nuevoHallazgo.categoria,
+        area: nuevoHallazgo.area,
+        descripcion: nuevoHallazgo.descripcion?.substring(0, 50),
+        criterioIncumplido: nuevoHallazgo.criterioIncumplido?.substring(0, 50),
+        causa: nuevoHallazgo.causa?.substring(0, 50),
+        efecto: nuevoHallazgo.efecto?.substring(0, 50),
+        fechaDeteccion: nuevoHallazgo.fechaDeteccion,
+        responsable: nuevoHallazgo.responsable,
+        auditoriaId: auditoriaId,
+        auditoria: auditoriaNombre
+      }, null, 2));
+      toast.error(`Error al crear hallazgo${statusCode ? ` (${statusCode})` : ''}`, {
+        description: Array.isArray(backendMsg) ? backendMsg.join(', ') : String(backendMsg),
+        duration: 8000
+      });
     } finally {
       setGuardando(false);
     }
@@ -458,10 +490,15 @@ export function SeccionHallazgosExpediente({
     switch (categoria) {
       case 'critico':
         return 'bg-red-100 text-red-800 border-red-300';
-      case 'controversia':
+      case 'grave':
         return 'bg-orange-100 text-orange-800 border-orange-300';
+      case 'moderado':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'leve':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'controversia':
+        return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'borrador':
-        return 'bg-gray-100 text-gray-800 border-gray-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
@@ -495,7 +532,10 @@ export function SeccionHallazgosExpediente({
   const getLabelCategoria = (cat: string): string => {
     switch (cat) {
       case 'critico': return 'Crítico';
-      case 'controversia': return 'Controversia';
+      case 'grave': return 'Grave';
+      case 'moderado': return 'Moderado';
+      case 'leve': return 'Leve';
+      case 'controversia': return 'En Controversia';
       case 'borrador': return 'Por clasificar';
       default: return cat;
     }
@@ -528,27 +568,52 @@ export function SeccionHallazgosExpediente({
 
   return (
     <div className="space-y-4">
-      {/* Header con estadísticas */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-lg font-bold text-gray-900">
+      {/* Header con estadísticas y controles compactos en UNA SOLA LÍNEA */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-gray-150">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-bold text-gray-900">
             Hallazgos de Auditoría
           </h3>
-          <p className="text-sm text-gray-600 mt-1">
-            {totalHallazgos} hallazgo{totalHallazgos !== 1 ? 's' : ''} registrado{totalHallazgos !== 1 ? 's' : ''}
-            {hallazgosCriticos > 0 && (
-              <span className="ml-2 text-red-600 font-semibold">
-                • {hallazgosCriticos} crítico{hallazgosCriticos !== 1 ? 's' : ''}
-              </span>
-            )}
-          </p>
+          <span className="text-[10px] text-gray-600 font-bold bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">
+            {totalHallazgos}
+          </span>
+          {hallazgosCriticos > 0 && (
+            <span className="text-[10px] text-red-600 font-bold bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md">
+              {hallazgosCriticos} crítico{hallazgosCriticos !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
-        <div className="w-full sm:w-auto">
+
+        <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+          {/* Barra de búsqueda integrada */}
+          <div className="relative w-full sm:w-60">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar hallazgo..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full pl-8 pr-3 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              style={{ height: '28px' }}
+            />
+          </div>
+
+          <ButtonSIGL
+            variant={mostrarFiltros ? 'primary' : 'secondary'}
+            onClick={() => setMostrarFiltros(!mostrarFiltros)}
+            className="font-bold text-xs"
+            style={{ minHeight: 0, height: '28px', padding: '0 8px', fontSize: '11px' }}
+            icon={<Filter className="w-3.5 h-3.5" />}
+          >
+            Filtros
+          </ButtonSIGL>
+
           <ButtonSIGL
             variant="primary"
-            icon={<Plus className="w-4 h-4" />}
             onClick={() => setMostrarFormulario(true)}
-            className="w-full sm:w-auto"
+            className="font-bold text-xs shrink-0"
+            style={{ minHeight: 0, height: '28px', padding: '0 10px', fontSize: '11px', backgroundColor: '#003DA5', color: '#FFFFFF' }}
+            icon={<Plus className="w-3.5 h-3.5" />}
           >
             Nuevo Hallazgo
           </ButtonSIGL>
@@ -602,8 +667,10 @@ export function SeccionHallazgosExpediente({
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="borrador">Por clasificar</option>
+                    <option value="leve">Leve</option>
+                    <option value="moderado">Moderado</option>
+                    <option value="grave">Grave</option>
                     <option value="critico">Crítico</option>
-                    <option value="controversia">En Controversia</option>
                   </select>
                 </div>
 
@@ -797,27 +864,8 @@ export function SeccionHallazgosExpediente({
         )}
       </AnimatePresence>
 
-      {/* Barra de búsqueda y filtros */}
+      {/* Panel de filtros */}
       <div className="space-y-3">
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por código, título o descripción..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <ButtonSIGL
-            variant={mostrarFiltros ? 'primary' : 'outline'}
-            icon={<Filter className="w-4 h-4" />}
-            onClick={() => setMostrarFiltros(!mostrarFiltros)}
-          >
-            Filtros
-          </ButtonSIGL>
-        </div>
 
         {/* Panel de filtros */}
         <AnimatePresence>
@@ -840,9 +888,11 @@ export function SeccionHallazgosExpediente({
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Todas</option>
-                    <option value="critico">Crítico</option>
-                    <option value="controversia">En Controversia</option>
                     <option value="borrador">Por clasificar</option>
+                    <option value="leve">Leve</option>
+                    <option value="moderado">Moderado</option>
+                    <option value="grave">Grave</option>
+                    <option value="critico">Crítico</option>
                   </select>
                 </div>
 
@@ -898,98 +948,96 @@ export function SeccionHallazgosExpediente({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
             >
-              <CardSIGL hover>
-                <div className="p-4">
+              <CardSIGL hover padding="none">
+                {/* Cuerpo del hallazgo */}
+                <div className="p-3 pb-2.5">
                   {/* Header del hallazgo */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className="text-xs font-mono font-bold px-2 py-1 rounded"
-                          style={{ background: '#E0EDFF', color: '#003DA5' }}
-                        >
-                          {hallazgo.codigo}
-                        </span>
-                        <span className={`text-xs font-semibold px-2 py-1 rounded border ${getColorCategoria(hallazgo.categoria as CategoriaHallazgo)}`}>
-                          {getLabelCategoria(hallazgo.categoria)}
-                        </span>
-                        <span className={`text-xs font-semibold px-2 py-1 rounded border ${getColorEstado(hallazgo.estado)}`}>
-                          {getLabelEstado(hallazgo.estado)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600">
-                        {hallazgo.area}
-                      </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#E0EDFF', color: '#003DA5' }}
+                      >
+                        {hallazgo.codigo}
+                      </span>
+                      <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded border ${getColorCategoria(hallazgo.categoria as CategoriaHallazgo)}`}>
+                        {getLabelCategoria(hallazgo.categoria)}
+                      </span>
+                      <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded border ${getColorEstado(hallazgo.estado)}`}>
+                        {getLabelEstado(hallazgo.estado)}
+                      </span>
                     </div>
 
                     {/* Acciones */}
                     <div className="flex gap-1">
                       <button
                         onClick={() => setHallazgoSeleccionado(hallazgo)}
-                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                        className="p-1 rounded hover:bg-gray-100 transition-colors"
                         title="Ver detalle"
                       >
-                        <Eye className="w-4 h-4 text-gray-600" />
+                        <Eye className="w-4 h-4 text-gray-500" />
                       </button>
                       <button
                         onClick={() => handleEditarHallazgo(hallazgo)}
-                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                        className="p-1 rounded hover:bg-gray-100 transition-colors"
                         title="Editar"
                       >
-                        <Edit2 className="w-4 h-4 text-gray-600" />
+                        <Edit2 className="w-4 h-4 text-gray-500" />
                       </button>
                     </div>
                   </div>
 
                   {/* Descripción */}
-                  <p className="text-sm text-gray-700 mb-3 line-clamp-2">
+                  <p className="text-xs text-gray-700 line-clamp-2 leading-relaxed">
                     {hallazgo.descripcion}
                   </p>
+                </div>
 
-                  {/* Footer con información adicional */}
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-200">
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">Área Responsable:</p>
-                      <p className="text-xs font-semibold text-gray-900 truncate" title={hallazgo.area}>{hallazgo.area}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">Responsable:</p>
-                      <p className="text-xs font-semibold text-gray-900 truncate" title={getNombreResponsable(hallazgo.responsable)}>{getNombreResponsable(hallazgo.responsable)}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">Criterio Incumplido:</p>
-                      <p className="text-xs font-semibold text-gray-900 truncate" title={hallazgo.criterioIncumplido}>{hallazgo.criterioIncumplido || '—'}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500 mb-0.5">Fecha Detección:</p>
-                      <p className="text-xs font-semibold text-gray-900">{hallazgo.fechaDeteccion?.split('T')[0] || 'N/A'}</p>
-                    </div>
+                {/* Footer con información adicional (Metadata) centrado verticalmente y alineado a la izquierda */}
+                <div className="px-3 py-2.5 border-t border-gray-200 flex flex-wrap items-center justify-start gap-x-5 gap-y-1 text-[11px] leading-tight bg-gray-50/20">
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500 font-medium">Área:</span>
+                    <span className="font-semibold text-gray-800" title={hallazgo.area}>{hallazgo.area}</span>
                   </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500 font-medium">Resp:</span>
+                    <span className="font-semibold text-gray-800" title={getNombreResponsable(hallazgo.responsable)}>{getNombreResponsable(hallazgo.responsable)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500 font-medium">Criterio:</span>
+                    <span className="font-semibold text-gray-800" title={hallazgo.criterioIncumplido}>{hallazgo.criterioIncumplido || '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500 font-medium">Detección:</span>
+                    <span className="font-semibold text-gray-800">{hallazgo.fechaDeteccion?.split('T')[0] || 'N/A'}</span>
+                  </div>
+                </div>
 
-                  {/* Evidencias (cargadas del backend) */}
-                  {evidenciasPorHallazgo[hallazgo.id] && evidenciasPorHallazgo[hallazgo.id].length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <p className="text-xs text-gray-500 mb-1">
-                        <Paperclip className="w-3 h-3 inline mr-1" />
+                {/* Evidencias (cargadas del backend) */}
+                {evidenciasPorHallazgo[hallazgo.id] && evidenciasPorHallazgo[hallazgo.id].length > 0 && (
+                  <div className="px-3 pb-2.5 pt-2 border-t border-gray-100 bg-gray-50/5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                        <Paperclip className="w-3 h-3 text-gray-400" />
                         Evidencias ({evidenciasPorHallazgo[hallazgo.id].length}):
-                      </p>
-                      <div className="flex gap-2 flex-wrap">
+                      </span>
+                      <div className="flex gap-1.5 flex-wrap">
                         {evidenciasPorHallazgo[hallazgo.id].map((evidencia, idx) => (
                           <button
                             key={evidencia.id || idx}
                             onClick={() => handleVerEvidencia(evidencia)}
-                            className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 flex items-center gap-1 hover:bg-blue-100 transition-colors cursor-pointer"
+                            className="text-[10px] bg-blue-50/50 hover:bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200/60 flex items-center gap-1 transition-colors cursor-pointer"
                             title="Ver/Descargar evidencia"
                           >
                             <Eye className="w-3 h-3" />
                             <span className="max-w-[150px] truncate">{evidencia.nombre || evidencia.nombreArchivoOriginal}</span>
-                            <Download className="w-3 h-3" />
+                            <Download className="w-3 h-3 text-blue-500" />
                           </button>
                         ))}
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </CardSIGL>
             </motion.div>
           ))

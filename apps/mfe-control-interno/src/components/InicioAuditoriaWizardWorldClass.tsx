@@ -41,6 +41,9 @@ interface Auditoria {
     cargo: string;
     email: string;
   };
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   auditorLider: {
     nombre: string;
     cargo: string;
@@ -284,7 +287,7 @@ function Paso0ListasChequeo({ auditoria }: { auditoria: Auditoria }) {
           <ul className="list-disc list-inside mt-2">
             <li>Auditor Líder</li>
             <li>Equipo de Auditoría</li>
-            <li>Responsable del Área</li>
+            <li>Responsable del Área Auditada</li>
           </ul>
         </div>
 
@@ -401,16 +404,16 @@ function Paso2ProcesoAuditado({ auditoria }: { auditoria: Auditoria }) {
 
       {/* Responsable del área */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">Responsable del Área</h4>
+        <h4 className="text-sm font-medium text-gray-900 mb-3">Responsable del Área Auditada</h4>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-              {auditoria.responsableArea.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+              {(auditoria.responsableAreaNombre || 'NA').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1">
-              <h5 className="text-sm font-medium text-gray-900">{auditoria.responsableArea.nombre}</h5>
-              <p className="text-xs text-gray-600">{auditoria.responsableArea.cargo}</p>
-              <p className="text-xs text-blue-600 mt-1">{auditoria.responsableArea.email}</p>
+              <h5 className="text-sm font-medium text-gray-900">{auditoria.responsableAreaNombre || 'Sin asignar'}</h5>
+              <p className="text-xs text-gray-600">{auditoria.responsableAreaCargo || 'Sin cargo'}</p>
+              <p className="text-xs text-blue-600 mt-1">{auditoria.responsableAreaEmail || 'Sin email'}</p>
             </div>
           </div>
         </div>

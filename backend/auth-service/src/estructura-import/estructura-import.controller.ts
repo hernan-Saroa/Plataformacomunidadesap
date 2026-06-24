@@ -6,8 +6,10 @@ import {
   UploadedFile,
   Query,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { EstructuraImportService } from './estructura-import.service';
 
 @Controller('estructura-import')
@@ -33,5 +35,19 @@ export class EstructuraImportController {
   @Get('status')
   async getStatus() {
     return this.importService.getStatus();
+  }
+
+  @Get('template')
+  downloadTemplate(@Res() response: Response) {
+    const buffer = this.importService.getTemplateBuffer();
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      'attachment; filename="Plantilla_Estructura_Geografica_ESAP.xlsx"',
+    );
+    response.send(buffer);
   }
 }

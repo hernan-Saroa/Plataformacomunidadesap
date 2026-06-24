@@ -801,6 +801,41 @@ export class UsersService {
     return { users, total, totalActive, totalBlocked };
   }
 
+  /**
+   * Devuelve los usuarios activos que tienen al menos un rol que incluya el
+   * permiso indicado (por su code). Se usa, por ejemplo, para listar quién
+   * puede ser responsable de una actuación en Gestión Legal.
+   */
+  async findUsersByPermissionCode(code: string): Promise<User[]> {
+    if (!code?.trim()) {
+      return [];
+    }
+
+    return this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.person', 'person')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .where('user.is_active = :active', { active: true })
+      .andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM auth.user_roles ur
+          INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+          INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
+          WHERE ur.id_user = "user".id_user
+            AND COALESCE(ur.is_active, true) = true
+            AND COALESCE(rp.is_active, true) = true
+            AND p.is_active = true
+            AND p.code = :permissionCode
+        )`,
+        { permissionCode: code.trim() },
+      )
+      .distinct(true)
+      .orderBy('person.first_name', 'ASC')
+      .addOrderBy('person.last_name', 'ASC')
+      .getMany();
+  }
+
   async findById(
     id: string,
     options?: { allowInternalId?: boolean },

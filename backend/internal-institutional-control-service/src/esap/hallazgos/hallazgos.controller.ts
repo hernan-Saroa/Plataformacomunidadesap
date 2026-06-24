@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -87,8 +88,9 @@ export class HallazgosController {
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.HALLAZGO_CREATE)
-  create(@Body() createDto: CreateHallazgoDto) {
-    return this.hallazgosService.create(createDto);
+  create(@Body() createDto: CreateHallazgoDto, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.hallazgosService.create(createDto, userId);
   }
 
   /**
@@ -98,8 +100,9 @@ export class HallazgosController {
   @Post(':id/aceptar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.HALLAZGO_EDIT)
-  aceptar(@Param('id') id: string) {
-    return this.hallazgosService.aceptar(id);
+  aceptar(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.hallazgosService.aceptar(id, userId);
   }
 
   /**
@@ -112,6 +115,7 @@ export class HallazgosController {
   presentarControversia(
     @Param('id') id: string,
     @Body() body: { argumentos: string; documentoId: string; documentoNombre: string },
+    @Req() req: any,
   ) {
     const { argumentos, documentoId, documentoNombre } = body;
     if (!documentoId || !documentoNombre) {
@@ -119,7 +123,8 @@ export class HallazgosController {
         'documentoId y documentoNombre son obligatorios (subir archivo vía POST /documentos primero)',
       );
     }
-    return this.hallazgosService.presentarControversia(id, argumentos, documentoId, documentoNombre);
+    const userId = req.user?.userId || null;
+    return this.hallazgosService.presentarControversia(id, argumentos, documentoId, documentoNombre, userId);
   }
 
   /**
@@ -129,12 +134,14 @@ export class HallazgosController {
   @Post(':id/decision-auditor')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.HALLAZGO_EDIT)
-  decisionAuditor(@Param('id') id: string, @Body() dto: DecisionAuditorDto) {
+  decisionAuditor(@Param('id') id: string, @Body() dto: DecisionAuditorDto, @Req() req: any) {
+    const userId = req.user?.userId || null;
     return this.hallazgosService.decisionAuditor(
       id,
       dto.tipoDecision,
       dto.fundamentacionTecnica,
       dto.auditorId,
+      userId,
     );
   }
 
@@ -144,8 +151,9 @@ export class HallazgosController {
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.HALLAZGO_EDIT)
-  update(@Param('id') id: string, @Body() updateDto: UpdateHallazgoDto) {
-    return this.hallazgosService.update(id, updateDto);
+  update(@Param('id') id: string, @Body() updateDto: UpdateHallazgoDto, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.hallazgosService.update(id, updateDto, userId);
   }
 
   /**
@@ -155,8 +163,9 @@ export class HallazgosController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.HALLAZGO_DELETE)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.hallazgosService.delete(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId || null;
+    return this.hallazgosService.delete(id, userId);
   }
 }
 

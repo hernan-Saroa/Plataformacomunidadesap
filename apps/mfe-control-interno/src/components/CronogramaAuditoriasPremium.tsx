@@ -46,8 +46,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// 🆕 Importar datos de territoriales y CETAP
-import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
+// 🆕 Importar servicio de Estructura Organizacional para territoriales dinámicas
+import { estructuraService } from '../../services/estructuraService';
 // ✅ Importar tipos del hook para compatibilidad
 import {
   resolverColumnaKanban,
@@ -57,6 +57,9 @@ import {
   type EstadoAuditoria as EstadoAuditoriaHook,
 } from './hooks/useProgramaAnualData';
 import { esFestivo } from '../gestion-legal/utils/diasHabiles';
+import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
+import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
+
 
 /** Colores por columna del tablero (misma semántica que `resolverColumnaKanban`) */
 const COLORES_POR_COLUMNA_KANBAN: Record<
@@ -414,6 +417,7 @@ function safeNombre(val: unknown): string {
   if (val && typeof val === 'object') {
     const obj = val as Record<string, unknown>;
     if (typeof obj.nombre === 'string') return obj.nombre;
+    if (typeof obj.nombreCompleto === 'string') return obj.nombreCompleto;
     if (typeof obj.personaId === 'string') return obj.personaId;
     if (typeof obj.rolOCI === 'string') return obj.rolOCI;
     if (typeof obj.id === 'string') return obj.id;
@@ -460,6 +464,23 @@ export function CronogramaAuditoriasPremium({
   const [filtroTipo, setFiltroTipo] = useState<TipoFiltroOperativo | 'TODOS'>('TODOS');
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<AuditoriaProgramada | null>(null);
+
+  // Seccionales/territoriales cargadas desde Estructura Organizacional
+  const [seccionalesCronograma, setSeccionalesCronograma] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
+
+  useEffect(() => {
+    const cargarSeccionales = async () => {
+      try {
+        const seccionales = await estructuraService.obtenerSeccionales();
+        if (seccionales && seccionales.length > 0) {
+          setSeccionalesCronograma(seccionales.map((s: any) => ({ id: s.id, nombre: s.nombre, codigo: s.codigo })));
+        }
+      } catch (error) {
+        console.warn('[Cronograma] No se pudieron cargar seccionales:', error);
+      }
+    };
+    cargarSeccionales();
+  }, []);
 
   // Filtrar auditorías con TODOS los criterios
   const auditoriasFiltradas = useMemo(() => {
@@ -542,6 +563,79 @@ export function CronogramaAuditoriasPremium({
 
   const irHoy = () => {
     setFechaActual(new Date());
+  };
+
+  const handleExportExcel = async () => {
+    toast.info('Generando archivo Excel...');
+    const datosExcel = auditoriasFiltradas.map((a: any) => {
+      // Obtener el líder
+      const liderNombre = safeNombre(a.auditorLider);
+      let auditoresNombres: string[] = [];
+      if (liderNombre && liderNombre !== 'No asignado') {
+        auditoresNombres.push(liderNombre + ' (Líder)');
+      }
+
+      // Obtener el equipo
+      if (a.equipoAuditores && Array.isArray(a.equipoAuditores)) {
+        a.equipoAuditores.forEach((miembro: any) => {
+          const nombreMiembro = safeNombre(miembro);
+          if (nombreMiembro && nombreMiembro !== 'No asignado' && nombreMiembro !== liderNombre) {
+            auditoresNombres.push(nombreMiembro);
+          }
+        });
+      }
+      
+      // Extraer responsable auditado del backend o frontend (no confundir con auditores)
+      let responsableAuditado = 'No asignado';
+      if (a.responsableArea) {
+         responsableAuditado = safeNombre(a.responsableArea);
+      } else if (a.responsableAreaNombre) {
+         responsableAuditado = a.responsableAreaNombre;
+      } else if (a.proceso && a.proceso.responsable && a.proceso.responsable !== 'Por asignar') {
+         responsableAuditado = safeNombre(a.proceso.responsable);
+      } else if (a.responsables) {
+         if (Array.isArray(a.responsables)) {
+             responsableAuditado = a.responsables.map((r: any) => safeNombre(r)).join('\n');
+         } else {
+             responsableAuditado = safeNombre(a.responsables);
+         }
+      } else if (a.responsable) {
+         responsableAuditado = safeNombre(a.responsable);
+      }
+
+      // Unidad auditada (Proceso / Foco)
+      const unidadAuditada = a.areaObjetivo ? `${a.nombre}\n(${a.areaObjetivo})` : a.nombre;
+
+      return {
+        codigo: a.id.substring(0, 8).toUpperCase(),
+        titulo: unidadAuditada,
+        tipo: a.tipoOperativo || a.tipoKanban || a.tipo || 'Regular',
+        estado: a.estadoKanban || a.fase || a.estado,
+        territorial: a.territorial || 'Sede Central',
+        responsable: responsableAuditado, // responsable del área
+        observaciones: a.observaciones || '',
+        auditorLider: { nombre: liderNombre },
+        equipo: auditoresNombres, // guardamos también el equipo en caso se necesite
+        fechaInicio: a.fechaInicio ? new Date(a.fechaInicio).toLocaleDateString() : 'N/A',
+        fechaFin: a.fechaFin ? new Date(a.fechaFin).toLocaleDateString() : 'N/A',
+        fechaInicioRaw: a.fechaInicio,
+        fechaFinRaw: a.fechaFin,
+        fechaFinPlaneacionRaw: a.fechaFinPlaneacion,
+        fechaInicioEjecucionRaw: a.fechaInicioEjecucion,
+        fechaFinEjecucionRaw: a.fechaFinEjecucion,
+        fechaInicioComunicacionRaw: a.fechaInicioComunicacion,
+        progreso: typeof a.avance === 'number' ? a.avance : 0,
+        hallazgos: 0, 
+        riesgo: a.riesgo || 'Bajo'
+      };
+    });
+
+    const resultado = await exportarAuditoriasTemplate(datosExcel as any, vigencia.toString());
+    if (resultado.exito) {
+      toast.success(resultado.mensaje);
+    } else {
+      toast.error('Error al exportar: ' + resultado.error);
+    }
   };
 
   return (
@@ -671,16 +765,17 @@ export function CronogramaAuditoriasPremium({
               <option value="especial">Especial</option>
             </select>
 
-            {/* Filtro Territorial */}
+            {/* Filtro Territorial - Dinámico desde Estructura Organizacional */}
             <select
               value={filtroTerritorial}
               onChange={(e) => setFiltroTerritorial(e.target.value)}
               className="px-3 py-2 bg-white border-2 border-gray-300 rounded-lg text-xs font-bold focus:border-[#2962FF] outline-none"
             >
               <option value="Todas las Territoriales">Todas las Territoriales</option>
-              {TERRITORIALES_ESAP.map((territorial) => (
-                <option key={territorial.id} value={territorial.nombre}>
-                  {territorial.nombre}
+              <option value="Sede Central">🏛️ Sede Central</option>
+              {seccionalesCronograma.map((s) => (
+                <option key={s.id} value={s.nombre}>
+                  📍 {s.nombre}
                 </option>
               ))}
             </select>
@@ -699,7 +794,7 @@ export function CronogramaAuditoriasPremium({
 
             {/* Exportar */}
             <button
-              onClick={() => toast.success('Exportando cronograma...')}
+              onClick={handleExportExcel}
               className="px-3 py-2 bg-white border-2 border-gray-300 hover:border-[#2962FF] rounded-lg text-xs font-bold flex items-center gap-2 transition-all"
             >
               <Download className="w-4 h-4" />

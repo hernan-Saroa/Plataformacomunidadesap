@@ -22,13 +22,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Upload, Download, Trash2, Edit2, Plus, CheckSquare,
   FolderOpen, File, CheckCircle2, Clock, AlertCircle, Search,
-  Filter, X, Save, Paperclip, List, Calendar, Users, Eye, ChevronDown,
+  Filter, X, Save, Paperclip, List, Calendar, Users, Eye, ChevronDown, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
-import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
+import { controlInternoService, ListaChequeo as ListaChequeoService } from '../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { useConfiguracionKanban } from './services/useConfiguracionKanban';
 import { useAuth } from '../../../hooks/useAuth';
@@ -39,17 +39,33 @@ import { useAuth } from '../../../hooks/useAuth';
 
 /**
  * Obtiene la URL base para documentos del backend
- * En modo gateway (producción): /services/control-institucional/api/v1/documentos
+ * En modo gateway: {api-gateway}/control-institucional/api/v1/documentos
  * En modo direct (desarrollo local): http://localhost:3007/documentos
  */
 const getDocumentosBaseUrl = () => {
   if (API_MODE === 'gateway') {
-    // En modo gateway, usar ruta relativa que pasa por Nginx -> API Gateway
-    return '/services/control-institucional/api/v1/documentos';
+    return `${getServiceUrl('control-institucional')}/control-institucional/api/v1/documentos`;
   }
   // En modo direct, usar URL directa al microservicio
   return `${getServiceUrl('control-institucional')}/documentos`;
 };
+
+const resolveDocumentoUrl = (rawUrl?: string | null): string => {
+  if (!rawUrl) return '';
+  if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
+  if (rawUrl.startsWith('/control-institucional/api/v1/')) {
+    return `${getServiceUrl('control-institucional')}${rawUrl}`;
+  }
+  if (rawUrl.startsWith('/services/control-institucional/api/v1/')) {
+    return `${getServiceUrl('control-institucional')}${rawUrl.replace(/^\/services/, '')}`;
+  }
+  return `${window.location.origin}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`;
+};
+
+const getDocumentoFileHeaders = (): HeadersInit => ({
+  ...getDefaultHeaders(),
+  Accept: 'application/pdf,image/*,application/octet-stream',
+});
 
 /**
  * Formatea bytes a KB/MB/GB legible
@@ -701,8 +717,8 @@ function BibliotecaDocumentos({
   const handleDescargar = async (documento: DocumentoBiblioteca) => {
     try {
       const dl = documento.urlDownload ?? '';
-      const url = dl.startsWith('http') ? dl : `${window.location.origin}${dl}`;
-      const res = await fetch(url, { headers: getDefaultHeaders() });
+      const url = resolveDocumentoUrl(dl);
+      const res = await fetch(url, { headers: getDocumentoFileHeaders() });
       if (!res.ok) {
         throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
       }
@@ -1250,6 +1266,7 @@ function GestionListasChequeo({
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [listaSeleccionada, setListaSeleccionada] = useState<ListaChequeo | null>(null);
   const [listaAEditar, setListaAEditar] = useState<ListaChequeo | null>(null);
+  const [listaADuplicar, setListaADuplicar] = useState<ListaChequeo | null>(null);
   const [listaAEliminar, setListaAEliminar] = useState<ListaChequeo | null>(null);
   const [eliminando, setEliminando] = useState(false);
 
@@ -1755,6 +1772,7 @@ function GestionListasChequeo({
             onVer={() => setListaSeleccionada(lista)}
             onEditar={(l) => setListaAEditar(l)}
             onEliminar={(l) => setListaAEliminar(l)}
+            onDuplicar={(l) => setListaADuplicar(l)}
           />
         ))}
       </div>
@@ -1811,6 +1829,21 @@ function GestionListasChequeo({
           documentosBiblioteca={documentosBiblioteca}
           auditorias={auditorias}
           listaEditar={listaAEditar}
+          etapasDisponibles={etapasDisponibles}
+        />
+      )}
+
+      {/* ✅ MODAL DUPLICAR LISTA (reutiliza modal crear) */}
+      {listaADuplicar && (
+        <ModalCrearListaChequeo
+          onClose={() => setListaADuplicar(null)}
+          onCrear={async (nuevaLista) => {
+            await handleCrearLista(nuevaLista);
+            setListaADuplicar(null);
+          }}
+          documentosBiblioteca={documentosBiblioteca}
+          auditorias={auditorias}
+          listaDuplicar={listaADuplicar}
           etapasDisponibles={etapasDisponibles}
         />
       )}
@@ -1873,9 +1906,10 @@ interface TarjetaListaChequeoProps {
   onVer: () => void;
   onEditar: (lista: ListaChequeo) => void;
   onEliminar: (lista: ListaChequeo) => void;
+  onDuplicar: (lista: ListaChequeo) => void;
 }
 
-function TarjetaListaChequeo({ lista, onVer, onEditar, onEliminar }: TarjetaListaChequeoProps) {
+function TarjetaListaChequeo({ lista, onVer, onEditar, onEliminar, onDuplicar }: TarjetaListaChequeoProps) {
   const colorEtapa = {
     'PLANEACION': { bg: 'bg-green-100', text: 'text-green-700' },
     'EJECUCION': { bg: 'bg-purple-100', text: 'text-purple-700' },
@@ -2006,6 +2040,14 @@ function TarjetaListaChequeo({ lista, onVer, onEditar, onEliminar }: TarjetaList
           >
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             Ver Detalle
+          </button>
+          <button
+            onClick={() => onDuplicar(lista)}
+            className="sm:flex-shrink-0 px-3 sm:px-4 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
+            title="Duplicar lista"
+          >
+            <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="sm:hidden">Duplicar</span>
           </button>
           <button
             onClick={() => onEditar(lista)}
@@ -2257,31 +2299,34 @@ interface ModalCrearListaChequeoProps {
   documentosBiblioteca: DocumentoBiblioteca[];
   auditorias: any[]; // Auditorías del Plan Anual
   listaEditar?: ListaChequeo; // ✅ Para modo edición
+  listaDuplicar?: ListaChequeo; // ✅ Para modo duplicar
   /** ✅ Etapas dinámicas desde configuración de Kanban */
   etapasDisponibles?: { value: string; label: string }[];
 }
 
-function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, auditorias, listaEditar, etapasDisponibles }: ModalCrearListaChequeoProps) {
+function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, auditorias, listaEditar, listaDuplicar, etapasDisponibles }: ModalCrearListaChequeoProps) {
   const modoEdicion = !!listaEditar;
-  const [nombre, setNombre] = useState(listaEditar?.nombre || '');
-  const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
+  const baseLista = listaEditar || listaDuplicar;
+  
+  const [nombre, setNombre] = useState(baseLista ? (listaDuplicar ? `Copia de ${baseLista.nombre}` : baseLista.nombre) : '');
+  const [descripcion, setDescripcion] = useState(baseLista?.descripcion || '');
   
   // ✅ Solo Planeación / Ejecución / Comunicación (no Seguimiento, Cierre, Plan Anual, etc.)
   const etapasListaChequeo = buildEtapasListaChequeo(etapasDisponibles);
   
   const [etapaKanbanId, setEtapaKanbanId] = useState<string>(() => {
-    if (listaEditar) {
-      if (listaEditar.etapaKanbanId) {
-        return listaEditar.etapaKanbanId;
+    if (baseLista && !listaDuplicar) {
+      if (baseLista.etapaKanbanId) {
+        return baseLista.etapaKanbanId;
       }
-      if (listaEditar.etapaNombreKanban) {
-        const etapaEncontrada = etapasListaChequeo.find(e => e.label === listaEditar.etapaNombreKanban);
+      if (baseLista.etapaNombreKanban) {
+        const etapaEncontrada = etapasListaChequeo.find(e => e.label === baseLista.etapaNombreKanban);
         if (etapaEncontrada) return etapaEncontrada.value;
       }
-      if (listaEditar.etapaKanban) {
+      if (baseLista.etapaKanban) {
         const etapaEncontrada = etapasListaChequeo.find(e => 
-          e.label === listaEditar.etapaKanban || 
-          e.value === listaEditar.etapaKanban
+          e.label === baseLista.etapaKanban || 
+          e.value === baseLista.etapaKanban
         );
         if (etapaEncontrada) return etapaEncontrada.value;
       }
@@ -2289,7 +2334,22 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
     return '';
   });
   
-  const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
+  const [items, setItems] = useState<ItemChequeo[]>(() => {
+    if (!baseLista?.items) return [];
+    if (listaDuplicar) {
+      // Al duplicar, reiniciamos IDs y estado de completado
+      return baseLista.items.map(item => ({
+        ...item,
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        completado: false,
+        fechaCompletado: undefined,
+        responsable: undefined,
+        observaciones: undefined
+      }));
+    }
+    return baseLista.items;
+  });
+  
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
   const [filtroEtapaModal, setFiltroEtapaModal] = useState<string>(''); // Filtro de etapa para las plantillas
@@ -2979,11 +3039,11 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
 
   useEffect(() => {
     if (!documento.urlPreview) return;
-    const url = documento.urlPreview.startsWith('http') ? documento.urlPreview : `${window.location.origin}${documento.urlPreview}`;
+    const url = resolveDocumentoUrl(documento.urlPreview);
     let revoked = false;
     setLoading(true);
     setError(null);
-    fetch(url, { headers: getDefaultHeaders() })
+    fetch(url, { headers: getDocumentoFileHeaders() })
       .then(res => {
         if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
         return res.blob();
@@ -3009,8 +3069,8 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
   const handleDescargarDesdeModal = useCallback(async () => {
     if (!documento.urlDownload) return;
     try {
-      const url = documento.urlDownload.startsWith('http') ? documento.urlDownload : `${window.location.origin}${documento.urlDownload}`;
-      const res = await fetch(url, { headers: getDefaultHeaders() });
+      const url = resolveDocumentoUrl(documento.urlDownload);
+      const res = await fetch(url, { headers: getDocumentoFileHeaders() });
       if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
       const blob = await res.blob();
       const u = URL.createObjectURL(blob);

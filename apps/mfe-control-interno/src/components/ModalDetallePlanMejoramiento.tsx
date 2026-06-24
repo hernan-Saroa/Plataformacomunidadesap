@@ -1,4 +1,4 @@
-﻿                                          /**
+                                          /**
                                            * ═══════════════════════════════════════════════════════════════════════════
                                            * MODAL DETALLE PLAN DE MEJORAMIENTO - VERSIÓN PREMIUM
                                            * ═══════════════════════════════════════════════════════════════════════════
@@ -37,7 +37,7 @@
                                           import { configuracionesProfesionalesOCIGApi } from './services/api';
 
                                           // ✅ API para cargar evidencias
-                                          import { controlInternoService } from '../../../services/api/controlInternoService';
+                                          import { controlInternoService } from '../services/api/controlInternoService';
 
                                           // ✅ Utilidades PDF para reportes institucionales
                                           import { 
@@ -971,150 +971,53 @@
                                                 <div className="absolute inset-0" onClick={onClose} />
 
                                                 {/* Modal - Tamaño optimizado con mejor responsive */}
-                                                <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-auto mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] z-[9999]">
-                                                  {/* Header */}
-                                                  <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6 rounded-t-2xl">
-                                                    <div className="flex items-start justify-between gap-4">
-                                                      <div className="flex-1 min-w-0">
-                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
-                                                          <h2 className="text-lg sm:text-xl lg:text-2xl font-medium">{plan.codigo}</h2>
-                                                          <span className={`px-3 py-1 rounded-lg text-xs sm:text-sm font-medium ${config.bg} ${config.text} inline-block w-fit`}>
-                                                            {config.label}
-                                                          </span>
-                                                        </div>
-                                                        <p className="text-blue-100 mb-4 text-sm sm:text-base">{plan.nombre}</p>
-                                                        
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs sm:text-sm">
-                                                          <div>
-                                                            <div className="text-blue-200 text-xs mb-1">Área Responsable</div>
-                                                            <div className="flex items-center gap-2">
-                                                              <Building2 className="w-4 h-4 flex-shrink-0" />
-                                                              <span className="truncate">{plan.area}</span>
-                                                            </div>
-                                                          </div>
-                                                          <div>
-                                                            <div className="text-blue-200 text-xs mb-1">Responsable</div>
-                                                            <div className="flex items-center gap-2">
-                                                              <User className="w-4 h-4 flex-shrink-0" />
-                                                              <span className="truncate">{plan.responsableGeneral}</span>
-                                                            </div>
-                                                          </div>
-                                                          <div>
-                                                            <div className="text-blue-200 text-xs mb-1">Fecha Vencimiento</div>
-                                                            <div className="flex items-center gap-2">
-                                                              <Calendar className="w-4 h-4 flex-shrink-0" />
-                                                              {plan.fechaVencimiento}
-                                                            </div>
-                                                          </div>
-                                                          <div>
-                                                            <div className="text-blue-200 text-xs mb-1">Progreso Global</div>
-                                                            <div className="flex items-center gap-2">
-                                                              <TrendingUp className="w-4 h-4 flex-shrink-0" />
-                                                              {plan.progresoGlobal}%
-                                                            </div>
-                                                          </div>
-                                                        </div>
+                                                <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-auto mx-4 bg-white rounded-2xl shadow-2xl flex flex-col min-h-[80vh] max-h-[90vh] z-[9999]">
+                                                  {/* Header compacto */}
+                                                  <div className="flex-shrink-0 bg-[#1e5da8] text-white px-4 sm:px-5 py-2 rounded-t-2xl">
+                                                    {/* Fila 1: Código + Badge + Nombre + Botones */}
+                                                    <div className="flex items-center justify-between gap-3">
+                                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                        <h2 className="text-sm sm:text-base font-semibold whitespace-nowrap">{plan.codigo}</h2>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${config.bg} ${config.text} whitespace-nowrap`}>
+                                                          {config.label}
+                                                        </span>
+                                                        <span className="text-blue-200 text-xs truncate hidden sm:inline">— {plan.nombre}</span>
                                                       </div>
-
-                                                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                                                        {/* Boton Enviar a Revision: solo en modo portal (auditado), estado BORRADOR o FORMULACION */}
+                                                      <div className="flex items-center gap-1.5 flex-shrink-0">
 {modoPortal && (plan.estado === 'BORRADOR' || plan.estado === 'FORMULACION') && (
   <button
     onClick={handleEnviarRevision}
     disabled={procesandoRevision}
-    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
     title="Enviar el plan a revision de la OCI"
   >
-    {procesandoRevision ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-    <span className="hidden sm:inline">Enviar a Revision</span>
+    {procesandoRevision ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+    <span className="hidden sm:inline">Enviar a Revisión</span>
   </button>
 )}
-
-{/* Botones Aprobar/Rechazar: solo en backoffice (OCI), estado REVISION */}
-{!modoPortal && (plan.estado === 'revision' || plan.estado === 'REVISION') && (
-                                                          <>
-                                                            <button
-                                                              onClick={() => setModalAprobacionAbierto(true)}
-                                                              disabled={procesandoAprobacion}
-                                                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                                              title="Aprobar el plan de mejoramiento"
-                                                            >
-                                                              <Check className="w-4 h-4" />
-                                                              <span className="hidden sm:inline">Aprobar Plan</span>
-                                                            </button>
-                                                            <button
-                                                              onClick={() => setModalRechazoAbierto(true)}
-                                                              disabled={procesandoAprobacion}
-                                                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                                              title="Rechazar el plan y solicitar ajustes"
-                                                            >
-                                                              <XCircle className="w-4 h-4" />
-                                                              <span className="hidden sm:inline">Rechazar</span>
-                                                            </button>
-                                                          </>
-                                                        )}
                                                         <button
                                                           onClick={onClose}
-                                                          className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                                                          className="p-1.5 hover:bg-white/20 rounded-md transition-colors"
                                                           title="Cerrar"
                                                         >
-                                                          <X className="w-5 h-5" />
+                                                          <X className="w-4 h-4" />
                                                         </button>
                                                       </div>
                                                     </div>
-
-                                                    {/* Barra de Progreso Global */}
-                                                    <div className="mt-3">
-                                                      <div className="bg-white bg-opacity-20 rounded-full h-2 overflow-hidden">
-                                                        <div
-                                                          className="bg-white h-full transition-all duration-500"
-                                                          style={{ width: `${plan.progresoGlobal}%` }}
-                                                        />
+                                                    {/* Fila 2: Metadata inline + Progreso */}
+                                                    <div className="flex items-center gap-4 mt-1 text-[11px] text-blue-100 flex-wrap">
+                                                      <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{plan.area}</span>
+                                                      <span className="flex items-center gap-1"><User className="w-3 h-3" />{plan.responsableGeneral}</span>
+                                                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{plan.fechaVencimiento}</span>
+                                                      <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{plan.progresoGlobal}%</span>
+                                                      <div className="flex-1 min-w-[80px]">
+                                                        <div className="bg-white/20 rounded-full h-1.5 overflow-hidden">
+                                                          <div className="bg-white h-full transition-all duration-500" style={{ width: `${plan.progresoGlobal}%` }} />
+                                                        </div>
                                                       </div>
                                                     </div>
                                                   </div>
 
-                                                  {/* KPIs Dashboard */}
-                                                  <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-6 py-3 overflow-x-auto">
-                                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-[600px]">
-                                                      <KPICard
-                                                        label="Total Acciones"
-                                                        valor={estadisticas.totalAcciones}
-                                                        color="blue"
-                                                        icon={<Target className="w-4 h-4" />}
-                                                      />
-                                                      <KPICard
-                                                        label="Completadas"
-                                                        valor={estadisticas.accionesCompletadas}
-                                                        color="green"
-                                                        icon={<CheckCircle2 className="w-4 h-4" />}
-                                                      />
-                                                      <KPICard
-                                                        label="En Ejecución"
-                                                        valor={estadisticas.accionesEnEjecucion}
-                                                        color="yellow"
-                                                        icon={<Activity className="w-4 h-4" />}
-                                                      />
-                                                      <KPICard
-                                                        label="Pendientes"
-                                                        valor={estadisticas.accionesPendientes}
-                                                        color="gray"
-                                                        icon={<Clock className="w-4 h-4" />}
-                                                      />
-                                                      <KPICard
-                                                        label="Hallazgos Resueltos"
-                                                        valor={`${estadisticas.hallazgosResueltos}/${estadisticas.totalHallazgos}`}
-                                                        color="purple"
-                                                        icon={<Flag className="w-4 h-4" />}
-                                                      />
-                                                      <KPICard
-                                                        label="Críticos Abiertos"
-                                                        valor={estadisticas.hallazgosCriticosAbiertos}
-                                                        color="red"
-                                                        icon={<AlertTriangle className="w-4 h-4" />}
-                                                      />
-                                                    </div>
-                                                  </div>
 
                                                   {/* Tabs */}
                                                   <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6">
@@ -1178,6 +1081,7 @@
                                                           <TabHallazgos 
                                                             plan={plan} 
                                                             onCrearAccion={crearAccionYNotificar}
+                                                            modoPortal={modoPortal}
                                                           />
                                                         )}
                                                         {tabActiva === 'acciones' && (
@@ -1210,19 +1114,35 @@
                                                         Plan ID: {plan.id?.substring(0, 8)}...
                                                       </div>
                                                       <div className="flex gap-3">
+{/* Botones Aprobar/Rechazar: solo en backoffice (OCI), estado REVISION */}
+{!modoPortal && (plan.estado === 'revision' || plan.estado === 'REVISION') && (
+  <>
+    <button
+      onClick={() => setModalRechazoAbierto(true)}
+      disabled={procesandoAprobacion}
+      className="px-4 py-2 bg-white border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+      title="Rechazar el plan y solicitar ajustes"
+    >
+      <XCircle className="w-4 h-4" />
+      Rechazar
+    </button>
+    <button
+      onClick={() => setModalAprobacionAbierto(true)}
+      disabled={procesandoAprobacion}
+      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+      title="Aprobar el plan de mejoramiento"
+    >
+      <Check className="w-4 h-4" />
+      Aprobar Plan
+    </button>
+  </>
+)}
                                                         <button
                                                           className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm"
                                                           onClick={handleDescargarReporte}
                                                         >
                                                           <Download className="w-4 h-4" />
                                                           Descargar Reporte
-                                                        </button>
-                                                        <button
-                                                          className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm"
-                                                          onClick={handleActualizarPlan}
-                                                        >
-                                                          <Edit2 className="w-4 h-4" />
-                                                          Actualizar Plan
                                                         </button>
                                                       </div>
                                                     </div>
@@ -1367,7 +1287,7 @@
                                                     {/* Modal - Tamaño optimizado */}
                                                     <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
                                                       {/* Header */}
-                                                      <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+                                                      <div className="flex-shrink-0 bg-[#1e5da8] text-white px-6 py-4 rounded-t-xl">
                                                         <div className="flex items-start justify-between">
                                                           <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-3 mb-2">
@@ -1468,7 +1388,7 @@
                                                           </div>
                                                           <div className="flex gap-3">
                                                             <button
-                                                              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm"
+                                                              className="px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm"
                                                               onClick={handleGuardarActualizacion}
                                                             >
                                                               <CheckCircle2 className="w-4 h-4" />
@@ -1506,12 +1426,12 @@
                                             };
 
                                             return (
-                                              <div className={`rounded-lg border p-2.5 ${colorClasses[color]}`}>
-                                                <div className="flex items-center gap-1.5 mb-1">
+                                              <div className={`rounded-lg border px-2 py-1.5 ${colorClasses[color]}`}>
+                                                <div className="flex items-center gap-1.5">
                                                   {icon}
-                                                  <div className="text-xs opacity-80 leading-tight">{label}</div>
+                                                  <div className="text-[11px] opacity-80 leading-tight">{label}</div>
                                                 </div>
-                                                <div className="text-lg font-semibold">{valor}</div>
+                                                <div className="text-base font-semibold leading-tight mt-0.5">{valor}</div>
                                               </div>
                                             );
                                           }
@@ -1565,7 +1485,7 @@
                                                   <div>
                                                     <div className="font-semibold text-amber-900 text-sm">Plan en revision &mdash; Accion requerida</div>
                                                     <div className="text-amber-800 text-xs mt-1 leading-relaxed">
-                                                      El responsable del area ha enviado el plan para tu revision. Usa los botones <strong>Aprobar Plan</strong> o <strong>Rechazar</strong> en la parte superior para emitir tu decision.
+                                                      El responsable del area ha enviado el plan para tu revision. Usa los botones <strong>Aprobar Plan</strong> o <strong>Rechazar</strong> en la parte inferior para emitir tu decision.
                                                     </div>
                                                   </div>
                                                 </div>
@@ -1672,9 +1592,10 @@
                                           interface TabHallazgosProps {
                                             plan: PlanMejoramientoDetalle;
                                             onCrearAccion: (data: any) => Promise<boolean>;
+                                            modoPortal?: boolean;
                                           }
 
-                                          function TabHallazgos({ plan, onCrearAccion }: TabHallazgosProps) {
+                                          function TabHallazgos({ plan, onCrearAccion, modoPortal }: TabHallazgosProps) {
                                             return (
                                               <div className="space-y-4">
                                                 <div className="flex items-center justify-between mb-4">
@@ -1690,6 +1611,7 @@
                                                     hallazgo={hallazgo} 
                                                     plan={plan} 
                                                     onCrearAccion={onCrearAccion}
+                                                    modoPortal={modoPortal}
                                                   />
                                                 ))}
                                               </div>
@@ -1700,9 +1622,10 @@
                                             hallazgo: Hallazgo;
                                             plan: PlanMejoramientoDetalle;
                                             onCrearAccion: (data: any) => Promise<boolean>;
+                                            modoPortal?: boolean;
                                           }
 
-                                          function CardHallazgo({ hallazgo, plan, onCrearAccion }: CardHallazgoProps) {
+                                          function CardHallazgo({ hallazgo, plan, onCrearAccion, modoPortal }: CardHallazgoProps) {
                                             const [expandido, setExpandido] = useState(false);
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
@@ -1782,13 +1705,16 @@
                                                       <ChevronDown className={`w-4 h-4 transition-transform ${expandido ? 'rotate-180' : ''}`} />
                                                     </button>
                                                     
+                                                    {/* Añadir acción: solo en modo portal (auditado formula acciones) */}
+                                                    {modoPortal && (
                                                     <button
                                                       onClick={() => setModalCrearAccion(true)}
-                                                      className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg text-sm hover:shadow transition-all flex items-center gap-1.5"
+                                                      className="px-3 py-1.5 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg text-sm hover:shadow transition-all flex items-center gap-1.5"
                                                     >
                                                       <Plus className="w-3.5 h-3.5" />
                                                       Añadir Acción
                                                     </button>
+                                                    )}
                                                   </div>
                                                 </div>
 
@@ -2044,6 +1970,32 @@
                                                   })
                                                 )}
 
+                                                {/* Acciones sin hallazgo vinculado */}
+                                                {(() => {
+                                                  const accionesSinHallazgo = plan.acciones.filter(a => !a.hallazgoId || !plan.hallazgos.some(h => h.id === a.hallazgoId));
+                                                  if (accionesSinHallazgo.length === 0) return null;
+                                                  return (
+                                                    <div className="space-y-2 mt-6">
+                                                      <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100">
+                                                        <div className="flex items-center gap-2">
+                                                          <Target className="w-4 h-4 text-red-600" />
+                                                          <span className="text-sm font-bold text-red-600">Acciones sin hallazgo vinculado</span>
+                                                        </div>
+                                                      </div>
+                                                      {accionesSinHallazgo.map(accion => (
+                                                        <CardAccion
+                                                          key={accion.id}
+                                                          accion={accion}
+                                                          plan={plan}
+                                                          onActualizarAccion={onActualizarAccion}
+                                                          onEliminarAccion={onEliminarAccion}
+                                                          onRefresh={onRefresh}
+                                                        />
+                                                      ))}
+                                                    </div>
+                                                  );
+                                                })()}
+
                                                 {/* Modal Crear Acción */}
                                                 {modalCrearAccion && (
                                                   <ModalCrearAccion
@@ -2168,28 +2120,36 @@
 
 
                                             return (
-                                              <div className="bg-white rounded-lg border border-gray-200 p-5">
-                                                <div className="flex items-start gap-4">
-                                                  <div className={`w-10 h-10 ${config.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                                                    <Icon className={`w-5 h-5 ${config.text}`} />
+                                              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                                                <div className="flex items-start gap-3">
+                                                  <div className={`w-8 h-8 ${config.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                                                    <Icon className={`w-4 h-4 ${config.text}`} />
                                                   </div>
 
                                                   <div className="flex-1">
-                                                    <div className="flex items-start justify-between gap-4 mb-2">
+                                                    <div className="flex items-start justify-between gap-3 mb-1">
                                                       <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                          <span className={`px-2 py-1 rounded text-xs font-medium ${config.bg} ${config.text}`}>
+                                                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${config.bg} ${config.text}`}>
                                                             {config.label}
                                                           </span>
-                                                          {hallazgo && (
-                                                            <span className="text-xs text-gray-600">{hallazgo.codigo}</span>
+                                                          {hallazgo ? (
+                                                            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[11px] font-semibold border border-blue-100">
+                                                              <Target className="w-3 h-3" />
+                                                              Vinculado a: {hallazgo.codigo}
+                                                            </div>
+                                                          ) : (
+                                                            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-50 text-red-700 text-[11px] font-semibold border border-red-100">
+                                                              <Target className="w-3 h-3" />
+                                                              Sin hallazgo vinculado
+                                                            </div>
                                                           )}
                                                         </div>
-                                                        <p className="text-sm text-gray-900 mb-2">{accion.descripcion}</p>
+                                                        <p className="text-sm text-gray-900 mb-2 leading-tight">{accion.descripcion}</p>
                                                       </div>
 
                                                       <div className="text-right">
-                                                        <div className={`text-2xl font-semibold ${
+                                                        <div className={`text-xl font-bold ${
                                                           accion.progreso === 100 ? 'text-green-600' :
                                                           accion.progreso >= 50 ? 'text-yellow-600' :
                                                           'text-gray-600'
@@ -2201,7 +2161,7 @@
 
                                                     {/* Progreso */}
                                                     <div className="mb-3">
-                                                      <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
+                                                      <div className="bg-gray-200 rounded-full h-1.5 overflow-hidden">
                                                         <div
                                                           className={`h-full transition-all ${
                                                             accion.progreso === 100 ? 'bg-green-600' :
@@ -2214,34 +2174,27 @@
                                                     </div>
 
                                               {/* Información */}
-                                                    <div className="grid grid-cols-4 gap-4 text-xs text-gray-600 mb-3">
+                                                    <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-600 mb-2">
                                                       <div>
-                                                        <div className="flex items-center gap-1 mb-1">
+                                                        <div className="flex items-center gap-1 mb-0.5">
                                                           <User className="w-3 h-3" />
                                                           <span>Responsable</span>
                                                         </div>
-                                                        <div className="text-gray-900">{accion.responsable}</div>
+                                                        <div className="text-gray-900 font-medium">{accion.responsable}</div>
                                                       </div>
                                                       <div>
-                                                        <div className="flex items-center gap-1 mb-1">
+                                                        <div className="flex items-center gap-1 mb-0.5">
                                                           <Calendar className="w-3 h-3" />
-                                                          <span>Inicio</span>
+                                                          <span>Fechas</span>
                                                         </div>
-                                                        <div className="text-gray-900">{accion.fechaInicio}</div>
+                                                        <div className="text-gray-900 font-medium">{accion.fechaInicio} — {accion.fechaVencimiento}</div>
                                                       </div>
                                                       <div>
-                                                        <div className="flex items-center gap-1 mb-1">
-                                                          <Flag className="w-3 h-3" />
-                                                          <span>Vencimiento</span>
-                                                        </div>
-                                                        <div className="text-gray-900">{accion.fechaVencimiento}</div>
-                                                      </div>
-                                                      <div>
-                                                        <div className="flex items-center gap-1 mb-1">
+                                                        <div className="flex items-center gap-1 mb-0.5">
                                                           <Paperclip className="w-3 h-3" />
                                                           <span>Evidencias</span>
                                                         </div>
-                                                        <div className="text-gray-900">
+                                                        <div className="text-gray-900 font-medium">
                                                           {cargandoEvidencias ? (
                                                             <Loader2 className="w-3 h-3 animate-spin inline" />
                                                           ) : (
@@ -2550,7 +2503,7 @@
 
                                                   <button 
                                                     onClick={handleCargarDocumento}
-                                                    className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+                                                    className="px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
                                                   >
                                                     <Upload className="w-4 h-4" />
                                                     Cargar Documento
@@ -2745,7 +2698,7 @@
                                                             <button
                                                               onClick={handleSubirDocumento}
                                                               disabled={subiendo || !accionSeleccionadaId || !archivoSeleccionado}
-                                                              className="flex-1 px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                                              className="flex-1 px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                                             >
                                                               {subiendo ? (
                                                                 <>
@@ -2767,46 +2720,631 @@
                                           }
 
                                           // ════════════════════════════════════════════════════════════════════════════
+                                          // SEGUIMIENTOS PERIÓDICOS PANEL (RF-SG-09 / RF-SG-10)
+                                          // ════════════════════════════════════════════════════════════════════════════
+
+                                          function SeguimientosPeriodicosPanel({ planId }: { planId: string }) {
+                                            const [seguimientos, setSeguimientos] = useState<any[]>([]);
+                                            const [cargando, setCargando] = useState(true);
+                                            const [mostrarFormulario, setMostrarFormulario] = useState(false);
+                                            const [registrando, setRegistrando] = useState(false);
+                                            const [form, setForm] = useState({
+                                              periodicidad: 'TRIMESTRAL' as 'TRIMESTRAL' | 'SEMESTRAL',
+                                              tipoControl: 'INTERNO' as 'INTERNO' | 'ENTE_EXTERNO',
+                                              fechaCorte: new Date().toISOString().split('T')[0],
+                                              resumen: '',
+                                            });
+
+                                            const cargar = useCallback(async () => {
+                                              setCargando(true);
+                                              try {
+                                                const data = await controlInternoService.getSeguimientosPlan(planId);
+                                                setSeguimientos(Array.isArray(data) ? data : []);
+                                              } catch { setSeguimientos([]); }
+                                              finally { setCargando(false); }
+                                            }, [planId]);
+
+                                            useEffect(() => { cargar(); }, [cargar]);
+
+                                            const registrar = async () => {
+                                              setRegistrando(true);
+                                              try {
+                                                await controlInternoService.registrarSeguimientoPeriodico(planId, {
+                                                  periodicidad: form.periodicidad,
+                                                  tipoControl: form.tipoControl,
+                                                  fechaCorte: form.fechaCorte,
+                                                  responsableId: 'auditor',
+                                                  responsableNombre: 'Equipo Auditor OCI',
+                                                  resumen: form.resumen,
+                                                });
+                                                toast.success('Seguimiento periódico registrado');
+                                                setMostrarFormulario(false);
+                                                setForm({ periodicidad: 'TRIMESTRAL', tipoControl: 'INTERNO', fechaCorte: new Date().toISOString().split('T')[0], resumen: '' });
+                                                await cargar();
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al registrar seguimiento');
+                                              } finally { setRegistrando(false); }
+                                            };
+
+                                            return (
+                                              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                                <div className="px-4 py-3 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-gray-200 flex items-center justify-between">
+                                                  <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                                                    <Calendar className="w-4 h-4 text-indigo-500" />
+                                                    Seguimientos Periódicos
+                                                    {seguimientos.length > 0 && (
+                                                      <span className="ml-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
+                                                        {seguimientos.length}
+                                                      </span>
+                                                    )}
+                                                  </h4>
+                                                  <button
+                                                    onClick={() => setMostrarFormulario(!mostrarFormulario)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors"
+                                                  >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    Registrar seguimiento
+                                                  </button>
+                                                </div>
+
+                                                {/* Formulario de registro */}
+                                                {mostrarFormulario && (
+                                                  <div className="p-4 bg-indigo-50 border-b border-indigo-100">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                                      <div>
+                                                        <label className="text-xs font-medium text-gray-700 mb-1 block">Periodicidad</label>
+                                                        <select
+                                                          value={form.periodicidad}
+                                                          onChange={(e) => setForm({ ...form, periodicidad: e.target.value as any })}
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                        >
+                                                          <option value="TRIMESTRAL">Trimestral (Interno)</option>
+                                                          <option value="SEMESTRAL">Semestral (Ente externo)</option>
+                                                        </select>
+                                                      </div>
+                                                      <div>
+                                                        <label className="text-xs font-medium text-gray-700 mb-1 block">Tipo de control</label>
+                                                        <select
+                                                          value={form.tipoControl}
+                                                          onChange={(e) => setForm({ ...form, tipoControl: e.target.value as any })}
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                        >
+                                                          <option value="INTERNO">Interno</option>
+                                                          <option value="ENTE_EXTERNO">Ente externo</option>
+                                                        </select>
+                                                      </div>
+                                                      <div>
+                                                        <label className="text-xs font-medium text-gray-700 mb-1 block">Fecha de corte</label>
+                                                        <input
+                                                          type="date"
+                                                          value={form.fechaCorte}
+                                                          onChange={(e) => setForm({ ...form, fechaCorte: e.target.value })}
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                    <div className="mb-3">
+                                                      <label className="text-xs font-medium text-gray-700 mb-1 block">Resumen ejecutivo</label>
+                                                      <textarea
+                                                        value={form.resumen}
+                                                        onChange={(e) => setForm({ ...form, resumen: e.target.value })}
+                                                        rows={2}
+                                                        placeholder="Resumen del seguimiento periódico..."
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                                                      />
+                                                    </div>
+                                                    <div className="flex justify-end gap-2">
+                                                      <button
+                                                        onClick={() => setMostrarFormulario(false)}
+                                                        className="px-3 py-1.5 text-gray-600 bg-gray-100 hover:bg-gray-200 text-sm rounded-lg transition-colors"
+                                                      >
+                                                        Cancelar
+                                                      </button>
+                                                      <button
+                                                        onClick={registrar}
+                                                        disabled={registrando}
+                                                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                                                      >
+                                                        {registrando ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Lista de seguimientos */}
+                                                {cargando ? (
+                                                  <div className="flex justify-center py-6">
+                                                    <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                                                  </div>
+                                                ) : seguimientos.length === 0 ? (
+                                                  <div className="text-center py-8 text-gray-500">
+                                                    <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                                    <p className="text-sm">Sin seguimientos registrados</p>
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                      El sistema genera seguimientos automáticos cada trimestre (internos) o semestre (externos)
+                                                    </p>
+                                                  </div>
+                                                ) : (
+                                                  <div className="p-4 space-y-3">
+                                                    {seguimientos.map((seg: any) => (
+                                                      <div key={seg.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                          <div className="flex items-center gap-2">
+                                                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                                              seg.periodicidad === 'TRIMESTRAL' 
+                                                                ? 'bg-blue-100 text-blue-700' 
+                                                                : 'bg-purple-100 text-purple-700'
+                                                            }`}>
+                                                              {seg.periodicidad}
+                                                            </span>
+                                                            <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full">
+                                                              {seg.tipoControl === 'INTERNO' ? 'Interno' : 'Ente externo'}
+                                                            </span>
+                                                            {seg.automatico && (
+                                                              <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">
+                                                                ⚡ Automático
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                          <span className="text-xs text-gray-500">
+                                                            Corte: {seg.fechaCorte ? new Date(seg.fechaCorte).toLocaleDateString('es-CO') : '—'}
+                                                          </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-4 gap-3 mb-2">
+                                                          <div className="text-center p-2 bg-gray-50 rounded">
+                                                            <div className="text-lg font-bold text-gray-900">{seg.totalAccionesEvaluadas ?? 0}</div>
+                                                            <div className="text-xs text-gray-500">Evaluadas</div>
+                                                          </div>
+                                                          <div className="text-center p-2 bg-green-50 rounded">
+                                                            <div className="text-lg font-bold text-green-700">{seg.accionesCumplen ?? 0}</div>
+                                                            <div className="text-xs text-green-600">Cumplen</div>
+                                                          </div>
+                                                          <div className="text-center p-2 bg-amber-50 rounded">
+                                                            <div className="text-lg font-bold text-amber-700">{seg.accionesParcial ?? 0}</div>
+                                                            <div className="text-xs text-amber-600">Parcial</div>
+                                                          </div>
+                                                          <div className="text-center p-2 bg-red-50 rounded">
+                                                            <div className="text-lg font-bold text-red-700">{seg.accionesNoCumplen ?? 0}</div>
+                                                            <div className="text-xs text-red-600">No cumplen</div>
+                                                          </div>
+                                                        </div>
+                                                        {seg.resumen && (
+                                                          <p className="text-sm text-gray-700 mt-2 italic border-l-2 border-indigo-300 pl-3">
+                                                            {seg.resumen}
+                                                          </p>
+                                                        )}
+                                                        <div className="text-xs text-gray-400 mt-2">
+                                                          Responsable: {seg.responsableNombre || seg.responsableId || '—'} · 
+                                                          Registrado: {seg.createdAt ? new Date(seg.createdAt).toLocaleDateString('es-CO') : '—'}
+                                                        </div>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          }
+
+                                          // ════════════════════════════════════════════════════════════════════════════
                                           // TAB: SEGUIMIENTO
                                           // ════════════════════════════════════════════════════════════════════════════
 
                                           function TabSeguimiento({ plan }: { plan: PlanMejoramientoDetalle }) {
+                                            // ── Estado local ──
+                                            const [evidenciasPorAccion, setEvidenciasPorAccion] = useState<Record<string, any[]>>({});
+                                            const [cargandoEvidencias, setCargandoEvidencias] = useState(false);
+                                            const [accionExpandida, setAccionExpandida] = useState<string | null>(null);
+                                            const [procesando, setProcesando] = useState<string | null>(null);
+                                            const [alertas, setAlertas] = useState<any[]>([]);
+                                            const [cargandoAlertas, setCargandoAlertas] = useState(false);
+
+                                            // ── Cargar evidencias de todas las acciones ──
+                                            const cargarTodasEvidencias = useCallback(async () => {
+                                              if (!plan.acciones?.length) return;
+                                              setCargandoEvidencias(true);
+                                              try {
+                                                const resultados: Record<string, any[]> = {};
+                                                await Promise.allSettled(
+                                                  plan.acciones.map(async (a) => {
+                                                    try {
+                                                      const evs = await controlInternoService.getEvidenciasSeguimiento(a.id);
+                                                      resultados[a.id] = Array.isArray(evs) ? evs : [];
+                                                    } catch { resultados[a.id] = []; }
+                                                  }),
+                                                );
+                                                setEvidenciasPorAccion(resultados);
+                                              } finally { setCargandoEvidencias(false); }
+                                            }, [plan.acciones]);
+
+                                            useEffect(() => { cargarTodasEvidencias(); }, [cargarTodasEvidencias]);
+
+                                            // ── Cargar alertas ──
+                                            const cargarAlertas = useCallback(async () => {
+                                              setCargandoAlertas(true);
+                                              try {
+                                                const data = await controlInternoService.getAlertasPlan(plan.id);
+                                                setAlertas(Array.isArray(data) ? data : []);
+                                              } catch { setAlertas([]); }
+                                              finally { setCargandoAlertas(false); }
+                                            }, [plan.id]);
+
+                                            useEffect(() => { cargarAlertas(); }, [cargarAlertas]);
+
+                                            // ── Calificar evidencia ──
+                                            const calificarEvidencia = async (
+                                              evidenciaId: string,
+                                              calificacion: 'aceptado' | 'con_observaciones',
+                                              comentarios?: string,
+                                            ) => {
+                                              setProcesando(evidenciaId);
+                                              try {
+                                                await controlInternoService.calificarEvidenciaSeguimiento(evidenciaId, {
+                                                  calificacion,
+                                                  comentarios,
+                                                  calificadaPorId: 'auditor',
+                                                  calificadaPorNombre: 'Auditor OCI',
+                                                });
+                                                toast.success(calificacion === 'aceptado' ? 'Evidencia aceptada' : 'Observaciones registradas');
+                                                await cargarTodasEvidencias();
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al calificar');
+                                              } finally { setProcesando(null); }
+                                            };
+
+                                            // ── Registrar seguimiento EMFO ──
+                                            const registrarSeguimiento = async (accionId: string, cantidadImplementada: number) => {
+                                              setProcesando(accionId);
+                                              try {
+                                                await controlInternoService.registrarSeguimientoEmfo(accionId, { cantidadImplementada });
+                                                toast.success('Cumplimiento registrado');
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al registrar seguimiento');
+                                              } finally { setProcesando(null); }
+                                            };
+
+                                            // ── Registrar efectividad ──
+                                            const registrarEfectividad = async (
+                                              accionId: string,
+                                              evaluarControles: boolean,
+                                              noRepitio: boolean,
+                                            ) => {
+                                              setProcesando(accionId);
+                                              try {
+                                                await controlInternoService.registrarEfectividad(accionId, {
+                                                  evaluarAplicacionControles: evaluarControles,
+                                                  validarSituacionNoRepitio: noRepitio,
+                                                });
+                                                toast.success('Efectividad registrada');
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al registrar efectividad');
+                                              } finally { setProcesando(null); }
+                                            };
+
+                                            // ── Generar alertas ──
+                                            const generarAlertas = async () => {
+                                              setCargandoAlertas(true);
+                                              try {
+                                                const nuevas = await controlInternoService.generarAlertasPlan(plan.id);
+                                                toast.success(`${nuevas.length} alerta(s) generada(s)`);
+                                                await cargarAlertas();
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al generar alertas');
+                                              } finally { setCargandoAlertas(false); }
+                                            };
+
+                                            // ── Helpers visuales ──
+                                            const cumplimientoLabel = (v?: number) => {
+                                              if (v === 2) return { label: 'Cumple', color: 'text-green-700', bg: 'bg-green-100' };
+                                              if (v === 1) return { label: 'Parcial', color: 'text-yellow-700', bg: 'bg-yellow-100' };
+                                              return { label: 'No cumple', color: 'text-red-700', bg: 'bg-red-100' };
+                                            };
+                                            const efectividadLabel = (v?: number) => {
+                                              if (v === 2) return { label: 'Efectiva', color: 'text-green-700', bg: 'bg-green-100' };
+                                              if (v === 1) return { label: 'Parcial', color: 'text-yellow-700', bg: 'bg-yellow-100' };
+                                              return { label: 'Inefectiva', color: 'text-red-700', bg: 'bg-red-100' };
+                                            };
+                                            const estadoEvidenciaConfig: Record<string, { label: string; color: string; bg: string }> = {
+                                              pendiente: { label: 'Pendiente', color: 'text-amber-700', bg: 'bg-amber-50' },
+                                              aceptado: { label: 'Aceptado', color: 'text-green-700', bg: 'bg-green-50' },
+                                              con_observaciones: { label: 'Con observaciones', color: 'text-red-700', bg: 'bg-red-50' },
+                                            };
+
                                             return (
-                                              <div className="space-y-4">
-                                                {/* ═══════════════════════════════════════════════════════════════════════════
-                                                    HISTORIAL DE SEGUIMIENTO
-                                                    ═══════════════════════════════════════════════════════════════════════════ */}
-                                                <div>
-                                                  <div className="flex items-center justify-between mb-4">
-                                                    <div>
-                                                      <h3 className="text-base font-medium text-gray-900">Historial de Seguimiento</h3>
-                                                      <p className="text-sm text-gray-600">
-                                                        {plan.timeline && plan.timeline.length > 0 
-                                                          ? `Historial de cambios - ${plan.timeline.length} evento${plan.timeline.length > 1 ? 's' : ''}`
-                                                          : 'Historial de cambios del plan'}
-                                                      </p>
+                                              <div className="space-y-6">
+
+
+                                                {/* ═══ ALERTAS ═══ */}
+                                                {alertas.length > 0 && (
+                                                  <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+                                                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                                                      <h4 className="font-medium text-amber-900 flex items-center gap-2">
+                                                        <AlertTriangle className="w-4 h-4" /> Alertas activas ({alertas.length})
+                                                      </h4>
+                                                      <button
+                                                        onClick={generarAlertas}
+                                                        disabled={cargandoAlertas}
+                                                        className="text-xs px-3 py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg transition-colors disabled:opacity-50"
+                                                      >
+                                                        {cargandoAlertas ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Recalcular'}
+                                                      </button>
+                                                    </div>
+                                                    <div className="p-3 space-y-2 max-h-48 overflow-y-auto">
+                                                      {alertas.map((a) => (
+                                                        <div key={a.id} className="flex items-start gap-2 text-sm p-2 bg-amber-50/50 rounded-lg">
+                                                          <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                                                          <div>
+                                                            <span className="font-medium text-amber-800">
+                                                              {a.tipo?.replace(/_/g, ' ')}
+                                                            </span>
+                                                            <p className="text-amber-700 text-xs mt-0.5">{a.descripcion}</p>
+                                                          </div>
+                                                        </div>
+                                                      ))}
                                                     </div>
                                                   </div>
+                                                )}
 
+                                                {/* ═══ ACCIONES CON SEGUIMIENTO ═══ */}
+                                                <div className="space-y-3">
+                                                  <div className="flex items-center justify-between">
+                                                    <h4 className="font-medium text-gray-900">Acciones de mejora — Seguimiento</h4>
+                                                    <button
+                                                      onClick={generarAlertas}
+                                                      disabled={cargandoAlertas}
+                                                      className="text-xs px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors"
+                                                    >
+                                                      <RefreshCw className={`w-3 h-3 inline mr-1 ${cargandoAlertas ? 'animate-spin' : ''}`} />
+                                                      Generar alertas
+                                                    </button>
+                                                  </div>
+
+                                                  {(plan.acciones ?? []).map((accion) => {
+                                                    const evs = evidenciasPorAccion[accion.id] ?? [];
+                                                    const isExpanded = accionExpandida === accion.id;
+                                                    const cumpl = cumplimientoLabel((accion as any).cumplimientoEmfo);
+                                                    const efect = (accion as any).efectividadVerificada
+                                                      ? efectividadLabel((accion as any).efectividadEmfo)
+                                                      : null;
+
+                                                    return (
+                                                      <div key={accion.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                                        {/* Header de la acción */}
+                                                        <button
+                                                          onClick={() => setAccionExpandida(isExpanded ? null : accion.id)}
+                                                          className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                                                        >
+                                                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                          <div className="flex-1 min-w-0">
+                                                            <div className="text-sm font-medium text-gray-900 truncate">{accion.descripcion}</div>
+                                                            <div className="text-xs text-gray-500 mt-0.5">
+                                                              {accion.responsable || 'Sin responsable'} · Vence: {accion.fechaVencimiento || '—'}
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex items-center gap-2 shrink-0">
+                                                            {/* Badge cumplimiento */}
+                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cumpl.bg} ${cumpl.color}`}>
+                                                              {cumpl.label}
+                                                            </span>
+                                                            {/* Badge efectividad */}
+                                                            {efect && (
+                                                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${efect.bg} ${efect.color}`}>
+                                                                {efect.label}
+                                                              </span>
+                                                            )}
+                                                            {/* Conteo evidencias */}
+                                                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                                              {evs.length} evid.
+                                                            </span>
+                                                          </div>
+                                                        </button>
+
+                                                        {/* Panel expandido */}
+                                                        {isExpanded && (
+                                                          <div className="border-t border-gray-100 px-4 py-4 space-y-4">
+                                                            {/* ── Evidencias ── */}
+                                                            <div>
+                                                              <h5 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-1.5">
+                                                                <FileText className="w-4 h-4 text-gray-400" />
+                                                                Evidencias ({evs.length})
+                                                              </h5>
+                                                              {cargandoEvidencias ? (
+                                                                <div className="flex items-center justify-center py-4">
+                                                                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                                                                </div>
+                                                              ) : evs.length === 0 ? (
+                                                                <div className="text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                                                  <Upload className="w-6 h-6 mx-auto text-gray-300 mb-1" />
+                                                                  <p className="text-xs text-gray-500">Sin evidencias cargadas</p>
+                                                                </div>
+                                                              ) : (
+                                                                <div className="space-y-2">
+                                                                  {evs.map((ev) => {
+                                                                    const est = estadoEvidenciaConfig[ev.estadoValidacion] ?? estadoEvidenciaConfig.pendiente;
+                                                                    return (
+                                                                      <div key={ev.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                                                        <Paperclip className="w-4 h-4 text-gray-400 shrink-0" />
+                                                                        <div className="flex-1 min-w-0">
+                                                                          <div className="text-sm font-medium text-gray-800 truncate">{ev.archivoNombre}</div>
+                                                                          <div className="text-xs text-gray-500">
+                                                                            {ev.cargadaPorNombre || 'Auditado'} · {ev.cargadaAt ? new Date(ev.cargadaAt).toLocaleDateString('es-CO') : ''}
+                                                                          </div>
+                                                                          {ev.comentarios && (
+                                                                            <p className="text-xs text-gray-600 mt-1 italic">"{ev.comentarios}"</p>
+                                                                          )}
+                                                                        </div>
+                                                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${est.bg} ${est.color}`}>
+                                                                          {est.label}
+                                                                        </span>
+                                                                        {/* Botones de calificación (solo si pendiente) */}
+                                                                        {ev.estadoValidacion === 'pendiente' && (
+                                                                          <div className="flex gap-1 shrink-0">
+                                                                            <button
+                                                                              onClick={() => calificarEvidencia(ev.id, 'aceptado')}
+                                                                              disabled={procesando === ev.id}
+                                                                              className="p-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-md transition-colors disabled:opacity-50"
+                                                                              title="Aceptar"
+                                                                            >
+                                                                              {procesando === ev.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                                            </button>
+                                                                            <button
+                                                                              onClick={() => {
+                                                                                const obs = prompt('Observaciones:');
+                                                                                if (obs !== null) calificarEvidencia(ev.id, 'con_observaciones', obs);
+                                                                              }}
+                                                                              disabled={procesando === ev.id}
+                                                                              className="p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-md transition-colors disabled:opacity-50"
+                                                                              title="Con observaciones"
+                                                                            >
+                                                                              <MessageSquare className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                          </div>
+                                                                        )}
+                                                                      </div>
+                                                                    );
+                                                                  })}
+                                                                </div>
+                                                              )}
+                                                            </div>
+
+                                                            {/* ── Seguimiento Cumplimiento ── */}
+                                                            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                                                              <h5 className="text-sm font-medium text-blue-900 mb-3 flex items-center gap-1.5">
+                                                                <BarChart3 className="w-4 h-4" />
+                                                                Cumplimiento (EM-FO-002)
+                                                              </h5>
+                                                              <div className="grid grid-cols-3 gap-3 text-center">
+                                                                <div>
+                                                                  <div className="text-xs text-blue-700 mb-1">Programadas</div>
+                                                                  <div className="text-lg font-bold text-blue-900">
+                                                                    {(accion as any).cantidadProgramada ?? (accion as any).cantidadAccionesProgramadas ?? '—'}
+                                                                  </div>
+                                                                </div>
+                                                                <div>
+                                                                  <div className="text-xs text-blue-700 mb-1">Implementadas</div>
+                                                                  <div className="text-lg font-bold text-blue-900">
+                                                                    {(accion as any).cantidadAccionesImplementadas ?? '—'}
+                                                                  </div>
+                                                                </div>
+                                                                <div>
+                                                                  <div className="text-xs text-blue-700 mb-1">Resultado</div>
+                                                                  <div className={`text-lg font-bold ${cumpl.color}`}>
+                                                                    {(accion as any).cumplimientoEmfo ?? '—'}/2
+                                                                  </div>
+                                                                </div>
+                                                              </div>
+                                                              {/* Botón rápido de seguimiento */}
+                                                              <div className="mt-3 flex items-center gap-2">
+                                                                <input
+                                                                  type="number"
+                                                                  min={0}
+                                                                  placeholder="Cant. implementada"
+                                                                  className="flex-1 text-sm px-3 py-1.5 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                                                                  id={`seg-${accion.id}`}
+                                                                />
+                                                                <button
+                                                                  onClick={() => {
+                                                                    const input = document.getElementById(`seg-${accion.id}`) as HTMLInputElement;
+                                                                    const val = parseInt(input?.value || '0', 10);
+                                                                    if (val >= 0) registrarSeguimiento(accion.id, val);
+                                                                  }}
+                                                                  disabled={procesando === accion.id}
+                                                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                                                                >
+                                                                  {procesando === accion.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                                                  Registrar
+                                                                </button>
+                                                              </div>
+                                                            </div>
+
+                                                            {/* ── Efectividad ── */}
+                                                            <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                                                              <h5 className="text-sm font-medium text-purple-900 mb-3 flex items-center gap-1.5">
+                                                                <Target className="w-4 h-4" />
+                                                                Efectividad (EM-FO-002)
+                                                              </h5>
+                                                              {(accion as any).efectividadVerificada ? (
+                                                                <div className="grid grid-cols-3 gap-3 text-center">
+                                                                  <div>
+                                                                    <div className="text-xs text-purple-700 mb-1">Controles aplicados</div>
+                                                                    <div className={`text-base font-bold ${(accion as any).evaluarAplicacionControles ? 'text-green-600' : 'text-red-600'}`}>
+                                                                      {(accion as any).evaluarAplicacionControles ? 'SÍ' : 'NO'}
+                                                                    </div>
+                                                                  </div>
+                                                                  <div>
+                                                                    <div className="text-xs text-purple-700 mb-1">No se repitió</div>
+                                                                    <div className={`text-base font-bold ${(accion as any).validarSituacionNoRepitio ? 'text-green-600' : 'text-red-600'}`}>
+                                                                      {(accion as any).validarSituacionNoRepitio ? 'SÍ' : 'NO'}
+                                                                    </div>
+                                                                  </div>
+                                                                  <div>
+                                                                    <div className="text-xs text-purple-700 mb-1">Resultado</div>
+                                                                    <div className={`text-lg font-bold ${efect?.color ?? 'text-gray-500'}`}>
+                                                                      {(accion as any).efectividadEmfo ?? '—'}/2
+                                                                    </div>
+                                                                  </div>
+                                                                </div>
+                                                              ) : (
+                                                                <div className="space-y-3">
+                                                                  <p className="text-xs text-purple-700">
+                                                                    Se verifica en la siguiente auditoría (EM-PT-002 act. 9). Registre cuando corresponda:
+                                                                  </p>
+                                                                  <div className="flex items-center gap-4">
+                                                                    <label className="flex items-center gap-2 text-sm">
+                                                                      <input type="checkbox" id={`ctl-${accion.id}`} className="rounded border-purple-300 text-purple-600 focus:ring-purple-500" />
+                                                                      Controles aplicados
+                                                                    </label>
+                                                                    <label className="flex items-center gap-2 text-sm">
+                                                                      <input type="checkbox" id={`rep-${accion.id}`} className="rounded border-purple-300 text-purple-600 focus:ring-purple-500" />
+                                                                      No se repitió
+                                                                    </label>
+                                                                    <button
+                                                                      onClick={() => {
+                                                                        const ctl = (document.getElementById(`ctl-${accion.id}`) as HTMLInputElement)?.checked;
+                                                                        const rep = (document.getElementById(`rep-${accion.id}`) as HTMLInputElement)?.checked;
+                                                                        registrarEfectividad(accion.id, ctl, rep);
+                                                                      }}
+                                                                      disabled={procesando === accion.id}
+                                                                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                                                                    >
+                                                                      {procesando === accion.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Registrar'}
+                                                                    </button>
+                                                                  </div>
+                                                                </div>
+                                                              )}
+                                                            </div>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+
+                                                {/* ═══ SEGUIMIENTOS PERIÓDICOS (RF-SG-09 / RF-SG-10) ═══ */}
+                                                <SeguimientosPeriodicosPanel planId={plan.id} />
+
+                                                {/* ═══ HISTORIAL DE SEGUIMIENTO (TIMELINE) ═══ */}
+                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                                                    <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                                                      <Activity className="w-4 h-4 text-gray-500" />
+                                                      Historial de seguimiento
+                                                      {plan.timeline?.length ? ` — ${plan.timeline.length} evento${plan.timeline.length > 1 ? 's' : ''}` : ''}
+                                                    </h4>
+                                                  </div>
                                                   {(!plan.timeline || plan.timeline.length === 0) ? (
-                                                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                      <Activity className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                                                      <p className="font-medium text-sm">Sin eventos registrados</p>
-                                                      <p className="text-xs mt-1">
-                                                        El historial de cambios aparecerá aquí automáticamente
-                                                      </p>
+                                                    <div className="text-center py-8 text-gray-500">
+                                                      <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                                      <p className="text-sm">Sin eventos registrados</p>
                                                     </div>
                                                   ) : (
-                                                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                                                      <div className="space-y-0">
-                                                        {plan.timeline.map((evento, index) => (
-                                                          <TimelineEventoItem 
-                                                            key={evento.id} 
-                                                            evento={evento} 
-                                                            isLast={index === plan.timeline.length - 1}
-                                                          />
-                                                        ))}
-                                                      </div>
+                                                    <div className="p-4 space-y-0">
+                                                      {plan.timeline.map((evento, index) => (
+                                                        <TimelineEventoItem
+                                                          key={evento.id}
+                                                          evento={evento}
+                                                          isLast={index === plan.timeline.length - 1}
+                                                        />
+                                                      ))}
                                                     </div>
                                                   )}
                                                 </div>
@@ -2814,12 +3352,69 @@
                                             );
                                           }
 
+
                                           // ════════════════════════════════════════════════════════════════════════════
                                           // TAB: CIERRE (ESTADO FINAL DEL EXPEDIENTE)
                                           // ════════════════════════════════════════════════════════════════════════════
 
                                           function TabCierre({ plan }: { plan: PlanMejoramientoDetalle }) {
-                                            // Conteo de hallazgos por resultado (simulado basado en datos existentes)
+                                            // ── Estado ──
+                                            const [cierre, setCierre] = useState<any>(null);
+                                            const [cargando, setCargando] = useState(true);
+                                            const [procesando, setProcesando] = useState(false);
+                                            const [observaciones, setObservaciones] = useState('');
+
+                                            // ── Cargar estado de cierre ──
+                                            useEffect(() => {
+                                              (async () => {
+                                                try {
+                                                  const data = await controlInternoService.getCierrePlan(plan.id);
+                                                  setCierre(data);
+                                                } catch { /* no cerrado aún */ }
+                                                finally { setCargando(false); }
+                                              })();
+                                            }, [plan.id]);
+
+                                            const planEstaCerrado = cierre?.cerrado === true;
+
+                                            // ── Cerrar plan ──
+                                            const cerrarPlan = async () => {
+                                              const accionesIncompletas = plan.acciones.filter(a => a.estado !== 'COMPLETADA' && a.estado !== 'VENCIDA');
+                                              if (accionesIncompletas.length > 0) {
+                                                toast.error(`Hay ${accionesIncompletas.length} acción(es) sin completar. Revise antes de cerrar.`);
+                                                return;
+                                              }
+                                              setProcesando(true);
+                                              try {
+                                                await controlInternoService.cerrarPlanMejoramiento(plan.id, {
+                                                  cerradoPorId: 'auditor',
+                                                  cerradoPorNombre: 'Auditor OCI',
+                                                  observacionesCierre: observaciones || undefined,
+                                                });
+                                                toast.success('Plan de mejoramiento cerrado exitosamente');
+                                                const data = await controlInternoService.getCierrePlan(plan.id);
+                                                setCierre(data);
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al cerrar el plan');
+                                              } finally { setProcesando(false); }
+                                            };
+
+                                            // ── Archivar expediente ──
+                                            const archivarExpediente = async () => {
+                                              setProcesando(true);
+                                              try {
+                                                await controlInternoService.archivarExpedientePlan(plan.id, {
+                                                  indiceElectronicoRef: `INDICE-${plan.codigo || plan.id}-${new Date().getFullYear()}`
+                                                });
+                                                toast.success('Expediente archivado con índice electrónico');
+                                                const data = await controlInternoService.getCierrePlan(plan.id);
+                                                setCierre(data);
+                                              } catch (e: any) {
+                                                toast.error(e?.message || 'Error al archivar');
+                                              } finally { setProcesando(false); }
+                                            };
+
+                                            // Conteo de hallazgos por resultado
                                             const hallazgosRatificados = plan.hallazgos.filter(h => h.progreso === 100).length;
                                             const hallazgosAceptados = plan.hallazgos.filter(h => h.progreso > 0 && h.progreso < 100).length;
                                             const hallazgosRetirados = plan.hallazgos.filter(h => h.progreso === 0).length;
@@ -2832,22 +3427,62 @@
 
                                             return (
                                               <div className="space-y-6">
-                                                {/* Banner de Estado Final */}
-                                                <div className="bg-gradient-to-r from-gray-700 to-gray-800 rounded-xl p-5 text-white">
+                                                {/* Banner de Estado */}
+                                                <div className={`rounded-xl p-5 text-white ${planEstaCerrado ? 'bg-gradient-to-r from-gray-700 to-gray-800' : 'bg-gradient-to-r from-amber-600 to-orange-600'}`}>
                                                   <div className="flex items-center gap-3 mb-3">
                                                     <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
                                                       <Lock className="w-6 h-6" />
                                                     </div>
                                                     <div>
-                                                      <h3 className="text-lg font-semibold">Expediente Cerrado</h3>
-                                                      <p className="text-gray-300 text-sm">Estado final e inmutable del expediente</p>
+                                                      <h3 className="text-lg font-semibold">
+                                                        {planEstaCerrado ? 'Expediente Cerrado' : 'Cierre del Plan de Mejoramiento'}
+                                                      </h3>
+                                                      <p className={`text-sm ${planEstaCerrado ? 'text-gray-300' : 'text-amber-200'}`}>
+                                                        {planEstaCerrado
+                                                          ? `Cerrado el ${cierre.fechaCierre ? new Date(cierre.fechaCierre).toLocaleDateString('es-CO') : '—'} por ${cierre.cerradoPorNombre || 'OCI'}`
+                                                          : 'Revise el estado de las acciones y proceda al cierre cuando corresponda (EM-PT-002 act. 8)'}
+                                                      </p>
                                                     </div>
                                                   </div>
-                                                  <p className="text-sm text-gray-300 border-t border-white/20 pt-3 mt-2">
-                                                    Este plan de mejoramiento ha sido cerrado y su información es de solo lectura. 
-                                                    No se pueden realizar modificaciones a los hallazgos, acciones o documentos.
-                                                  </p>
+                                                  {planEstaCerrado && (
+                                                    <p className="text-sm text-gray-300 border-t border-white/20 pt-3 mt-2">
+                                                      Este plan de mejoramiento ha sido cerrado y su información es de solo lectura. 
+                                                      No se pueden realizar modificaciones a los hallazgos, acciones o documentos.
+                                                    </p>
+                                                  )}
+                                                  {!planEstaCerrado && !cargando && (
+                                                    <div className="mt-4 space-y-3">
+                                                      <textarea
+                                                        value={observaciones}
+                                                        onChange={(e) => setObservaciones(e.target.value)}
+                                                        placeholder="Observaciones de cierre (opcional)..."
+                                                        className="w-full text-sm px-3 py-2 rounded-lg border border-white/30 bg-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/40"
+                                                        rows={2}
+                                                      />
+                                                      <div className="flex gap-3">
+                                                        <button
+                                                          onClick={cerrarPlan}
+                                                          disabled={procesando}
+                                                          className="px-4 py-2 bg-white text-amber-700 font-medium rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+                                                        >
+                                                          {procesando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                                                          Cerrar Plan
+                                                        </button>
+                                                        {cierre?.cerrado && !cierre?.indiceElectronicoRef && (
+                                                          <button
+                                                            onClick={archivarExpediente}
+                                                            disabled={procesando}
+                                                            className="px-4 py-2 bg-white/20 text-white font-medium rounded-lg hover:bg-white/30 transition-colors disabled:opacity-50 flex items-center gap-2 text-sm"
+                                                          >
+                                                            <FileText className="w-4 h-4" />
+                                                            Archivar Expediente
+                                                          </button>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  )}
                                                 </div>
+
 
                                                 {/* Resumen Ejecutivo */}
                                                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -3380,7 +4015,7 @@
                                                 
                                                 <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
                                                   {/* Header */}
-                                                  <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+                                                  <div className="flex-shrink-0 bg-[#1e5da8] text-white px-6 py-4 rounded-t-xl">
                                                     <div className="flex items-start justify-between">
                                                       <div>
                                                         <h3 className="text-xl font-medium mb-1">Editar Acción Correctiva</h3>
@@ -3543,7 +4178,7 @@
                                                       </button>
                                                       <button
                                                         onClick={handleGuardar}
-                                                        className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+                                                        className="px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
                                                       >
                                                         <CheckCircle2 className="w-4 h-4" />
                                                         Guardar Cambios
@@ -3670,7 +4305,7 @@
                                                 
                                                 <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
                                                   {/* Header */}
-                                                  <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+                                                  <div className="flex-shrink-0 bg-[#1e5da8] text-white px-6 py-4 rounded-t-xl">
                                                     <div className="flex items-start justify-between">
                                                       <div>
                                                         <h3 className="text-xl font-medium mb-1">Nueva Acción Correctiva</h3>
@@ -3820,7 +4455,7 @@
                                                       <button
                                                         onClick={handleCrear}
                                                         disabled={guardando}
-                                                        className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50"
+                                                        className="px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50"
                                                       >
                                                         {guardando ? (
                                                           <>
@@ -3940,7 +4575,7 @@
                                                 
                                                 <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
                                                   {/* Header */}
-                                                  <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+                                                  <div className="flex-shrink-0 bg-[#1e5da8] text-white px-6 py-4 rounded-t-xl">
                                                     <div className="flex items-start justify-between">
                                                       <div>
                                                         <h3 className="text-xl font-medium mb-1">Cargar Evidencias</h3>
@@ -4060,7 +4695,7 @@
                                                       <button
                                                         onClick={handleCargar}
                                                         disabled={cargando || archivosSeleccionados.length === 0}
-                                                        className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        className="px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                                       >
                                                         {cargando ? (
                                                           <>
@@ -4155,7 +4790,7 @@
                                                 
                                                 <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
                                                   {/* Header */}
-                                                  <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+                                                  <div className="flex-shrink-0 bg-[#1e5da8] text-white px-6 py-4 rounded-t-xl">
                                                     <div className="flex items-start justify-between">
                                                       <div>
                                                         <h3 className="text-xl font-medium mb-1">Cargar Documento al Plan</h3>
@@ -4284,7 +4919,7 @@
                                                       </button>
                                                       <button
                                                         onClick={handleCargar}
-                                                        className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+                                                        className="px-4 py-2 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
                                                       >
                                                         <Upload className="w-4 h-4" />
                                                         Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
@@ -4325,7 +4960,7 @@
                                                 
                                                 <div className="relative w-full max-w-5xl max-h-[95vh] bg-white rounded-xl shadow-2xl flex flex-col">
                                                   {/* Header */}
-                                                  <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+                                                  <div className="flex-shrink-0 bg-[#1e5da8] text-white px-6 py-4 rounded-t-xl">
                                                     <div className="flex items-start justify-between">
                                                       <div className="flex-1 min-w-0">
                                                         <h3 className="text-xl font-medium mb-1 truncate">{documento.nombre}</h3>
@@ -4368,7 +5003,7 @@
                                                         </p>
                                                         <button
                                                           onClick={handleDescargar}
-                                                          className="px-6 py-3 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
+                                                          className="px-6 py-3 bg-[#1e5da8] hover:bg-[#174a8a] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 mx-auto"
                                                         >
                                                           <Download className="w-5 h-5" />
                                                           Descargar Documento

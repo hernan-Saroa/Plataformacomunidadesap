@@ -68,7 +68,7 @@ function agruparEstadoMacro(estado: string): string {
   if (!estado) return 'borrador';
   const E = estado.toUpperCase().replace(/\s+/g, '_');
   if (E === 'BORRADOR' || estado === 'Borrador') return 'borrador';
-  if (['PENDIENTE_JEFATURA', 'PENDIENTE_DECANATURA', 'PENDIENTE_GESTIÓN_PROFESORAL', 'PENDIENTE_GESTION_PROFESORAL', 'CONCERTADO'].includes(E) || ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(estado)) return 'pendientes';
+  if (['PENDIENTE_JEFATURA', 'PENDIENTE_DECANATURA', 'PENDIENTE_GESTIÓN_PROFESORAL', 'PENDIENTE_GESTION_PROFESORAL', 'PENDIENTE_APROBACION', 'CONCERTADO'].includes(E) || ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(estado)) return 'pendientes';
   if (['EN_CONCERTACION', 'OBJETADO_DOCENTE', 'MODIFICADO_DOCENTE', 'DEVUELTO', 'PROPUESTO_POR_DIRECCION', 'NOTIFICADO_DOCENTE'].includes(E) || estado === 'Devuelto') return 'concertacion';
   if (['ESCALADO_SNA'].includes(E) || estado === 'Escalado SNA') return 'sna';
   if (E === 'APROBADO' || estado === 'Aprobado') return 'aprobado';
@@ -99,7 +99,7 @@ function ptasToKanbanCards(ptas: any[], rules?: any): KanbanCard[] {
     let maxDias = 15; // default fallback
     const estadoRaw = pta.estado;
     if (estadoRaw === 'Borrador') maxDias = rules?.sla_radicacion_pta || 15;
-    else if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(estadoRaw)) maxDias = rules?.sla_verificacion_jefaturas || 5;
+    else if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(estadoRaw)) maxDias = rules?.sla_verificacion_jefaturas || 5;
     else if (estadoRaw === 'Escalado SNA') maxDias = rules?.sla_verificacion_sna || 10;
     else if (estadoRaw === 'Devuelto') maxDias = 3;
     

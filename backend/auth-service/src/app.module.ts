@@ -21,7 +21,10 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { CarpetaDigitalModule } from './carpeta-digital/carpeta-digital.module';
 import { CarpetaDigital } from './carpeta-digital/carpeta-digital.entity';
 import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
+import { DocumentoCarpetaDigital } from './carpeta-digital/documento-carpeta-digital.entity';
 import { EstructuraImportModule } from './estructura-import/estructura-import.module';
+import { LoginSettingsModule } from './settings/login-settings.module';
+import { SystemSetting } from './settings/system-setting.entity';
 
 @NestModule({
   imports: [
@@ -47,8 +50,11 @@ import { EstructuraImportModule } from './estructura-import/estructura-import.mo
         Asignatura,
         CarpetaDigital,
         TipoDocumento,
+        DocumentoCarpetaDigital,
+        SystemSetting,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
+      logging: true,
     }),
     UsersModule,
     AuthModule,
@@ -57,6 +63,7 @@ import { EstructuraImportModule } from './estructura-import/estructura-import.mo
     PortalModule,
     CarpetaDigitalModule,
     EstructuraImportModule,
+    LoginSettingsModule,
   ],
   providers: [
     {
@@ -65,4 +72,4 @@ import { EstructuraImportModule } from './estructura-import/estructura-import.mo
     },
   ],
 })
-export class AppModule {}
+export class AppModule {} // LoginSettingsModule loaded
