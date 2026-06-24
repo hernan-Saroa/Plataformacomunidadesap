@@ -1756,6 +1756,7 @@ function GestionListasChequeo({
             onVer={() => setListaSeleccionada(lista)}
             onEditar={(l) => setListaAEditar(l)}
             onEliminar={(l) => setListaAEliminar(l)}
+            onDuplicar={(l) => setListaADuplicar(l)}
           />
         ))}
       </div>
@@ -1812,6 +1813,21 @@ function GestionListasChequeo({
           documentosBiblioteca={documentosBiblioteca}
           auditorias={auditorias}
           listaEditar={listaAEditar}
+          etapasDisponibles={etapasDisponibles}
+        />
+      )}
+
+      {/* ✅ MODAL DUPLICAR LISTA (reutiliza modal crear) */}
+      {listaADuplicar && (
+        <ModalCrearListaChequeo
+          onClose={() => setListaADuplicar(null)}
+          onCrear={async (nuevaLista) => {
+            await handleCrearLista(nuevaLista);
+            setListaADuplicar(null);
+          }}
+          documentosBiblioteca={documentosBiblioteca}
+          auditorias={auditorias}
+          listaDuplicar={listaADuplicar}
           etapasDisponibles={etapasDisponibles}
         />
       )}
