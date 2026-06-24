@@ -254,6 +254,8 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   // PASO 2: Objetivo y Alcance
   const [objetivo, setObjetivo] = useState(auditoriaExistente?.objetivo || '');
   const [alcance, setAlcance] = useState(auditoriaExistente?.alcance || '');
+  const [periodoInicio, setPeriodoInicio] = useState(auditoriaExistente?.periodoInicio || '');
+  const [periodoFin, setPeriodoFin] = useState(auditoriaExistente?.periodoFin || '');
   const [procesosSeleccionados, setProcesosSeleccionados] = useState<string[]>(auditoriaExistente?.procesosIncluidos || []);
   // Responsable del área auditada (campo del paso 2). Es la persona que recibe
   // las notificaciones del proceso y la única que entra a su portal de auditado.
@@ -701,6 +703,8 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
       tipo,
       objetivo,
       alcance,
+      periodoInicio,
+      periodoFin,
       procesosIncluidos: procesosSeleccionados,
       responsableArea: responsableArea || undefined,
       areaAuditable: {
@@ -1049,8 +1053,35 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                       Define los límites temporales, geográficos y funcionales
                     </p>
                     <p className="text-xs text-gray-500">
-                      {alcance.length} caracteres
+{
+                  alcance.length} caracteres
                     </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Periodo a Evaluar
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Desde</label>
+                      <input
+                        type="date"
+                        value={periodoInicio}
+                        onChange={(e) => setPeriodoInicio(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Hasta</label>
+                      <input
+                        type="date"
+                        value={periodoFin}
+                        onChange={(e) => setPeriodoFin(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
                   </div>
                 </div>
 

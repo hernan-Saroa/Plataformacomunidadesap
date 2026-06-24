@@ -26,7 +26,7 @@
                                             TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
                                             Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
                                             BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, RefreshCw, ChevronDown,
-                                            Lock, Lightbulb, ClipboardList, ArrowRight, BarChart2, GitBranch
+                                            Lock, Lightbulb, ClipboardList, ArrowRight, BarChart2, GitBranch, Send
                                           } from 'lucide-react';
                                           import { toast } from 'sonner';
 
@@ -2233,12 +2233,57 @@
                                                       </div>
                                                     )}
 
-                                                    {/* Observaciones */}
-                                                    {accion.observaciones && (
-                                                      <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-                                                        {accion.observaciones}
-                                                      </div>
-                                                    )}
+                                                    {/* Observaciones / Análisis de Causa Raíz */}
+                                                    {accion.observaciones && (() => {
+                                                      const texto = accion.observaciones;
+                                                      const regex = /(¿?Por\s+qu[eé]\s+\d+[:?]?\s*)/gi;
+                                                      if (!texto.match(regex)) {
+                                                        return (
+                                                          <div className="mb-3 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 leading-relaxed shadow-sm">
+                                                            {texto}
+                                                          </div>
+                                                        );
+                                                      }
+                                                      const partes = texto.split(regex).filter(p => p.trim() !== '');
+                                                      const pasos: { pregunta: string, respuesta: string }[] = [];
+                                                      let currentPregunta = "";
+                                                      for (const parte of partes) {
+                                                        if (parte.match(regex)) {
+                                                          currentPregunta = parte;
+                                                        } else {
+                                                          if (currentPregunta) {
+                                                            pasos.push({ pregunta: currentPregunta.trim(), respuesta: parte.trim() });
+                                                            currentPregunta = "";
+                                                          } else if (parte.trim()) {
+                                                            pasos.push({ pregunta: "Contexto", respuesta: parte.trim() });
+                                                          }
+                                                        }
+                                                      }
+                                                      return (
+                                                        <div className="mb-4 bg-indigo-50/30 p-5 rounded-xl border border-indigo-100/60 shadow-sm">
+                                                          <div className="text-sm font-bold text-indigo-900 mb-4 flex items-center gap-2 border-b border-indigo-100 pb-3">
+                                                            <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                            Análisis de Causa Raíz (Metodología 5 Por Qué)
+                                                          </div>
+                                                          <div className="space-y-3">
+                                                            {pasos.map((paso, idx) => (
+                                                              <div key={idx} className="flex gap-4 bg-white p-4 rounded-xl border border-indigo-100 shadow-sm relative overflow-hidden group hover:border-indigo-300 transition-all hover:shadow-md">
+                                                                <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-300 group-hover:bg-indigo-500 transition-colors" />
+                                                                <div className="flex-shrink-0 mt-0.5 ml-1">
+                                                                  <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm shadow-inner">
+                                                                    {idx + 1}
+                                                                  </span>
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                  <div className="text-[11px] font-bold text-indigo-500 mb-1 uppercase tracking-wider">{paso.pregunta.replace(/^[¿]+|[?:]+$/g, '')}</div>
+                                                                  <div className="text-sm text-slate-700 leading-relaxed font-medium">{paso.respuesta.replace(/^[. ]+/, '')}</div>
+                                                                </div>
+                                                              </div>
+                                                            ))}
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    })()}
 
 
                                                     

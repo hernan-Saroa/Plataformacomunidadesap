@@ -626,6 +626,14 @@ class ControlInternoService {
     return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
 
+  /**
+   * Forzar inclusión o exclusión manual de una evaluación
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    return client.patch<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}/auditable`, { auditableManual });
+  }
+
+
   // ==========================================================================
   // PROGRAMA ANUAL
   // ==========================================================================

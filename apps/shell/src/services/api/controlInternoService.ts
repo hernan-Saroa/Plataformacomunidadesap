@@ -635,6 +635,14 @@ class ControlInternoService {
     return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
 
+  /**
+   * Forzar inclusión o exclusión manual de una evaluación
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    return client.patch<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}/auditable`, { auditableManual });
+  }
+
+
   // ==========================================================================
   // PROGRAMA ANUAL
   // ==========================================================================
@@ -1761,6 +1769,26 @@ class ControlInternoService {
    */
   async deleteDocumento(id: string): Promise<void> {
     return client.delete(`/documentos/${id}`);
+  }
+
+  /**
+   * Descarga un documento general
+   */
+  async downloadDocumento(id: string): Promise<Blob> {
+    let url = id;
+    if (!id.startsWith('http')) {
+      url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/documentos/${id}/download`;
+    }
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: controlInternoDownloadHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al descargar: ${response.statusText}`);
+    }
+    return response.blob();
   }
 
   /**

@@ -697,7 +697,7 @@ export function ExpedienteAuditoriaCompleto({
             fechaFin: parseLocalDate(data.fechaFin),
             fechaFinReal: data.fechaFinReal ? parseLocalDate(data.fechaFinReal) : undefined,
             duracionDias: calcularDiasDuracion(data.fechaInicio, data.fechaFin),
-            diasTranscurridos: calcularDiasTranscurridos(data.fechaInicio),
+            diasTranscurridos: calcularDiasTranscurridos(data.fechaInicio, data.estadoKanban || data.fase, data.fechaFinReal, data.fechaFin),
           },
 
           progreso: progresoFases,
@@ -1906,6 +1906,13 @@ export function ExpedienteAuditoriaCompleto({
 // TABS INDIVIDUALES
 // ═══════════════════════════════════════════════════════════════════════════
 
+const safeToISOStringDate = (dateStr: string | Date | null | undefined): string => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '';
+  return date.toISOString().split('T')[0];
+};
+
 function TabGeneral({
   auditoria,
   readOnly,
@@ -1948,8 +1955,8 @@ function TabGeneral({
     responsableAreaNombre: auditoria.responsableArea?.nombre || '',
     responsableAreaCargo: auditoria.responsableArea?.cargo || '',
     responsableAreaEmail: auditoria.responsableArea?.email || '',
-    fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
-    fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
+    fechaInicio: safeToISOStringDate(auditoria.cronograma?.fechaInicio),
+    fechaFin: safeToISOStringDate(auditoria.cronograma?.fechaFin),
   });
 
   // ✅ Sincronizar editData cuando llegan datos reales del backend
@@ -1976,8 +1983,8 @@ function TabGeneral({
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
-      fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
-      fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
+      fechaInicio: safeToISOStringDate(auditoria.cronograma?.fechaInicio),
+      fechaFin: safeToISOStringDate(auditoria.cronograma?.fechaFin),
     });
   }, [auditoria.id, auditoria.descripcion, auditoria.alcance, auditoria.metodologia, auditoria.objetivos?.length]);
   const [newItem, setNewItem] = useState<Record<string, string>>({});
@@ -2120,7 +2127,11 @@ function TabGeneral({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const auditoriaGuardada = await controlInternoService.updateAuditoria(auditoria.id, editData);
+      const dataToSave = { ...editData };
+      if (dataToSave.presupuestoEstimado) {
+        dataToSave.presupuestoEstimado = String(dataToSave.presupuestoEstimado).replace(/[^0-9.-]+/g, "");
+      }
+      const auditoriaGuardada = await controlInternoService.updateAuditoria(auditoria.id, dataToSave);
       const toTextArray = (value: any): string[] =>
         Array.isArray(value)
           ? value
@@ -2308,8 +2319,11 @@ function TabGeneral({
   };
 
   const avanceTemporal = auditoria.cronograma.duracionDias > 0
-    ? Math.min(100, Math.round((auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100))
+    ? Math.round((auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100)
     : 0;
+  
+  const isCompleted = (auditoria.estado || '').toLowerCase().includes('finalizada') || (auditoria.estado || '').toLowerCase().includes('completada');
+  const isAtrasada = avanceTemporal > 100 && !isCompleted;
 
   // Helper para renderizar un campo editable de texto
   const renderEditableField = (label: string, field: string, value: string, multiline = false) => (
@@ -2442,26 +2456,31 @@ function TabGeneral({
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Periodo</p>
             {isEditing ? (
-              <div className="flex items-center gap-1">
+              <div className="flex flex-col gap-1">
                 <input
                   type="date"
-                  value={editData.fechaInicio}
+                  value={editData.fechaInicio || ''}
                   onChange={(e) => handleFieldChange('fechaInicio', e.target.value)}
                   className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
                 />
-                <span className="text-gray-400 text-xs">–</span>
                 <input
                   type="date"
-                  value={editData.fechaFin}
+                  value={editData.fechaFin || ''}
                   onChange={(e) => handleFieldChange('fechaFin', e.target.value)}
                   className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
                 />
               </div>
             ) : (
               <p className="text-sm font-bold text-gray-900">
-                {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
-                {' – '}
-                {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                {auditoria.cronograma?.fechaInicio && auditoria.cronograma?.fechaFin ? (
+                  <>
+                    {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                    {' - '}
+                    {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </>
+                ) : (
+                  'Sin definir'
+                )}
               </p>
             )}
           </div>
@@ -2555,7 +2574,7 @@ function TabGeneral({
               </Badge>
             </div>
             {renderEditableField('Nivel de Riesgo', 'nivelRiesgo', auditoria.nivelRiesgo || '')}
-            {renderEditableField('Presupuesto Estimado', 'presupuestoEstimado', auditoria.presupuestoEstimado || '')}
+            {renderEditableField('Presupuesto Estimado', 'presupuestoEstimado', auditoria.presupuestoEstimado ? new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(String(auditoria.presupuestoEstimado).replace(/[^0-9.-]+/g, ""))) : '')}
           </div>
 
           {/* Responsable del Área Auditada */}
@@ -2858,21 +2877,22 @@ function TabGeneral({
           </div>
 
           {/* Avance temporal */}
-          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 mb-4">
+          <div className={`rounded-lg p-3 border mb-4 ${isAtrasada ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] text-gray-500 font-medium">Avance temporal</span>
-              <span className="text-xs font-black text-gray-900">{avanceTemporal}%</span>
+              <span className={`text-[11px] font-medium ${isAtrasada ? 'text-red-600' : 'text-gray-500'}`}>Avance temporal</span>
+              <span className={`text-xs font-black ${isAtrasada ? 'text-red-700' : 'text-gray-900'}`}>{avanceTemporal}%</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className={`w-full rounded-full h-2 ${isAtrasada ? 'bg-red-200' : 'bg-gray-200'}`}>
               <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500"
+                className={`h-full rounded-full ${isAtrasada ? 'bg-red-500' : 'bg-gradient-to-r from-blue-500 to-purple-500'}`}
                 initial={{ width: 0 }}
-                animate={{ width: `${avanceTemporal}%` }}
+                animate={{ width: `${Math.min(100, avanceTemporal)}%` }}
                 transition={{ duration: 0.6 }}
               />
             </div>
-            <p className="text-[10px] text-gray-400 mt-1.5">
+            <p className={`text-[10px] mt-1.5 ${isAtrasada ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
               {auditoria.cronograma.diasTranscurridos} de {auditoria.cronograma.duracionDias} días transcurridos
+              {isAtrasada && ' (Atrasada)'}
             </p>
           </div>
 
