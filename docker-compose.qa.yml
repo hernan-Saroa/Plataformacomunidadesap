@@ -18,6 +18,7 @@ services:
         VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
         VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
+        ESAP_BUILD_DATE: ${ESAP_BUILD_DATE:-}
     container_name: superapp-frontend-qa
     ports:
       - "80:80"
@@ -207,6 +208,8 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-qa:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service-qa:3009
+      PUBLIC_APP_URL: http://135.237.81.133
     ports:
       - "3003:3003"
     depends_on:
@@ -283,6 +286,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-qa:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-qa:3009
+      DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     ports:
       - "3005:3005"
     depends_on:
@@ -292,6 +296,8 @@ services:
         condition: service_started
     networks:
       - superapp-net-qa
+    volumes:
+      - ${DISCIPLINARY_STORAGE_HOST_PATH:-./backend/internal-disciplinary-control-service/uploads}:${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     restart: unless-stopped
 
   # ============ INTEROPERABILITY SERVICE ============
@@ -387,11 +393,12 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
-      EMAIL_ACCOUNT_QA: ${EMAIL_ACCOUNT_QA}
+      LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT}
 
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-qa:3000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://135.237.81.133}
     ports:
       - "3008:3008"
     depends_on:
@@ -428,6 +435,11 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      NOTIFICATIONS_EMAIL_ACCOUNT: ${NOTIFICATIONS_EMAIL_ACCOUNT:-}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-qa:3000

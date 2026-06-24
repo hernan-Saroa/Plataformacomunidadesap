@@ -7,6 +7,7 @@
  */
 
 import { apiClient, type UploadRequestOptions } from './apiClient';
+import { authService } from './authService';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
@@ -518,8 +519,24 @@ class DisciplinaryService {
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
         formData.append('conducta', data.conducta);
         if (data.fechaHechos) {
-            formData.append('fechaHechos', data.fechaHechos);
+            // Normalizar siempre a ISO 8601 completo para que el DTO del backend lo acepte
+            const fh = data.fechaHechos;
+            const isoValue = fh.includes('T') ? fh : new Date(fh + 'T00:00:00.000Z').toISOString();
+            formData.append('fechaHechos', isoValue);
         }
+
+// ✅ FIX CRÍTICO - fechaQueja (la que faltaba en esta copia local)
+const fechaQuejaRaw = data.fechaQueja || (data as any).fechaRecepcion;
+if (fechaQuejaRaw) {
+    const dateOnly = typeof fechaQuejaRaw === 'string' && fechaQuejaRaw.includes('T')
+        ? fechaQuejaRaw.split('T')[0]
+        : fechaQuejaRaw;
+    formData.append('fechaQueja', dateOnly as string);
+    console.log('[MFE radicarNoticia] → Appending fechaQueja:', dateOnly);
+} else {
+    console.warn('[MFE radicarNoticia] → NO hay fechaQueja en el data');
+}
+
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
@@ -531,7 +548,7 @@ class DisciplinaryService {
             });
         }
 
-        return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
+        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
     async updateNoticia(id: string, data: {
@@ -541,13 +558,50 @@ class DisciplinaryService {
         hechos?: string;
         conducta?: string;
         denunciante?: any;
+        denunciantes?: any;
         disciplinable?: any;
+        disciplinables?: any;
         conductas?: string[];
         fechaHechos?: string | null;
         fechaQueja?: string;
         usuario?: string;
+        adjuntosParaEliminar?: string[];
+        archivosAdjuntos?: File[];
     }): Promise<DisciplinaryNews> {
-        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);
+        const hasFileChanges =
+            (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) ||
+            (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0);
+
+        if (!hasFileChanges) {
+            const { archivosAdjuntos, adjuntosParaEliminar, ...jsonData } = data;
+            return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, jsonData);
+        }
+
+        const formData = new FormData();
+
+        if (data.origen) formData.append('origen', data.origen);
+        if (data.territorial) formData.append('territorial', data.territorial);
+        if (data.dependenciaDenunciado) formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
+        if (data.hechos) formData.append('hechos', data.hechos);
+        if (data.conducta) formData.append('conducta', data.conducta);
+        if (data.fechaHechos) formData.append('fechaHechos', data.fechaHechos);
+        if (data.fechaQueja) formData.append('fechaQueja', data.fechaQueja);
+        if (data.usuario) formData.append('usuario', data.usuario);
+        if (data.conductas) formData.append('conductas', JSON.stringify(data.conductas));
+        if (data.denunciante) formData.append('denunciante', JSON.stringify(data.denunciante));
+        if (data.denunciantes) formData.append('denunciantes', JSON.stringify(data.denunciantes));
+        if (data.disciplinable) formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        if (data.disciplinables) formData.append('disciplinables', JSON.stringify(data.disciplinables));
+        if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
+            formData.append('adjuntosParaEliminar', JSON.stringify(data.adjuntosParaEliminar));
+        }
+        if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
+            data.archivosAdjuntos.forEach((file) => {
+                formData.append('files', file);
+            });
+        }
+
+        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, formData);
     }
 
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
@@ -750,7 +804,7 @@ class DisciplinaryService {
         }
         formData.append('file', file);
 
-        return apiClient.upload<{ message: string; url: string; filename: string }>(
+        return apiClient.post<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -814,19 +868,14 @@ class DisciplinaryService {
             : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token de autenticacion
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -876,18 +925,14 @@ class DisciplinaryService {
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
 
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -952,6 +997,18 @@ class DisciplinaryService {
         return `/files/${filename}`;
     }
 
+    /**
+     * Obtener URL absoluta para fetch/preview de archivos adjuntos (noticias, evidencias, etc.)
+     * Construye la URL completa usando buildApiUrl para que funcione desde el MFE (puerto distinto)
+     */
+    getAbsoluteFileUrl(relativeUrl: string): string {
+        const rel = this.getFileUrl(relativeUrl);
+        if (/^https?:\/\//i.test(rel)) {
+            return rel;
+        }
+        return buildApiUrl('control-disciplinario', rel.startsWith('/') ? rel : `/${rel}`);
+    }
+
     // --- AUTOS ---
 
     async getAllAutos(): Promise<LegalAuto[]> {
@@ -984,6 +1041,10 @@ class DisciplinaryService {
 
     async updateProcess(id: string, data: Partial<DisciplinaryProcess> & { abogadoId?: string; hechos?: string; disciplinable?: any; denunciante?: any; conducta?: string }): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}`, data);
+    }
+
+    async restoreProcess(id: string): Promise<DisciplinaryProcess> {
+        return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
     }
 
     async getProcesoByRadicado(radicado: string): Promise<DisciplinaryProcess> {
@@ -1027,7 +1088,14 @@ class DisciplinaryService {
         const formData = new FormData();
         formData.append('file', file);
         if (comentario) formData.append('comentario', comentario);
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
+        // Agregar userId si está disponible para la trazabilidad en el backend
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+            formData.append('userId', currentUser.id);
+        }
+        
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
     }
 
     // --- TÉRMINOS PROCESALES ---
@@ -1065,7 +1133,7 @@ class DisciplinaryService {
     async uploadSignature(professionalId: string, file: File): Promise<{ url: string }> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
+        return apiClient.post<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
     }
 
     async getCandidates(): Promise<any[]> {
@@ -1077,12 +1145,15 @@ class DisciplinaryService {
     }
 
     // --- ARCHIVOS ---
-    async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
+    async uploadFile(file: File, tipo: string = 'default', radicadoProceso?: string): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
-        formData.append('file', file);
+        if (radicadoProceso) {
+            formData.append('radicadoProceso', radicadoProceso);
+        }
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
-        return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
+        formData.append('file', file);
+        return apiClient.post<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 
     // ==================== CONFIGURACION ====================
@@ -1122,19 +1193,14 @@ class DisciplinaryService {
         const endpoint = `/api/v1/configuration/export/zip`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1219,7 +1285,7 @@ class DisciplinaryService {
         formData.append('usuarioCarga', data.aportadoPor || 'Sistema');
         formData.append('file', file);
 
-        return apiClient.upload<any>(
+        return apiClient.post<any>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -1265,7 +1331,7 @@ class DisciplinaryService {
         if (data.etapa) formData.append('etapa', data.etapa);
         if (data.categoria) formData.append('categoria', data.categoria);
         formData.append('usuarioCarga', data.usuarioCarga || 'Sistema');
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
     }
 
     async deleteOficio(processId: string, oficioId: string): Promise<void> {
@@ -1423,7 +1489,7 @@ class DisciplinaryService {
     async uploadAutoPlantilla(id: string, file: File): Promise<AutoConfiguration> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
+        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE OFICIOS ====================
@@ -1523,7 +1589,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
+        return apiClient.post<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE ACTAS ====================
@@ -1609,7 +1675,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
+        return apiClient.post<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== GENERAR CONSECUTIVO DE ACTA DESDE BACKEND ====================
@@ -1658,11 +1724,6 @@ class DisciplinaryService {
         emailDestinatario: string;
         createdAt: string;
     }> {
-        // Debug: verificar que hay token disponible
-        const token = sessionStorage.getItem('esap_auth_token');
-        console.log('[DEBUG] Token available:', !!token);
-        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-
         // Obtener la URL base del frontend para generar enlaces correctos
         // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
         const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
@@ -1796,6 +1857,24 @@ class DisciplinaryService {
      */
     async getReassignmentRequestsByProcess(processId: string): Promise<DisciplinaryProcessReassignmentRequest[]> {
         return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
+    }
+
+    async uploadFirmaJefe(file: File): Promise<{ message: string; filename: string }> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post(`${SERVICE_PREFIX}/configuration/firma-jefe`, formData);
+    }
+
+    async firmaJefeExiste(): Promise<{ existe: boolean }> {
+        return apiClient.get(`${SERVICE_PREFIX}/configuration/firma-jefe/existe`);
+    }
+
+    async getFirmaJefe(): Promise<string> {
+        const url = buildApiUrl('control-disciplinario', '/configuration/firma-jefe');
+        const response = await fetch(url, { method: 'GET', credentials: 'include' });
+        if (!response.ok) throw new Error('No se pudo cargar la firma');
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
     }
 
 }

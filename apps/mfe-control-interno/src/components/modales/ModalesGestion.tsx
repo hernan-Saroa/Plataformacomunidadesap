@@ -25,7 +25,6 @@ import React, { useState, useRef } from 'react';
 import { X, Check, Users, MessageSquare, FileText, Send, AlertCircle, Workflow, Info, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  construirEtapasKanbanAuditoria,
   type EstadoAuditoria,
   normalizarTextoEstadoAuditoria,
 } from '../config/auditoriaKanbanCatalog';
@@ -464,16 +463,11 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
     setNuevoEstado(normalizarTextoEstadoAuditoria(estadoActual));
   }, [estadoActual]);
 
-  const etapasEfectivas = React.useMemo(
-    () => construirEtapasKanbanAuditoria(kanbanConfig.loaded ? kanbanConfig.etapasKanban : undefined),
-    [kanbanConfig.loaded, kanbanConfig.etapasKanban],
-  );
-
-  const estados = etapasEfectivas.map((e) => ({
-    value: e.id,
-    label: e.titulo,
-    color: e.accentColor,
-    descripcion: e.descripcion,
+  const estados = kanbanConfig.etapasKanban.map((e) => ({
+    value: e.nombre,
+    label: e.nombre,
+    color: e.color || '#6366F1',
+    descripcion: `Transición a ${e.nombre} (SLA: ${e.slaDias} días)`,
   }));
 
   const handleSubmit = (e: React.FormEvent) => {

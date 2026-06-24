@@ -21,6 +21,8 @@ import { FileText, Users, Calendar, CheckCircle, ChevronRight, ChevronLeft, Targ
 import { ModalWorldClass } from './ModalWorldClass';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+// import { notificationsService } from '@/services/api/notificationsService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ============ TIPOS ============
 
@@ -39,6 +41,9 @@ interface Auditoria {
     cargo: string;
     email: string;
   };
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   auditorLider: {
     nombre: string;
     cargo: string;
@@ -118,6 +123,20 @@ export function InicioAuditoriaWizardWorldClass({
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     onIniciar(auditoria);
+
+    // 🚀 DISPARAR EVENTO AL BACKEND
+    try {
+      await notificationsService.triggerEvent('EVT-AUD-001', {
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        tituloCustom: 'Auditoría Iniciada',
+        mensajeCustom: `La auditoría ${auditoria.codigo} ha sido formalmente iniciada.`,
+        url_accion: `/control-interno/auditorias/${auditoria.id}`,
+      });
+    } catch (e) {
+      console.error('Error disparando notificación:', e);
+    }
+
     toast.success('Auditoría iniciada correctamente', {
       description: `${auditoria.codigo} - Se generaron todos los documentos oficiales`
     });
@@ -138,9 +157,9 @@ export function InicioAuditoriaWizardWorldClass({
       size="xl"
       closeOnOverlay={false}
       footer={
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
           {/* Indicador de pasos */}
-          <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
             {[0, 1, 2, 3, 4].map((num) => (
               <div
                 key={num}
@@ -156,14 +175,22 @@ export function InicioAuditoriaWizardWorldClass({
               </div>
             ))}
           </div>
+          <div className="flex md:hidden flex-col items-center sm:items-start text-center sm:text-left">
+            <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+              Progreso
+            </span>
+            <span className="text-sm font-bold text-blue-600">
+              Paso {paso + 1} de 5
+            </span>
+          </div>
 
           {/* Botones de navegación */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-end">
             {paso > 0 && (
               <button
                 onClick={handleAnterior}
                 disabled={loading}
-                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm sm:text-base flex-1 sm:flex-initial justify-center"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Anterior
@@ -173,7 +200,7 @@ export function InicioAuditoriaWizardWorldClass({
             {paso < 4 ? (
               <button
                 onClick={handleSiguiente}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all flex items-center gap-2"
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all flex items-center gap-2 text-sm sm:text-base flex-1 sm:flex-initial justify-center"
               >
                 Siguiente
                 <ChevronRight className="w-4 h-4" />
@@ -182,7 +209,7 @@ export function InicioAuditoriaWizardWorldClass({
               <button
                 onClick={handleIniciar}
                 disabled={loading}
-                className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm sm:text-base flex-1 sm:flex-initial justify-center"
               >
                 <CheckCircle className="w-4 h-4" />
                 {loading ? 'Iniciando...' : 'Iniciar Auditoría'}
@@ -192,14 +219,16 @@ export function InicioAuditoriaWizardWorldClass({
         </div>
       }
     >
-      {/* Contenido según paso */}
-      <AnimatePresence mode="wait">
-        {paso === 0 && <Paso0ListasChequeo key="paso0" auditoria={auditoria} />}
-        {paso === 1 && <Paso1AuditoriaSeleccionada key="paso1" auditoria={auditoria} />}
-        {paso === 2 && <Paso2ProcesoAuditado key="paso2" auditoria={auditoria} />}
-        {paso === 3 && <Paso3EquipoAuditor key="paso3" auditoria={auditoria} />}
-        {paso === 4 && <Paso4Cronograma key="paso4" auditoria={auditoria} />}
-      </AnimatePresence>
+      {/* Contenido según paso — altura flexible para móviles y fija en escritorios */}
+      <div className="h-auto max-h-[50vh] md:h-[420px] overflow-y-auto pr-1">
+        <AnimatePresence mode="wait">
+          {paso === 0 && <Paso0ListasChequeo key="paso0" auditoria={auditoria} />}
+          {paso === 1 && <Paso1AuditoriaSeleccionada key="paso1" auditoria={auditoria} />}
+          {paso === 2 && <Paso2ProcesoAuditado key="paso2" auditoria={auditoria} />}
+          {paso === 3 && <Paso3EquipoAuditor key="paso3" auditoria={auditoria} />}
+          {paso === 4 && <Paso4Cronograma key="paso4" auditoria={auditoria} />}
+        </AnimatePresence>
+      </div>
     </ModalWorldClass>
   );
 }
@@ -258,7 +287,7 @@ function Paso0ListasChequeo({ auditoria }: { auditoria: Auditoria }) {
           <ul className="list-disc list-inside mt-2">
             <li>Auditor Líder</li>
             <li>Equipo de Auditoría</li>
-            <li>Responsable del Área</li>
+            <li>Responsable del Área Auditada</li>
           </ul>
         </div>
 
@@ -375,16 +404,16 @@ function Paso2ProcesoAuditado({ auditoria }: { auditoria: Auditoria }) {
 
       {/* Responsable del área */}
       <div>
-        <h4 className="text-sm font-medium text-gray-900 mb-3">Responsable del Área</h4>
+        <h4 className="text-sm font-medium text-gray-900 mb-3">Responsable del Área Auditada</h4>
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-              {auditoria.responsableArea.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+              {(auditoria.responsableAreaNombre || 'NA').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1">
-              <h5 className="text-sm font-medium text-gray-900">{auditoria.responsableArea.nombre}</h5>
-              <p className="text-xs text-gray-600">{auditoria.responsableArea.cargo}</p>
-              <p className="text-xs text-blue-600 mt-1">{auditoria.responsableArea.email}</p>
+              <h5 className="text-sm font-medium text-gray-900">{auditoria.responsableAreaNombre || 'Sin asignar'}</h5>
+              <p className="text-xs text-gray-600">{auditoria.responsableAreaCargo || 'Sin cargo'}</p>
+              <p className="text-xs text-blue-600 mt-1">{auditoria.responsableAreaEmail || 'Sin email'}</p>
             </div>
           </div>
         </div>

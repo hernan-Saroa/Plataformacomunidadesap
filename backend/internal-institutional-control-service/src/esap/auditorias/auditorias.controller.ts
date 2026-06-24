@@ -50,18 +50,28 @@ export class AuditoriasController {
   ) {}
 
   /**
+   * GET /esap/auditorias/jefes-control-interno
+   * Obtiene la lista de IDs de usuarios con roles de Jefe OCI o Administrador
+   */
+  @Get('jefes-control-interno')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getJefesControlInterno() {
+    return this.auditoriasService.obtenerJefesControlInterno();
+  }
+
+  /**
    * Helper para extraer usuario del token de forma opcional
    * Si el token está presente y es válido, retorna el usuario
    * Si no está presente o es inválido, retorna null sin lanzar error
    */
   private extractUserFromToken(req: any): any | null {
     try {
-      const authHeader = req.headers?.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const token = this.extractJwtFromRequest(req);
+      if (!token) {
         return null;
       }
 
-      const token = authHeader.substring(7);
       const payload = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
       });
@@ -85,11 +95,74 @@ export class AuditoriasController {
         roles: roles || [],
         role: roles && roles.length > 0 ? roles[0] : payload.role,
         email: payload.email,
+        name: payload.name,
       };
     } catch (error) {
       // Si el token es inválido o expirado, simplemente retornar null
       // No lanzar error para permitir acceso sin autenticación
       return null;
+    }
+  }
+
+  /**
+   * Extrae el contexto completo del usuario (ID + nombre) combinando:
+   * 1. req.user (Passport JwtAuthGuard - fuente principal)
+   * 2. Token JWT (fallback si req.user no está disponible)
+   * 3. Headers X-User-ID / X-User-Name / X-User-Email (enviados por el frontend)
+   */
+  private extractUserContext(req: any): { userId: string | null; nombreUsuario: string | null; userEmail: string | null } {
+    const passportUser = req.user || this.extractUserFromToken(req);
+    
+    // Leer headers contextuales enviados por el frontend
+    const xUserId   = req.headers?.['x-user-id']    as string | undefined;
+    const xUserName = req.headers?.['x-user-name']  as string | undefined;
+    const xUserEmail = req.headers?.['x-user-email'] as string | undefined;
+
+    const userId = passportUser?.userId || xUserId || null;
+    
+    // Nombre: preferir nombre completo del payload JWT, luego header X-User-Name, luego username
+    const nombreUsuario = (
+      passportUser?.name ||
+      xUserName ||
+      passportUser?.username ||
+      null
+    );
+
+    const userEmail = passportUser?.email || xUserEmail || null;
+
+    return { userId, nombreUsuario, userEmail };
+  }
+
+
+  private extractJwtFromRequest(req: any): string | null {
+    const authHeader = req.headers?.authorization;
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+
+    const cookieHeader = req.headers?.cookie;
+    if (typeof cookieHeader !== 'string') {
+      return null;
+    }
+
+    const cookiePart = cookieHeader
+      .split(';')
+      .map((part: string) => part.trim())
+      .find((part: string) => part.startsWith('esap_access_token='));
+
+    if (!cookiePart) {
+      return null;
+    }
+
+    const token = cookiePart.split('=').slice(1).join('=');
+    if (!token) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(token);
+    } catch {
+      return token;
     }
   }
 
@@ -108,7 +181,21 @@ export class AuditoriasController {
     @Query('search') search?: string,
     @Query('fechaDesde') fechaDesde?: string,
     @Query('fechaHasta') fechaHasta?: string,
+    @Query('planAnualId') planAnualId?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
+    @Query('vinculadaPlanAnual') vinculadaPlanAnual?: string,
+    @Query('year') year?: string,
+    @Query('light') light?: string,
+    @Query('activasOnly') activasOnly?: string,
   ) {
+    const vigenciaNum =
+      planAnualVigencia && planAnualVigencia !== 'undefined'
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
+    const yearNum =
+      year && year !== 'undefined' ? parseInt(year, 10) : undefined;
+    const lightMode = light !== 'false' && light !== '0';
+    const soloActivas = activasOnly !== 'false' && activasOnly !== '0';
     return this.auditoriasService.findAll({
       tipo,
       fase,
@@ -117,6 +204,12 @@ export class AuditoriasController {
       search,
       fechaDesde,
       fechaHasta,
+      planAnualId,
+      planAnualVigencia: vigenciaNum != null && !Number.isNaN(vigenciaNum) ? vigenciaNum : undefined,
+      vinculadaPlanAnual: vinculadaPlanAnual === 'true' || vinculadaPlanAnual === '1',
+      year: yearNum != null && !Number.isNaN(yearNum) ? yearNum : undefined,
+      light: lightMode,
+      activasOnly: soloActivas,
     });
   }
 
@@ -207,13 +300,16 @@ export class AuditoriasController {
       comentarios?: string;
       usuarioId?: number;
       usuarioNombre?: string;
-    }
+    },
+    @Req() req: any,
   ) {
+    const user = req.user || this.extractUserFromToken(req);
     return this.auditoriasService.aprobarAuditoria(
       id, 
       body.comentarios,
       body.usuarioId,
-      body.usuarioNombre
+      body.usuarioNombre,
+      user?.userId,
     );
   }
 
@@ -225,11 +321,16 @@ export class AuditoriasController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_APPROVE)
   @HttpCode(HttpStatus.OK)
-  rechazar(@Param('id') id: string, @Body() body: { justificacion: string }) {
+  rechazar(
+    @Param('id') id: string,
+    @Body() body: { justificacion: string },
+    @Req() req: any,
+  ) {
     if (!body.justificacion || body.justificacion.trim().length < 20) {
       throw new BadRequestException('La justificación debe tener al menos 20 caracteres');
     }
-    return this.auditoriasService.rechazarAuditoria(id, body.justificacion);
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.rechazarAuditoria(id, body.justificacion, undefined, user?.userId);
   }
 
   /**
@@ -240,11 +341,16 @@ export class AuditoriasController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
   @HttpCode(HttpStatus.OK)
-  solicitarModificacion(@Param('id') id: string, @Body() body: { observaciones: string }) {
+  solicitarModificacion(
+    @Param('id') id: string,
+    @Body() body: { observaciones: string },
+    @Req() req: any,
+  ) {
     if (!body.observaciones || body.observaciones.trim().length < 20) {
       throw new BadRequestException('Las observaciones deben tener al menos 20 caracteres');
     }
-    return this.auditoriasService.solicitarModificacionAuditoria(id, body.observaciones);
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.solicitarModificacionAuditoria(id, body.observaciones, undefined, user?.userId);
   }
 
   /**
@@ -267,6 +373,19 @@ export class AuditoriasController {
   @Permissions(CIP.AUDITORIA_VIEW)
   findAllKanbanArchivadas() {
     return this.auditoriasService.findAllKanbanArchivadas();
+  }
+
+  /**
+   * GET /esap/auditorias/personas/all
+   * Retorna todas las personas de auth.personas (máx 50, orden alfabético).
+   * Pensado para precargar el selector «Responsable del Área Auditada» al abrir el formulario.
+   */
+  @Get('personas/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getAllPersonas(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    return this.auditoriasService.getAllPersonas(parsedLimit > 0 ? parsedLimit : 50);
   }
 
   /**
@@ -300,6 +419,54 @@ export class AuditoriasController {
   @Permissions(CIP.AUDITORIA_VIEW)
   async obtenerPersonasDisponibles() {
     return this.auditoriasService.obtenerPersonasDisponibles();
+  }
+
+  /**
+   * GET /esap/auditorias/personas/search?q=...
+   * Búsqueda libre en auth.personas por nombre, email o identificación.
+   * Pensado para autocompletar el "responsable del área auditada" al crear
+   * una auditoría.
+   */
+  @Get('personas/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async searchPersonas(@Query('q') q?: string) {
+    if (!q || q.trim().length < 2) {
+      throw new BadRequestException(
+        'El parámetro q es obligatorio y debe tener al menos 2 caracteres',
+      );
+    }
+    return this.auditoriasService.searchPersonasByText(q);
+  }
+
+  /**
+   * GET /esap/auditorias/auditados/search?q=...
+   * Búsqueda libre en auth.personas excluyendo a los roles operativos de OCI.
+   * Exclusivo para el selector "Responsable del Área Auditada".
+   */
+  @Get('auditados/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async searchAuditados(@Query('q') q?: string) {
+    if (!q || q.trim().length < 2) {
+      throw new BadRequestException(
+        'El parámetro q es obligatorio y debe tener al menos 2 caracteres',
+      );
+    }
+    return this.auditoriasService.searchAuditadosByText(q);
+  }
+
+  /**
+   * GET /esap/auditorias/auditados/all
+   * Lista general de personas excluyendo a los roles operativos de OCI.
+   * Exclusivo para el selector "Responsable del Área Auditada".
+   */
+  @Get('auditados/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getAllAuditados(@Query('limit') limit?: string) {
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    return this.auditoriasService.getAllAuditados(limitNum);
   }
 
   /**
@@ -448,8 +615,9 @@ export class AuditoriasController {
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_CREATE)
-  create(@Body() createDto: CreateAuditoriaDto) {
-    return this.auditoriasService.create(createDto);
+  create(@Body() createDto: CreateAuditoriaDto, @Req() req: any) {
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.create(createDto, user?.userId);
   }
 
   /**
@@ -459,8 +627,9 @@ export class AuditoriasController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  update(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto) {
-    return this.auditoriasService.update(id, updateDto);
+  update(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto, @Req() req: any) {
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.update(id, updateDto, user?.userId);
   }
 
   /**
@@ -470,8 +639,9 @@ export class AuditoriasController {
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  updatePut(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto) {
-    return this.auditoriasService.update(id, updateDto);
+  updatePut(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto, @Req() req: any) {
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.update(id, updateDto, user?.userId);
   }
 
   /**
@@ -498,8 +668,10 @@ export class AuditoriasController {
   updateFase(
     @Param('id') id: string,
     @Body('fase') fase: FaseAuditoria,
+    @Req() req: any,
   ) {
-    return this.auditoriasService.updateFase(id, fase);
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.updateFase(id, fase, user?.userId);
   }
 
   /**
@@ -514,8 +686,10 @@ export class AuditoriasController {
   updateEstadoKanban(
     @Param('id') id: string,
     @Body('estadoKanban') estadoKanban: string,
+    @Req() req: any,
   ) {
-    return this.auditoriasService.updateEstadoKanban(id, estadoKanban);
+    const user = this.extractUserContext(req);
+    return this.auditoriasService.updateEstadoKanban(id, estadoKanban, user?.userId || undefined, user?.nombreUsuario || undefined);
   }
 
   /**
@@ -565,18 +739,21 @@ export class AuditoriasController {
     @Param('id') id: string,
     @UploadedFile() file: any,
     @Body() body: any,
+    @Req() req: any,
   ) {
     if (!file) {
       throw new BadRequestException(
         'El documento de cierre es obligatorio para finalizar la auditoría',
       );
     }
+    const user = req.user || this.extractUserFromToken(req);
     return this.auditoriasService.finalizarAuditoriaConArchivo(
       id,
       file,
       body.observaciones || '',
       body.finalizadaPor || 'Sistema',
       body.finalizadaPorId ? parseInt(body.finalizadaPorId, 10) : null,
+      user?.userId,
     );
   }
 
@@ -591,7 +768,16 @@ export class AuditoriasController {
     await this.auditoriasService.update(id, {
       checklistCompletados: { informeFinalGenerado: true },
     });
-    return { generado: true, mensaje: 'Informe Final generado' };
+    try {
+      await this.auditoriasService.notificarInformeFinalGenerado(id);
+    } catch (notifErr) {
+      console.error('[AuditoriasController] Error notificando informe final al auditado:', notifErr.message);
+    }
+    return {
+      generado: true,
+      mensaje:
+        'Informe Final generado. Se notificó al área auditada para formular el plan de mejoramiento (30 días hábiles).',
+    };
   }
 
   /**
@@ -615,11 +801,21 @@ export class AuditoriasController {
   @Post(':id/informe-preliminar/generar')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_EDIT)
-  async generarInformePreliminar(@Param('id') id: string) {
-    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id);
+  async generarInformePreliminar(@Param('id') id: string, @Req() req: any) {
+    const user = req.user || this.extractUserFromToken(req);
+    const { count, total } = await this.hallazgosService.notificarHallazgosAuditoria(id, user?.userId);
+
+    // ✅ Actualizar fecha de inicio de comunicación en la auditoría a la fecha de hoy
+    try {
+      const hoyStr = new Date().toISOString().split('T')[0];
+      await this.auditoriasService.update(id, { fechaInicioComunicacion: hoyStr });
+    } catch (err: any) {
+      console.error('[AuditoriasController] Error actualizando fechaInicioComunicacion:', err.message);
+    }
+
     let mensaje: string;
     if (count > 0) {
-      mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 10 días hábiles iniciado.`;
+      mensaje = `Informe preliminar generado. ${count} hallazgo(s) notificado(s) al área auditada. Período de 5 días hábiles iniciado.`;
     } else if (total > 0) {
       mensaje = `Informe preliminar generado. Los ${total} hallazgo(s) ya estaban notificados o procesados (aceptados/ratificados).`;
     } else {

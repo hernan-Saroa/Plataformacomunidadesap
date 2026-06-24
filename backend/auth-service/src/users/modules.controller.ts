@@ -15,6 +15,7 @@ export class ModulesController {
     @Query('category') category?: 'backoffice' | 'portal',
     @Query('is_active') isActive?: string,
     @Query('search') search?: string,
+    @Query('include_inactive_permissions') includeInactivePermissions?: string,
   ) {
     const filters: ModulesFilters = {};
 
@@ -28,6 +29,10 @@ export class ModulesController {
 
     if (search) {
       filters.search = search;
+    }
+
+    if (includeInactivePermissions !== undefined) {
+      filters.include_inactive_permissions = includeInactivePermissions === 'true';
     }
 
     // Devolver el array directamente - el ResponseInterceptor lo envuelve en { data: [...] }

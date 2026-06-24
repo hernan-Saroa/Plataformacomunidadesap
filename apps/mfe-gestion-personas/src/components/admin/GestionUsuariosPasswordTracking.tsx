@@ -25,6 +25,7 @@ import {
   TrendingDown, AlertCircle as AlertIcon, User, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 interface Usuario {
   id: string;
@@ -207,7 +208,9 @@ export function GestionUsuariosPasswordTracking() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <>
+      <Toaster position="bottom-right" richColors />
+      <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -387,7 +390,8 @@ export function GestionUsuariosPasswordTracking() {
           <li><strong>Historial:</strong> No se permite reutilizar las últimas 3 contraseñas</li>
         </ul>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
 

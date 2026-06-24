@@ -10,6 +10,10 @@ import {
   AccionCorrectivaEstado,
   AccionCorrectivaTipo,
 } from './entities/accion-correctiva.entity';
+import { EvidenciaAccion, EstadoValidacionEvidencia } from './entities/evidencia-accion.entity';
+import { AlertaPlan, TipoAlertaPlan } from './entities/alerta-plan.entity';
+import { CierrePlan } from './entities/cierre-plan.entity';
+import { SeguimientoPlan } from './entities/seguimiento-plan.entity';
 import { SeguimientoTrimestral } from './entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './entities/registro-seguimiento.entity';
 import { EventoTimeline, TipoEventoTimeline } from './entities/evento-timeline.entity';
@@ -25,6 +29,8 @@ import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } from '../aprobaciones/entities/aprobacion.entity';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { PlanMejoramientoRol4TareaSyncService } from './plan-mejoramiento-rol4-tarea-sync.service';
+import { calcularCumplimiento, calcularEfectividad, colorSemaforo } from './evaluacion.utils';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -45,9 +51,51 @@ export class PlanesMejoramientoService {
     private readonly auditoriaRepository: Repository<Auditoria>,
     @InjectRepository(Aprobacion)
     private readonly aprobacionRepository: Repository<Aprobacion>,
+    @InjectRepository(EvidenciaAccion)
+    private readonly evidenciaAccionRepository: Repository<EvidenciaAccion>,
+    @InjectRepository(AlertaPlan)
+    private readonly alertaPlanRepository: Repository<AlertaPlan>,
+    @InjectRepository(CierrePlan)
+    private readonly cierrePlanRepository: Repository<CierrePlan>,
+    @InjectRepository(SeguimientoPlan)
+    private readonly seguimientoPlanRepository: Repository<SeguimientoPlan>,
     private readonly notificacionesService: NotificacionesService,
     private readonly dataSource: DataSource,
+    private readonly rol4TareaSync: PlanMejoramientoRol4TareaSyncService,
   ) {}
+
+  /**
+   * Backfill: sincroniza tareas Rol 4 para todos los planes en seguimiento de una vigencia.
+   */
+  async sincronizarTareasRol4Vigencia(
+    vigencia: number,
+  ): Promise<{ vigencia: number; sincronizados: number }> {
+    const sincronizados = await this.rol4TareaSync.sincronizarVigencia(vigencia);
+    return { vigencia, sincronizados };
+  }
+
+  /** Sincroniza tarea pendiente en Rol 4 (actividad planes de mejoramiento). */
+  private async syncTareaRol4(planId: string): Promise<void> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['auditoria', 'acciones'],
+    });
+    if (!plan) return;
+
+    const acciones = plan.acciones ?? [];
+    const estadoCalculado = this.determinarEstadoReal(
+      plan,
+      acciones.length,
+      this.promedioPorcentajeAvanceAcciones(acciones),
+    );
+    // Mantener borrador/revisión del registro; el cálculo Kanban no debe ocultar el plan recién creado.
+    const estadoParaSync =
+      plan.estado === PlanMejoramientoEstado.BORRADOR ||
+      plan.estado === PlanMejoramientoEstado.REVISION
+        ? plan.estado
+        : estadoCalculado;
+    await this.rol4TareaSync.sincronizarDesdePlan(plan, estadoParaSync);
+  }
 
   private normalizarTexto(valor?: string | null): string {
     return String(valor || '')
@@ -140,10 +188,36 @@ export class PlanesMejoramientoService {
   }
 
   /**
-   * Genera un código único para el plan en formato PM-YYYY-###
+   * Vigencia para nomenclatura PM-{vigencia}-### (desde auditoría vinculada).
    */
-  private async generarCodigo(): Promise<string> {
-    const year = new Date().getFullYear();
+  private async resolverVigenciaCodigoPlan(
+    auditoriaId: string | null,
+  ): Promise<number> {
+    if (!auditoriaId) {
+      return new Date().getFullYear();
+    }
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'planAnualVigencia', 'fechaInicio'],
+    });
+    if (aud?.planAnualVigencia != null && !Number.isNaN(Number(aud.planAnualVigencia))) {
+      return Number(aud.planAnualVigencia);
+    }
+    if (aud?.fechaInicio) {
+      const y = new Date(aud.fechaInicio).getFullYear();
+      if (!Number.isNaN(y)) return y;
+    }
+    return new Date().getFullYear();
+  }
+
+  /**
+   * Genera un código único para el plan en formato PM-{vigencia}-###
+   */
+  private async generarCodigo(vigencia?: number): Promise<string> {
+    const year =
+      vigencia != null && !Number.isNaN(Number(vigencia))
+        ? Number(vigencia)
+        : new Date().getFullYear();
     const prefix = `PM-${year}-`;
 
     const ultimo = await this.planRepository
@@ -204,7 +278,11 @@ export class PlanesMejoramientoService {
    * Obtiene todos los planes de mejoramiento con filtros opcionales
    * Asegura que el hallazgo se cargue completamente con todos sus campos
    */
-  async findAll(filters?: { estado?: string; area?: string }): Promise<PlanMejoramiento[]> {
+  async findAll(filters?: {
+    estado?: string;
+    area?: string;
+    planAnualVigencia?: number;
+  }): Promise<PlanMejoramiento[]> {
     try {
       // Primero intentar una consulta simple sin relaciones complejas
       const query = this.planRepository
@@ -223,6 +301,25 @@ export class PlanesMejoramientoService {
 
       if (filters?.area) {
         query.andWhere('plan.areaResponsable ILIKE :area', { area: `%${filters.area}%` });
+      }
+
+      if (filters?.planAnualVigencia != null && !Number.isNaN(Number(filters.planAnualVigencia))) {
+        const v = Number(filters.planAnualVigencia);
+        query.andWhere(
+          `(
+            auditoria.planAnualVigencia = :planAnualVigencia
+            OR (
+              auditoria.planAnualVigencia IS NULL
+              AND auditoria.fechaInicio IS NOT NULL
+              AND EXTRACT(YEAR FROM auditoria.fechaInicio) = :planAnualVigencia
+            )
+            OR (
+              plan.auditoriaId IS NULL
+              AND plan.codigo LIKE :codigoVigenciaPat
+            )
+          )`,
+          { planAnualVigencia: v, codigoVigenciaPat: `PM-${v}-%` },
+        );
       }
 
       const results = await query.getMany();
@@ -269,9 +366,10 @@ export class PlanesMejoramientoService {
     }
 
     // 2. Si la fecha límite ya pasó y no está completado, es VENCIDO (Con Retraso en FE)
-    if (esVencido) {
-      return PlanMejoramientoEstado.VENCIDO;
-    }
+    // Comentado temporalmente para permitir seguir con el plan de mejoramiento independientemente de la fecha
+    // if (esVencido) {
+    //   return PlanMejoramientoEstado.VENCIDO;
+    // }
 
     // 3. Estados de flujo de aprobación
     if (plan.estado === PlanMejoramientoEstado.RECHAZADO) {
@@ -526,8 +624,6 @@ export class PlanesMejoramientoService {
    * Crea un nuevo plan de mejoramiento
    */
   async create(createDto: CreatePlanMejoramientoDto): Promise<PlanMejoramiento> {
-    const codigo = await this.generarCodigo();
-
     // Resolver hallazgo
     let hallazgoId: string | null = null;
     
@@ -581,6 +677,38 @@ export class PlanesMejoramientoService {
 
     await this.validarCreacionSoloEnComunicacion(auditoriaId);
 
+    if (auditoriaId) {
+      const planExistente = await this.planRepository.findOne({
+        where: { auditoriaId },
+        select: ['id', 'codigo'],
+      });
+      if (planExistente) {
+        throw new BadRequestException(
+          `Ya existe el plan de mejoramiento ${planExistente.codigo} para esta auditoría`,
+        );
+      }
+    }
+
+    const vigenciaCodigo = await this.resolverVigenciaCodigoPlan(auditoriaId);
+    const codigo = await this.generarCodigo(vigenciaCodigo);
+
+    // ── Auto-populate responsableImplementacion from auditoría ownership ──
+    let responsableImpl = createDto.responsableImplementacion || '';
+    if (!responsableImpl && auditoriaId) {
+      try {
+        const aud = await this.dataSource.query(
+          'SELECT responsable_area_email FROM control_interno.auditoria WHERE id = $1',
+          [auditoriaId],
+        );
+        if (aud?.[0]?.responsable_area_email) {
+          responsableImpl = aud[0].responsable_area_email;
+          console.log(`[PlanesMejoramientoService] Auto-assigned responsableImplementacion from auditoría: ${responsableImpl}`);
+        }
+      } catch (e: any) {
+        console.warn(`[PlanesMejoramientoService] Could not resolve auditoría responsable: ${e.message}`);
+      }
+    }
+
     const plan = this.planRepository.create({
       codigo,
       titulo: createDto.titulo || `Plan de Mejoramiento ${codigo}`,
@@ -589,10 +717,11 @@ export class PlanesMejoramientoService {
       hallazgoId,
       auditoriaId,
       areaResponsable: createDto.areaResponsable,
-      responsableImplementacion: createDto.responsableImplementacion,
+      responsableImplementacion: responsableImpl,
       fechaLimite: this.parseDateOnly(createDto.fechaLimite),
       estado: PlanMejoramientoEstado.BORRADOR,
     });
+
 
     const savedPlan = await this.planRepository.save(plan);
 
@@ -651,6 +780,8 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.create] Stack trace:', notifError?.stack);
     }
 
+    await this.syncTareaRol4(savedPlan.id);
+
     const saved = await this.findOne(savedPlan.id);
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializePlanMejoramiento(saved) as any;
@@ -669,6 +800,7 @@ export class PlanesMejoramientoService {
     if (updateDto.responsableImplementacion !== undefined)
       plan.responsableImplementacion = updateDto.responsableImplementacion;
       if (updateDto.fechaLimite !== undefined) plan.fechaLimite = this.parseDateOnly(updateDto.fechaLimite);
+    const estadoAnterior = plan.estado;
     if (updateDto.estado !== undefined) plan.estado = updateDto.estado as PlanMejoramientoEstado;
     if (updateDto.observacionesAprobacion !== undefined)
       plan.observacionesAprobacion = updateDto.observacionesAprobacion;
@@ -733,8 +865,6 @@ export class PlanesMejoramientoService {
       }
     }
 
-    // Guardar estado anterior para detectar cambios
-    const estadoAnterior = plan.estado;
     const savedPlan = await this.planRepository.save(plan);
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -768,7 +898,16 @@ export class PlanesMejoramientoService {
       // Obtener el plan completo con relaciones antes de crear la aprobación
       const planCompleto = await this.findOne(savedPlan.id);
       await this.crearAprobacionPendienteParaPlan(planCompleto);
+      if (estadoAnterior === PlanMejoramientoEstado.BORRADOR) {
+        try {
+          await this.notificarPlanEnviadoRevision(planCompleto);
+        } catch (notifErr) {
+          console.error('[PlanesMejoramientoService.update] Error notificando envío a revisión:', notifErr.message);
+        }
+      }
     }
+
+    await this.syncTareaRol4(savedPlan.id);
 
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializePlanMejoramiento(savedPlan) as any;
@@ -1004,6 +1143,14 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.aprobar] Error al registrar evento:', eventoError);
     }
 
+    try {
+      await this.notificarAuditadoPlanMejoramiento(savedPlan, 'aprobado', observaciones);
+    } catch (notifErr) {
+      console.error('[PlanesMejoramientoService.aprobar] Error notificando al auditado:', notifErr.message);
+    }
+
+    await this.syncTareaRol4(savedPlan.id);
+
     return savedPlan;
   }
 
@@ -1038,6 +1185,14 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.rechazar] Error al registrar evento:', eventoError);
     }
 
+    try {
+      await this.notificarAuditadoPlanMejoramiento(savedPlan, 'rechazado', motivo);
+    } catch (notifErr) {
+      console.error('[PlanesMejoramientoService.rechazar] Error notificando al auditado:', notifErr.message);
+    }
+
+    await this.syncTareaRol4(savedPlan.id);
+
     return savedPlan;
   }
 
@@ -1045,7 +1200,17 @@ export class PlanesMejoramientoService {
    * Elimina un plan de mejoramiento
    */
   async delete(id: string): Promise<void> {
-    const plan = await this.findOne(id);
+    const plan = await this.planRepository.findOne({
+      where: { id },
+      relations: ['auditoria'],
+    });
+    if (!plan) {
+      throw new NotFoundException(`Plan de mejoramiento con ID ${id} no encontrado`);
+    }
+    await this.rol4TareaSync.sincronizarDesdePlan(
+      plan,
+      PlanMejoramientoEstado.COMPLETADO,
+    );
     await this.planRepository.remove(plan);
   }
 
@@ -1093,6 +1258,8 @@ export class PlanesMejoramientoService {
     } catch (eventoError) {
       console.error('[PlanesMejoramientoService.createAccion] Error al registrar evento:', eventoError);
     }
+
+    await this.syncTareaRol4(planId);
 
     // Serializar fechas para evitar problemas de zona horaria
     return {
@@ -1176,6 +1343,8 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.updateAccion] Error al registrar evento:', eventoError);
     }
 
+    await this.syncTareaRol4(planId);
+
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
@@ -1200,6 +1369,7 @@ export class PlanesMejoramientoService {
     }
 
     await this.accionRepository.remove(accion);
+    await this.syncTareaRol4(planId);
   }
 
   /**
@@ -1311,7 +1481,9 @@ export class PlanesMejoramientoService {
       seguimiento.porcentajeEfectividad = promedioEfectividad;
     }
 
-    return this.seguimientoRepository.save(seguimiento);
+    const saved = await this.seguimientoRepository.save(seguimiento);
+    await this.syncTareaRol4(planId);
+    return saved;
   }
 
   /**
@@ -1586,59 +1758,90 @@ export class PlanesMejoramientoService {
       }
     }
 
-    // Obtener usuarios que deben recibir notificaciones
-    const usuariosNotificar: string[] = [];
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles destinatarios
+    let rolesDestinatarios = ['Responsable Plan Mejoramiento', 'Jefe OCIG', 'Auditor Líder']; // Fallback
+    try {
+      const configGlobal = await this.notificacionesService.getGlobalConfig();
+      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-PM-001']) {
+        const configEvento = configGlobal.tiposNotificacion['EVT-PM-001'] as any;
+        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+      }
+    } catch (e) {}
 
-    // 1. Buscar el responsable de implementación por nombre
-    if (plan.responsableImplementacion) {
+    const usuariosNotificar = new Set<string>();
+
+    if (rolesDestinatarios.includes('Jefe OCIG')) {
       try {
-        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Buscando responsable: "${plan.responsableImplementacion}"`);
-        const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
-          [`%${plan.responsableImplementacion}%`]
+        const jefesOCI = await this.obtenerJefesControlInterno();
+        jefesOCI.forEach((id) => usuariosNotificar.add(String(id)));
+        console.log(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`,
         );
-        
-        if (responsable && responsable.length > 0) {
-          const idTercero = String(responsable[0].id_tercero);
-          usuariosNotificar.push(idTercero);
-          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_tercero=${idTercero}`);
-        } else {
-          console.warn(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre: "${plan.responsableImplementacion}"`);
-        }
       } catch (error) {
-        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`, error);
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`,
+          error,
+        );
       }
     }
 
-    // 2. Obtener Jefes de Control Interno
-    try {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      usuariosNotificar.push(...jefesOCI);
-      console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
-    } catch (error) {
-      console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`, error);
-    }
-
-    // 3. Obtener auditor líder si hay auditoría
-    if (auditoriaId) {
+    if (rolesDestinatarios.includes('Auditor Líder') && auditoriaId) {
       try {
-        const auditoria = await this.auditoriaRepository.findOne({
-          where: { id: auditoriaId },
-        });
+        const auditoria = await this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
         if (auditoria?.auditorLiderId) {
           const auditorLiderId = String(auditoria.auditorLiderId);
-          if (!usuariosNotificar.includes(auditorLiderId)) {
-            usuariosNotificar.push(auditorLiderId);
-            console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_tercero=${auditorLiderId}`);
-          }
+          usuariosNotificar.add(auditorLiderId);
+          console.log(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_user=${auditorLiderId}`,
+          );
         }
       } catch (error) {
-        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`, error);
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`,
+          error,
+        );
       }
     }
 
-    // Eliminar duplicados
-    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    if (rolesDestinatarios.includes('Responsable Plan Mejoramiento') && plan.responsableImplementacion) {
+      try {
+        const responsable = await this.dataSource.query(
+          `
+          SELECT u.id_user
+          FROM auth.personas p
+          INNER JOIN auth."user" u ON u.id_person = p.id_person
+          WHERE (
+            p.nom_largo ILIKE $1
+            OR CONCAT(p.nom_tercero, ' ', p.pri_apellido) ILIKE $1
+            OR p.dir_email ILIKE $1
+            OR u.username ILIKE $1
+          )
+            AND COALESCE(u.is_active, TRUE) = TRUE
+          LIMIT 1
+          `,
+          [`%${plan.responsableImplementacion}%`],
+        );
+
+        if (responsable && responsable.length > 0) {
+          const idUsuario = String(responsable[0].id_user);
+          usuariosNotificar.add(idUsuario);
+          console.log(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_user=${idUsuario}`,
+          );
+        } else {
+          console.warn(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre/email: "${plan.responsableImplementacion}"`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`,
+          error,
+        );
+      }
+    }
+
+    const usuariosUnicos = [...usuariosNotificar];
     console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Total de usuarios a notificar: ${usuariosUnicos.length}`);
 
     // Crear notificaciones para cada usuario
@@ -1669,25 +1872,497 @@ export class PlanesMejoramientoService {
   }
 
   /**
-   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   * Notifica al responsable del área (portal) cuando el plan es aprobado o rechazado.
+   */
+  private async notificarAuditadoPlanMejoramiento(
+    plan: PlanMejoramiento,
+    resultado: 'aprobado' | 'rechazado',
+    detalle?: string,
+  ): Promise<void> {
+    if (!plan.auditoriaId) return;
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id: plan.auditoriaId } });
+    if (!auditoria?.responsableAreaEmail) return;
+
+    const esAprobado = resultado === 'aprobado';
+    await this.notificacionesService.notificarAuditadoPortal({
+      responsableAreaEmail: auditoria.responsableAreaEmail,
+      responsableAreaNombre: auditoria.responsableAreaNombre,
+      auditoriaId: auditoria.id,
+      auditoriaCodigo: auditoria.codigo,
+      auditoriaNombre: auditoria.nombre,
+      tipoNotificacion: esAprobado ? TipoNotificacion.APROBACION_PLAN : TipoNotificacion.RECHAZO_PLAN,
+      titulo: esAprobado
+        ? `Plan de mejoramiento aprobado — ${plan.codigo}`
+        : `Plan de mejoramiento devuelto — ${plan.codigo}`,
+      mensaje: esAprobado
+        ? `La OCI aprobó su plan de mejoramiento ${plan.codigo} para la auditoría ${auditoria.codigo}. ` +
+          `${detalle ? `Observaciones: ${detalle}. ` : ''}` +
+          `Puede iniciar la ejecución de las acciones en el portal.`
+        : `La OCI devolvió su plan de mejoramiento ${plan.codigo} con observaciones. ` +
+          `Motivo: ${detalle || 'Ver detalle en el portal'}. ` +
+          `Por favor ajuste y vuelva a enviar a revisión.`,
+      prioridad: PrioridadNotificacion.ALTA,
+      metadata: { planMejoramientoId: plan.id, planCodigo: plan.codigo, resultado },
+    });
+  }
+
+  /**
+   * Notifica al equipo OCI cuando el auditado envía el plan a revisión.
+   */
+  private async notificarPlanEnviadoRevision(plan: PlanMejoramiento): Promise<void> {
+    let auditoriaCodigo = plan.auditoriaId || '';
+    if (plan.auditoriaId) {
+      const auditoria = await this.auditoriaRepository.findOne({ where: { id: plan.auditoriaId } });
+      if (auditoria) auditoriaCodigo = auditoria.codigo;
+    }
+    await this.notificacionesService.dispararEvento('EVT-APR-001', {
+      auditoriaId: plan.auditoriaId ?? undefined,
+      planId: plan.id,
+      tituloCustom: `Plan de mejoramiento en revisión — ${plan.codigo}`,
+      mensajeCustom:
+        `El área auditada envió el plan de mejoramiento ${plan.codigo} (${auditoriaCodigo}) para su revisión y aprobación.`,
+      metadata: { planMejoramientoId: plan.id, planCodigo: plan.codigo },
+      url_accion: `/control-interno/planes-mejoramiento/${plan.id}`,
+    });
+  }
+
+  /**
+   * Obtiene los IDs de usuarios (UUID `id_user`) con rol JEFE_CONTROL_INTERNO.
+   *
+   * Se aceptan distintas variantes del código del rol que han existido a lo largo
+   * del proyecto (`JEFE_CONTROL_INTERNO`, `JEGE_OCI`, `JEFE_OCI`) para no perder
+   * destinatarios cuando el catálogo de roles se ha renombrado.
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
       const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_tercero
+        SELECT DISTINCT u.id_user
         FROM auth."user" u
         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
         INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE r.code = 'JEFE_CONTROL_INTERNO'
-          AND ur.is_active = true
-          AND u.is_active = true
+        WHERE (
+          UPPER(TRIM(r.code)) IN (
+            'JEFE_CONTROL_INTERNO',
+            'JEFE_OCIG',
+            'JEFE_OCI',
+            'JEGE_OCI',
+            'ADMIN',
+            'SUPER_ADMIN'
+          )
+          OR r.name ILIKE '%Jefe%Control%Interno%'
+          OR r.name ILIKE '%Jefe%OCI%'
+        )
+          AND COALESCE(ur.is_active, TRUE) = TRUE
+          AND COALESCE(u.is_active, TRUE) = TRUE
       `);
 
-      return result.map((row: any) => String(row.id_tercero));
+      const ids = result.map((row: { id_user: string }) => String(row.id_user));
+      console.log(`[Notificaciones-PM] Jefes OCI detectados: ${ids.length} usuarios`);
+      return ids;
     } catch (error) {
       console.error('[PlanesMejoramientoService.obtenerJefesControlInterno] Error:', error);
       return [];
     }
   }
-}
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVIDENCIAS DE ACCIONES (RF-SG-01 a RF-SG-04)
+  // Fuente: EM-PT-002 v3 act. 4-5, US-032
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Carga una evidencia para una acción de mejora (auditado).
+   * RF-SG-01: El auditado carga evidencias por cada acción de mejora.
+   */
+  async cargarEvidenciaAccion(
+    accionId: string,
+    data: {
+      archivoRef: string;
+      archivoNombre: string;
+      archivoTipo?: string;
+      archivoTamanio?: number;
+      descripcion?: string;
+      cargadaPorId: string;
+      cargadaPorNombre?: string;
+    },
+  ): Promise<EvidenciaAccion> {
+    const accion = await this.accionRepository.findOne({ where: { id: accionId } });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
+    }
+
+    const evidencia = this.evidenciaAccionRepository.create({
+      accionId,
+      archivoRef: data.archivoRef,
+      archivoNombre: data.archivoNombre,
+      archivoTipo: data.archivoTipo,
+      archivoTamanio: data.archivoTamanio,
+      descripcion: data.descripcion,
+      cargadaPorId: data.cargadaPorId,
+      cargadaPorNombre: data.cargadaPorNombre,
+      estadoValidacion: EstadoValidacionEvidencia.PENDIENTE,
+    });
+
+    const saved = await this.evidenciaAccionRepository.save(evidencia);
+    console.log(`[EvidenciaAccion] Evidencia cargada: ${saved.id} para acción ${accionId}`);
+    return saved;
+  }
+
+  /**
+   * Lista evidencias de una acción.
+   */
+  async listarEvidenciasAccion(accionId: string): Promise<EvidenciaAccion[]> {
+    return this.evidenciaAccionRepository.find({
+      where: { accionId },
+      order: { cargadaAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Califica una evidencia (auditor OCI).
+   * RF-SG-02: El auditor califica como "Aceptado" o "Con Observaciones".
+   * RF-SG-03: Si hay observaciones, puede solicitar nueva evidencia.
+   * RF-SG-13: Registra fecha/hora/usuario para trazabilidad.
+   */
+  async calificarEvidencia(
+    evidenciaId: string,
+    data: {
+      calificacion: 'aceptado' | 'con_observaciones';
+      comentarios?: string;
+      solicitaNuevaEvidencia?: boolean;
+      calificadaPorId: string;
+      calificadaPorNombre?: string;
+    },
+  ): Promise<EvidenciaAccion> {
+    const evidencia = await this.evidenciaAccionRepository.findOne({
+      where: { id: evidenciaId },
+    });
+    if (!evidencia) {
+      throw new NotFoundException(`Evidencia con ID ${evidenciaId} no encontrada`);
+    }
+
+    evidencia.estadoValidacion = data.calificacion as EstadoValidacionEvidencia;
+    evidencia.comentarios = data.comentarios ?? undefined;
+    evidencia.solicitaNuevaEvidencia = data.solicitaNuevaEvidencia ?? false;
+    evidencia.calificadaPorId = data.calificadaPorId;
+    evidencia.calificadaPorNombre = data.calificadaPorNombre ?? undefined;
+    evidencia.calificadaAt = new Date();
+
+    const saved = await this.evidenciaAccionRepository.save(evidencia);
+    console.log(`[EvidenciaAccion] Calificada: ${evidenciaId} → ${data.calificacion} por ${data.calificadaPorId}`);
+
+    // ── US-024 / RF-SG-03: Notificar al auditado sobre la calificación ──
+    try {
+      const accion = await this.accionRepository.findOne({
+        where: { id: evidencia.accionId },
+        relations: ['plan'],
+      });
+      if (accion?.plan) {
+        const esObservacion = data.calificacion === 'con_observaciones';
+        await this.notificacionesService.create({
+          usuarioId: accion.plan.responsableImplementacion || 'AUDITADO',
+          tipoNotificacion: esObservacion
+            ? TipoNotificacion.SOLICITUD_EVIDENCIA
+            : TipoNotificacion.VALIDACION_EVIDENCIA,
+          titulo: esObservacion
+            ? 'Evidencia con observaciones — Acción de mejora'
+            : 'Evidencia aceptada — Acción de mejora',
+          mensaje: esObservacion
+            ? `Su evidencia "${evidencia.archivoNombre}" fue calificada con observaciones: ${data.comentarios || 'Ver detalles en el portal'}. ${data.solicitaNuevaEvidencia ? 'Se solicita nueva evidencia.' : ''}`
+            : `Su evidencia "${evidencia.archivoNombre}" fue aceptada para la acción de mejora.`,
+          prioridad: esObservacion ? PrioridadNotificacion.ALTA : PrioridadNotificacion.NORMAL,
+          metadata: {
+            planId: accion.planId,
+            accionId: accion.id,
+            evidenciaId: saved.id,
+            calificacion: data.calificacion,
+            comentarios: data.comentarios,
+          },
+        });
+      }
+    } catch (notifErr: any) {
+      console.warn(`[EvidenciaAccion] No se pudo notificar al auditado: ${notifErr.message}`);
+    }
+
+    return saved;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUIMIENTO Y EVALUACIÓN (RF-SG-05 a RF-SG-07)
+  // Fuente: EM-FO-002 v3 (escalas de cumplimiento y efectividad)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Registra el seguimiento de una acción: cantidad implementada y calcula cumplimiento.
+   * RF-SG-05: Cumplimiento calculado, no editable manualmente.
+   */
+  async registrarSeguimientoAccion(
+    accionId: string,
+    data: {
+      cantidadImplementada: number;
+      observacionCumplimiento?: string;
+      responsableSeguimiento?: string;
+    },
+  ): Promise<AccionCorrectiva> {
+    const accion = await this.accionRepository.findOne({ where: { id: accionId } });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
+    }
+
+    const programadas = accion.cantidadAccionesProgramadas ?? 0;
+    const cumplimiento = calcularCumplimiento(data.cantidadImplementada, programadas);
+
+    accion.cantidadAccionesImplementadas = data.cantidadImplementada;
+    accion.cumplimientoEmfo = cumplimiento;
+    accion.observacionCumplimiento = data.observacionCumplimiento ?? undefined;
+    accion.responsableSeguimiento = data.responsableSeguimiento ?? undefined;
+
+    if (cumplimiento === 2) {
+      accion.estadoAccionSeguimiento = 'cerrada';
+    }
+
+    const saved = await this.accionRepository.save(accion);
+    console.log(`[Seguimiento] Acción ${accionId}: implementadas=${data.cantidadImplementada}, cumplimiento=${cumplimiento}`);
+    return saved;
+  }
+
+  /**
+   * Registra la efectividad de una acción.
+   * RF-SG-07: Efectividad con dos criterios SI/NO.
+   */
+  async registrarEfectividad(
+    accionId: string,
+    data: {
+      evaluarAplicacionControles: boolean;
+      validarSituacionNoRepitio: boolean;
+      observacionEfectividad?: string;
+    },
+  ): Promise<AccionCorrectiva> {
+    const accion = await this.accionRepository.findOne({ where: { id: accionId } });
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada`);
+    }
+
+    const efectividad = calcularEfectividad(
+      data.evaluarAplicacionControles,
+      data.validarSituacionNoRepitio,
+    );
+
+    accion.evaluarAplicacionControles = data.evaluarAplicacionControles;
+    accion.validarSituacionNoRepitio = data.validarSituacionNoRepitio;
+    accion.efectividadEmfo = efectividad;
+    accion.efectividadVerificada = true;
+    accion.observacionEfectividad = data.observacionEfectividad ?? undefined;
+
+    const saved = await this.accionRepository.save(accion);
+    console.log(`[Efectividad] Acción ${accionId}: efectividad=${efectividad}`);
+    return saved;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ALERTAS (RF-SG-08) — EM-PT-002 v3 act. 6
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async generarAlertas(planId: string): Promise<AlertaPlan[]> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['acciones'],
+    });
+    if (!plan) {
+      throw new NotFoundException(`Plan con ID ${planId} no encontrado`);
+    }
+
+    const hoy = new Date();
+    const mesActual = hoy.getMonth();
+    const anioActual = hoy.getFullYear();
+    const alertasGeneradas: AlertaPlan[] = [];
+
+    for (const accion of (plan.acciones ?? [])) {
+      const fechaFin = accion.fechaFin ? new Date(accion.fechaFin) : null;
+
+      // Alerta 1: VENCIDA_SIN_EVIDENCIA
+      if (fechaFin && fechaFin < hoy) {
+        const evidencias = await this.evidenciaAccionRepository.count({ where: { accionId: accion.id } });
+        if (evidencias === 0) {
+          alertasGeneradas.push(await this.alertaPlanRepository.save(
+            this.alertaPlanRepository.create({
+              planId, accionId: accion.id,
+              tipo: TipoAlertaPlan.VENCIDA_SIN_EVIDENCIA,
+              descripcion: `Acción vencida sin evidencia: ${accion.descripcion?.substring(0, 100)}`,
+            }),
+          ));
+        }
+      }
+
+      // Alerta 2: INEFECTIVA
+      if (accion.efectividadVerificada && accion.efectividadEmfo === 0) {
+        alertasGeneradas.push(await this.alertaPlanRepository.save(
+          this.alertaPlanRepository.create({
+            planId, accionId: accion.id,
+            tipo: TipoAlertaPlan.INEFECTIVA,
+            descripcion: `Acción inefectiva: ${accion.descripcion?.substring(0, 100)}`,
+          }),
+        ));
+      }
+
+      // Alerta 3 y 4: CUMPLIMIENTO_MES_ACTUAL / MES_SIGUIENTE
+      if (fechaFin) {
+        const mesFin = fechaFin.getMonth();
+        const anioFin = fechaFin.getFullYear();
+        if (mesFin === mesActual && anioFin === anioActual) {
+          alertasGeneradas.push(await this.alertaPlanRepository.save(
+            this.alertaPlanRepository.create({
+              planId, accionId: accion.id,
+              tipo: TipoAlertaPlan.CUMPLIMIENTO_MES_ACTUAL,
+              descripcion: `Cumplimiento este mes: ${accion.descripcion?.substring(0, 100)}`,
+            }),
+          ));
+        }
+        const mesSig = (mesActual + 1) % 12;
+        const anioSig = mesActual === 11 ? anioActual + 1 : anioActual;
+        if (mesFin === mesSig && anioFin === anioSig) {
+          alertasGeneradas.push(await this.alertaPlanRepository.save(
+            this.alertaPlanRepository.create({
+              planId, accionId: accion.id,
+              tipo: TipoAlertaPlan.CUMPLIMIENTO_MES_SIGUIENTE,
+              descripcion: `Cumplimiento próximo mes: ${accion.descripcion?.substring(0, 100)}`,
+            }),
+          ));
+        }
+      }
+    }
+
+    console.log(`[Alertas] Plan ${planId}: ${alertasGeneradas.length} alertas generadas`);
+    return alertasGeneradas;
+  }
+
+  async getAlertas(planId: string): Promise<AlertaPlan[]> {
+    return this.alertaPlanRepository.find({
+      where: { planId },
+      relations: ['accion'],
+      order: { generadaAt: 'DESC' },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CIERRE Y ARCHIVO (RF-SG-11, RF-SG-12) — EM-PT-002 act. 8-10
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async cerrarPlan(
+    planId: string,
+    data: { cerradoPorId: string; cerradoPorNombre?: string; observacionesCierre?: string },
+  ): Promise<CierrePlan> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['acciones'],
+    });
+    if (!plan) throw new NotFoundException(`Plan con ID ${planId} no encontrado`);
+
+    const sinCumplir = (plan.acciones ?? []).filter(
+      (a) => (a.cumplimientoEmfo ?? 0) === 0 && a.estadoAccionSeguimiento !== 'cerrada',
+    );
+    if (sinCumplir.length > 0) {
+      throw new BadRequestException(`No se puede cerrar: ${sinCumplir.length} acción(es) sin cumplimiento`);
+    }
+
+    let cierre = await this.cierrePlanRepository.findOne({ where: { planId } });
+    if (!cierre) cierre = this.cierrePlanRepository.create({ planId });
+
+    cierre.cerrado = true;
+    cierre.fechaCierre = new Date();
+    cierre.cerradoPorId = data.cerradoPorId;
+    cierre.cerradoPorNombre = data.cerradoPorNombre ?? undefined;
+    cierre.observacionesCierre = data.observacionesCierre ?? undefined;
+
+    const saved = await this.cierrePlanRepository.save(cierre);
+    plan.estado = PlanMejoramientoEstado.COMPLETADO;
+    await this.planRepository.save(plan);
+
+    console.log(`[Cierre] Plan ${planId} cerrado por ${data.cerradoPorId}`);
+    return saved;
+  }
+
+  async archivarExpediente(
+    planId: string,
+    data: { indiceElectronicoRef: string },
+  ): Promise<CierrePlan> {
+    const cierre = await this.cierrePlanRepository.findOne({ where: { planId } });
+    if (!cierre || !cierre.cerrado) {
+      throw new BadRequestException('El plan debe estar cerrado antes de archivar');
+    }
+    cierre.archivado = true;
+    cierre.indiceElectronicoRef = data.indiceElectronicoRef;
+    cierre.fechaArchivo = new Date();
+    const saved = await this.cierrePlanRepository.save(cierre);
+    console.log(`[Archivo] Plan ${planId} archivado`);
+    return saved;
+  }
+
+  async getCierre(planId: string): Promise<CierrePlan | null> {
+    return this.cierrePlanRepository.findOne({ where: { planId } });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEGUIMIENTO PERIÓDICO (RF-SG-09 / EM-PT-002 act. 5 y 7)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Lista todos los seguimientos periódicos de un plan.
+   */
+  async getSeguimientosPlan(planId: string): Promise<SeguimientoPlan[]> {
+    return this.seguimientoPlanRepository.find({
+      where: { planId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Registra un seguimiento periódico manual.
+   * RF-SG-10: Informe de seguimiento.
+   */
+  async registrarSeguimientoPeriodico(
+    planId: string,
+    data: {
+      periodicidad: 'TRIMESTRAL' | 'SEMESTRAL';
+      tipoControl: 'INTERNO' | 'ENTE_EXTERNO';
+      fechaCorte: string;
+      responsableId: string;
+      responsableNombre?: string;
+      resumen?: string;
+      informeRef?: string;
+    },
+  ): Promise<SeguimientoPlan> {
+    // Calcular métricas actuales de las acciones del plan
+    const acciones = await this.accionRepository.find({
+      where: { planMejoramientoId: planId } as any,
+    });
+
+    let cumplen = 0, parcial = 0, noCumplen = 0;
+    for (const a of acciones) {
+      const c = (a as any).cumplimientoEmfo;
+      if (c === 2) cumplen++;
+      else if (c === 1) parcial++;
+      else noCumplen++;
+    }
+
+    const seguimiento = this.seguimientoPlanRepository.create({
+      planId,
+      periodicidad: data.periodicidad,
+      tipoControl: data.tipoControl,
+      fechaCorte: new Date(data.fechaCorte),
+      responsableId: data.responsableId,
+      responsableNombre: data.responsableNombre,
+      resumen: data.resumen,
+      informeRef: data.informeRef,
+      totalAccionesEvaluadas: acciones.length,
+      accionesCumplen: cumplen,
+      accionesParcial: parcial,
+      accionesNoCumplen: noCumplen,
+      automatico: false,
+    });
+
+    const saved = await this.seguimientoPlanRepository.save(seguimiento);
+    console.log(`[Seguimiento] Plan ${planId}: seguimiento ${data.periodicidad} registrado`);
+    return saved;
+  }
+}

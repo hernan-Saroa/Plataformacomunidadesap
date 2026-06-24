@@ -59,7 +59,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
-  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string } | null>(null);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string; asunto?: string; descripcion?: string; id?: string } | null>(null);
 
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
@@ -103,6 +103,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       }
     }
   }, [isOpen, consulta?.uuid, consulta?.respuesta, consulta?.destinatariosAdicionales]);
+
+  // Recargar documentos al cambiar a la pestaña de respuesta (para validación de firmado)
+  useEffect(() => {
+    if (isOpen && consulta?.uuid && tabActivo === 'respuesta') {
+      loadDocumentos();
+    }
+  }, [tabActivo]);
 
   const loadDocumentos = async () => {
     if (!consulta?.uuid) return;
@@ -206,12 +213,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
 
+    // Validar que todos los documentos estén firmados antes de enviar
+    if (documentos.length > 0) {
+      const sinFirmar = documentos.filter(d => !d.firmado);
+      if (sinFirmar.length > 0) {
+        toast.error(`No se puede enviar: hay ${sinFirmar.length} documento(s) sin firmar. Todos los documentos deben estar firmados antes de enviar la respuesta.`);
+        return;
+      }
+    }
+
     const todosDestinatarios = [consulta.emailSolicitante, ...destinatariosAdicionales];
     const listaDestinatarios = todosDestinatarios.join(', ');
 
     const confirmado = await confirm({
       title: 'Plataforma ESAP',
-      description: `¿Aprobar y enviar esta respuesta al solicitante (${listaDestinatarios})?`,
+      description: `¿Aprobar y enviar esta respuesta al solicitante (${listaDestinatarios})?${documentos.length > 0 ? ` Se adjuntarán ${documentos.length} documento(s) firmado(s).` : ''}`,
       variant: 'info',
       confirmText: 'Aprobar y Enviar',
       cancelText: 'Cancelar'
@@ -220,14 +236,49 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     if (!confirmado) return;
 
     try {
-      toast.loading('Aprobando y enviando respuesta...', { id: 'approve-response' });
+      toast.loading('Aprobando y enviando respuesta con documentos...', { id: 'approve-response' });
+
+      // Preparar documentos firmados como adjuntos base64 para el correo
+      const attachments: { name: string; contentBytes: string; contentType: string }[] = [];
+      const docsParaAdjuntar = documentos.filter(d => d.firmado && (d.archivoUrl || d.url));
+      for (const doc of docsParaAdjuntar) {
+        try {
+          const fullUrl = getFullUrl(doc.archivoUrl || doc.url);
+          if (!fullUrl) {
+            console.warn(`⚠️ No se pudo construir URL para doc: ${doc.nombre}`);
+            continue;
+          }
+          console.log(`📎 Descargando adjunto: ${doc.nombre} desde ${fullUrl}`);
+          const response = await fetch(fullUrl);
+          if (!response.ok) {
+            console.error(`❌ Error descargando adjunto ${doc.nombre}: HTTP ${response.status} ${response.statusText}`);
+            continue;
+          }
+          const blob = await response.blob();
+          const buffer = await blob.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+          attachments.push({
+            name: doc.archivoNombreOriginal || doc.nombre || 'documento.pdf',
+            contentBytes: base64,
+            contentType: doc.mimeType || 'application/pdf',
+          });
+        } catch (err) {
+          console.error(`Error preparando adjunto ${doc.nombre}:`, err);
+        }
+      }
+      if (docsParaAdjuntar.length > 0 && attachments.length < docsParaAdjuntar.length) {
+        toast.warning(`⚠️ ${docsParaAdjuntar.length - attachments.length} documento(s) no se pudieron adjuntar al correo`);
+      }
 
       const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
       await correosJuridicosService.sendEmail({
         to: consulta.emailSolicitante,
         cc: destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined,
         subject: asunto,
-        body: consulta.respuesta || respuestaTexto
+        body: consulta.respuesta || respuestaTexto,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
 
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
@@ -239,7 +290,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
       toast.success('✅ Respuesta aprobada y enviada al solicitante', {
         id: 'approve-response',
-        description: `Correo enviado a ${listaDestinatarios}`
+        description: `Correo enviado a ${listaDestinatarios}${attachments.length > 0 ? ` con ${attachments.length} documento(s) adjunto(s)` : ''}`
       });
 
       if (onUpdate) onUpdate();
@@ -646,7 +697,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     const fullUrl = getFullUrl(url);
     // Abrir en el visor inline en lugar de una nueva pestaña
-    setDocParaVisor({ url: fullUrl, nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', asunto: doc.tipoDocumento || '' });
+    setDocParaVisor({ 
+      url: fullUrl, 
+      nombre: doc.nombre || doc.archivoNombreOriginal || 'Documento', 
+      asunto: doc.tipoDocumento || '', 
+      descripcion: doc.descripcion || '',
+      id: doc.id 
+    });
     setVisorAbierto(true);
   };
 
@@ -667,15 +724,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
 
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 
@@ -761,8 +811,15 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
    * Abrir modal para seleccionar si el documento está firmado o no
    */
   const handleIniciarSubida = () => {
-    setFirmadoSelection(null);
-    setShowFirmadoModal(true);
+    if (esAbogadoResuelve && !esJefe) {
+      // Abogado solo puede subir documentos sin firmar — no mostrar selector
+      setFirmadoSelection(false);
+      fileInputRef.current?.click();
+    } else {
+      // Jefe puede elegir firmado o sin firmar
+      setFirmadoSelection(null);
+      setShowFirmadoModal(true);
+    }
   };
 
   /**
@@ -778,14 +835,25 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   /**
-   * Subir nuevo documento al expediente con indicador de firmado
+   * Subir nuevo documento al expediente con indicador de firmado.
    */
   const handleSubirDocumento = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !consulta?.uuid) return;
 
-    if (file.type !== 'application/pdf') {
-      toast.error('Solo se permiten archivos PDF en este módulo');
+    const nombreLower = (file.name || '').toLowerCase();
+    const esDocx =
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      nombreLower.endsWith('.docx');
+    const esPdf = file.type === 'application/pdf' || nombreLower.endsWith('.pdf');
+
+    if (firmadoSelection === true && !esPdf) {
+      toast.error('Para documentos "Firmado" solo se permite formato PDF');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (firmadoSelection !== true && !esPdf && !esDocx) {
+      toast.error('Solo se permiten archivos PDF o Word (.doc, .docx)');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -795,7 +863,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     formData.append('archivo', file);
     formData.append('nombre', file.name);
     formData.append('tipoDocumento', 'adjunto');
-    formData.append('firmado', firmadoSelection ? 'true' : 'false');
+    formData.append('firmado', firmadoSelection === true ? 'true' : 'false');
 
     try {
       await legalService.uploadDocumentoConsulta(consulta.uuid, formData);
@@ -1217,7 +1285,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     ref={fileInputRef}
                     onChange={handleSubirDocumento}
                     className="hidden"
-                    accept=".pdf"
+                    accept={firmadoSelection === true ? '.pdf,application/pdf' : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
                   />
 
                   <div className="flex items-center justify-between gap-4 mb-4">
@@ -1306,90 +1374,100 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                   )}
 
                   <div className="space-y-2">
-                    {documentos.map((doc) => (
-                      <Card key={doc.id} className={`p-4 hover:shadow-md transition-shadow ${!doc.firmado ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-green-400'}`}>
-                        <div className="flex items-center gap-4">
-                          <div className={`p-3 rounded-lg ${doc.firmado ? 'bg-green-50' : 'bg-amber-50'}`}>
-                            <FileText className={`w-6 h-6 ${doc.firmado ? 'text-green-600' : 'text-amber-600'}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="font-bold text-sm truncate">{doc.nombre}</p>
-                              {doc.firmado ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-green-500 flex items-center gap-1 flex-shrink-0">
-                                  <CheckCircle className="w-3 h-3" /> Firmado
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500 flex items-center gap-1 flex-shrink-0">
-                                  <AlertCircle className="w-3 h-3" /> Sin Firmar
-                                </span>
+                    {documentos.map((doc) => {
+                      const isSigned = doc.firmado || (() => {
+                        if (doc.descripcion) {
+                          try {
+                            const data = JSON.parse(doc.descripcion);
+                            return !!(data && data.firmado);
+                          } catch (e) {
+                            return false;
+                          }
+                        }
+                        return false;
+                      })();
+
+                      return (
+                        <Card key={doc.id} className={`p-4 hover:shadow-md transition-shadow ${!isSigned ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-green-400'}`}>
+                          <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-lg ${isSigned ? 'bg-green-50' : 'bg-amber-50'}`}>
+                              <FileText className={`w-6 h-6 ${isSigned ? 'text-green-600' : 'text-amber-600'}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <p className="font-bold text-sm truncate">{doc.nombre}</p>
+                                {isSigned ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-green-500 flex items-center gap-1 flex-shrink-0">
+                                    <CheckCircle className="w-3 h-3" /> Firmado
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white bg-amber-500 flex items-center gap-1 flex-shrink-0">
+                                    <AlertCircle className="w-3 h-3" /> Sin Firmar
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                {doc.tamanoBytes ? (
+                                  <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
+                                ) : null}
+                                {doc.createdAt && (
+                                  <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                )}
+                                {doc.subidoPor && (
+                                  <span>Por: {doc.subidoPor}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 flex items-center gap-2">
+                              {/* Botón Subir Firmado — solo para jefe (JEFE_GESTION_LEGAL), no abogados */}
+                              {!isSigned && esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 font-bold"
+                                  onClick={() => {
+                                    setReplacingDocId(doc.id);
+                                    replaceFileInputRef.current?.click();
+                                  }}
+                                  disabled={uploadingDoc}
+                                >
+                                  <Upload className="w-4 h-4 mr-1" />
+                                  Subir Firmado
+                                </Button>
+                              )}
+                              {/* Botón Ver */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleVerDocumento(doc)}
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                Ver
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDescargarDocumento(doc)}
+                              >
+                                <Download className="w-4 h-4 mr-1" />
+                                Descargar
+                              </Button>
+                              {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && !isSigned && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                  onClick={() => handleEliminarDocumento(doc)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                  Eliminar
+                                </Button>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              {doc.tamanoBytes ? (
-                                <span>{(Number(doc.tamanoBytes) / (1024 * 1024)).toFixed(2)} MB</span>
-                              ) : null}
-                              {doc.createdAt && (
-                                <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
-                              )}
-                              {doc.subidoPor && (
-                                <span>Por: {doc.subidoPor}</span>
-                              )}
-                            </div>
                           </div>
-                          <div className="flex-shrink-0 flex items-center gap-2">
-                            {/* Botón Subir Firmado — solo para docs sin firmar */}
-                            {!doc.firmado && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-300 font-bold"
-                                onClick={() => {
-                                  setReplacingDocId(doc.id);
-                                  replaceFileInputRef.current?.click();
-                                }}
-                                disabled={uploadingDoc}
-                              >
-                                <Upload className="w-4 h-4 mr-1" />
-                                Subir Firmado
-                              </Button>
-                            )}
-                            {/* Botón Ver */}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const fullUrl = getFullUrl(doc.archivoUrl || doc.url);
-                                if (fullUrl) window.open(fullUrl, '_blank');
-                                else toast.error('No se pudo obtener la URL del documento');
-                              }}
-                            >
-                              <Eye className="w-4 h-4 mr-1" />
-                              Ver
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDescargarDocumento(doc)}
-                            >
-                              <Download className="w-4 h-4 mr-1" />
-                              Descargar
-                            </Button>
-                            {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                onClick={() => handleEliminarDocumento(doc)}
-                              >
-                                <Trash2 className="w-4 h-4 mr-1" />
-                                Eliminar
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </TabsContent>
 
@@ -1994,6 +2072,64 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={docParaVisor.asunto}
+          descripcion={docParaVisor.descripcion}
+          docId={docParaVisor.id}
+          allowSigning={true}
+          onSignComplete={async (docId, signedData, pdfFile) => {
+            try {
+              const originalDocName = docParaVisor.nombre;
+              let nuevoNombre = originalDocName;
+              if (!originalDocName.toLowerCase().includes('(firmado)')) {
+                const extIndex = originalDocName.lastIndexOf('.');
+                if (extIndex !== -1) {
+                  nuevoNombre = `${originalDocName.substring(0, extIndex)} (Firmado)${originalDocName.substring(extIndex)}`;
+                } else {
+                  nuevoNombre = `${originalDocName} (Firmado)`;
+                }
+              }
+
+              // FIX: Ensure it always has .pdf extension since the signed file is a PDF
+              if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+                nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
+              }
+
+              const signatureJson = JSON.stringify({
+                firmado: true,
+                coords: signedData.coords,
+                firmaImg: signedData.firmaImg,
+                hash: signedData.hash,
+                timestamp: signedData.timestamp,
+                firmante: signedData.firmante,
+                cargo: signedData.cargo,
+                certificadoId: signedData.certificado_id,
+                scale: signedData.scale
+              });
+
+              toast.loading('✍️ Guardando firma en el documento de consulta...', { id: 'firma-documento' });
+
+              if (pdfFile) {
+                const renamedFile = new File([pdfFile], nuevoNombre, { type: pdfFile.type });
+                const formData = new FormData();
+                formData.append('archivo', renamedFile);
+                await legalService.replaceDocumentoConsulta(docId, formData);
+              }
+
+              await legalService.actualizarDocumentoConsulta(docId, { 
+                firmado: true, 
+                nombre: nuevoNombre,
+                descripcion: signatureJson
+              });
+              toast.success('✅ Documento firmado exitosamente', { id: 'firma-documento' });
+
+              // Refrescar documentos
+              await loadDocumentos();
+              setVisorAbierto(false);
+              setDocParaVisor(null);
+            } catch (error) {
+              console.error('Error al firmar documento de consulta:', error);
+              toast.error('❌ Error al actualizar la firma del documento', { id: 'firma-documento' });
+            }
+          }}
         />
       )}
     </>

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { transformWithEsbuild } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,4 +66,132 @@ export function getDockerDistDir(appDir) {
 
 export function getFrontendApp(appDir) {
   return frontendApps.find((app) => app.appDir === appDir);
+}
+
+const cspNonceBootstrapSource = `(() => {
+  const meta = document.querySelector('meta[name="csp-nonce"]');
+  const currentScript = document.currentScript;
+  const scriptNonce = currentScript && (currentScript.nonce || currentScript.getAttribute('nonce'));
+  const metaNonce = meta && meta.content && meta.content.trim();
+  const nonce = (scriptNonce || metaNonce || '').trim();
+
+  if (!nonce || nonce === '__ESAP_CSP_NONCE__') return;
+
+  globalThis.__webpack_nonce__ = nonce;
+  globalThis.__esapCspNonce = nonce;
+
+  const applyNonce = (node) => {
+    if (!node || node.nodeType !== 1) return node;
+    if (String(node.tagName).toLowerCase() === 'style' && (node.nonce || node.getAttribute('nonce')) !== nonce) {
+      node.setAttribute('nonce', nonce);
+      node.nonce = nonce;
+    }
+    return node;
+  };
+
+  const applyNonceTree = (node) => {
+    applyNonce(node);
+    if (node && typeof node.querySelectorAll === 'function') {
+      node.querySelectorAll('style').forEach(applyNonce);
+    }
+    return node;
+  };
+
+  if (!globalThis.__ESAP_CSP_NONCE_PATCHED__) {
+    globalThis.__ESAP_CSP_NONCE_PATCHED__ = true;
+
+    const originalCreateElement = document.createElement.bind(document);
+    document.createElement = function createElementWithCspNonce(tagName, options) {
+      return applyNonce(originalCreateElement(tagName, options));
+    };
+
+    const originalAppendChild = Node.prototype.appendChild;
+    Node.prototype.appendChild = function appendChildWithCspNonce(child) {
+      return originalAppendChild.call(this, applyNonceTree(child));
+    };
+
+    const originalInsertBefore = Node.prototype.insertBefore;
+    Node.prototype.insertBefore = function insertBeforeWithCspNonce(newNode, referenceNode) {
+      return originalInsertBefore.call(this, applyNonceTree(newNode), referenceNode);
+    };
+
+    const originalReplaceChild = Node.prototype.replaceChild;
+    Node.prototype.replaceChild = function replaceChildWithCspNonce(newChild, oldChild) {
+      return originalReplaceChild.call(this, applyNonceTree(newChild), oldChild);
+    };
+
+    const originalAppend = Element.prototype.append;
+    Element.prototype.append = function appendWithCspNonce(...nodes) {
+      nodes.forEach(applyNonceTree);
+      return originalAppend.apply(this, nodes);
+    };
+
+    const originalPrepend = Element.prototype.prepend;
+    Element.prototype.prepend = function prependWithCspNonce(...nodes) {
+      nodes.forEach(applyNonceTree);
+      return originalPrepend.apply(this, nodes);
+    };
+
+    const originalInsertAdjacentElement = Element.prototype.insertAdjacentElement;
+    Element.prototype.insertAdjacentElement = function insertAdjacentElementWithCspNonce(position, element) {
+      return originalInsertAdjacentElement.call(this, position, applyNonceTree(element));
+    };
+  }
+
+  document.querySelectorAll('style').forEach(applyNonce);
+})();
+`;
+
+export function cspNonceBootstrap(appDir) {
+  const scriptPath = `${getBuildBase(appDir)}csp-nonce.js`;
+
+  return {
+    name: 'esap-csp-nonce-bootstrap',
+    transformIndexHtml(html) {
+      if (html.includes('csp-nonce.js')) return html;
+
+      return html.replace(
+        /(<meta\s+name=["']csp-nonce["'][^>]*>)/i,
+        `$1\n      <script nonce="__ESAP_CSP_NONCE__" src="${scriptPath}"></script>`,
+      );
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'csp-nonce.js',
+        source: cspNonceBootstrapSource,
+      });
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const requestPath = req.url ? req.url.split('?')[0] : '';
+        if (requestPath !== scriptPath) {
+          next();
+          return;
+        }
+
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.end(cspNonceBootstrapSource);
+      });
+    },
+  };
+}
+
+export function stripBundleComments() {
+  return {
+    name: 'strip-bundle-comments',
+    async renderChunk(code, chunk) {
+      const result = await transformWithEsbuild(code, chunk.fileName, {
+        charset: 'utf8',
+        format: 'esm',
+        legalComments: 'none',
+        loader: 'js',
+        minifyWhitespace: true,
+        target: 'esnext',
+      });
+
+      return { code: result.code, map: null };
+    },
+  };
 }

@@ -76,7 +76,7 @@ export class CreateExpedienteDto {
     // Asignación
     @IsOptional()
     @IsString()
-    abogadoSustanciadorId?: string; // Para vincular con la tabla Abogados
+    abogadoSustanciadorId?: string; // Para vincular con auth users
 
     @IsOptional()
     @IsNumber()
@@ -84,12 +84,15 @@ export class CreateExpedienteDto {
 
     @IsOptional()
     @IsString()
-    tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
+    tipoConteoTermino?: 'HABILES' | 'CALENDARIO' | 'HORAS';
 
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
     documentosInicialesUrls?: string[];
+
+    @IsOptional()
+    camposAdicionales?: Record<string, any>;
 
     @IsOptional()
     @IsArray()

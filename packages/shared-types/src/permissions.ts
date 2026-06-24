@@ -5,6 +5,7 @@ export enum Permissions {
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD = 'gestion-legal.defensa-judicial.expediente.doc.upload',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE = 'gestion-legal.defensa-judicial.expediente.doc.delete',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE = 'gestion-legal.defensa-judicial.expediente.actuacion.create',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_DELETE = 'gestion-legal.defensa-judicial.expediente.actuacion.delete',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE = 'gestion-legal.defensa-judicial.expediente.actuacion.audiencia.create',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE = 'gestion-legal.defensa-judicial.expediente.tarea.create',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE = 'gestion-legal.defensa-judicial.expediente.tarea.delete',
@@ -114,6 +115,7 @@ export enum Permissions {
   GESTION_LEGAL_CONFIGURACIONES_DELETE = 'gestion-legal.configuraciones.delete',
 
   // Registro Académico - Graduados
+  GRADUATES_CREATE = 'graduates.create',
   GRADUATES_EDIT = 'graduates.edit',
   GRADUATES_VERIFY_CERTIFICATE = 'graduates.verify_certificate',
   GRADUATES_EXPORT = 'graduates.export',
@@ -155,6 +157,8 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR = 'control-disciplinario.noticia-disciplinaria.asignar',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER = 'control-disciplinario.noticia-disciplinaria.devolver',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR = 'control-disciplinario.noticia-disciplinaria.redimir',
+  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW = 'control-disciplinario.noticia-disciplinaria.view',
+  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE = 'control-disciplinario.noticia-disciplinaria.view_mine',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR = 'control-disciplinario.noticia-disciplinaria.restaurar',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR_MINE = 'control-disciplinario.noticia-disciplinaria.restaurar_mine',
 
@@ -216,6 +220,7 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION = 'control-disciplinario.procesos.reasignacion',
   CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN = 'control-disciplinario.procesos.reasignacion',
   CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_APPROVE = 'control-disciplinario.procesos.reasignacion.approve',
+  CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_INMEDIATA = 'control-disciplinario.procesos.reasignacion.inmediata',
   CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO = 'control-disciplinario.procesos.create_pliego',
   CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW = 'control-disciplinario.procesos.files.send_to_review',
   CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA = 'control-disciplinario.procesos.send_to_juridica',
@@ -225,7 +230,6 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_PROCESOS_NOTES_VIEW = 'control-disciplinario.procesos.notas.view',
   CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE = 'control-disciplinario.procesos.kanban.move',
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_LIST = 'control-disciplinario.procesos.view_list',
-  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW = 'control-disciplinario.noticia-disciplinaria.view',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL = 'control-disciplinario.noticia-disciplinaria.view_detail',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DEVUELTAS = 'control-disciplinario.noticia-disciplinaria.view_devueltas',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MIS_DEVUELTAS = 'control-disciplinario.noticia-disciplinaria.view_mis_devueltas',
@@ -382,5 +386,30 @@ export enum Permissions {
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_DELETE = 'control-interno.configuraciones.kanban.audit.delete',
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_EDIT = 'control-interno.configuraciones.kanban.plan.edit',
   CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_DELETE = 'control-interno.configuraciones.kanban.plan.delete',
+  CONTROL_INTERNO_ROLES_DELETE = 'control-interno.roles.delete',
+  // Registro Único Nacional Docente (RUND)
+  BANCO_DOCENTES_RUND_MANAGE = 'banco-docentes.rund.manage',
+  BANCO_DOCENTES_RUND_VIEW = 'banco-docentes.rund.view',
+  BANCO_DOCENTES_RUND_EDIT = 'banco-docentes.rund.edit',
+  BANCO_DOCENTES_RUND_VALIDATE = 'banco-docentes.rund.validate',
+  BANCO_DOCENTES_RUND_IMPORT = 'banco-docentes.rund.import',
+  BANCO_DOCENTES_RUND_EXPORT = 'banco-docentes.rund.export',
+  BANCO_DOCENTES_RUND_INVITE = 'banco-docentes.rund.invite',
 
+  // Programación Académica (PTA)
+  PTA_PROGRAMACION_ACADEMICA_MANAGE = 'pta.programacion-academica.manage',
+  PTA_PROGRAMACION_ACADEMICA_OFERTA_VIEW = 'pta.programacion-academica.oferta.view',
+  PTA_PROGRAMACION_ACADEMICA_OFERTA_EDIT = 'pta.programacion-academica.oferta.edit',
+  PTA_PROGRAMACION_ACADEMICA_ASIGNACION_MANAGE = 'pta.programacion-academica.asignacion.manage',
+  PTA_PROGRAMACION_ACADEMICA_PRECARGA_MANAGE = 'pta.programacion-academica.precarga.manage',
+  PTA_PROGRAMACION_ACADEMICA_NOTIFICAR = 'pta.programacion-academica.notificar',
+
+  // Estructura Organizacional
+  ESTRUCTURA_ORGANIZACIONAL_MANAGE = 'estructura-organizacional.manage',
+  ESTRUCTURA_ORGANIZACIONAL_VIEW = 'estructura-organizacional.view',
+  ESTRUCTURA_ORGANIZACIONAL_NODE_CREATE = 'estructura-organizacional.node.create',
+  ESTRUCTURA_ORGANIZACIONAL_NODE_EDIT = 'estructura-organizacional.node.edit',
+  ESTRUCTURA_ORGANIZACIONAL_NODE_DELETE = 'estructura-organizacional.node.delete',
+  ESTRUCTURA_ORGANIZACIONAL_IMPORT = 'estructura-organizacional.import',
+  ESTRUCTURA_ORGANIZACIONAL_EXPORT = 'estructura-organizacional.export',
 }

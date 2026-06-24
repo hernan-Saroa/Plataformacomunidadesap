@@ -11,7 +11,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { toast } from 'sonner';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -59,6 +59,10 @@ export interface AuditoriaBackendDTO {
   controlesAplicar?: string[];
   equipoAuditores?: string[];
   programaAnualMetadata?: any;
+  planAnualId?: string;
+  planAnualVigencia?: number;
+  vinculadaPlanAnual?: boolean;
+  rolDecretoAsociado?: string;
   estadoKanban?: string; // Para crear auditoria en columna correcta del Kanban
 }
 
@@ -82,6 +86,9 @@ export interface AuditoriaFormData {
   equipoAuditores?: string[];
   supervisorAsignado?: string;
   responsable?: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   
   // Fechas - Cronograma de 3 etapas
   fechaInicio: string; // Inicio de Planeación
@@ -129,6 +136,10 @@ export interface AuditoriaResponse {
   responsable: string;
   fechaInicio: string;
   fechaFin: string;
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
   progreso: number;
   fase: string;
   estado: string;
@@ -165,7 +176,8 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     tipo: mapearTipoBackend(form.tipoAuditoria),
     territorial: form.territorial || 'Sede Central',
     sede: form.sede || form.territorial || 'Sede Principal',
-    responsable: form.auditorLider || form.responsable || 'Por asignar',
+    // Regla actual acordada: "responsable" es el auditado (dueño del proceso/área).
+    responsable: form.responsable || form.responsableAreaNombre || 'Por asignar',
     fechaInicio,
     fechaFinPlaneacion,
     fechaInicioEjecucion,
@@ -187,19 +199,26 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     auditorLiderId: form.auditorLider,
     auditorAsignadoId: form.auditorAsignado,
     supervisorAsignadoId: form.supervisorAsignado,
+    responsableAreaNombre: form.responsableAreaNombre,
+    responsableAreaCargo: form.responsableAreaCargo,
+    responsableAreaEmail: form.responsableAreaEmail,
     objetivos: form.objetivos,
     criteriosAuditoria: form.criteriosAuditoria,
     normatividadAplicable: form.normatividadAplicable,
     riesgosIdentificados: form.riesgosIdentificados,
     controlesAplicar: form.controlesAplicar,
     equipoAuditores: form.equipoAuditores,
+    vinculadaPlanAnual: !!form.vinculadaPlanAnual,
+    planAnualId: form.vinculadaPlanAnual ? form.planAnualId : undefined,
+    planAnualVigencia: form.vinculadaPlanAnual ? form.planAnualAño : undefined,
+    rolDecretoAsociado: form.vinculadaPlanAnual ? form.rolDecretoAsociado : undefined,
     programaAnualMetadata: form.vinculadaPlanAnual ? {
       vinculado: true,
       planAnualId: form.planAnualId,
       año: form.planAnualAño,
       rol: form.rolDecretoAsociado,
     } : undefined,
-    estadoKanban: form.estadoKanban || 'Plan Anual', // Por defecto Plan Anual
+    estadoKanban: form.estadoKanban || 'Programa Anual', // Por defecto Plan Anual
   };
 }
 
@@ -233,6 +252,11 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     },
     fechaInicio: auditoria.fechaInicio,
     fechaFin: auditoria.fechaFin,
+    // ✅ Mapear fechas de las etapas
+    fechaFinPlaneacion: auditoria.fechaFinPlaneacion,
+    fechaInicioEjecucion: auditoria.fechaInicioEjecucion,
+    fechaFinEjecucion: auditoria.fechaFinEjecucion,
+    fechaInicioComunicacion: auditoria.fechaInicioComunicacion,
     // ✅ Pasar estadoKanban para mapeo correcto
     estado: mapearEstadoUI(auditoria.fase, auditoria.progreso, estadoKanban),
     // ✅ Conservar estadoKanban original para filtros
@@ -253,6 +277,15 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     riesgosAsociados: (auditoria as any).riesgosAsociados || [],
     supervisorAsignadoId: (auditoria as any).supervisorAsignadoId || (auditoria as any).supervisorId,
     supervisorAsignado: (auditoria as any).supervisorAsignado || (auditoria as any).supervisor,
+    // ✅ Fecha de última modificación (sirve como "fecha de cambio de etapa")
+    updatedAt: auditoria.updatedAt,
+    // ✅ Propagar responsables para Excel/UI
+    responsableAreaNombre: (auditoria as any).responsableAreaNombre,
+    responsableAreaCargo: (auditoria as any).responsableAreaCargo,
+    responsableAreaEmail: (auditoria as any).responsableAreaEmail,
+    responsable: (auditoria as any).responsable,
+    responsables: (auditoria as any).responsables,
+    responsableArea: (auditoria as any).responsableArea,
   };
 }
 
@@ -266,6 +299,10 @@ export interface AuditoriaUI {
   proceso: { nombre: string; codigo: string };
   fechaInicio: string;
   fechaFin: string;
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
   estado: 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
   // ✅ Estado Kanban original del backend (Planeación, Ejecución, Comunicación, Finalizada)
   estadoKanban?: string;
@@ -286,6 +323,16 @@ export interface AuditoriaUI {
   riesgosAsociados?: Array<{ id: string; proceso: string; riesgo: string }>;
   supervisorAsignadoId?: string | number;
   supervisorAsignado?: string;
+  /** Fecha última modificación del backend (útil como fecha de corte de cambio de etapa Kanban) */
+  updatedAt?: string;
+
+  // ✅ Responsables del área auditada
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
+  responsable?: string;
+  responsables?: any;
+  responsableArea?: any;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -451,9 +498,23 @@ export const auditoriaService = {
    * Obtiene todas las auditorías
    * @returns Lista de auditorías en formato UI
    */
-  async listar(): Promise<AuditoriaUI[]> {
+  async listar(filters?: {
+    planAnualId?: string;
+    planAnualVigencia?: number;
+    year?: number;
+    vinculadaPlanAnual?: boolean;
+    fechaDesde?: string;
+    fechaHasta?: string;
+  }): Promise<AuditoriaUI[]> {
     try {
-      const auditorias = await controlInternoService.getAuditorias();
+      const vigencia = filters?.planAnualVigencia ?? filters?.year;
+      const auditorias = await controlInternoService.getAuditorias({
+        ...filters,
+        // planAnualVigencia: vigencia,
+        year: filters?.year ?? vigencia,
+        light: true,
+        activasOnly: true,
+      });
       
       if (Array.isArray(auditorias)) {
         return auditorias.map(mapBackendToUI);
@@ -495,6 +556,10 @@ export const auditoriaService = {
       if (data.territorial) updates.territorial = data.territorial;
       if (data.sede) updates.sede = data.sede;
       if (data.fechaInicio) updates.fechaInicio = formatearFechaISO(data.fechaInicio);
+      if (data.fechaFinPlaneacion) updates.fechaFinPlaneacion = formatearFechaISO(data.fechaFinPlaneacion);
+      if (data.fechaInicioEjecucion) updates.fechaInicioEjecucion = formatearFechaISO(data.fechaInicioEjecucion);
+      if (data.fechaFinEjecucion) updates.fechaFinEjecucion = formatearFechaISO(data.fechaFinEjecucion);
+      if (data.fechaInicioComunicacion) updates.fechaInicioComunicacion = formatearFechaISO(data.fechaInicioComunicacion);
       if (data.fechaFin) updates.fechaFin = formatearFechaISO(data.fechaFin);
       if (data.auditorLider) updates.auditorLiderId = data.auditorLider;
       if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo;

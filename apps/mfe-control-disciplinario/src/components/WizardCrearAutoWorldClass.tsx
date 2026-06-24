@@ -35,15 +35,14 @@ import { authService } from '../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Tipos de auto que disparan acciones automáticas al aprobarse
-const TIPOS_CON_ACCION = [
-  'AUTO_APERTURA',
-  'AUTO_APERTURA_INVESTIGACION',
-  'AUTO_APERTURA_INDAGACION',
+const TIPOS_CON_ACCION_ESTATICOS = [
   'AUTO_ARCHIVO',
   'AUTO_FORMULACION_PLIEGO',
   'PLIEGO_CARGOS',
   'AUTO_PRORROGA',
 ];
+const tieneAccion = (tipo: string): boolean =>
+  tipo?.startsWith('AUTO_APERTURA_') || TIPOS_CON_ACCION_ESTATICOS.includes(tipo);
 
 // ==================== DATOS MOCK ====================
 const TIPOS_AUTOS_MOCK: TipoAuto[] = [
@@ -116,6 +115,7 @@ const TIPOS_AUTOS_MOCK: TipoAuto[] = [
 interface ProcesoCompleto {
   id: string;
   numeroProceso: string;
+  radicadoProceso?: string;
   etapaActual: string;
   fechaVencimientoEtapa?: string;
   estado?: string;
@@ -198,7 +198,6 @@ export function WizardCrearAutoWorldClass({
 
   // Estados del Paso 2
   const [fechaAuto, setFechaAuto] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [prorrogaMeses, setProrrogaMeses] = useState<number | null>(null);
 
@@ -354,11 +353,10 @@ export function WizardCrearAutoWorldClass({
       try {
         setWordPreview({ loading: true, html: '', error: '' });
 
-        const token = sessionStorage.getItem('esap_access_token');
         const response = await fetch(getAutoDocumentUrl(documento.documentUrl), {
+          credentials: 'include',
           headers: {
             Accept: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });
 
@@ -506,7 +504,7 @@ export function WizardCrearAutoWorldClass({
         toast.error('Las observaciones deben tener al menos 10 caracteres');
         return;
       }
-      const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
+      const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
       if (tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && !prorrogaMeses) {
         toast.error('Debes seleccionar la duración de la prórroga: 3 o 6 meses');
         return;
@@ -569,7 +567,7 @@ export function WizardCrearAutoWorldClass({
       return;
     }
 
-    const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
+    const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
 
     try {
       setGuardando(true);
@@ -609,7 +607,11 @@ export function WizardCrearAutoWorldClass({
       if (archivoAdjunto) {
         toast.info('Subiendo archivo...', { duration: 2000 });
         // Enviar tipo 'AUTO' para que el backend valide que solo sean PDF
-        const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto, 'AUTO');
+        const uploadResult = await disciplinaryService.uploadFile(
+          archivoAdjunto,
+          'AUTO',
+          proceso.radicadoProceso || proceso.numeroProceso
+        );
         documentUrl = uploadResult.url || uploadResult.filename;
         console.log('✅ Archivo subido, documentUrl:', documentUrl);
       }
@@ -1061,7 +1063,7 @@ export function WizardCrearAutoWorldClass({
                                       >
                                         {etapa.nombre}
                                       </span>
-                                      {tipo.tipo && TIPOS_CON_ACCION.includes(tipo.tipo) && (
+                                      {tipo.tipo && tieneAccion(tipo.tipo) && (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 flex items-center gap-1">
                                           <Zap className="w-3 h-3" />
                                           Con acción
@@ -1231,21 +1233,6 @@ export function WizardCrearAutoWorldClass({
                           />
                         </div>
 
-                        {/* Fecha de Vencimiento */}
-                        <div>
-                          <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-blue-600" />
-                            Fecha de Vencimiento
-                            <span className="text-xs text-gray-500 font-normal">(Opcional)</span>
-                          </label>
-                          <input
-                            type="date"
-                            value={fechaVencimiento}
-                            onChange={(e) => setFechaVencimiento(e.target.value)}
-                            min={fechaAuto}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 transition-all text-sm font-medium shadow-sm"
-                          />
-                        </div>
                       </div>
 
 
@@ -1571,15 +1558,6 @@ export function WizardCrearAutoWorldClass({
                             </p>
                             <p className="text-sm font-black text-gray-900">{fechaAuto}</p>
                           </div>
-                          {fechaVencimiento && (
-                            <div className="bg-gray-50 rounded-xl p-4">
-                              <p className="text-xs font-semibold text-gray-500 mb-1 flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5" />
-                                VENCIMIENTO
-                              </p>
-                              <p className="text-sm font-black text-gray-900">{fechaVencimiento}</p>
-                            </div>
-                          )}
                         </div>
 
                         {/* Observaciones */}

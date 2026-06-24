@@ -29,6 +29,9 @@ export class UpdateDocumentoDto {
     tipo?: string;
     descripcion?: string;
     archivoUrl?: string;
+    archivoNombreOriginal?: string;
+    archivoTamano?: number;
+    archivoMimeType?: string;
     fechaDocumento?: string;
     numeroFolios?: number;
     confidencial?: boolean;
@@ -93,17 +96,17 @@ export class DocumentoService {
                 modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
             }
 
-            try {
-                await this.legalNotifications.notifyDocumentoSubido({
-                    modulo,
-                    radicado: expediente.radicado,
-                    procesoId: expediente.id,
-                    nombreDocumento: saved.archivoNombreOriginal || saved.nombre,
-                    subidoPor: saved.subidoPor || 'Sistema',
-                });
-            } catch (e: any) {
-                console.error('[DocumentoService.crear] notify falló:', e?.message);
-            }
+            // Notificación en segundo plano: no debe bloquear la subida del documento.
+            // (Si el notifications-service está lento, antes esto sumaba ~3s por documento.)
+            void this.legalNotifications.notifyDocumentoSubido({
+                modulo,
+                radicado: expediente.radicado,
+                procesoId: expediente.id,
+                nombreDocumento: saved.archivoNombreOriginal || saved.nombre,
+                subidoPor: saved.subidoPor || 'Sistema',
+            }).catch((e: any) => {
+                console.error('[DocumentoService.crear] notify falló (no bloqueante):', e?.message);
+            });
         }
 
         return saved;
@@ -119,6 +122,9 @@ export class DocumentoService {
         if (dto.tipo !== undefined) documento.tipo = dto.tipo;
         if (dto.descripcion !== undefined) documento.descripcion = dto.descripcion;
         if (dto.archivoUrl !== undefined) documento.archivoUrl = dto.archivoUrl;
+        if (dto.archivoNombreOriginal !== undefined) documento.archivoNombreOriginal = dto.archivoNombreOriginal;
+        if (dto.archivoTamano !== undefined) documento.archivoTamano = dto.archivoTamano;
+        if (dto.archivoMimeType !== undefined) documento.archivoMimeType = dto.archivoMimeType;
         if (dto.fechaDocumento !== undefined) documento.fechaDocumento = new Date(dto.fechaDocumento);
         if (dto.numeroFolios !== undefined) documento.numeroFolios = dto.numeroFolios;
         if (dto.confidencial !== undefined) documento.confidencial = dto.confidencial;

@@ -13,7 +13,7 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
+import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 
@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipAuthRefresh?: boolean;
   retries?: number;
 }
 
@@ -95,10 +96,11 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       ...fetchConfig
     } = customConfig || {};
 
-    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
   }
 
   /**
@@ -233,7 +235,26 @@ export class ApiClient {
         } else {
           try {
             const errorResponse = JSON.parse(xhr.responseText);
-            reject(new Error(errorResponse.message || `Error ${xhr.status}: ${xhr.statusText}`));
+            const nested = typeof errorResponse.message === 'object' && errorResponse.message
+              ? errorResponse.message
+              : errorResponse;
+            const mainMessage = typeof nested.message === 'string'
+              ? nested.message
+              : typeof errorResponse.message === 'string'
+                ? errorResponse.message
+                : `Error ${xhr.status}: ${xhr.statusText}`;
+            const details = [
+              ...(Array.isArray(nested.errores) ? nested.errores : []),
+              ...(Array.isArray(nested.errors) ? nested.errors : []),
+            ].map((detail: any) =>
+              typeof detail === 'string' ? detail : detail?.mensaje,
+            ).filter(Boolean);
+            const uploadError: any = new Error(
+              details.length > 0 ? `${mainMessage} ${details.join(' ')}` : mainMessage,
+            );
+            uploadError.status = xhr.status;
+            uploadError.response = { data: nested };
+            reject(uploadError);
           } catch {
             reject(new Error(`Error ${xhr.status}: ${xhr.statusText}`));
           }
@@ -255,6 +276,7 @@ export class ApiClient {
       });
 
       xhr.open('POST', url);
+      xhr.withCredentials = true;
 
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
@@ -291,6 +313,7 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -300,7 +323,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -311,6 +334,7 @@ export class ApiClient {
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
+          !error.status ||        // Error de red: servicio no disponible
           attempt > retries
         ) {
           throw error;
@@ -365,13 +389,20 @@ export class ApiClient {
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       // Manejo de respuesta
       return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
     } catch (error: any) {
-      console.log('🔴 Error en request:', error);
       clearTimeout(timeoutId);
+      if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+        console.warn('?? Servicio no disponible:', url);
+      } else if (!url.includes(':3009/') && !url.includes('/notificaciones/')) {
+        console.log('?? Error en request:', error);
+      }
 
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');
@@ -590,68 +621,36 @@ export class ApiClient {
   }
 
   /**
-   * Refresh del access token
+   * Refresh del access token.
+   * El token viaja como cookie HttpOnly: el frontend no lo lee ni lo guarda.
    */
   private async refreshAccessToken(): Promise<string | null> {
-    // Si ya está refrescando, esperar
     if (this.isRefreshing) {
       return new Promise((resolve) => {
-        this.refreshSubscribers.push((token: string) => {
-          resolve(token);
-        });
+        this.refreshSubscribers.push((token: string) => resolve(token || null));
       });
     }
 
     this.isRefreshing = true;
 
     try {
-      const refreshToken = sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-
-      if (!refreshToken) {
-        // Hacer logout automático cuando no hay refresh token
-        console.warn('No refresh token available - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // 🔄 Nuevo endpoint versionado para refresh
-      const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
+      const response = await fetch(this.buildURL(API_ENDPOINTS.AUTH.REFRESH), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
         ...CORS_CONFIG,
       });
 
       if (!response.ok) {
-        // Hacer logout automático cuando el refresh falla
-        console.warn('Token refresh failed with status:', response.status, '- logging out');
-        this.handleLogout();
+        console.warn('Token refresh failed with status:', response.status);
+        this.resolveRefreshSubscribers(null);
         return null;
       }
 
-      const data = await response.json();
-
-      // El backend expone el token en data.data.accessToken (contrato NestJS)
-      const newToken = data?.data?.accessToken || data?.accessToken;
-
-      if (!newToken) {
-        console.warn('Refresh response without accessToken - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // Guardar nuevo token
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
-      sessionStorage.setItem('esap_access_token', newToken);
-
-      // Notificar a todos los subscribers
-      this.refreshSubscribers.forEach((callback) => callback(newToken));
-      this.refreshSubscribers = [];
-
-      return newToken;
+      this.resolveRefreshSubscribers('cookie-refreshed');
+      return 'cookie-refreshed';
     } catch (error) {
-      console.warn('Token refresh error:', error, '- logging out');
-      this.handleLogout();
+      console.warn('Token refresh error:', error);
+      this.resolveRefreshSubscribers(null);
       return null;
     } finally {
       this.isRefreshing = false;
@@ -659,22 +658,12 @@ export class ApiClient {
   }
 
   /**
-   * Logout y limpiar datos
+   * Resuelve las solicitudes que esperaban el refresh sin exponer tokens al frontend.
    */
-  private handleLogout(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
-
-    toast.error('Sesión expirada', {
-      description: 'Por favor, inicia sesión nuevamente',
-    });
-
-    // Redirigir a login
-    window.location.href = '/login';
+  private resolveRefreshSubscribers(token: string | null): void {
+    this.refreshSubscribers.forEach((callback) => callback(token || ''));
+    this.refreshSubscribers = [];
   }
-
   /**
    * Muestra toast de error según el código HTTP
    */
@@ -728,7 +717,7 @@ export class ApiClient {
           fullUrl = `${serviceUrl}${path}`;
         } else {
           // Servicio no encontrado, usar baseURL normal
-          console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
+          console.warn(`?? Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
           fullUrl = `${this.baseURL}${endpoint}`;
         }
       } else {
@@ -786,3 +775,4 @@ export class ApiClient {
 // Singleton instance
 export const apiClient = new ApiClient();
 export default apiClient;
+

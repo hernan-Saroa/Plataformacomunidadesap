@@ -12,49 +12,25 @@ import {
   Clock,
   BookOpen,
   Save,
-  AlertCircle
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
 
-interface ProgramaAcademico {
-  id: number;
-  codigo: string;
-  nombre: string;
-  nivelFormacion: string;
-  modalidad: string;
-  jornada: string;
-  duracionSemestres: number;
-  creditos: number;
-  sede: string;
-  facultad: string;
-  estado: string;
-  registroCalificado: {
-    numero: string;
-    fechaEmision: string;
-    vigencia: string;
-  };
-  acreditacion?: {
-    tipo: string;
-    vigencia: string;
-  };
-  descripcion: string;
-  perfilEgresado: string;
-  requisitosIngreso: string[];
-  costoMatricula: number;
-  estudiantesActivos: number;
-  graduados: number;
-  docentesAsignados: number;
-  fechaCreacion: string;
-  ultimaActualizacion: string;
-}
+type ProgramaAcademico = ProgramaAcademicoDTO;
 
 interface CreateProgramaModalProps {
   onClose: () => void;
   programaToEdit?: ProgramaAcademico | null;
+  onSuccess?: () => void;
+  /** Código del período activo/seleccionado (ej. "2026-2"). El programa creado quedará vinculado a él. */
+  periodoAcademico?: string;
 }
 
-export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaModalProps) {
+export function CreateProgramaModal({ onClose, programaToEdit, onSuccess, periodoAcademico }: CreateProgramaModalProps) {
   const isEditMode = !!programaToEdit;
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estados del formulario
   const [formData, setFormData] = useState({
@@ -62,31 +38,18 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
     nombre: programaToEdit?.nombre || '',
     nivelFormacion: programaToEdit?.nivelFormacion || 'Profesional Universitario',
     modalidad: programaToEdit?.modalidad || 'Presencial',
-    jornada: programaToEdit?.jornada || 'Diurna',
-    duracionSemestres: programaToEdit?.duracionSemestres || 10,
-    creditos: programaToEdit?.creditos || 160,
-    sede: programaToEdit?.sede || 'Bogotá',
     facultad: programaToEdit?.facultad || '',
-    estado: programaToEdit?.estado || 'Activo',
-    rcNumero: programaToEdit?.registroCalificado.numero || '',
-    rcFechaEmision: programaToEdit?.registroCalificado.fechaEmision || '',
-    rcVigencia: programaToEdit?.registroCalificado.vigencia || '',
-    tieneAcreditacion: !!programaToEdit?.acreditacion,
-    acreditacionTipo: programaToEdit?.acreditacion?.tipo || 'Alta Calidad',
-    acreditacionVigencia: programaToEdit?.acreditacion?.vigencia || '',
-    descripcion: programaToEdit?.descripcion || '',
-    perfilEgresado: programaToEdit?.perfilEgresado || '',
-    requisitosIngreso: programaToEdit?.requisitosIngreso?.join('\n') || '',
-    costoMatricula: programaToEdit?.costoMatricula || 0,
+    estado: programaToEdit?.estado || 'ACTIVO',
+    horasBasePorCredito: programaToEdit?.horasBasePorCredito || 16,
+    horasPregradoCentral: programaToEdit?.horasPregradoCentral || 0,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 4;
+  const totalSteps = 2;
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // Limpiar error del campo al escribir
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -102,20 +65,8 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
     }
 
     if (step === 2) {
-      if (formData.duracionSemestres < 1) newErrors.duracionSemestres = 'La duración debe ser mayor a 0';
-      if (formData.creditos < 1) newErrors.creditos = 'Los créditos deben ser mayores a 0';
-      if (formData.costoMatricula < 0) newErrors.costoMatricula = 'El costo no puede ser negativo';
-    }
-
-    if (step === 3) {
-      if (!formData.rcNumero.trim()) newErrors.rcNumero = 'El número de registro es requerido';
-      if (!formData.rcFechaEmision) newErrors.rcFechaEmision = 'La fecha de emisión es requerida';
-      if (!formData.rcVigencia) newErrors.rcVigencia = 'La fecha de vigencia es requerida';
-    }
-
-    if (step === 4) {
-      if (!formData.descripcion.trim()) newErrors.descripcion = 'La descripción es requerida';
-      if (!formData.perfilEgresado.trim()) newErrors.perfilEgresado = 'El perfil del egresado es requerido';
+      if (formData.horasBasePorCredito < 1) newErrors.horasBasePorCredito = 'Las horas base deben ser mayores a 0';
+      if (formData.horasPregradoCentral < 0) newErrors.horasPregradoCentral = 'Las horas no pueden ser negativas';
     }
 
     setErrors(newErrors);
@@ -136,13 +87,47 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validateStep(currentStep)) {
-      const action = isEditMode ? 'actualizado' : 'creado';
-      toast.success(`Programa ${action} exitosamente`, {
-        description: `${formData.nombre} ha sido ${action} correctamente`
-      });
-      onClose();
+      try {
+        const programaData = {
+          codigo: formData.codigo,
+          nombre: formData.nombre,
+          nivelFormacion: formData.nivelFormacion,
+          facultad: formData.facultad,
+          modalidad: formData.modalidad,
+          horasBasePorCredito: formData.horasBasePorCredito,
+          horasPregradoCentral: formData.horasPregradoCentral,
+          estado: formData.estado,
+        };
+
+        setIsSubmitting(true);
+        if (isEditMode && programaToEdit) {
+          await apiClient.put(`/auth/api/v1/programas-academicos/${programaToEdit.id}`, programaData, { retries: 0 });
+        } else {
+          // Al crear, se vincula el programa al período seleccionado para que solo
+          // sea visible en ese período.
+          const createData = periodoAcademico
+            ? { ...programaData, periodoAcademico }
+            : programaData;
+          await apiClient.post('/auth/api/v1/programas-academicos', createData, { retries: 0 });
+        }
+
+        const action = isEditMode ? 'actualizado' : 'creado';
+        toast.success(`Programa ${action} exitosamente`, {
+          description: `${formData.nombre} ha sido ${action} correctamente`
+        });
+        onClose();
+        // Refresh the parent component
+        onSuccess?.();
+      } catch (error) {
+        console.error('Error saving programa:', error);
+        toast.error('Error al guardar el programa', {
+          description: error instanceof Error ? error.message : 'Por favor, inténtalo de nuevo'
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -238,10 +223,8 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                         onChange={(e) => handleChange('estado', e.target.value)}
                         className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
                       >
-                        <option value="Activo">Activo</option>
-                        <option value="Inactivo">Inactivo</option>
-                        <option value="En Trámite">En Trámite</option>
-                        <option value="Suspendido">Suspendido</option>
+                        <option value="ACTIVO">Activo</option>
+                        <option value="INACTIVO">Inactivo</option>
                       </select>
                     </div>
                   </div>
@@ -308,7 +291,7 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                     </div>
                   </div>
 
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid md:grid-cols-1 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         Modalidad *
@@ -319,47 +302,8 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                         className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
                       >
                         <option value="Presencial">Presencial</option>
-                        <option value="Virtual">Virtual</option>
                         <option value="Distancia">Distancia</option>
-                        <option value="Dual">Dual</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Jornada *
-                      </label>
-                      <select
-                        value={formData.jornada}
-                        onChange={(e) => handleChange('jornada', e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
-                      >
-                        <option value="Diurna">Diurna</option>
-                        <option value="Nocturna">Nocturna</option>
-                        <option value="Mixta">Mixta</option>
-                        <option value="Flexible">Flexible</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Sede *
-                      </label>
-                      <select
-                        value={formData.sede}
-                        onChange={(e) => handleChange('sede', e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
-                      >
-                        <option value="Bogotá">Bogotá</option>
-                        <option value="Medellín">Medellín</option>
-                        <option value="Cali">Cali</option>
-                        <option value="Barranquilla">Barranquilla</option>
-                        <option value="Bucaramanga">Bucaramanga</option>
-                        <option value="Cartagena">Cartagena</option>
-                        <option value="Pasto">Pasto</option>
-                        <option value="Manizales">Manizales</option>
-                        <option value="Ibagué">Ibagué</option>
-                        <option value="Neiva">Neiva</option>
+                        <option value="Mixto">Mixto</option>
                       </select>
                     </div>
                   </div>
@@ -378,296 +322,52 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <BookOpen className="w-5 h-5 text-[#003DA5]" />
-                    <h3 className="font-black text-gray-900">Detalles Académicos</h3>
+                    <h3 className="font-black text-gray-900">Configuración de Horas</h3>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Duración (Semestres) *
+                        Horas Base por Crédito *
                       </label>
                       <input
                         type="number"
                         min="1"
-                        value={formData.duracionSemestres}
-                        onChange={(e) => handleChange('duracionSemestres', parseInt(e.target.value) || 0)}
+                        value={formData.horasBasePorCredito}
+                        onChange={(e) => handleChange('horasBasePorCredito', parseInt(e.target.value) || 0)}
                         className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.duracionSemestres ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
+                          errors.horasBasePorCredito ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
                         }`}
                       />
-                      {errors.duracionSemestres && (
+                      {errors.horasBasePorCredito && (
                         <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
-                          {errors.duracionSemestres}
+                          {errors.horasBasePorCredito}
                         </p>
                       )}
                     </div>
 
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Créditos Académicos *
+                        Horas Pregrado Central
                       </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.creditos}
-                        onChange={(e) => handleChange('creditos', parseInt(e.target.value) || 0)}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.creditos ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                        }`}
-                      />
-                      {errors.creditos && (
-                        <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {errors.creditos}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Costo de Matrícula (COP) *
-                    </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                       <input
                         type="number"
                         min="0"
-                        value={formData.costoMatricula}
-                        onChange={(e) => handleChange('costoMatricula', parseInt(e.target.value) || 0)}
-                        placeholder="0"
-                        className={`w-full pl-11 pr-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.costoMatricula ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                        }`}
-                      />
-                    </div>
-                    {errors.costoMatricula && (
-                      <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {errors.costoMatricula}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-500">
-                      Valor: ${formData.costoMatricula.toLocaleString('es-CO')} COP
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Requisitos de Ingreso
-                    </label>
-                    <textarea
-                      value={formData.requisitosIngreso}
-                      onChange={(e) => handleChange('requisitosIngreso', e.target.value)}
-                      placeholder="Un requisito por línea&#10;Ej: Título de bachiller&#10;Pruebas Saber 11&#10;Entrevista"
-                      rows={5}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all resize-none"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Escribe un requisito por línea
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* STEP 3: Registro y Acreditación */}
-              {currentStep === 3 && (
-                <motion.div
-                  key="step3"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-4"
-                >
-                  <div className="flex items-center gap-2 mb-4">
-                    <Award className="w-5 h-5 text-[#003DA5]" />
-                    <h3 className="font-black text-gray-900">Registro y Acreditación</h3>
-                  </div>
-
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-                    <h4 className="font-semibold text-blue-900 text-sm mb-2">Registro Calificado</h4>
-                    <p className="text-xs text-blue-700">
-                      Información obligatoria del registro calificado otorgado por el Ministerio de Educación Nacional
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Número de Registro Calificado *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.rcNumero}
-                      onChange={(e) => handleChange('rcNumero', e.target.value.toUpperCase())}
-                      placeholder="Ej: RC-2023-001"
-                      className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                        errors.rcNumero ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                      }`}
-                    />
-                    {errors.rcNumero && (
-                      <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {errors.rcNumero}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Fecha de Emisión *
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.rcFechaEmision}
-                        onChange={(e) => handleChange('rcFechaEmision', e.target.value)}
+                        value={formData.horasPregradoCentral}
+                        onChange={(e) => handleChange('horasPregradoCentral', parseInt(e.target.value) || 0)}
                         className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.rcFechaEmision ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
+                          errors.horasPregradoCentral ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
                         }`}
                       />
-                      {errors.rcFechaEmision && (
+                      {errors.horasPregradoCentral && (
                         <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
-                          {errors.rcFechaEmision}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Vigencia del Registro *
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.rcVigencia}
-                        onChange={(e) => handleChange('rcVigencia', e.target.value)}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.rcVigencia ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                        }`}
-                      />
-                      {errors.rcVigencia && (
-                        <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />
-                          {errors.rcVigencia}
+                          {errors.horasPregradoCentral}
                         </p>
                       )}
                     </div>
                   </div>
-
-                  <div className="border-t pt-4 mt-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <input
-                        type="checkbox"
-                        id="tieneAcreditacion"
-                        checked={formData.tieneAcreditacion}
-                        onChange={(e) => handleChange('tieneAcreditacion', e.target.checked)}
-                        className="w-5 h-5 text-[#003DA5] border-gray-300 rounded focus:ring-[#003DA5]"
-                      />
-                      <label htmlFor="tieneAcreditacion" className="font-semibold text-gray-900">
-                        El programa cuenta con acreditación
-                      </label>
-                    </div>
-
-                    {formData.tieneAcreditacion && (
-                      <div className="space-y-4 pl-8">
-                        <div className="grid md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Tipo de Acreditación
-                            </label>
-                            <select
-                              value={formData.acreditacionTipo}
-                              onChange={(e) => handleChange('acreditacionTipo', e.target.value)}
-                              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
-                            >
-                              <option value="Alta Calidad">Alta Calidad</option>
-                              <option value="Internacional">Internacional</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Vigencia de Acreditación
-                            </label>
-                            <input
-                              type="date"
-                              value={formData.acreditacionVigencia}
-                              onChange={(e) => handleChange('acreditacionVigencia', e.target.value)}
-                              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* STEP 4: Descripción y Perfil */}
-              {currentStep === 4 && (
-                <motion.div
-                  key="step4"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-4"
-                >
-                  <div className="flex items-center gap-2 mb-4">
-                    <FileText className="w-5 h-5 text-[#003DA5]" />
-                    <h3 className="font-black text-gray-900">Descripción y Perfil</h3>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Descripción del Programa *
-                    </label>
-                    <textarea
-                      value={formData.descripcion}
-                      onChange={(e) => handleChange('descripcion', e.target.value)}
-                      placeholder="Describe el programa académico, su enfoque y objetivos..."
-                      rows={5}
-                      className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all resize-none ${
-                        errors.descripcion ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                      }`}
-                    />
-                    {errors.descripcion && (
-                      <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {errors.descripcion}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-500">
-                      {formData.descripcion.length} caracteres
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Perfil del Egresado *
-                    </label>
-                    <textarea
-                      value={formData.perfilEgresado}
-                      onChange={(e) => handleChange('perfilEgresado', e.target.value)}
-                      placeholder="Describe las competencias y capacidades del egresado..."
-                      rows={5}
-                      className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all resize-none ${
-                        errors.perfilEgresado ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                      }`}
-                    />
-                    {errors.perfilEgresado && (
-                      <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {errors.perfilEgresado}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-500">
-                      {formData.perfilEgresado.length} caracteres
-                    </p>
-                  </div>
-
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
@@ -722,10 +422,11 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
               ) : (
                 <button
                   onClick={handleSubmit}
-                  className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Save className="w-4 h-4" />
-                  {isEditMode ? 'Guardar Cambios' : 'Crear Programa'}
+                  {isSubmitting ? 'Guardando...' : isEditMode ? 'Guardar Cambios' : 'Crear Programa'}
                 </button>
               )}
             </div>

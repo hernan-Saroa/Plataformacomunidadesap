@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   GraduationCap,
@@ -20,463 +20,232 @@ import {
   X,
   ChevronDown,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  BarChart3,
+  Layers,
+  Settings
 } from 'lucide-react';
-import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Container4K, ResponsiveHeader, ConfirmationDialog } from '@esap-mfe/shared-ui';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PaginationPremium } from './shared/PaginationPremium';
 import { CreateProgramaModal } from './CreateProgramaModal';
-import { PROGRAMAS_ESAP, SEDES_ESAP } from '../data/oferta-academica-esap';
+import { PlanesEstudioDashboard } from './PlanesEstudioDashboard';
+import { AsignaturasPlanEstudios } from './AsignaturasPlanEstudios';
+import { ImportarAsignaturas } from './ImportarAsignaturas';
+import { GestionPeriodos } from './GestionPeriodos';
+import { ProgramCetapsModal } from './ProgramCetapsModal';
 import { useAuth } from '../hooks';
+import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 // ✅ DÍA 5: ResponsiveHeader para headers adaptativos
 
-type NivelFormacion = 'Pregrado' | 'Especialización' | 'Maestría' | 'Doctorado';
-type Modalidad = 'Presencial' | 'Virtual' | 'Distancia' | 'Dual';
-type Estado = 'Activo' | 'Inactivo' | 'En Trámite' | 'Suspendido';
-type Jornada = 'Diurna' | 'Nocturna' | 'Mixta' | 'Flexible';
+// Usar la interfaz del servicio actualizado
+type ProgramaAcademico = ProgramaAcademicoDTO;
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = (periods: any[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
-interface ProgramaAcademico {
-  id: number;
-  codigo: string;
-  nombre: string;
-  nivelFormacion: NivelFormacion;
-  modalidad: Modalidad;
-  jornada: Jornada;
-  duracionSemestres: number;
-  creditos: number;
-  sede: string;
-  facultad: string;
-  estado: Estado;
-  registroCalificado: {
-    numero: string;
-    fechaEmision: string;
-    vigencia: string;
-  };
-  acreditacion?: {
-    tipo: 'Alta Calidad' | 'Internacional';
-    vigencia: string;
-  };
-  descripcion: string;
-  perfilEgresado: string;
-  requisitosIngreso: string[];
-  costoMatricula: number;
-  estudiantesActivos: number;
-  graduados: number;
-  docentesAsignados: number;
-  fechaCreacion: string;
-  ultimaActualizacion: string;
-}
-
-// Mock data
-const mockProgramas: ProgramaAcademico[] = [
-  {
-    id: 1,
-    codigo: 'PRE-ECO-001',
-    nombre: 'Economía Pública',
-    nivelFormacion: 'Pregrado',
-    modalidad: 'Presencial',
-    jornada: 'Diurna',
-    duracionSemestres: 10,
-    creditos: 160,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Pregrado',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2022-001',
-      fechaEmision: '2022-01-15',
-      vigencia: '2029-01-15'
-    },
-    acreditacion: {
-      tipo: 'Alta Calidad',
-      vigencia: '2028-06-30'
-    },
-    descripcion: 'Programa profesional de Economía Pública enfocado en el análisis económico del sector público',
-    perfilEgresado: 'Profesional capacitado en análisis económico y políticas públicas',
-    requisitosIngreso: ['Título de bachiller', 'Pruebas Saber 11', 'Entrevista'],
-    costoMatricula: 3800000,
-    estudiantesActivos: 420,
-    graduados: 980,
-    docentesAsignados: 28,
-    fechaCreacion: '2008-02-01',
-    ultimaActualizacion: '2024-11-20'
-  },
-  {
-    id: 2,
-    codigo: 'PRE-APT-002',
-    nombre: 'Administración Pública Territorial',
-    nivelFormacion: 'Pregrado',
-    modalidad: 'Distancia',
-    jornada: 'Flexible',
-    duracionSemestres: 10,
-    creditos: 160,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Pregrado',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2021-045',
-      fechaEmision: '2021-06-10',
-      vigencia: '2028-06-10'
-    },
-    descripcion: 'Programa de Administración Pública con énfasis en gestión territorial y gobiernos locales',
-    perfilEgresado: 'Profesional en administración pública territorial con capacidad de gestión en entidades territoriales',
-    requisitosIngreso: ['Título de bachiller', 'Pruebas Saber 11'],
-    costoMatricula: 3200000,
-    estudiantesActivos: 580,
-    graduados: 1450,
-    docentesAsignados: 32,
-    fechaCreacion: '2010-08-15',
-    ultimaActualizacion: '2024-10-05'
-  },
-  {
-    id: 3,
-    codigo: 'PRE-APN-003',
-    nombre: 'Administración Pública - Jornada Nocturna',
-    nivelFormacion: 'Pregrado',
-    modalidad: 'Presencial',
-    jornada: 'Nocturna',
-    duracionSemestres: 10,
-    creditos: 160,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Pregrado',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2020-089',
-      fechaEmision: '2020-03-20',
-      vigencia: '2027-03-20'
-    },
-    descripcion: 'Programa profesional de Administración Pública en jornada nocturna para estudiantes que trabajan',
-    perfilEgresado: 'Administrador público con competencias en gestión del Estado y políticas públicas',
-    requisitosIngreso: ['Título de bachiller', 'Pruebas Saber 11'],
-    costoMatricula: 3500000,
-    estudiantesActivos: 350,
-    graduados: 890,
-    docentesAsignados: 25,
-    fechaCreacion: '2012-01-10',
-    ultimaActualizacion: '2024-09-12'
-  },
-  {
-    id: 4,
-    codigo: 'PRE-APD-004',
-    nombre: 'Administración Pública - Jornada Diurna',
-    nivelFormacion: 'Pregrado',
-    modalidad: 'Presencial',
-    jornada: 'Diurna',
-    duracionSemestres: 10,
-    creditos: 160,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Pregrado',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2019-012',
-      fechaEmision: '2019-05-08',
-      vigencia: '2026-05-08'
-    },
-    acreditacion: {
-      tipo: 'Alta Calidad',
-      vigencia: '2029-12-31'
-    },
-    descripcion: 'Programa profesional de Administración Pública en jornada diurna con énfasis en gestión estatal',
-    perfilEgresado: 'Profesional en administración pública con capacidad de liderazgo en el sector público',
-    requisitosIngreso: ['Título de bachiller', 'Pruebas Saber 11', 'Entrevista'],
-    costoMatricula: 3500000,
-    estudiantesActivos: 520,
-    graduados: 1680,
-    docentesAsignados: 35,
-    fechaCreacion: '2005-09-01',
-    ultimaActualizacion: '2024-11-15'
-  },
-  {
-    id: 5,
-    codigo: 'MAE-DH-001',
-    nombre: 'Maestría en Derechos Humanos',
-    nivelFormacion: 'Maestría',
-    modalidad: 'Distancia',
-    jornada: 'Flexible',
-    duracionSemestres: 4,
-    creditos: 50,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2023-156',
-      fechaEmision: '2023-11-12',
-      vigencia: '2030-11-12'
-    },
-    acreditacion: {
-      tipo: 'Alta Calidad',
-      vigencia: '2029-06-30'
-    },
-    descripcion: 'Maestría de alta calidad en Derechos Humanos con enfoque en políticas públicas',
-    perfilEgresado: 'Magíster con capacidad para diseñar e implementar políticas de derechos humanos',
-    requisitosIngreso: ['Título profesional', 'Prueba de admisión', 'Proyecto de investigación'],
-    costoMatricula: 11500000,
-    estudiantesActivos: 95,
-    graduados: 180,
-    docentesAsignados: 22,
-    fechaCreacion: '2015-02-20',
-    ultimaActualizacion: '2024-08-30'
-  },
-  {
-    id: 6,
-    codigo: 'MAE-AP-002',
-    nombre: 'Maestría en Administración Pública',
-    nivelFormacion: 'Maestría',
-    modalidad: 'Presencial',
-    jornada: 'Nocturna',
-    duracionSemestres: 4,
-    creditos: 52,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2022-078',
-      fechaEmision: '2022-10-01',
-      vigencia: '2029-10-01'
-    },
-    acreditacion: {
-      tipo: 'Alta Calidad',
-      vigencia: '2030-12-31'
-    },
-    descripcion: 'Maestría en Administración Pública con énfasis en gestión y modernización del Estado',
-    perfilEgresado: 'Magíster en gestión pública con capacidades investigativas y de alto nivel directivo',
-    requisitosIngreso: ['Título profesional', 'Experiencia laboral 2 años', 'Prueba de admisión'],
-    costoMatricula: 12000000,
-    estudiantesActivos: 125,
-    graduados: 340,
-    docentesAsignados: 28,
-    fechaCreacion: '2010-11-01',
-    ultimaActualizacion: '2024-11-28'
-  },
-  {
-    id: 7,
-    codigo: 'ESP-GP-001',
-    nombre: 'Especialización en Gestión Pública',
-    nivelFormacion: 'Especialización',
-    modalidad: 'Virtual',
-    jornada: 'Flexible',
-    duracionSemestres: 2,
-    creditos: 30,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2023-089',
-      fechaEmision: '2023-03-15',
-      vigencia: '2030-03-15'
-    },
-    descripcion: 'Especialización virtual en Gestión Pública orientada a funcionarios del Estado',
-    perfilEgresado: 'Especialista en gestión de entidades públicas con competencias gerenciales',
-    requisitosIngreso: ['Título profesional', 'Experiencia en sector público'],
-    costoMatricula: 8500000,
-    estudiantesActivos: 180,
-    graduados: 520,
-    docentesAsignados: 18,
-    fechaCreacion: '2016-08-10',
-    ultimaActualizacion: '2024-10-20'
-  },
-  {
-    id: 8,
-    codigo: 'ESP-FP-002',
-    nombre: 'Especialización en Finanzas Públicas',
-    nivelFormacion: 'Especialización',
-    modalidad: 'Distancia',
-    jornada: 'Flexible',
-    duracionSemestres: 2,
-    creditos: 32,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2022-145',
-      fechaEmision: '2022-07-20',
-      vigencia: '2029-07-20'
-    },
-    descripcion: 'Especialización en gestión y administración de finanzas del sector público',
-    perfilEgresado: 'Especialista en finanzas públicas con capacidad de planeación y control fiscal',
-    requisitosIngreso: ['Título profesional en áreas económicas o administrativas', 'Experiencia laboral'],
-    costoMatricula: 9200000,
-    estudiantesActivos: 145,
-    graduados: 380,
-    docentesAsignados: 20,
-    fechaCreacion: '2014-03-01',
-    ultimaActualizacion: '2024-09-15'
-  },
-  {
-    id: 9,
-    codigo: 'ESP-GS-003',
-    nombre: 'Especialización en Gerencia Social',
-    nivelFormacion: 'Especialización',
-    modalidad: 'Virtual',
-    jornada: 'Flexible',
-    duracionSemestres: 2,
-    creditos: 30,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2023-067',
-      fechaEmision: '2023-05-10',
-      vigencia: '2030-05-10'
-    },
-    descripcion: 'Especialización virtual en Gerencia Social para gestión de programas sociales del Estado',
-    perfilEgresado: 'Especialista en diseño y gestión de políticas y programas sociales',
-    requisitosIngreso: ['Título profesional', 'Experiencia en proyectos sociales'],
-    costoMatricula: 8800000,
-    estudiantesActivos: 165,
-    graduados: 290,
-    docentesAsignados: 16,
-    fechaCreacion: '2017-01-20',
-    ultimaActualizacion: '2024-11-05'
-  },
-  {
-    id: 10,
-    codigo: 'ESP-PD-004',
-    nombre: 'Especialización en Proyectos de Desarrollo',
-    nivelFormacion: 'Especialización',
-    modalidad: 'Distancia',
-    jornada: 'Flexible',
-    duracionSemestres: 2,
-    creditos: 32,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2021-198',
-      fechaEmision: '2021-09-25',
-      vigencia: '2028-09-25'
-    },
-    descripcion: 'Especialización en formulación y gestión de proyectos de desarrollo regional y local',
-    perfilEgresado: 'Especialista en formulación, evaluación y gestión de proyectos de desarrollo',
-    requisitosIngreso: ['Título profesional', 'Experiencia en gestión de proyectos'],
-    costoMatricula: 9000000,
-    estudiantesActivos: 155,
-    graduados: 410,
-    docentesAsignados: 19,
-    fechaCreacion: '2013-06-15',
-    ultimaActualizacion: '2024-08-18'
-  },
-  {
-    id: 11,
-    codigo: 'ESP-ADE-005',
-    nombre: 'Especialización en Alta Dirección del Estado',
-    nivelFormacion: 'Especialización',
-    modalidad: 'Presencial',
-    jornada: 'Nocturna',
-    duracionSemestres: 2,
-    creditos: 35,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2023-023',
-      fechaEmision: '2023-02-18',
-      vigencia: '2030-02-18'
-    },
-    acreditacion: {
-      tipo: 'Alta Calidad',
-      vigencia: '2029-12-31'
-    },
-    descripcion: 'Especialización de alta calidad orientada a altos directivos del sector público',
-    perfilEgresado: 'Especialista en alta gerencia pública con competencias estratégicas y de liderazgo',
-    requisitosIngreso: ['Título profesional', 'Cargo directivo en sector público', 'Entrevista'],
-    costoMatricula: 12500000,
-    estudiantesActivos: 75,
-    graduados: 185,
-    docentesAsignados: 25,
-    fechaCreacion: '2011-10-05',
-    ultimaActualizacion: '2024-11-22'
-  },
-  {
-    id: 12,
-    codigo: 'ESP-GPDU-006',
-    nombre: 'Especialización en Gestión y Planificación del Desarrollo Urbano y Regional',
-    nivelFormacion: 'Especialización',
-    modalidad: 'Distancia',
-    jornada: 'Flexible',
-    duracionSemestres: 2,
-    creditos: 32,
-    sede: 'Bogotá',
-    facultad: 'Facultad de Postgrados',
-    estado: 'Activo',
-    registroCalificado: {
-      numero: 'RC-2022-112',
-      fechaEmision: '2022-04-30',
-      vigencia: '2029-04-30'
-    },
-    descripcion: 'Especialización en planificación territorial y desarrollo urbano sostenible',
-    perfilEgresado: 'Especialista en gestión territorial con capacidad en ordenamiento y desarrollo regional',
-    requisitosIngreso: ['Título profesional en áreas afines', 'Experiencia en planeación territorial'],
-    costoMatricula: 9500000,
-    estudiantesActivos: 110,
-    graduados: 245,
-    docentesAsignados: 17,
-    fechaCreacion: '2015-09-12',
-    ultimaActualizacion: '2024-10-08'
-  }
-];
 
 export function ProgramasAcademicosModule() {
+  const [programas, setProgramas] = useState<ProgramaAcademico[]>([]);
+  const [pagination, setPagination] = useState<{
+    total: number;
+    pagina: number;
+    porPagina: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [nivelFilter, setNivelFilter] = useState<string>('all');
   const [modalidadFilter, setModalidadFilter] = useState<string>('all');
   const [sedeFilter, setSedeFilter] = useState<string>('all');
   const [estadoFilter, setEstadoFilter] = useState<string>('all');
-  const [expandedProgramaId, setExpandedProgramaId] = useState<number | null>(null);
+  const [expandedProgramaId, setExpandedProgramaId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
+  const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
+  const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'importar-asignaturas' | 'periodos-academicos'>('lista');
+  const [selectedProgramaForCetaps, setSelectedProgramaForCetaps] = useState<ProgramaAcademicoDTO | null>(null);
+  const [selectedPeriodoForImport, setSelectedPeriodoForImport] = useState<string | undefined>(undefined);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [periodosRefreshTrigger, setPeriodosRefreshTrigger] = useState(0);
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
+  const canImport = hasRole('GESTION_PROFESORAL') || isSuperAdmin;
+
+  // ─── Periodo Académico (Selector Global) ───
+  const [periodosPA, setPeriodosPA] = useState<any[]>([]);
+  const [periodoSeleccionadoPA, setPeriodoSeleccionadoPA] = useState<string>('');
+  const [periodosCargadosPA, setPeriodosCargadosPA] = useState(false);
+  const [showPeriodoDropdownPA, setShowPeriodoDropdownPA] = useState(false);
+
+  useEffect(() => {
+    const cargarPeriodos = async () => {
+      try {
+        const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+        const data = Array.isArray(res) ? res : [];
+        const sorted = sortPeriodsByCreation(data);
+        setPeriodosPA(sorted);
+        // Al llegar a la página, el selector SIEMPRE inicia en el período activo
+        // (en_curso), sin importar cuál se haya visualizado antes.
+        const active = sorted.find((p: any) => p.estado === 'en_curso') || sorted[0];
+        setPeriodoSeleccionadoPA(getPeriodCode(active));
+      } catch {
+        setPeriodosPA([]);
+        setPeriodoSeleccionadoPA('');
+      } finally {
+        setPeriodosCargadosPA(true);
+      }
+    };
+    cargarPeriodos();
+  }, [periodosRefreshTrigger]);
+
+  const periodoActivoPA = periodosPA.find((p) => p.estado === 'en_curso') || periodosPA[0];
+  const periodoActivoCodigoPA = periodoActivoPA?.codigo || periodoActivoPA?.periodo || '';
+  const esPeriodoActivoPA =
+    !!periodoSeleccionadoPA && periodoSeleccionadoPA === periodoActivoCodigoPA;
+
+  useEffect(() => {
+    if (periodoSeleccionadoPA) {
+      localStorage.setItem(PROGRAMAS_PERIOD_STORAGE_KEY, periodoSeleccionadoPA);
+      window.dispatchEvent(
+        new CustomEvent(CATALOG_PERIOD_CHANGE_EVENT, {
+          detail: {
+            source: 'programas-academicos',
+            storageKey: PROGRAMAS_PERIOD_STORAGE_KEY,
+            periodCode: periodoSeleccionadoPA,
+          },
+        }),
+      );
+    }
+  }, [periodoSeleccionadoPA]);
+
+  // Cargar datos del backend
+  useEffect(() => {
+    const loadProgramas = async () => {
+      if (!periodosCargadosPA) {
+        return;
+      }
+      if (!periodoSeleccionadoPA) {
+        setProgramas([]);
+        setPagination({ total: 0, pagina: 1, porPagina: itemsPerPage });
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('[FRONTEND DEBUG] Fetching programas with params:', {
+          search: searchQuery,
+          nivelFormacion: nivelFilter,
+          modalidad: modalidadFilter,
+          sede: sedeFilter,
+          estado: estadoFilter,
+          page: currentPage,
+          limit: 15,
+          periodoAcademico: periodoSeleccionadoPA,
+          _t: Date.now()
+        });
+        const response = await apiClient.get('/auth/api/v1/programas-academicos', {
+          search: searchQuery || undefined,
+          nivelFormacion: nivelFilter !== 'all' ? nivelFilter : undefined,
+          modalidad: modalidadFilter !== 'all' ? modalidadFilter : undefined,
+          sede: sedeFilter !== 'all' ? sedeFilter : undefined,
+          estado: estadoFilter !== 'all' ? estadoFilter : undefined,
+          periodoAcademico: periodoSeleccionadoPA || undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+          _t: Date.now()
+        });
+        console.log('[DEBUG] Raw API response keys:', Object.keys(response));
+        console.log('[DEBUG] response.data count:', response.data?.length, 'response.total:', response.total);
+        const programasData = response.data || [];
+        if (programasData.length > 0) {
+          console.log('[DEBUG] First programa keys:', Object.keys(programasData[0]));
+          console.log('[DEBUG] First programa cetapsList:', programasData[0].cetapsList?.length, 'sede:', programasData[0].sede);
+          const progWithCetaps = programasData.find((p: any) => p.cetapsList && p.cetapsList.length > 0);
+          console.log('[DEBUG] Programa with cetapsList:', progWithCetaps?.nombre, 'count:', progWithCetaps?.cetapsList?.length);
+        }
+        setProgramas(programasData);
+        setPagination({
+          total: response.total || 0,
+          pagina: response.pagina || 1,
+          porPagina: response.porPagina || itemsPerPage,
+        });
+
+
+      } catch (error) {
+        console.error('Error cargando programas:', error);
+        setError('Error al cargar los programas. Por favor intente nuevamente.');
+        setProgramas([]);
+        setPagination(null);
+        toast.error('Error al cargar los programas');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProgramas();
+  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, periodosCargadosPA, currentPage, refreshTrigger]);
+
+
+
+  // Calculate totalPages from pagination data
+  const totalPages = pagination ? Math.ceil(pagination.total / pagination.porPagina) : 1;
 
   // Stats
   const stats = {
-    totalProgramas: mockProgramas.length,
-    activos: mockProgramas.filter(p => p.estado === 'Activo').length,
-    totalEstudiantes: mockProgramas.reduce((acc, p) => acc + p.estudiantesActivos, 0),
-    totalGraduados: mockProgramas.reduce((acc, p) => acc + p.graduados, 0)
+    totalProgramas: pagination?.total || 0,
+    programasConPlan: programas.filter(p => (p.totalAsignaturas || 0) > 0).length,
+    totalAsignaturas: programas.reduce((sum, p) => sum + (p.totalAsignaturas || 0), 0),
+    totalCreditos: programas.reduce((sum, p) => sum + (p.creditosPlan || 0), 0),
+    totalEstudiantes: programas.reduce((sum, p) => sum + (p.estudiantesActivos || 0), 0),
+    totalGraduados: programas.reduce((sum, p) => sum + (p.graduados || 0), 0),
   };
 
   // Filtros únicos
-  const niveles = Array.from(new Set(mockProgramas.map(p => p.nivelFormacion)));
-  const modalidades = Array.from(new Set(mockProgramas.map(p => p.modalidad)));
-  const sedes = Array.from(new Set(mockProgramas.map(p => p.sede)));
+  const niveles = Array.from(new Set(programas.map(p => p.nivelFormacion).filter(Boolean)));
+  const modalidades = Array.from(new Set(programas.map(p => p.modalidad).filter(Boolean)));
+  const sedes = Array.from(new Set(programas.map(p => p.sede).filter(Boolean)));
 
-  // Filtrado
-  const filteredProgramas = mockProgramas.filter(programa => {
-    const matchesSearch = searchQuery === '' ||
-      programa.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      programa.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      programa.facultad.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesNivel = nivelFilter === 'all' || programa.nivelFormacion === nivelFilter;
-    const matchesModalidad = modalidadFilter === 'all' || programa.modalidad === modalidadFilter;
-    const matchesSede = sedeFilter === 'all' || programa.sede === sedeFilter;
-    const matchesEstado = estadoFilter === 'all' || programa.estado === estadoFilter;
-    
-    return matchesSearch && matchesNivel && matchesModalidad && matchesSede && matchesEstado;
-  });
+  // Los datos ya vienen filtrados y paginados del backend
+  const filteredProgramas = programas;
+  const paginatedProgramas = programas; // Ya paginados por el backend
 
-  // Paginación
-  const totalPages = Math.ceil(filteredProgramas.length / itemsPerPage);
-  const paginatedProgramas = filteredProgramas.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
-  const getEstadoBadge = (estado: Estado) => {
-    const estadoConfig = {
-      'Activo': { className: 'bg-green-100 text-green-700 border-green-300', icon: CheckCircle },
-      'Inactivo': { className: 'bg-gray-100 text-gray-700 border-gray-300', icon: AlertCircle },
-      'En Trámite': { className: 'bg-yellow-100 text-yellow-700 border-yellow-300', icon: Clock },
-      'Suspendido': { className: 'bg-red-100 text-red-700 border-red-300', icon: X }
+  const getEstadoBadge = (estado: string) => {
+    const estadoConfig: Record<string, { className: string; icon: any }> = {
+      'ACTIVO': { className: 'bg-green-100 text-green-700 border-green-300', icon: CheckCircle },
+      'INACTIVO': { className: 'bg-gray-100 text-gray-700 border-gray-300', icon: AlertCircle },
     };
-    
-    const config = estadoConfig[estado];
+
+    const config = estadoConfig[estado] || { className: 'bg-gray-100 text-gray-700 border-gray-300', icon: AlertCircle };
     const Icon = config.icon;
-    
+
     return (
       <Badge className={`${config.className} hover:${config.className} border`}>
         <div className="flex items-center gap-1.5">
@@ -487,14 +256,17 @@ export function ProgramasAcademicosModule() {
     );
   };
 
-  const getNivelBadge = (nivel: NivelFormacion) => {
-    const nivelColors: Record<NivelFormacion, string> = {
+  const getNivelBadge = (nivel?: string) => {
+    const nivelColors: Record<string, string> = {
       'Pregrado': 'bg-blue-100 text-blue-700',
+      'Técnico Profesional': 'bg-cyan-100 text-cyan-700',
+      'Tecnológico': 'bg-indigo-100 text-indigo-700',
       'Especialización': 'bg-orange-100 text-orange-700',
       'Maestría': 'bg-pink-100 text-pink-700',
       'Doctorado': 'bg-red-100 text-red-700'
     };
-    return <Badge className={nivelColors[nivel]}>{nivel}</Badge>;
+    const label = nivel || 'Sin nivel';
+    return <Badge className={nivelColors[label] || 'bg-gray-100 text-gray-700'}>{label}</Badge>;
   };
 
   const handleEdit = (programa: ProgramaAcademico) => {
@@ -503,11 +275,56 @@ export function ProgramasAcademicosModule() {
   };
 
   const handleDelete = (programa: ProgramaAcademico) => {
-    toast.success('Programa Eliminado', { description: `Se eliminó: ${programa.nombre}` });
+    setProgramaToDelete(programa);
   };
 
-  const handleView = (programa: ProgramaAcademico) => {
-    toast.info('Ver Programa', { description: `Viendo: ${programa.nombre}` });
+  const confirmDelete = async () => {
+    if (programaToDelete) {
+      try {
+        // Se envía el período visualizado para que el borrado sea SOLO de ese período
+        // (si el programa también existe en otro período, allí se conserva).
+        const periodoQS = periodoSeleccionadoPA
+          ? `?periodo=${encodeURIComponent(periodoSeleccionadoPA)}`
+          : '';
+        await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}${periodoQS}`);
+        toast.success('Programa Eliminado', { description: `Se eliminó: ${programaToDelete.nombre}` });
+        // Recargar datos
+        setRefreshTrigger(prev => prev + 1);
+      } catch (error) {
+        console.error('Error deleting programa:', error);
+        toast.error('Error al eliminar el programa');
+      } finally {
+        setProgramaToDelete(null);
+      }
+    }
+  };
+
+  const handleUpdateEstudiantesCetap = async (ofertaId: string, estudiantes: number) => {
+    if (!selectedProgramaForCetaps) return;
+    try {
+      await api.programas.updateCetapEstudiantes(selectedProgramaForCetaps.id, ofertaId, estudiantes);
+      // Update local state to reflect the new count
+      const updatedCetapsList = selectedProgramaForCetaps.cetapsList?.map(c => 
+        c.ofertaId === ofertaId ? { ...c, estudiantes } : c
+      );
+      
+      const prevTotal = selectedProgramaForCetaps.cetapsList?.find(c => c.ofertaId === ofertaId)?.estudiantes || 0;
+      const diff = estudiantes - prevTotal;
+      const newTotal = (selectedProgramaForCetaps.estudiantesActivos || 0) + diff;
+
+      setSelectedProgramaForCetaps({
+        ...selectedProgramaForCetaps,
+        cetapsList: updatedCetapsList,
+        estudiantesActivos: newTotal
+      });
+
+      // Reload program data slightly after to ensure consistency in the background
+      setTimeout(() => setRefreshTrigger(prev => prev + 1), 500);
+      toast.success('Cupos actualizados exitosamente');
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al actualizar los cupos del CETAP');
+    }
   };
 
   const clearAllFilters = () => {
@@ -525,218 +342,315 @@ export function ProgramasAcademicosModule() {
     setProgramaToEdit(null);
   };
 
+  // Las pantallas de carga/error a página completa solo aplican a las vistas que
+  // muestran la lista de programas. Las vistas de import y periodos se gestionan
+  // por sí mismas; no deben desmontarse por una recarga en segundo plano (si no,
+  // perderían su estado, p. ej. la pantalla de "importación exitosa").
+  const isListLikeView =
+    activeView !== 'importar-asignaturas' && activeView !== 'periodos-academicos';
+
+  if (loading && isListLikeView) {
+    return (
+      <Container4K className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-[#003DA5]" />
+          <p className="text-gray-600">Cargando programas académicos...</p>
+        </div>
+      </Container4K>
+    );
+  }
+
+  if (error && isListLikeView) {
+    return (
+      <Container4K className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Error al cargar datos</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => setRefreshTrigger(prev => prev + 1)}
+            className="px-4 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002d7a] transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      </Container4K>
+    );
+  }
+
   return (
     <>
-    <Toaster position="top-right" richColors />
-    <Container4K className="space-y-6">
-      {/* Header - DÍA 5: ResponsiveHeader */}
-      <ResponsiveHeader
-        title="Programas Académicos"
-        description="Gestiona los programas académicos de todas las sedes ESAP"
-        icon={GraduationCap}
-        primaryAction={{
-          label: "Crear Programa",
-          icon: Plus,
-          onClick: () => setShowCreateModal(true),
-          variant: "primary"
-        }}
-      />
+    <Toaster position="bottom-right" richColors />
+    <Container4K className="space-y-4">
+      {/* ━━━ Premium Header ━━━ */}
+      <div className="rounded-2xl bg-white border border-gray-200 px-8 py-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#EBF0FA' }}>
+              <GraduationCap className="w-6 h-6 text-[#003DA5]" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Programas Académicos</h1>
 
+              <p className="text-xs text-gray-400 mt-0.5">Gestión de programas de todas las sedes ESAP</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Selector de Periodo Académico */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PERIODO:</span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowPeriodoDropdownPA(!showPeriodoDropdownPA)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
+                >
+                  {periodoSeleccionadoPA || 'Sin periodo'}
+                  {esPeriodoActivoPA && (
+                    <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
+                  )}
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                {showPeriodoDropdownPA && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdownPA(false)} />
+                    <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
+                      <div className="px-3 py-2 border-b border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        {periodosPA.length > 0 ? periodosPA.map((p: any, idx: number) => {
+                          const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                          const esActivo = p.estado === 'en_curso';
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => { setPeriodoSeleccionadoPA(codigo); setShowPeriodoDropdownPA(false); }}
+                              className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                                codigo === periodoSeleccionadoPA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
+                              {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-3 py-3 text-sm text-gray-500">No hay periodos disponibles</div>
+                        )}
+                      </div>
+                      <div className="border-t border-gray-100 mt-1 p-1 bg-gray-50/50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveView('periodos-academicos');
+                            setShowPeriodoDropdownPA(false);
+                          }}
+                          className="w-full px-3 py-2 text-center text-xs font-bold text-[#003DA5] hover:bg-blue-50 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                          Administrar Periodos
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              {!esPeriodoActivoPA && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Solo lectura
+                </span>
+              )}
+            </div>
+
+            {/* Tabs integrados */}
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveView('lista')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeView === 'lista' ? 'bg-[#003DA5] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                Programas
+              </button>
+              <button
+                onClick={() => setActiveView('periodos-academicos')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  activeView === 'periodos-academicos' ? 'bg-[#003DA5] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Periodos
+              </button>
+            </div>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#003DA5] text-white text-xs font-bold rounded-xl hover:bg-[#002d7a] transition-all shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Crear Programa
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Dashboard View */}
+      {activeView === 'dashboard' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <PlanesEstudioDashboard />
+        </motion.div>
+      ) : activeView === 'importar-asignaturas' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ImportarAsignaturas
+            onBack={() => {
+              setActiveView('lista');
+              setSelectedPeriodoForImport(undefined);
+            }}
+            onImportSuccess={() => setRefreshTrigger(prev => prev + 1)}
+            initialPeriodo={selectedPeriodoForImport}
+          />
+        </motion.div>
+      ) : activeView === 'periodos-academicos' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <GestionPeriodos
+            onBack={() => setActiveView('lista')}
+            onNavigateToImport={(pCod) => {
+              setSelectedPeriodoForImport(pCod);
+              setActiveView('importar-asignaturas');
+            }}
+            onPeriodosChanged={() => setPeriodosRefreshTrigger(prev => prev + 1)}
+          />
+        </motion.div>
+      ) : (
+      <>
       {/* Búsqueda y Filtros */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.15 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm"
+        transition={{ duration: 0.3, delay: 0.1 }}
+        className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
       >
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        {/* Compact search & filters bar */}
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
               <input
                 type="text"
                 placeholder="Buscar por nombre, código o facultad..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-10 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
+                className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 focus:border-[#003DA5]/30 transition-all placeholder:text-gray-300"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-200 rounded transition-colors"
                 >
-                  <X className="w-4 h-4 text-gray-400" />
+                  <X className="w-3.5 h-3.5 text-gray-400" />
                 </button>
               )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
             <select
               value={nivelFilter}
               onChange={(e) => setNivelFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todos los niveles</option>
+              <option value="all">Nivel</option>
               {niveles.map(nivel => (
                 <option key={nivel} value={nivel}>{nivel}</option>
               ))}
             </select>
-
             <select
               value={modalidadFilter}
               onChange={(e) => setModalidadFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todas las modalidades</option>
+              <option value="all">Modalidad</option>
               {modalidades.map(mod => (
                 <option key={mod} value={mod}>{mod}</option>
               ))}
             </select>
-
             <select
               value={sedeFilter}
               onChange={(e) => setSedeFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todas las sedes</option>
+              <option value="all">Sede</option>
               {sedes.map(sede => (
                 <option key={sede} value={sede}>{sede}</option>
               ))}
             </select>
-
             <select
               value={estadoFilter}
               onChange={(e) => setEstadoFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
+              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Todos los estados</option>
+              <option value="all">Estado</option>
               <option value="Activo">Activo</option>
               <option value="Inactivo">Inactivo</option>
               <option value="En Trámite">En Trámite</option>
               <option value="Suspendido">Suspendido</option>
             </select>
+            {hasActiveFilters && (
+              <button onClick={clearAllFilters} className="text-[10px] font-bold text-[#003DA5] hover:underline whitespace-nowrap">
+                Limpiar
+              </button>
+            )}
           </div>
         </div>
 
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
-            <span className="text-xs font-semibold text-gray-500">Filtros activos:</span>
-            {searchQuery && (
-              <Badge variant="outline" className="gap-1">
-                Búsqueda: "{searchQuery}"
-                <button onClick={() => setSearchQuery('')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {nivelFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Nivel: {nivelFilter}
-                <button onClick={() => setNivelFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {modalidadFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Modalidad: {modalidadFilter}
-                <button onClick={() => setModalidadFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {sedeFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Sede: {sedeFilter}
-                <button onClick={() => setSedeFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            {estadoFilter !== 'all' && (
-              <Badge variant="outline" className="gap-1">
-                Estado: {estadoFilter}
-                <button onClick={() => setEstadoFilter('all')} className="ml-1 hover:bg-gray-200 rounded-full p-0.5">
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            )}
-            <button
-              onClick={clearAllFilters}
-              className="text-xs font-semibold text-[#003DA5] hover:underline ml-auto"
-            >
-              Limpiar todos
-            </button>
-          </div>
-        )}
-      </motion.div>
 
-      {/* Tabla Premium */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
-      >
-        <Card className="overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-black text-gray-900 text-lg">Programas Académicos</h2>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  Mostrando {paginatedProgramas.length} de {filteredProgramas.length} programas
-                </p>
-              </div>
-              <Badge variant="outline" className="font-semibold">
-                Total: {filteredProgramas.length}
-              </Badge>
-            </div>
+          {/* Table info bar */}
+          <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
+            <p className="text-xs text-gray-400">
+              Mostrando <span className="font-semibold text-gray-600">{paginatedProgramas.length}</span> de <span className="font-semibold text-gray-600">{pagination?.total || 0}</span> programas
+            </p>
           </div>
 
-          {/* Vista Desktop */}
           <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50/80 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Programa
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Nivel
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Sede
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Estudiantes
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-black text-gray-700 uppercase tracking-wider">
-                    Acciones
-                  </th>
+                  <th className="px-6 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Programa</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Nivel</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Plan de Estudios</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Sede</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estudiantes</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
-                <AnimatePresence mode="popLayout">
-                  {paginatedProgramas.map((programa, index) => (
-                    <React.Fragment key={`programa-fragment-${programa.id}`}>
-                      <motion.tr
-                        key={`programa-${programa.id}`}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2, delay: index * 0.05 }}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer group"
-                        onClick={() => setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id)}
-                      >
-                        <td className="px-6 py-4">
+              <tbody className="divide-y divide-gray-50 bg-white">
+                <AnimatePresence>
+                  {paginatedProgramas.map((programa, index) => [
+                    <motion.tr
+                      key={programa.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      className="hover:bg-blue-50/20 transition-colors cursor-pointer group"
+                      onClick={() => setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id)}
+                    >
+                        <td className="px-6 py-3">
                           <div>
-                            <p className="font-bold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
+                            <p className="font-semibold text-gray-900 text-xs group-hover:text-[#003DA5] transition-colors">
                               {programa.nombre}
                             </p>
-                            <p className="text-xs text-gray-500 font-mono">{programa.codigo}</p>
+                            <p className="text-[10px] text-gray-400 font-mono mt-0.5">{programa.codigo}</p>
                           </div>
                         </td>
 
@@ -748,9 +662,55 @@ export function ProgramasAcademicosModule() {
                         </td>
 
                         <td className="px-6 py-4">
+                          {(programa.totalAsignaturas || 0) > 0 ? (() => {
+                            const pct = programa.creditos > 0 ? Math.min((programa.creditosPlan / programa.creditos) * 100, 100) : 0;
+                            const barColor = pct >= 100 ? 'bg-emerald-500' : pct >= 75 ? 'bg-blue-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400';
+                            const textColor = pct >= 100 ? 'text-emerald-600' : pct >= 75 ? 'text-blue-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500';
+                            const iconColor = pct >= 100 ? 'text-emerald-500' : pct >= 75 ? 'text-blue-500' : pct >= 50 ? 'text-amber-500' : 'text-red-400';
+                            return (
+                              <div className="space-y-1.5 min-w-[130px]">
+                                <div className="flex items-center gap-1.5">
+                                  <BookOpen className={`w-3.5 h-3.5 ${iconColor}`} />
+                                  <span className="text-xs font-semibold text-gray-900">{programa.totalAsignaturas} asignaturas</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${barColor} transition-all duration-500`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[10px] font-bold ${textColor} whitespace-nowrap`}>
+                                    {programa.creditosPlan || 0}/{programa.creditos} cr.
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })() : (
+                            <div className="flex items-center gap-1.5">
+                              <BookOpen className="w-4 h-4 text-gray-300" />
+                              <span className="text-xs text-gray-400 italic">Sin plan</span>
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-900">{programa.sede}</span>
+                            {programa.cetapsList && programa.cetapsList.length > 0 ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProgramaForCetaps(programa);
+                                }}
+                                style={{ color: '#003DA5' }}
+                                className="text-sm font-medium hover:underline transition-colors text-left"
+                              >
+                                {programa.sede}
+                              </button>
+                            ) : (
+                              <span className="text-sm text-gray-900">{programa.sede}</span>
+                            )}
                           </div>
                         </td>
 
@@ -760,7 +720,7 @@ export function ProgramasAcademicosModule() {
                               <Users className="w-4 h-4 text-gray-400" />
                               <span className="text-sm font-medium text-gray-900">{programa.estudiantesActivos}</span>
                             </div>
-                            <p className="text-xs text-gray-500">{programa.graduados} graduados</p>
+                            <p className="text-xs text-gray-500">{programa.horasBasePorCredito}h / créd.</p>
                           </div>
                         </td>
 
@@ -777,10 +737,6 @@ export function ProgramasAcademicosModule() {
                                 </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => handleView(programa)}>
-                                  <Eye className="w-4 h-4 mr-2" />
-                                  Ver Detalles
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleEdit(programa)}>
                                   <Edit className="w-4 h-4 mr-2" />
                                   Editar Programa
@@ -802,16 +758,16 @@ export function ProgramasAcademicosModule() {
                             </button>
                           </div>
                         </td>
-                      </motion.tr>
+                      </motion.tr>,
 
-                      {expandedProgramaId === programa.id && (
+                      expandedProgramaId === programa.id && (
                         <motion.tr
-                          key={`programa-expanded-${programa.id}`}
+                          key={`${programa.id}-expanded`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                         >
-                          <td colSpan={6} className="px-0 py-0">
+                          <td colSpan={7} className="px-0 py-0">
                             <motion.div
                               initial={{ height: 0 }}
                               animate={{ height: 'auto' }}
@@ -828,50 +784,60 @@ export function ProgramasAcademicosModule() {
                                     <div className="space-y-2 text-sm">
                                       <p className="text-gray-700"><span className="font-semibold">Duración:</span> {programa.duracionSemestres} semestres ({programa.creditos} créditos)</p>
                                       <p className="text-gray-700"><span className="font-semibold">Jornada:</span> {programa.jornada}</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
                                       <p className="text-gray-700"><span className="font-semibold">Facultad:</span> {programa.facultad}</p>
-                                      <p className="text-gray-700"><span className="font-semibold">Costo matrícula:</span> ${programa.costoMatricula.toLocaleString()}</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Costo matrícula:</span> ${(programa.costoMatricula || 0).toLocaleString()}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Docentes:</span> {programa.docentesAsignados}</p>
                                     </div>
                                   </div>
 
-                                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                    <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
-                                      <Award className="w-4 h-4 text-[#003DA5]" />
-                                      Registro y Acreditación
-                                    </h4>
-                                    <div className="space-y-2 text-sm">
-                                      <p className="text-gray-700"><span className="font-semibold">Reg. Calificado:</span> {programa.registroCalificado.numero}</p>
-                                      <p className="text-gray-700"><span className="font-semibold">Vigencia RC:</span> {new Date(programa.registroCalificado.vigencia).toLocaleDateString('es-CO')}</p>
-                                      {programa.acreditacion && (
-                                        <>
-                                          <p className="text-gray-700"><span className="font-semibold">Acreditación:</span> {programa.acreditacion.tipo}</p>
-                                          <p className="text-gray-700"><span className="font-semibold">Vigencia:</span> {new Date(programa.acreditacion.vigencia).toLocaleDateString('es-CO')}</p>
-                                        </>
-                                      )}
-                                      <p className="text-gray-700"><span className="font-semibold">Creación:</span> {new Date(programa.fechaCreacion).toLocaleDateString('es-CO')}</p>
+                                    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                      <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
+                                        <Award className="w-4 h-4 text-[#003DA5]" />
+                                        Registro y Acreditación
+                                      </h4>
+                                      <div className="space-y-2 text-sm">
+                                        <p className="text-gray-700"><span className="font-semibold">Reg. Calificado:</span> {programa.registroCalificado?.numero || 'Pendiente'}</p>
+                                        <p className="text-gray-700"><span className="font-semibold">Vigencia RC:</span> {programa.registroCalificado?.vigencia ? new Date(programa.registroCalificado.vigencia).toLocaleDateString('es-CO') : 'N/A'}</p>
+                                        {programa.acreditacion && (
+                                          <>
+                                            <p className="text-gray-700"><span className="font-semibold">Acreditación:</span> {programa.acreditacion?.tipo}</p>
+                                            <p className="text-gray-700"><span className="font-semibold">Vigencia:</span> {programa.acreditacion?.vigencia ? new Date(programa.acreditacion.vigencia).toLocaleDateString('es-CO') : 'N/A'}</p>
+                                          </>
+                                        )}
+                                        <p className="text-gray-700"><span className="font-semibold">Creación:</span> {programa.fechaCreacion ? new Date(programa.fechaCreacion).toLocaleDateString('es-CO') : 'N/A'}</p>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
 
                                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mt-4">
                                   <h4 className="font-black text-gray-900 text-sm mb-2">Descripción</h4>
                                   <p className="text-sm text-gray-700">{programa.descripcion}</p>
+                                  <h4 className="font-black text-gray-900 text-sm mb-2">Requisitos de Ingreso</h4>
+                                  <p className="text-sm text-gray-700">{programa.requisitosDeIngreso}</p>
                                 </div>
+
+                                {/* Plan de Estudios — Asignaturas */}
+                                <AsignaturasPlanEstudios
+                                  programaId={String(programa.id)}
+                                  programaNombre={programa.nombre}
+                                  totalCreditos={programa.creditos || 160}
+                                  totalSemestres={programa.duracionSemestres || 10}
+                                />
                               </div>
                             </motion.div>
                           </td>
                         </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
+                      )
+                    ])}
+                  </AnimatePresence>
               </tbody>
             </table>
           </div>
 
           {/* Vista Mobile */}
           <div className="lg:hidden divide-y divide-gray-200">
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {paginatedProgramas.map((programa, index) => (
                 <motion.div
                   key={programa.id}
@@ -897,11 +863,89 @@ export function ProgramasAcademicosModule() {
                       <Users className="w-3.5 h-3.5" />
                       {programa.estudiantesActivos}
                     </div>
+                    {(programa.totalAsignaturas || 0) > 0 && (
+                      <div className="flex items-center gap-1">
+                        <BookOpen className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="font-semibold">{programa.totalAsignaturas} asig.</span>
+                        <span className="text-gray-400">({programa.creditosPlan} cr.)</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     {getNivelBadge(programa.nivelFormacion)}
                     <Badge variant="outline" className="text-xs">{programa.modalidad}</Badge>
                   </div>
+
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id);
+                        }}
+                        className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold text-[#003DA5] bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all min-h-[44px]"
+                      >
+                        {expandedProgramaId === programa.id ? 'Ocultar' : 'Ver Detalles'}
+                        <ChevronDown className={`w-4 h-4 transition-transform ${expandedProgramaId === programa.id ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(programa); }}
+                        className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 active:scale-95 transition-all min-h-[44px]"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Editar
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(programa); }}
+                      className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 active:scale-95 transition-all border border-red-100 min-h-[44px]"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Eliminar Programa
+                    </button>
+                  </div>
+
+                  {expandedProgramaId === programa.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden mt-3"
+                    >
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100 p-4 space-y-4 shadow-inner">
+                        <div>
+                          <h4 className="font-bold text-gray-900 text-[13px] mb-2 flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Información Académica
+                          </h4>
+                          <div className="space-y-1.5 text-xs text-gray-700">
+                            <p><span className="font-semibold text-gray-900">Duración:</span> {programa.duracionSemestres} semestres</p>
+                            <p><span className="font-semibold text-gray-900">Jornada:</span> {programa.jornada}</p>
+                            <p><span className="font-semibold text-gray-900">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
+                            <p><span className="font-semibold text-gray-900">Facultad:</span> {programa.facultad}</p>
+                            <p><span className="font-semibold text-gray-900">Costo:</span> ${(programa.costoMatricula || 0).toLocaleString()} COP</p>
+                          </div>
+                        </div>
+                        
+                        {(programa.totalAsignaturas || 0) > 0 && (
+                           <div>
+                             <h4 className="font-bold text-gray-900 text-[13px] mb-3 flex items-center gap-1">
+                                <BookOpen className="w-3.5 h-3.5 text-[#003DA5]" />
+                                Plan de Estudios
+                             </h4>
+                             <AsignaturasPlanEstudios
+                                programaId={String(programa.id)}
+                                programaNombre={programa.nombre}
+                                totalCreditos={programa.creditos || 160}
+                                totalSemestres={programa.duracionSemestres || 10}
+                             />
+                           </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -909,45 +953,79 @@ export function ProgramasAcademicosModule() {
 
           {/* Empty State */}
           {filteredProgramas.length === 0 && (
-            <div className="py-16 px-4 text-center">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                <GraduationCap className="w-10 h-10 text-gray-400" />
+            <div className="py-20 px-4 text-center">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center">
+                <GraduationCap className="w-8 h-8 text-[#003DA5]/40" />
               </div>
-              <h3 className="font-bold text-gray-900 text-lg mb-2">No se encontraron programas</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                {hasActiveFilters ? 'Intenta ajustar los filtros' : 'Aún no hay programas registrados'}
+              <h3 className="font-bold text-gray-900 text-sm mb-1">No se encontraron programas</h3>
+              <p className="text-xs text-gray-400 mb-5 max-w-xs mx-auto">
+                {hasActiveFilters ? 'Intenta ajustar los filtros de búsqueda' : 'Aún no hay programas registrados. Crea uno para comenzar.'}
               </p>
-              {hasActiveFilters && (
+              <div className="flex items-center justify-center gap-3">
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="px-4 py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+                  >
+                    Limpiar Filtros
+                  </button>
+                )}
                 <button
-                  onClick={clearAllFilters}
-                  className="px-4 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002d7a] transition-colors font-semibold text-sm"
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-5 py-2 bg-[#003DA5] text-white text-xs font-bold rounded-lg hover:bg-[#002d7a] transition-all shadow-sm flex items-center gap-1.5"
                 >
-                  Limpiar Filtros
+                  <Plus className="w-3.5 h-3.5" />
+                  Crear Programa
                 </button>
-              )}
+              </div>
             </div>
           )}
 
           {/* Paginación */}
           {filteredProgramas.length > 0 && (
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+            <div className="border-t border-gray-100 px-6 py-3 bg-gray-50/30">
               <PaginationPremium
                 currentPage={currentPage}
                 totalPages={totalPages}
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
-                totalItems={filteredProgramas.length}
+                totalItems={pagination?.total || 0}
               />
             </div>
           )}
-        </Card>
       </motion.div>
 
-      {/* Modal para Crear/Editar Programa */}
+      {/* Dialog para Eliminar Programa */}
+      <ConfirmationDialog
+        open={!!programaToDelete}
+        title="Eliminar Programa"
+        description={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onClose={() => setProgramaToDelete(null)}
+      />
+      </>
+      )}
+
+      {/* Modal para Crear/Editar Programa (disponible en todas las vistas) */}
       {showCreateModal && (
-        <CreateProgramaModal 
+        <CreateProgramaModal
           onClose={handleCloseModal}
           programaToEdit={programaToEdit}
+          periodoAcademico={periodoActivoCodigoPA}
+          onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+        />
+      )}
+
+      {/* Modal para ver CETAPs */}
+      {selectedProgramaForCetaps && (
+        <ProgramCetapsModal
+          onClose={() => setSelectedProgramaForCetaps(null)}
+          programaNombre={selectedProgramaForCetaps.nombre}
+          cetapsList={selectedProgramaForCetaps.cetapsList || []}
+          onUpdateEstudiantes={handleUpdateEstudiantesCetap}
         />
       )}
     </Container4K>

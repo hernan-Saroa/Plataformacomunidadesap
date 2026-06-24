@@ -210,7 +210,7 @@ export function ModalNuevoProcesoDisciplinario({
         dependenciaInvestigado: depLabel,
         tipoFalta: formData.tipoFalta,
         hechos: formData.descripcionHechos + (formData.observaciones ? `\n\nObservaciones: ${formData.observaciones}` : ''),
-        abogadoSustanciador: investigadorNombre,
+        abogadoSustanciador: formData.investigador,
         fechaRadicacion: new Date(formData.fechaHechos).toISOString(),
         fechaHechos: new Date(formData.fechaHechos).toISOString(),
         demandante: 'Oficina de Control Interno',

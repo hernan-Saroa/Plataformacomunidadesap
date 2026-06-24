@@ -69,14 +69,15 @@ export interface LoginCredentials {
 
 export interface LoginResponse {
   user: User;
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
 }
 
 export interface RefreshTokenResponse {
-  accessToken: string;
-  expiresIn: number;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
 }
 
 export interface AuthUser {
@@ -701,6 +702,7 @@ export interface ReviewRequest {
   reviewRecommendationReason?: string | null;
   reviewPayload?: Record<string, unknown> | null;
   reviewSubmittedAt?: string | null;
+  reviewSubmittedBy?: string | null;
   reviewSubmittedByName?: string | null;
   approverDecision?: 'APPROVED' | 'REJECTED' | 'OBSERVATION' | string | null;
   approverNotes?: string | null;
@@ -730,6 +732,14 @@ export interface ReviewRequest {
     uploadedAt: string;
     url?: string;
   }>;
+  requesterSupportFile?: {
+    originalName: string;
+    storedName: string;
+    mimeType: string;
+    sizeBytes: number;
+    uploadedAt: string;
+    url?: string;
+  } | null;
   
   // Fechas
   createdAt: string;

@@ -73,8 +73,8 @@ export function AlertasTempranasPTA() {
   const loadData = async () => {
     setLoading(true);
     const [ptaRes, docRes] = await Promise.all([
-      getAllPTAs({ periodo: '2026-1' }),
-      getDocentesDisponibles('2026-1'),
+      getAllPTAs({ periodo: '2025-2' }),
+      getDocentesDisponibles('2025-2'),
     ]);
     // Validación robusta: asegurar que siempre sean arrays
     if (ptaRes.success && Array.isArray(ptaRes.data)) {
@@ -105,7 +105,7 @@ export function AlertasTempranasPTA() {
       const dias = diasDesde(lastUpdate);
 
       // 1. PTAs estancados (>15 días sin movimiento en aprobación)
-      if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado) && dias > 15) {
+      if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado) && dias > 15) {
         items.push({
           id: `estancado-${pta.id}`,
           severidad: dias > 30 ? 'critica' : dias > 20 ? 'alta' : 'media',

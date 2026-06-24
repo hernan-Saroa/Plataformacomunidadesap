@@ -43,10 +43,17 @@ import {
   BarChart3,
   Cog,
   Scale,
-  QrCode
+  QrCode,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Filter,
+  KeyRound, // Para forzar restablecimiento de contraseña
+  Mail // Para correo de restablecimiento
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Avatar, AvatarFallback, AvatarImage, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
 import { AssignAccessModal } from './AssignAccessModal';  
@@ -62,10 +69,13 @@ import { DigitalFolderSection } from './DigitalFolderSection';
 import { UserExpandedView } from './UserExpandedView';  
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../hooks';
 import { ModalCambiarContrasena } from "./ModalCambiarContrasena"; 
 import { estructuraService } from '../../services/estructuraService';
+import { PasswordHistoryModal } from './PasswordHistoryModal';
+import { useTableColumns, ColumnSelector } from '../../hooks/useTableColumns';
+import type { ColumnDefinition } from '../../hooks/useTableColumns';
 
 const ICON_MAP: Record<string, any> = {
   Shield,
@@ -90,6 +100,15 @@ const getIconComponent = (iconName: string) => {
 // ✅ DÍA 4: Container4K para padding adaptativo
 // ✅ DÍA 5: ResponsiveHeader para headers adaptativos
 
+const PERSONAS_COLUMNS: ColumnDefinition[] = [
+  { key: 'roles', label: 'Roles', default: true },
+  { key: 'territorial', label: 'Territorial', default: true },
+  { key: 'cetap', label: 'CETAP', default: true },
+  { key: 'carpeta', label: 'Carpeta Digital', default: false },
+  { key: 'estado', label: 'Estado', default: true },
+  { key: 'actividad', label: 'Última Actividad', default: false },
+];
+
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -102,6 +121,9 @@ export function UsersPersonsModulePremium() {
     unidadOrganizacionalFilter,
     setUnidadOrganizacionalFilter,
   ] = useState<string | undefined>(undefined); // ✅ FILTRO COHERENTE CON ESTRUCTURA
+  const [sortField, setSortField] = useState<string | undefined>('usuario');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | undefined>('asc');
+
   const [expandedUserId, setExpandedUserId] = useState<
     string | null
   >(null);
@@ -125,12 +147,49 @@ export function UsersPersonsModulePremium() {
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesSaving, setRolesSaving] = useState(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+  const [isRoleFilterOpen, setIsRoleFilterOpen] = useState(false);
+  const [roleFilterSearch, setRoleFilterSearch] = useState('');
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false); // ✅ MODAL CAMBIAR CONTRASEÑA
-  const itemsPerPage = 10;
+  const [showPasswordHistoryModal, setShowPasswordHistoryModal] = useState(false);
+  const [passwordHistory, setPasswordHistory] = useState<any[]>([]);
+  const [isLoadingPasswordHistory, setIsLoadingPasswordHistory] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const saved = localStorage.getItem('usersItemsPerPage');
+    return saved ? parseInt(saved, 10) : 10;
+  });
+
+  const handleItemsPerPageChange = (newItems: number) => {
+    setItemsPerPage(newItems);
+    localStorage.setItem('usersItemsPerPage', newItems.toString());
+    setCurrentPage(1); // Resetear a la primera página
+  };
+
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
   const isMountedRef = useRef(true);
   const latestLoadUsersRequestRef = useRef(0);
+  const { visibleCols, setVisibleCols } = useTableColumns('personas', PERSONAS_COLUMNS);
+
+  const sortedAvailableRoles = useMemo(
+    () => [...availableRoles].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })
+    ),
+    [availableRoles]
+  );
+
+  const filteredRoleOptions = useMemo(() => {
+    const query = roleFilterSearch.trim().toLowerCase();
+    if (!query) return sortedAvailableRoles;
+    return sortedAvailableRoles.filter((role) =>
+      (role.name || '').toLowerCase().includes(query) ||
+      (role.code || '').toLowerCase().includes(query)
+    );
+  }, [roleFilterSearch, sortedAvailableRoles]);
+
+  const selectedRoleFilter = useMemo(
+    () => sortedAvailableRoles.find((role) => role.id === roleFilter),
+    [roleFilter, sortedAvailableRoles]
+  );
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
@@ -144,6 +203,8 @@ export function UsersPersonsModulePremium() {
         search: debouncedSearchQuery.trim() || undefined,
         status: statusFilter === 'all' ? undefined : (statusFilter as 'active' | 'inactive'),
         role: roleFilter === 'all' ? undefined : roleFilter,
+        sortBy: sortField,
+        sortOrder: sortOrder,
       });
 
       // Mapear usuarios de la API al formato esperado por el componente
@@ -246,7 +307,20 @@ export function UsersPersonsModulePremium() {
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter]); // Recargar cuando cambia paginación o filtros backend
+  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter, sortField, sortOrder, itemsPerPage]); // Recargar cuando cambia paginación, límite, orden o filtros backend
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortOrder === 'asc') setSortOrder('desc');
+      else if (sortOrder === 'desc') {
+        setSortField(undefined);
+        setSortOrder(undefined);
+      }
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
 
   // Usuarios actuales (de API o mock)
   const currentUsers = users;
@@ -277,7 +351,6 @@ export function UsersPersonsModulePremium() {
     ? Math.ceil(filteredUsers.length / itemsPerPage)
     : Math.ceil(totalUsers / itemsPerPage);
 
-  // Si hay filtros locales, paginar en frontend. Si no, los datos ya vienen paginados del backend
   const paginatedUsers = hasClientSideFilters
     ? filteredUsers.slice(
         (currentPage - 1) * itemsPerPage,
@@ -286,6 +359,7 @@ export function UsersPersonsModulePremium() {
     : filteredUsers;
 
   const displayUsers = paginatedUsers.map(user => {
+
     // ✅ Usar datos de seccional y sede del backend
     // Si no hay datos del backend, usar el formato anterior para compatibilidad
     const territorial = user.seccional ? {
@@ -512,6 +586,11 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const userId = selectedUser?.id_user || selectedUser?.id;
+      if (!userId) {
+        throw new Error("No se pudo identificar el usuario a editar.");
+      }
+
       const principalAsignacion =
         userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
         userData.asignacionesSedes?.[0];
@@ -532,6 +611,17 @@ export function UsersPersonsModulePremium() {
         }
       }
 
+      // Map single string role to roleIds array
+      let mappedRoleIds = userData.roleIds || [];
+      if (mappedRoleIds.length === 0 && userData.role) {
+        const roleObj = availableRoles.find(
+          (r: any) => r.name === userData.role || r.nombre === userData.role || r.code === userData.role
+        );
+        if (roleObj) {
+          mappedRoleIds = [roleObj.id];
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const updateUserData = {
         first_name: userData.firstName,
@@ -541,13 +631,36 @@ export function UsersPersonsModulePremium() {
         email: userData.email,
         phone: userData.phone || '',
         gender: userData.gender || '',
-        roleIds: userData.roleIds || [],
+        birth_date: userData.birthDate,
+        address: userData.address,
+        city: userData.city,
+        empresa_contratista: userData.empresaContratista,
+        dependencia_grupo_programa: userData.dependenciaGrupoPrograma,
+        cargo_semestre: userData.cargoSemestre,
+        contrato: userData.contrato,
+        enrollment_date: userData.enrollmentDate,
+        fecha_fin_contrato: userData.fechaFinContrato,
+        observaciones: userData.observaciones,
+        tipo_vinculacion: userData.tipoVinculacion,
+        horas_asignables: userData.horasAsignables,
+        pregrado_detalle: userData.pregradoDetalle,
+        doctorado_detalle: userData.doctoradoDetalle,
+        puntaje_salarial: userData.puntajeSalarial,
+        roleIds: mappedRoleIds,
+        status: userData.status,
         // Agregar seccional y sede si están definidos
         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
-      await usersService.updateUser(userData.id_user || userData.id, updateUserData);
+      await usersService.updateUser(userId, updateUserData);
+
+      // Si el estado cambió, actualizarlo usando el endpoint específico
+      const wasActive = selectedUser?.status === 'active' || selectedUser?.is_active === true;
+      const isNowActive = userData.status === 'active';
+      if (wasActive !== isNowActive) {
+        await usersService.updateUserStatus(userId, isNowActive);
+      }
 
       toast.success('Usuario Actualizado', {
         description: `${userData.firstName} ${userData.lastName} ha sido actualizado exitosamente.`
@@ -732,6 +845,37 @@ export function UsersPersonsModulePremium() {
     }
   };
 
+  // ✅ NUEVO: Forzar restablecimiento de contraseña
+  const handleForcePasswordReset = async (user: any) => {
+    const userEmail = user.email || user.person?.email || user.username;
+    if (!userEmail) {
+      toast.error('Error', { description: 'No se encontró el correo electrónico del usuario.' });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Enviar correo de restablecimiento de contraseña a ${user.firstName || user.person?.first_name} ${user.lastName || user.person?.last_name}?\n\nSe enviará un código OTP al correo: ${userEmail}`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await usersService.forcePasswordReset(userEmail);
+      toast.success('Correo de restablecimiento enviado', {
+        description: `Se envió un código OTP a ${userEmail}. El usuario deberá ingresar el código y crear una nueva contraseña.`,
+        duration: 6000,
+      });
+    } catch (error: any) {
+      console.error('Error al forzar restablecimiento:', error);
+      toast.error('Error al enviar correo de restablecimiento', {
+        description: error?.message || 'No se pudo enviar el correo. Intente nuevamente.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ✅ NUEVO: Activar usuario
   const handleActivateUser = async (user: any) => {
     try {
@@ -759,6 +903,37 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const principalAsignacion =
+        userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
+        userData.asignacionesSedes?.[0];
+      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
+      let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
+
+      // Si hay sede seleccionada y no viene seccional en el formulario, resolverla desde estructura-organizacional
+      if (!Number.isFinite(seccionalIdNumerica as number) && Number.isFinite(sedeIdNumerica as number)) {
+        try {
+          const sedeResponse = await estructuraService.obtenerSedePorId(sedeIdNumerica as number);
+          const resolvedSeccionalId = sedeResponse?.data?.idSeccional;
+          if (resolvedSeccionalId) {
+            seccionalIdNumerica = Number(resolvedSeccionalId);
+          }
+        } catch (error) {
+          console.warn('No se pudo resolver idSeccional desde idSede:', error);
+        }
+      }
+
+      // Map single string role to roleIds array
+      let mappedRoleIds = userData.roleIds || [];
+      if (mappedRoleIds.length === 0 && userData.role) {
+        const roleObj = availableRoles.find(
+          (r: any) => r.name === userData.role || r.nombre === userData.role || r.code === userData.role
+        );
+        if (roleObj) {
+          mappedRoleIds = [roleObj.id];
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const createUserData = {
         first_name: String(userData.firstName || '').trim(),
@@ -770,10 +945,25 @@ export function UsersPersonsModulePremium() {
         email: String(userData.email || '').trim().toLowerCase(),
         phone: String(userData.phone || '').trim(),
         gender: userData.gender || '',
-        roleIds: userData.roleIds || [],
+        birth_date: userData.birthDate,
+        address: userData.address,
+        city: userData.city,
+        empresa_contratista: userData.empresaContratista,
+        dependencia_grupo_programa: userData.dependenciaGrupoPrograma,
+        cargo_semestre: userData.cargoSemestre,
+        contrato: userData.contrato,
+        enrollment_date: userData.enrollmentDate,
+        fecha_fin_contrato: userData.fechaFinContrato,
+        observaciones: userData.observaciones,
+        tipo_vinculacion: userData.tipoVinculacion,
+        horas_asignables: userData.horasAsignables,
+        pregrado_detalle: userData.pregradoDetalle,
+        doctorado_detalle: userData.doctoradoDetalle,
+        puntaje_salarial: userData.puntajeSalarial,
+        roleIds: mappedRoleIds,
         // Agregar seccional y sede si están definidos
-        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
-        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
       const newUser = await usersService.createUser(createUserData);
@@ -815,10 +1005,10 @@ export function UsersPersonsModulePremium() {
   };
 
   const handleViewPasswordHistory = (user: any) => {
-    toast.info("Historial de Contraseñas", {
-      description: `Mostrando historial de ${user.firstName} ${user.lastName}`,
-    });
-    // En producción: abrir modal con historial de cambios
+    setSelectedUser(user);
+    setPasswordHistory([]);
+    setIsLoadingPasswordHistory(false);
+    setShowPasswordHistoryModal(true);
   };
 
   const clearAllFilters = () => {
@@ -907,12 +1097,43 @@ export function UsersPersonsModulePremium() {
     );
   }
 
+  const renderSortableHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const isSorted = sortField === field;
+    return (
+      <th
+        className={`text-${align} font-semibold uppercase cursor-pointer hover:bg-gray-100 transition-colors group`}
+        style={{
+          padding: "12px 16px",
+          fontSize: "12px",
+          lineHeight: "16px",
+          color: isSorted ? "#003DA5" : "#6B7280",
+          letterSpacing: "0.5px",
+          whiteSpace: "nowrap",
+          userSelect: "none",
+        }}
+        onClick={() => handleSort(field)}
+        title={`Organizar por ${label.toLowerCase()}`}
+      >
+        <div className={`flex items-center gap-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+          {label}
+          <div className={`flex items-center justify-center w-4 h-4 rounded transition-colors ${isSorted ? 'bg-blue-50 text-[#003DA5]' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
+            {isSorted && sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> :
+             isSorted && sortOrder === 'desc' ? <ArrowDown className="w-3 h-3" /> :
+             <ArrowUpDown className="w-3 h-3" />}
+          </div>
+        </div>
+      </th>
+    );
+  };
+
+  // ═══════════════════════════════ RENDER ═══════════════════════════════
   return (
     <>
     <Toaster position="top-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
+        key="header"
         title="Gestión Personas"
         description="Gestión integral de personas con asignación de roles múltiples simultáneos"
         icon={Users}
@@ -934,6 +1155,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
       <motion.div
+        key="search-and-filters"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.15 }}
@@ -1004,20 +1226,132 @@ export function UsersPersonsModulePremium() {
               <option value="inactive">Inactivos</option>
             </select>
 
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-3 border-2 border-[#D1D5DB] rounded-lg bg-white cursor-pointer font-medium text-sm transition-all"
-              style={{ height: "44px" }}
-            >
-              <option value="all">Todos los roles</option>
-              {rolesLoading && <option value="" disabled>Cargando roles...</option>}
-              {availableRoles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative" style={{ minWidth: "280px" }}>
+              <button
+                type="button"
+                onClick={() => setIsRoleFilterOpen(!isRoleFilterOpen)}
+                className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-[#003DA5] hover:border-[#003DA5] transition-colors flex items-center justify-between bg-white"
+                style={{ height: "44px" }}
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Shield className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  {selectedRoleFilter ? (
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: selectedRoleFilter.color || "#003DA5" }}
+                      />
+                      <span className="text-gray-900 truncate">{selectedRoleFilter.name}</span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">{rolesLoading ? "Cargando roles..." : "Todos los roles"}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {roleFilter !== "all" && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setRoleFilter("all");
+                        setRoleFilterSearch("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setRoleFilter("all");
+                          setRoleFilterSearch("");
+                        }
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Limpiar filtro"
+                    >
+                      <X className="w-3 h-3 text-gray-500" />
+                    </span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isRoleFilterOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+
+              {isRoleFilterOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsRoleFilterOpen(false)} />
+                  <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-hidden">
+                    <div className="p-3 border-b border-gray-200">
+                      <input
+                        type="text"
+                        placeholder="Buscar rol..."
+                        value={roleFilterSearch}
+                        onChange={(e) => setRoleFilterSearch(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+
+                    <div className="overflow-y-auto max-h-80">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter("all");
+                          setIsRoleFilterOpen(false);
+                          setRoleFilterSearch("");
+                        }}
+                        className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 ${
+                          roleFilter === "all" ? "bg-blue-50" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-sm font-medium text-gray-900">Todos los roles</span>
+                        </div>
+                      </button>
+
+                      {rolesLoading ? (
+                        <div className="p-4 text-center text-sm text-gray-500">Cargando roles...</div>
+                      ) : filteredRoleOptions.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">No se encontraron roles</div>
+                      ) : (
+                        filteredRoleOptions.map((role) => (
+                          <button
+                            key={role.id}
+                            type="button"
+                            onClick={() => {
+                              setRoleFilter(role.id);
+                              setIsRoleFilterOpen(false);
+                              setRoleFilterSearch("");
+                            }}
+                            className={`w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+                              roleFilter === role.id ? "bg-blue-50" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: role.color || "#003DA5" }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-900 truncate">{role.name}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="bg-gray-50 px-3 py-2 border-t border-gray-200 text-xs text-gray-600">
+                      <div className="flex items-center justify-between">
+                        <span>Total: {filteredRoleOptions.length} roles</span>
+                        <span className="text-gray-500">Orden alfabético</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             <select
               value={locationFilter}
@@ -1080,7 +1414,7 @@ export function UsersPersonsModulePremium() {
             )}
             {roleFilter !== "all" && (
               <Badge variant="outline" className="gap-1">
-                Rol: {availableRoles.find(r => r.id === roleFilter)?.name}
+                Rol: {selectedRoleFilter?.name}
                 <button
                   onClick={() => setRoleFilter("all")}
                   className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
@@ -1111,20 +1445,21 @@ export function UsersPersonsModulePremium() {
         )}
       </motion.div>
 
-      {/* ✅ TARJETAS DE FILTROS RÁPIDOS POR ROL */}
+      {/* 🚀 TARJETAS DE FILTROS RAPIDOS POR ROL */}
       <motion.div
+        key="quick-filters-cards"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.18 }}
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4"
       >
-        {quickFiltersData.map((filter) => {
+        {quickFiltersData.map((filter, filterIdx) => {
           const Icon = filter.icon;
           const isActive = roleFilter === filter.id;
           
           return (
             <motion.button
-              key={filter.code}
+              key={filter.code ? `${filter.code}-${filterIdx}` : `filter-${filterIdx}`}
               onClick={() => {
                 if (isActive) {
                   setRoleFilter("all");
@@ -1223,6 +1558,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Tabla Premium - Según especificaciones de Table */}
       <motion.div
+        key="premium-table-container"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
@@ -1259,9 +1595,16 @@ export function UsersPersonsModulePremium() {
                   {loading ? 'Cargando usuarios...' : `Mostrando ${displayUsers.length} de ${totalUsers} usuarios`}
                 </p>
               </div>
-              <Badge variant="outline" className="font-semibold">
-                Total: {totalUsers}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="font-semibold">
+                  Total: {totalUsers}
+                </Badge>
+                <ColumnSelector
+                  columns={PERSONAS_COLUMNS}
+                  visibleCols={visibleCols}
+                  setVisibleCols={setVisibleCols}
+                />
+              </div>
             </div>
           </div>
 
@@ -1291,97 +1634,13 @@ export function UsersPersonsModulePremium() {
                 }}
               >
                 <tr>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Usuario
-                  </th>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Roles
-                  </th>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Territorial
-                  </th>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    CETAP
-                  </th>
-                  <th
-                    className="text-center font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Carpeta Digital
-                  </th>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Estado
-                  </th>
-                  <th
-                    className="text-left font-semibold uppercase"
-                    style={{
-                      padding: "12px 16px",
-                      fontSize: "12px",
-                      lineHeight: "16px",
-                      color: "#6B7280",
-                      letterSpacing: "0.5px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Última Actividad
-                  </th>
+                  {renderSortableHeader('Usuario', 'usuario')}
+                  {visibleCols.has('roles') && renderSortableHeader('Roles', 'roles')}
+                  {visibleCols.has('territorial') && renderSortableHeader('Territorial', 'territorial')}
+                  {visibleCols.has('cetap') && renderSortableHeader('CETAP', 'cetap')}
+                  {visibleCols.has('carpeta') && renderSortableHeader('Carpeta Digital', 'carpeta', 'center')}
+                  {visibleCols.has('estado') && renderSortableHeader('Estado', 'estado')}
+                  {visibleCols.has('actividad') && renderSortableHeader('Última Actividad', 'actividad')}
                   <th
                     className="text-right font-semibold uppercase"
                     style={{
@@ -1399,10 +1658,10 @@ export function UsersPersonsModulePremium() {
               </thead>
               <tbody style={{ background: "#FFFFFF" }}>
                 <AnimatePresence mode="popLayout">
-                  {displayUsers.map((user, index) => (
-                    <React.Fragment key={user.id}>
+                  {displayUsers.flatMap((user, index) => {
+                    const items = [
                       <motion.tr
-                        key={`row-${user.id}`}
+                        key={user.id ? `row-${user.id}-${index}` : `row-${index}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -1465,11 +1724,22 @@ export function UsersPersonsModulePremium() {
                               >
                                 {user.email}
                               </p>
+                              <p
+                                style={{
+                                  fontSize: "11px",
+                                  lineHeight: "14px",
+                                  color: "#9CA3AF",
+                                  marginTop: "2px"
+                                }}
+                              >
+                                {user.identificationType} {user.document}
+                              </p>
                             </div>
                           </div>
                         </td>
 
                         {/* Celda Roles - Mostrar todos los roles simultáneos */}
+                        {visibleCols.has('roles') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1487,30 +1757,27 @@ export function UsersPersonsModulePremium() {
                             ))}
                           </div>
                         </td>
+                        )}
 
                         {/* ✅ Celda Territorial */}
+                        {visibleCols.has('territorial') && (
                         <td
                           style={{
                             padding: "16px",
                             verticalAlign: "middle",
                           }}
                         >
-                          {user.territorial ? (
+                          {user.seccional ? (
                             <div className="flex items-center gap-2">
                               <Building2 className="w-4 h-4 text-green-600" />
                               <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {user.territorial.nombre}
+                                <p className="text-sm font-medium text-gray-900" title={user.seccional.nomSeccional}>
+                                  {user.seccional.nomSeccional.length > 25 ? `${user.seccional.nomSeccional.substring(0, 25)}...` : user.seccional.nomSeccional}
                                 </p>
-                                {user.territorial
-                                  .departamento && (
-                                  <p className="text-xs text-gray-500">
-                                    {
-                                      user.territorial
-                                        .departamento
-                                    }
-                                  </p>
-                                )}
+                                <p className="text-xs text-gray-500">
+                                  {user.seccional.codSeccional && `Cód: ${user.seccional.codSeccional}`}
+                                  {user.seccional.ubicacion && ` • ${user.seccional.ubicacion}`}
+                                </p>
                               </div>
                             </div>
                           ) : (
@@ -1519,8 +1786,10 @@ export function UsersPersonsModulePremium() {
                             </span>
                           )}
                         </td>
+                        )}
 
                         {/* ✅ Celda CETAP */}
+                        {visibleCols.has('cetap') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1528,29 +1797,16 @@ export function UsersPersonsModulePremium() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {user.cetap ? (
+                          {user.sede ? (
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-orange-600" />
                               <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {user.cetap.nombre}
-                                </p>
-                                {user.cetap.ciudad && (
-                                  <p className="text-xs text-gray-500">
-                                    {user.cetap.ciudad}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ) : user.sedeCentral ? (
-                            <div className="flex items-center gap-2">
-                              <Building2 className="w-4 h-4 text-blue-600" />
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  Sede Central
+                                <p className="text-sm font-medium text-gray-900" title={user.sede.nomSede}>
+                                  {user.sede.nomSede.length > 25 ? `${user.sede.nomSede.substring(0, 25)}...` : user.sede.nomSede}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  Bogotá D.C.
+                                  {user.sede.codSede && `Cód: ${user.sede.codSede}`}
+                                  {user.sede.ubicacion && ` • ${user.sede.ubicacion}`}
                                 </p>
                               </div>
                             </div>
@@ -1560,8 +1816,10 @@ export function UsersPersonsModulePremium() {
                             </span>
                           )}
                         </td>
+                        )}
 
                         {/* ✅ Celda Carpeta Digital */}
+                        {visibleCols.has('carpeta') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1597,8 +1855,10 @@ export function UsersPersonsModulePremium() {
                             </button>
                           </div>
                         </td>
+                        )}
 
                         {/* Celda Estado */}
+                        {visibleCols.has('estado') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1627,8 +1887,10 @@ export function UsersPersonsModulePremium() {
                             })()}
                           </div>
                         </td>
+                        )}
 
                         {/* Celda Última Actividad */}
+                        {visibleCols.has('actividad') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1653,6 +1915,7 @@ export function UsersPersonsModulePremium() {
                             </span>
                           </div>
                         </td>
+                        )}
 
                         {/* Celda Acciones */}
                         <td
@@ -1708,8 +1971,7 @@ export function UsersPersonsModulePremium() {
                                       "digital-folder",
                                     );
                                   }}
-                                  className="bg-blue-50 hover:bg-blue-100"
-                                  style={{ color: "#003DA5" }}
+                                  className="text-[#003DA5] data-[highlighted]:bg-[#003DA5] data-[highlighted]:text-white"
                                 >
                                   <FolderOpen className="w-4 h-4 mr-2" />
                                   Ver Carpeta Digital
@@ -1726,26 +1988,24 @@ export function UsersPersonsModulePremium() {
                                 {!hasSuperAdminRole(user) && (
                                   <DropdownMenuItem
                                     onClick={() => handleAssignRoles(user)}
-                                    className="bg-blue-50 hover:bg-blue-100"
-                                    style={{ color: '#003DA5' }}
+                                    className="text-[#003DA5] data-[highlighted]:bg-[#003DA5] data-[highlighted]:text-white"
                                   >
                                     <Users className="w-4 h-4 mr-2" />
                                     Asignar Roles
                                   </DropdownMenuItem>
                                 )}
-                                {/* <DropdownMenuItem
-                                  onClick={() => handleAssignAccess(user)}
-                                  className="bg-amber-50 hover:bg-amber-100"
-                                  style={{ color: "#D97706" }}
+                                <DropdownMenuItem
+                                  onClick={() => handleForcePasswordReset(user)}
+                                  className="text-[#7C3AED] data-[highlighted]:bg-[#7C3AED] data-[highlighted]:text-white"
                                 >
-                                  <Shield className="w-4 h-4 mr-2" />
-                                  Asignar Accesos
-                                </DropdownMenuItem> */}
+                                  <KeyRound className="w-4 h-4 mr-2" />
+                                  Forzar Restablecer Contraseña
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 {user.status === 'active' || user.is_active ? (
                                   <DropdownMenuItem
                                     onClick={() => handleBlockUser(user)}
-                                    style={{ color: 'rgba(245, 158, 11, 1)' }}
+                                    className="text-amber-500 data-[highlighted]:bg-amber-500 data-[highlighted]:text-white"
                                   >
                                     <Lock className="w-4 h-4 mr-2" />
                                     Bloquear Usuario
@@ -1753,8 +2013,7 @@ export function UsersPersonsModulePremium() {
                                 ) : (
                                   <DropdownMenuItem
                                     onClick={() => handleActivateUser(user)}
-                                    className="bg-green-50 hover:bg-green-100"
-                                    style={{ color: '#10B981' }}
+                                    className="text-emerald-600 data-[highlighted]:bg-emerald-600 data-[highlighted]:text-white"
                                   >
                                     <Unlock className="w-4 h-4 mr-2" />
                                     Activar Usuario
@@ -1763,7 +2022,7 @@ export function UsersPersonsModulePremium() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => handleDelete(user)}
-                                  style={{ color: '#EF4444' }}
+                                  className="text-red-500 data-[highlighted]:bg-red-500 data-[highlighted]:text-white"
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Eliminar
@@ -1813,10 +2072,11 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
-                      {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
-                      {expandedUserId === user.id && (
+                    ];
+                    if (expandedUserId === user.id) {
+                      items.push(
                         <motion.tr
-                          key={`${user.id}-expanded`}
+                          key={user.id ? `${user.id}-expanded-${index}` : `expanded-${index}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -1833,9 +2093,10 @@ export function UsersPersonsModulePremium() {
                             />
                           </td>
                         </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
+                      );
+                    }
+                    return items;
+                  })}
                 </AnimatePresence>
               </tbody>
             </table>
@@ -1849,7 +2110,7 @@ export function UsersPersonsModulePremium() {
             <AnimatePresence mode="popLayout">
               {displayUsers.map((user, index) => (
                 <motion.div
-                  key={user.id}
+                  key={user.id ? `mobile-user-${user.id}-${index}` : `mobile-user-${index}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
@@ -1949,8 +2210,7 @@ export function UsersPersonsModulePremium() {
                               setSelectedUser(user);
                               setViewMode("digital-folder");
                             }}
-                            className="bg-blue-50 hover:bg-blue-100"
-                            style={{ color: "#003DA5" }}
+                            className="text-blue-700 data-[highlighted]:bg-blue-600 data-[highlighted]:text-white"
                           >
                             <FolderOpen className="w-4 h-4 mr-2" />
                             Ver Carpeta Digital
@@ -1965,26 +2225,24 @@ export function UsersPersonsModulePremium() {
                           {!hasSuperAdminRole(user) && (
                             <DropdownMenuItem
                               onClick={() => handleAssignRoles(user)}
-                              className="bg-blue-50 hover:bg-blue-100"
-                              style={{ color: '#003DA5' }}
+                              className="text-blue-700 data-[highlighted]:bg-blue-600 data-[highlighted]:text-white"
                             >
                               <Users className="w-4 h-4 mr-2" />
                               Asignar Roles
                             </DropdownMenuItem>
                           )}
-                          {/* <DropdownMenuItem
-                            onClick={() => handleAssignAccess(user)}
-                            className="bg-amber-50 hover:bg-amber-100"
-                            style={{ color: "#D97706" }}
+                          <DropdownMenuItem
+                            onClick={() => handleForcePasswordReset(user)}
+                            className="text-purple-700 data-[highlighted]:bg-purple-600 data-[highlighted]:text-white"
                           >
-                            <Shield className="w-4 h-4 mr-2" />
-                            Asignar Accesos
-                          </DropdownMenuItem> */}
+                            <KeyRound className="w-4 h-4 mr-2" />
+                            Forzar Restablecer Contraseña
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {user.status === 'active' || user.is_active ? (
                             <DropdownMenuItem
                               onClick={() => handleBlockUser(user)}
-                              style={{ color: '#F59E0B' }}
+                              className="text-amber-600 data-[highlighted]:bg-amber-500 data-[highlighted]:text-white"
                             >
                               <Lock className="w-4 h-4 mr-2" />
                               Bloquear Usuario
@@ -1992,8 +2250,7 @@ export function UsersPersonsModulePremium() {
                           ) : (
                             <DropdownMenuItem
                               onClick={() => handleActivateUser(user)}
-                              className="bg-green-50 hover:bg-green-100"
-                              style={{ color: '#10B981' }}
+                              className="text-green-600 data-[highlighted]:bg-green-600 data-[highlighted]:text-white"
                             >
                               <Unlock className="w-4 h-4 mr-2" />
                               Activar Usuario
@@ -2002,7 +2259,7 @@ export function UsersPersonsModulePremium() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDelete(user)}
-                            style={{ color: "#EF4444" }}
+                            className="text-red-600 data-[highlighted]:bg-red-600 data-[highlighted]:text-white"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Eliminar
@@ -2137,6 +2394,7 @@ export function UsersPersonsModulePremium() {
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
                 totalItems={totalUsers}
+                onItemsPerPageChange={handleItemsPerPageChange}
               />
             </div>
           )}
@@ -2145,6 +2403,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Modal Crear Usuario */}
       <CreatePersonModal
+        key="create-person-modal"
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreateUser}
@@ -2152,6 +2411,7 @@ export function UsersPersonsModulePremium() {
 
       {/* Modal Editar Usuario */}
       <CreatePersonModal
+        key="edit-person-modal"
         isOpen={isCreateModalOpen}
         onClose={() => {
           setIsCreateModalOpen(false);
@@ -2165,6 +2425,7 @@ export function UsersPersonsModulePremium() {
       {/* Modal Asignar Accesos */}
       {showAssignAccessModal && selectedUser && (
         <AssignAccessModal
+          key="assign-access-modal"
           isOpen={showAssignAccessModal}
           onClose={() => {
             setShowAssignAccessModal(false);
@@ -2175,22 +2436,25 @@ export function UsersPersonsModulePremium() {
         />
       )}
 
-      {/* ✅ Modal Editar Usuario con Sedes */}
+      {/* ✅ Modal Editar Usuario Unificado */}
       {showEditModal && selectedUser && (
-        <EditUserModal
+        <CreatePersonModal
+          key="unified-edit-person-modal"
           isOpen={showEditModal}
           onClose={() => {
             setShowEditModal(false);
             setSelectedUser(null);
           }}
-          user={selectedUser}
-          onSave={handleSaveEdit}
+          initialData={selectedUser}
+          onCreate={handleSaveEdit}
+          editMode={true}
         />
       )}
 
       {/* ✅ Modal Asignar Roles */}
       {showAssignRolesModal && selectedUser && (
         <AssignRolesModal
+          key="assign-roles-modal"
           isOpen={showAssignRolesModal}
           onClose={() => {
             setShowAssignRolesModal(false);
@@ -2209,6 +2473,7 @@ export function UsersPersonsModulePremium() {
 
       {/* ✅ Modal Exportar Usuarios por Sede */}
       <ExportUsersBySede
+        key="export-users-by-sede"
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         usuarios={filteredUsers}
@@ -2217,6 +2482,7 @@ export function UsersPersonsModulePremium() {
       {/* ✅ Modal Cambiar Contraseña */}
       {showChangePasswordModal && selectedUser && (
         <ModalCambiarContrasena
+          key="modal-cambiar-contrasena"
           isOpen={showChangePasswordModal}
           onClose={() => {
             setShowChangePasswordModal(false);
@@ -2224,6 +2490,21 @@ export function UsersPersonsModulePremium() {
           }}
           user={selectedUser}
           mode="admin-reset"
+        />
+      )}
+
+      {/* ✅ Modal Historial de Contraseñas */}
+      {showPasswordHistoryModal && selectedUser && (
+        <PasswordHistoryModal
+          key="password-history-modal"
+          isOpen={showPasswordHistoryModal}
+          onClose={() => {
+            setShowPasswordHistoryModal(false);
+            setSelectedUser(null);
+          }}
+          user={selectedUser}
+          history={passwordHistory}
+          isLoading={isLoadingPasswordHistory}
         />
       )}
     </Container4K>

@@ -4,10 +4,10 @@
  * IMPACTO EN TODO EL SISTEMA: Todos los tableros Kanban leen desde aquí
  */
 
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useRef, ReactNode, useEffect } from 'react';
 import { toast } from 'sonner';
-import { legalService } from '../../../../services/api/legal.service';
-import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { legalService, ocService } from '../../../../services/api/legal.service';
+import { expedienteConfigService } from '../../services/api/expediente-config.service';
 
 // ============ TIPOS ============
 
@@ -17,6 +17,9 @@ export interface EstadoKanban {
   color: string;
   orden: number;
   activo: boolean;
+  aprobacionTipo?: 'ninguno' | 'rol' | 'usuario';
+  aprobacionRol?: string;
+  aprobacionUsuario?: string;
 }
 
 export interface ConfiguracionTiempo {
@@ -34,6 +37,21 @@ export interface TipoProcesoJudicial {
   plazo: number;
   alertaDias: number;
   activo: boolean;
+  rolAsociado?: string;
+  horaEspecial?: string;
+  camposObligatorios?: Record<string, boolean>;
+  camposVisibles?: Record<string, boolean>;
+  camposAdicionalesConfig?: Array<{
+    id: string;
+    nombre: string;
+    tipo: 'texto' | 'numero' | 'fecha' | 'booleano' | 'alfanumerico' | 'unico' | 'documento' | 'opciones-multiple' | 'lista';
+    obligatorio: boolean;
+    paso: number;
+    tiposDocumento?: string[];
+    opciones?: string[];
+  }>;
+  unidadTermino?: 'dias' | 'horas' | 'Dias Habiles' | 'Dias Calendario' | 'Horas' | 'Ambos';
+  estados?: EstadoKanban[];
 }
 
 export interface TipoAuto {
@@ -109,6 +127,7 @@ export interface OrganismoControl {
   id: string;
   nombre: string;
   descripcion: string;
+  correos: string[];
   activo: boolean;
 }
 
@@ -119,6 +138,22 @@ export interface EnteControlPM {
   descripcion: string;
   icono: string;
   color: string;
+  activo: boolean;
+}
+
+// Categorías de Documentos Configurables
+export interface CategoriaDocumento {
+  id: string;
+  nombre: string;
+  icono: string;
+  color: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface Dependencia {
+  id: string;
+  nombre: string;
   activo: boolean;
 }
 
@@ -133,6 +168,7 @@ export interface ConfiguracionModulo {
   mediosControl?: MedioControl[];
   tiposExcepcionesProcesal?: TipoExcepcionProcesal[];
   causalesEspecificas?: CausalEspecifica[];
+  dependencias?: Dependencia[];
 }
 
 // ============ DATOS DE CASOS POR ESTADO ============
@@ -163,6 +199,8 @@ export const casosPorEstado: Record<string, Record<string, number>> = {
     'asignado': 0,
     'en_analisis': 0,
     'en_revision': 0,
+    'pendiente_revision_jefe': 0,
+    'devuelta_por_jefe': 0,
     'respondido': 0,
   },
 };
@@ -195,8 +233,84 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas para obtener el reconocimiento y pago de indemnización de perjuicios.', plazo: 40, alertaDias: 10, activo: true },
       { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de los derechos e intereses colectivos.', plazo: 25, alertaDias: 5, activo: true },
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias surgidas de contratos estatales.', plazo: 35, alertaDias: 7, activo: true },
-      { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', plazo: 10, alertaDias: 2, activo: true },
+      { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', plazo: 10, alertaDias: 2, activo: true, camposAdicionalesConfig: [
+        {
+          id: 'derecho-fundamental-principal',
+          nombre: 'Derecho Fundamental Principal',
+          tipo: 'lista' as const,
+          obligatorio: true,
+          paso: 7,
+          opciones: [
+            'Derecho a la vida',
+            'Prohibición de desaparición forzada, torturas, tratos crueles, inhumanos o degradantes',
+            'Prohibición de la esclavitud, servidumbre y trata de seres humanos',
+            'Derecho a la igualdad y no discriminación',
+            'Reconocimiento de la personalidad jurídica',
+            'Derecho a la intimidad personal y familiar, buen nombre y habeas data',
+            'Libre desarrollo de la personalidad',
+            'Derecho a la honra',
+            'Libertad de conciencia',
+            'Libertad de cultos',
+            'Libertad de expresión, información y rectificación',
+            'Libertad de circulación y residencia',
+            'Libertad de escoger profesión u oficio',
+            'Libertad de enseñanza, aprendizaje, investigación y cátedra',
+            'Libertad personal (no ser molestado en su persona o familia)',
+            'Debido proceso y derecho de defensa',
+            'Habeas corpus',
+            'Doble instancia',
+            'No autoincriminación',
+            'Prohibición de penas de destierro, prisión perpetua y confiscación',
+            'Derecho a la paz',
+            'Derecho de petición',
+            'Derecho al trabajo',
+            'Derecho de reunión y manifestación pública',
+            'Derecho de libre asociación',
+            'Derecho de sindicalización',
+            'Derechos políticos y de participación',
+            'Otro'
+          ]
+        },
+        {
+          id: 'otros-derechos-vulnerados',
+          nombre: 'Otros Derechos que Pueden ser Vulnerados',
+          tipo: 'opciones-multiple' as const,
+          obligatorio: false,
+          paso: 7,
+          opciones: [
+            'Derecho a la vida',
+            'Prohibición de desaparición forzada, torturas, tratos crueles, inhumanos o degradantes',
+            'Prohibición de la esclavitud, servidumbre y trata de seres humanos',
+            'Derecho a la igualdad y no discriminación',
+            'Reconocimiento de la personalidad jurídica',
+            'Derecho a la intimidad personal y familiar, buen nombre y habeas data',
+            'Libre desarrollo de la personalidad',
+            'Derecho a la honra',
+            'Libertad de conciencia',
+            'Libertad de cultos',
+            'Libertad de expresión, información y rectificación',
+            'Libertad de circulación y residencia',
+            'Libertad de escoger profesión u oficio',
+            'Libertad de enseñanza, aprendizaje, investigación y cátedra',
+            'Libertad personal (no ser molestado en su persona o familia)',
+            'Debido proceso y derecho de defensa',
+            'Habeas corpus',
+            'Doble instancia',
+            'No autoincriminación',
+            'Prohibición de penas de destierro, prisión perpetua y confiscación',
+            'Derecho a la paz',
+            'Derecho de petición',
+            'Derecho al trabajo',
+            'Derecho de reunión y manifestación pública',
+            'Derecho de libre asociación',
+            'Derecho de sindicalización',
+            'Derechos políticos y de participación',
+            'Otro'
+          ]
+        }
+      ] },
       { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para el cobro de obligaciones claras, expresas y exigibles.', plazo: 20, alertaDias: 5, activo: true },
+      { id: 'proceso-penal', nombre: 'Proceso Penal', descripcion: 'Proceso de naturaleza penal relacionado con la entidad, incluyendo delitos contra la administración pública y/o conductas que afecten el patrimonio público.', plazo: 30, alertaDias: 7, activo: true, camposAdicionalesConfig: [{ id: 'clasificacion-penal', nombre: 'Clasificación Penal', tipo: 'opciones-multiple' as const, obligatorio: true, paso: 1, opciones: ['Delitos contra la Administración Pública', 'Conductas que afectan el Patrimonio Público', 'Otros'] }] },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales no categorizados.', plazo: 15, alertaDias: 3, activo: true },
     ],
     tiposAutos: [
@@ -209,6 +323,22 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Auto que resuelve incidentes o cuestiones de trámite', activo: true },
       { id: 'auto-sustanciacion', nombre: 'Auto de Sustanciación', descripcion: 'Auto que impulsa el proceso y ordena trámites', activo: true },
     ],
+    tiposActuaciones: [
+      { id: 'aporte-pruebas', nombre: 'Aporte de Pruebas', descripcion: 'Presentación de pruebas documentales o testimoniales.', activo: true, orden: 1 },
+      { id: 'contestacion', nombre: 'Contestación', descripcion: 'Contestación a requerimientos o demandas.', activo: true, orden: 2 },
+      { id: 'asignacion', nombre: 'Asignación', descripcion: 'Asignación de roles o expedientes.', activo: true, orden: 3 },
+      { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Decisión sobre cuestiones de trámite.', activo: true, orden: 4 },
+      { id: 'sentencia', nombre: 'Sentencia', descripcion: 'Decisión final del proceso.', activo: true, orden: 5 },
+      { id: 'traslado', nombre: 'Traslado', descripcion: 'Comunicación de documentos a otra parte.', activo: true, orden: 6 },
+      { id: 'notificacion', nombre: 'Notificación', descripcion: 'Comunicación formal de un acto.', activo: true, orden: 7 },
+      { id: 'recurso', nombre: 'Recurso', descripcion: 'Interposición de recurso legal.', activo: true, orden: 8 },
+      { id: 'memorial', nombre: 'Memorial', descripcion: 'Escrito presentado por las partes.', activo: true, orden: 9 },
+      { id: 'audiencia', nombre: 'Audiencia', descripcion: 'Diligencia oral y pública.', activo: true, orden: 10 },
+      { id: 'inspeccion-judicial', nombre: 'Inspección Judicial', descripcion: 'Revisión directa por parte del juez.', activo: true, orden: 11 },
+      { id: 'prueba-testimonial', nombre: 'Prueba Testimonial', descripcion: 'Declaración de testigos.', activo: true, orden: 12 },
+      { id: 'diligencia', nombre: 'Diligencia', descripcion: 'Actuación procedimental diversa.', activo: true, orden: 13 },
+      { id: 'otro', nombre: 'Otro', descripcion: 'Otras actuaciones no categorizadas.', activo: true, orden: 14 }
+    ],
     mediosControl: [
       { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización por daño antijurídico', activo: true, orden: 1 },
       { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento', descripcion: 'Acción contra actos administrativos', activo: true, orden: 2 },
@@ -217,6 +347,9 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales', activo: true, orden: 5 },
       { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales', activo: true, orden: 6 },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros medios de control no categorizados', activo: true, orden: 7 },
+    ],
+    dependencias: [
+      { id: 'legal', nombre: 'Legal', activo: true },
     ],
   },
   {
@@ -274,7 +407,9 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'asignado', nombre: 'Asignado', color: '#8B5CF6', orden: 2, activo: true },
       { id: 'en_analisis', nombre: 'En Análisis', color: '#06B6D4', orden: 3, activo: true },
       { id: 'en_revision', nombre: 'En Revisión', color: '#F59E0B', orden: 4, activo: true },
-      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 5, activo: true },
+      { id: 'pendiente_revision_jefe', nombre: 'Pendiente Revisión Jefe', color: '#8B5CF6', orden: 5, activo: true },
+      { id: 'devuelta_por_jefe', nombre: 'Devuelta por Jefe', color: '#EF4444', orden: 6, activo: true },
+      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 7, activo: true },
     ],
     tiempos: [
       { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },
@@ -406,41 +541,58 @@ const organismosControlIniciales: OrganismoControl[] = [
     id: 'CONTRALORIA',
     nombre: 'Contraloría General de la República',
     descripcion: 'Máximo órgano de control fiscal del Estado',
+    correos: [],
     activo: true
   },
   {
     id: 'PROCURADURIA',
     nombre: 'Procuraduría General de la Nación',
     descripcion: 'Entidad encargada de investigar, sancionar, intervenir y prevenir las irregularidades cometidas por los gobernantes, los funcionarios públicos, los particulares que ejercen funciones públicas y las agencias del Estado',
+    correos: [],
     activo: true
   },
   {
     id: 'FISCALIA',
     nombre: 'Fiscalía General de la Nación',
     descripcion: 'Entidad de la rama judicial del poder público con plena autonomía administrativa y presupuestal',
+    correos: [],
     activo: true
   },
   {
     id: 'PERSONERIA',
     nombre: 'Personería Distrital',
     descripcion: 'Órgano de control del Distrito Capital',
+    correos: [],
     activo: true
   },
   {
     id: 'DEFENSORIA',
     nombre: 'Defensoría del Pueblo',
     descripcion: 'Institución del Estado encargada de velar por la promoción, el ejercicio y la divulgación de los derechos humanos',
+    correos: [],
     activo: true
   }
 ];
-
-// ============ ENTES DE CONTROL PLANES DE MEJORAMIENTO ============
 
 const entesControlPMIniciales: EnteControlPM[] = [
   { id: 'CONTRALORIA', nombre: 'Contraloría General', descripcion: 'Máximo órgano de control fiscal del Estado', icono: '🏛️', color: '#DC2626', activo: true },
   { id: 'PROCURADURIA', nombre: 'Procuraduría General', descripcion: 'Órgano de vigilancia de la conducta oficial de servidores públicos', icono: '⚖️', color: '#059669', activo: true },
   { id: 'OCI', nombre: 'Oficina Control Interno', descripcion: 'Control interno institucional', icono: '🔍', color: '#2962FF', activo: true },
   { id: 'AUDITORIA_EXTERNA', nombre: 'Auditoría Externa', descripcion: 'Revisiones de firmas de auditoría externas', icono: '📊', color: '#9C27B0', activo: true },
+];
+
+// ============ CATEGORÍAS DE DOCUMENTOS INICIALES ============
+
+const categoriasDocumentosIniciales: CategoriaDocumento[] = [
+  { id: 'todos', nombre: 'Todos', icono: 'FolderOpen', color: '#003DA5', activo: true, orden: 1 },
+  { id: 'actas', nombre: 'Actas', icono: 'BookOpen', color: '#7C3AED', activo: true, orden: 2 },
+  { id: 'evidencias', nombre: 'Evidencias', icono: 'Shield', color: '#059669', activo: true, orden: 3 },
+  { id: 'oficios', nombre: 'Oficios', icono: 'Mail', color: '#D97706', activo: true, orden: 4 },
+  { id: 'autos', nombre: 'Autos', icono: 'Stamp', color: '#DC2626', activo: true, orden: 5 },
+  { id: 'pruebas', nombre: 'Pruebas', icono: 'Eye', color: '#0891B2', activo: true, orden: 6 },
+  { id: 'comunicaciones', nombre: 'Comunicaciones', icono: 'Share2', color: '#4F46E5', activo: true, orden: 7 },
+  { id: 'notificaciones', nombre: 'Notificaciones', icono: 'Bell', color: '#EA580C', activo: true, orden: 8 },
+  { id: 'documentos', nombre: 'Documentos Generales', icono: 'File', color: '#6B7280', activo: true, orden: 9 },
 ];
 
 // ============ CONTEXT TYPE ============
@@ -452,6 +604,7 @@ interface ConfiguracionesSIGLContextType {
   tiposRequerimientos: TipoRequerimiento[];
   organismosControl: OrganismoControl[];
   entesControlPM: EnteControlPM[];
+  categoriasDocumentos: CategoriaDocumento[];
   cambiosPendientes: boolean;
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
@@ -461,20 +614,24 @@ interface ConfiguracionesSIGLContextType {
   getMediosControlActivos: (moduloId: string) => MedioControl[];
   getTiposExcepcionesActivos: (moduloId: string) => TipoExcepcionProcesal[];
   getCausalesEspecificasActivas: (moduloId: string) => CausalEspecifica[];
+  getDependenciasActivas: (moduloId: string) => Dependencia[];
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
   getOrganismosControlActivos: () => OrganismoControl[];
   getEntesControlPMActivos: () => EnteControlPM[];
+  getCategoriasDocumentosActivas: () => CategoriaDocumento[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
   actualizarTiposRequerimientos: (nuevosTipos: TipoRequerimiento[]) => void;
   actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
   actualizarEntesControlPM: (nuevosEntes: EnteControlPM[]) => void;
-  guardarConfiguraciones: () => void;
+  actualizarCategoriasDocumentos: (nuevasCategorias: CategoriaDocumento[]) => void;
+  guardarConfiguraciones: (silencioso?: boolean) => Promise<void>;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
+  savingStatus: 'idle' | 'saving' | 'saved' | 'error';
 }
 
 // ============ CONTEXT ============
@@ -485,12 +642,16 @@ const ConfiguracionesSIGLContext = createContext<ConfiguracionesSIGLContextType 
 
 export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode }) {
   const [configuraciones, setConfiguraciones] = useState<ConfiguracionModulo[]>(configuracionesIniciales);
+  // Tracks the last-saved { nombre, plazo } per tipoProceso id so we can detect name/plazo changes on save
+  const savedTiposRef = useRef<Record<string, { nombre: string; plazo: number }>>({});
   const [ejesEstrategicos, setEjesEstrategicos] = useState<EjeEstrategico[]>(ejesEstrategicosIniciales);
   const [tiposIndicadores, setTiposIndicadores] = useState<TipoIndicador[]>(tiposIndicadoresIniciales);
   const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
   const [organismosControl, setOrganismosControl] = useState<OrganismoControl[]>(organismosControlIniciales);
   const [entesControlPM, setEntesControlPM] = useState<EnteControlPM[]>(entesControlPMIniciales);
+  const [categoriasDocumentos, setCategoriasDocumentos] = useState<CategoriaDocumento[]>(categoriasDocumentosIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Cargar configuraciones desde API
   useEffect(() => {
@@ -520,16 +681,45 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
             // Buscar si existe configuración cargada para este módulo
             const cargada = configsCargadas.find(c => c && c.id === inicial.id);
             if (cargada) {
-              return { ...inicial, ...cargada };
+              // Para tiposProcesos: merge por id para no perder tipos del default que el backend no tenga (ej: Proceso Penal)
+              // Para todo lo demás (estados, mediosControl, etc.): el backend manda, comportamiento original
+              const mergeTiposProcesos = (base: TipoProcesoJudicial[] = [], override: TipoProcesoJudicial[] = []): TipoProcesoJudicial[] => {
+                const map = new Map(base.map(item => [item.id, item]));
+                override.forEach(item => {
+                  const baseItem = map.get(item.id);
+                  // Si el backend no tiene camposAdicionalesConfig (undefined) pero el default sí, usar el del default
+                  // Si el backend tiene [] vacío, es decisión del usuario → respetar
+                  if (baseItem && item.camposAdicionalesConfig === undefined && baseItem.camposAdicionalesConfig) {
+                    map.set(item.id, { ...item, camposAdicionalesConfig: baseItem.camposAdicionalesConfig });
+                  } else {
+                    map.set(item.id, item);
+                  }
+                });
+                return Array.from(map.values());
+              };
+              return {
+                ...inicial,
+                ...cargada,
+                tiposProcesos: mergeTiposProcesos(inicial.tiposProcesos, cargada.tiposProcesos),
+              };
             }
             return inicial;
           });
 
           setConfiguraciones(mergedConfigs);
+
+          // Snapshot loaded tipos so guardarConfiguraciones can detect name/plazo changes later
+          const tiposSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+          mergedConfigs.forEach(m => m.tiposProcesos?.forEach(tp => { tiposSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+          savedTiposRef.current = tiposSnapshot;
+
           console.log('✅ Configuraciones mezcladas exitosamente (Backend + Defaults):', mergedConfigs.length);
         } else {
           console.log('⚠️ No se encontraron configuraciones en backend, usando defaults completos.');
-          // No necesitamos hacer setConfiguraciones porque ya inicia con configuracionesIniciales
+          // Snapshot defaults so initial save treats them as baseline
+          const tiposSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+          configuracionesIniciales.forEach(m => m.tiposProcesos?.forEach(tp => { tiposSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+          savedTiposRef.current = tiposSnapshot;
         }
       } catch (error) {
         console.error('❌ Error general al cargar configuraciones:', error);
@@ -593,6 +783,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.error('❌ Error al cargar entes de control PM:', error);
       }
     }
+
+    const categoriasDocsGuardadas = localStorage.getItem('sigl-categorias-documentos');
+    if (categoriasDocsGuardadas) {
+      try {
+        const parsed = JSON.parse(categoriasDocsGuardadas);
+        setCategoriasDocumentos(parsed);
+        console.log('✅ Categorías de Documentos cargadas desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar categorías de documentos:', error);
+      }
+    }
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -642,6 +843,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return modulo?.causalesEspecificas?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
   };
 
+  // ✅ Obtener dependencias activas del módulo
+  const getDependenciasActivas = (moduloId: string): Dependencia[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.dependencias?.filter(d => d.activo) || [];
+  };
+
   // Obtener solo los ejes estratégicos activos
   const getEjesEstrategicosActivos = (): EjeEstrategico[] => {
     return ejesEstrategicos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
@@ -665,6 +872,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
   const getEntesControlPMActivos = (): EnteControlPM[] => {
     return entesControlPM.filter(e => e.activo);
+  };
+
+  const getCategoriasDocumentosActivas = (): CategoriaDocumento[] => {
+    return categoriasDocumentos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
   };
 
   // Actualizar configuraciones
@@ -703,10 +914,32 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setCambiosPendientes(true);
   };
 
+  const actualizarCategoriasDocumentos = (nuevasCategorias: CategoriaDocumento[]) => {
+    setCategoriasDocumentos(nuevasCategorias);
+    setCambiosPendientes(true);
+  };
+
   // Guardar configuraciones
-  const guardarConfiguraciones = async (): Promise<void> => {
+  const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
     try {
       console.log('💾 Guardando configuraciones en backend...');
+
+      // Detectar cambios de nombre y plazo en tiposProcesos
+      const nombreCambios: { nombreAnterior: string; nombreNuevo: string }[] = [];
+      const plazoCambios: { nombreAnterior: string; deltaDias: number }[] = [];
+      configuraciones.forEach(modulo => {
+        modulo.tiposProcesos?.forEach(tp => {
+          const anterior = savedTiposRef.current[tp.id];
+          if (anterior === undefined) return;
+          if (anterior.nombre !== tp.nombre) {
+            nombreCambios.push({ nombreAnterior: anterior.nombre, nombreNuevo: tp.nombre });
+          }
+          if (anterior.plazo !== tp.plazo) {
+            // Usar el nombre ANTERIOR para encontrar los expedientes en BD
+            plazoCambios.push({ nombreAnterior: anterior.nombre, deltaDias: tp.plazo - anterior.plazo });
+          }
+        });
+      });
 
       // Guardar cada módulo individualmente en el backend
       await Promise.all(
@@ -714,6 +947,48 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
           legalService.saveConfiguration(config.id, config)
         )
       );
+
+      // Renombrar tipoProceso en expedientes afectados
+      if (nombreCambios.length > 0) {
+        await Promise.allSettled(
+          nombreCambios.map(({ nombreAnterior, nombreNuevo }) =>
+            expedienteConfigService.renombrarTipoProceso(nombreAnterior, nombreNuevo)
+          )
+        );
+        console.log(`✏️ Renombrados tipos de proceso en expedientes: ${nombreCambios.map(c => `"${c.nombreAnterior}" → "${c.nombreNuevo}"`).join(', ')}`);
+      }
+
+      // Recalcular fechas de vencimiento para expedientes con plazo modificado
+      if (plazoCambios.length > 0) {
+        const resultados = await Promise.allSettled(
+          plazoCambios.map(({ nombreAnterior, deltaDias }) =>
+            expedienteConfigService.recalcularPlazosPorTipoProceso(nombreAnterior, deltaDias)
+          )
+        );
+        const totalActualizados = resultados.reduce((sum, r) => {
+          return sum + (r.status === 'fulfilled' ? (r.value?.updated ?? 0) : 0);
+        }, 0);
+        if (totalActualizados > 0) {
+          console.log(`🔄 Recalculados ${totalActualizados} expedientes por cambio de plazos`);
+        }
+      }
+
+      // Actualizar snapshot con estado actual
+      const nuevoSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+      configuraciones.forEach(m => m.tiposProcesos?.forEach(tp => { nuevoSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+      savedTiposRef.current = nuevoSnapshot;
+
+      // Sincronizar organismos de control al backend
+      try {
+        await ocService.syncOrganismosControl(
+          organismosControl.map(o => ({
+            ...o,
+            correos: o.correos ?? [],
+          }))
+        );
+      } catch (err) {
+        console.warn('⚠️ No se pudo sincronizar organismos al backend:', err);
+      }
 
       // Guardar en localStorage como backup
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
@@ -723,27 +998,75 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
       localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
-
-      // Aquí se enviaría al backend en producción
-      // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
+      localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
 
       setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente', {
-        description: 'Los cambios se han aplicado a todos los módulos',
-        duration: 3000
-      });
+      
+      if (!silencioso) {
+        toast.success('Configuraciones guardadas correctamente', {
+          description: 'Los cambios se han aplicado a todos los módulos',
+          duration: 3000
+        });
+      }
 
       console.log('✅ Configuraciones sincronizadas con servidor');
     } catch (error) {
       console.error('❌ Error al guardar configuraciones:', error);
-      toast.error('Error al guardar configuraciones en el servidor');
+      if (!silencioso) {
+        toast.error('Error al guardar configuraciones en el servidor');
+      }
+      throw error;
     }
   };
+
+  // Guardado automático debil de cambios con debouncing
+  useEffect(() => {
+    if (!cambiosPendientes) return;
+
+    setSavingStatus('saving');
+
+    const timer = setTimeout(async () => {
+      try {
+        console.log('🔄 Iniciando guardado automático...');
+        await guardarConfiguraciones(true);
+        setSavingStatus('saved');
+      } catch (err) {
+        console.error('❌ Error en guardado automático:', err);
+        setSavingStatus('error');
+      }
+    }, 1500); // 1.5s debounce
+
+    return () => clearTimeout(timer);
+  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM]);
+
+  // Limpiar estado 'saved' / 'error' de vuelta a 'idle' después de unos segundos
+  useEffect(() => {
+    if (savingStatus === 'saved' || savingStatus === 'error') {
+      const timer = setTimeout(() => {
+        setSavingStatus('idle');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [savingStatus]);
 
   // Restablecer a valores por defecto
   const restablecerDefecto = () => {
     setConfiguraciones(configuracionesIniciales);
+    setEjesEstrategicos(ejesEstrategicosIniciales);
+    setTiposIndicadores(tiposIndicadoresIniciales);
+    setTiposRequerimientos(tiposRequerimientosIniciales);
+    setOrganismosControl(organismosControlIniciales);
+    setEntesControlPM(entesControlPMIniciales);
+    setCategoriasDocumentos(categoriasDocumentosIniciales);
+
     localStorage.removeItem('sigl-configuraciones');
+    localStorage.removeItem('sigl-ejes-estrategicos');
+    localStorage.removeItem('sigl-tipos-indicadores');
+    localStorage.removeItem('sigl-tipos-requerimientos');
+    localStorage.removeItem('sigl-organismos-control');
+    localStorage.removeItem('sigl-entes-control-pm');
+    localStorage.removeItem('sigl-categorias-documentos');
+
     setCambiosPendientes(false);
     toast.success('Configuraciones restablecidas', {
       description: 'Se han restaurado los valores por defecto',
@@ -758,6 +1081,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     tiposRequerimientos,
     organismosControl,
     entesControlPM,
+    categoriasDocumentos,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -767,20 +1091,24 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getMediosControlActivos,
     getTiposExcepcionesActivos,
     getCausalesEspecificasActivas,
+    getDependenciasActivas,
     getEjesEstrategicosActivos,
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
     getOrganismosControlActivos,
     getEntesControlPMActivos,
+    getCategoriasDocumentosActivas,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
     actualizarOrganismosControl,
     actualizarEntesControlPM,
+    actualizarCategoriasDocumentos,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,
+    savingStatus,
   };
 
   return (
@@ -807,7 +1135,7 @@ export function useConfiguracionesSIGL() {
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============
 
 export function useConfiguracionModulo(moduloId: string) {
-  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas } = useConfiguracionesSIGL();
+  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas, getDependenciasActivas } = useConfiguracionesSIGL();
 
   return {
     configuracion: getConfiguracionModulo(moduloId),
@@ -819,5 +1147,6 @@ export function useConfiguracionModulo(moduloId: string) {
     mediosControlActivos: getMediosControlActivos(moduloId),
     tiposExcepcionesActivos: getTiposExcepcionesActivos(moduloId),
     causalesEspecificasActivas: getCausalesEspecificasActivas(moduloId),
+    dependenciasActivas: getDependenciasActivas(moduloId),
   };
 }

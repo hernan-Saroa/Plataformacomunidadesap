@@ -54,6 +54,7 @@ export interface TableroKanban {
   tipo: TipoTablero;
   activo: boolean;
   etapas: EtapaKanban[];
+  configuracionVisual?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +80,7 @@ export interface CreateTableroKanbanDto {
   descripcion?: string;
   tipo: TipoTablero;
   activo?: boolean;
+  configuracionVisual?: Record<string, any>;
   etapas?: CreateEtapaKanbanDto[];
 }
 
@@ -111,13 +113,9 @@ class TablerosKanbanAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,

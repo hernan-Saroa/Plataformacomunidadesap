@@ -51,7 +51,7 @@ export function CronogramaProcesoPTA() {
   const [estadisticas, setEstadisticas] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [expandedFase, setExpandedFase] = useState<string | null>('fase-2');
-  const [periodo] = useState('2026-1');
+  const [periodo] = useState('2025-2');
 
   useEffect(() => {
     loadData();
@@ -82,10 +82,11 @@ export function CronogramaProcesoPTA() {
     const pendienteJef = ptas.filter(p => p.estado === 'Pendiente Jefatura').length;
     const pendienteDec = ptas.filter(p => p.estado === 'Pendiente Decanatura').length;
     const pendienteGP = ptas.filter(p => p.estado === 'Pendiente Gestion Profesoral').length;
+    const pendienteAprobacion = ptas.filter(p => p.estado === 'PENDIENTE_APROBACION').length;
     const aprobados = ptas.filter(p => p.estado === 'Aprobado').length;
     const rechazados = ptas.filter(p => p.estado === 'Rechazado' || p.estado === 'Devuelto').length;
     const conDatos = ptas.filter(p => (p.total_horas_programadas || 0) > 0).length;
-    return { total, borradores, enConcertacion, pendienteJef, pendienteDec, pendienteGP, aprobados, rechazados, conDatos };
+    return { total, borradores, enConcertacion, pendienteJef, pendienteDec, pendienteGP, pendienteAprobacion, aprobados, rechazados, conDatos };
   }, [ptas]);
 
   // Determine real hito states based on data
@@ -362,7 +363,7 @@ export function CronogramaProcesoPTA() {
           {[
             { label: 'Total PTAs', value: stats.total, color: '#003DA5', bg: '#EFF6FF' },
             { label: 'Aprobados', value: stats.aprobados, color: '#059669', bg: '#D1FAE5' },
-            { label: 'En Flujo', value: stats.pendienteJef + stats.pendienteDec + stats.pendienteGP, color: '#7C3AED', bg: '#F3E8FF' },
+            { label: 'En Flujo', value: stats.pendienteJef + stats.pendienteDec + stats.pendienteGP + stats.pendienteAprobacion, color: '#7C3AED', bg: '#F3E8FF' },
             { label: 'Borradores', value: stats.borradores, color: '#6B7280', bg: '#F3F4F6' },
             { label: 'Rechazados', value: stats.rechazados, color: '#DC2626', bg: '#FEE2E2' },
           ].map((s, i) => (

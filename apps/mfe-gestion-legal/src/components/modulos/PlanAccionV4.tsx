@@ -64,6 +64,16 @@ interface Indicador {
   tipoIndicador: 'EFICIENCIA' | 'EFICACIA' | 'GESTION' | 'TRANSPARENCIA';
   unidadMedida: string;
   ultimaActualizacion: Date;
+  // Bug 6b: registros del backend para mostrar historial con observaciones
+  registros?: Array<{
+    id: number | string;
+    valorReportado: number;
+    porcentajeAvance: number;
+    observaciones?: string;
+    evidenciaUrl?: string;
+    fechaRegistro: string | Date;
+    usuarioRegistraId?: string;
+  }>;
 }
 
 type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz' | 'archivados';
@@ -78,49 +88,7 @@ const mapEjeFromBackend = (eje: string) => {
     default: return 'GESTION_INSTITUCIONAL';
   }
 };
-// ==================== DATOS MOCK ====================
-const indicadoresMock: Indicador[] = [
-  // Ejemplo 1 - GESTIÓN INSTITUCIONAL
-  {
-    id: 'IND-2025-001',
-    codigo: 'GI-001',
-    nombre: 'Reducción de términos vencidos en procesos judiciales',
-    descripcion: 'Reducir en 20% los términos vencidos en defensa judicial',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dr. Carlos Mendoza Torres',
-    meta: 80,
-    valorActual: 75,
-    avance: 94,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'EFICIENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-28')
-  },
-  // Ejemplo 2 - TRANSPARENCIA
-  {
-    id: 'IND-2025-005',
-    codigo: 'TR-001',
-    nombre: 'Publicación de decisiones judiciales relevantes',
-    descripcion: 'Publicar el 100% de decisiones en plataforma institucional',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dra. Laura Martínez',
-    meta: 100,
-    valorActual: 92,
-    avance: 92,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'TRANSPARENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-27')
-  }
-];
+
 
 const mapEjeToBackend = (eje: string) => {
   switch (eje) {
@@ -222,6 +190,22 @@ const getSemaforoColor = (avance: number) => {
   return '#DC2626'; // Rojo
 };
 
+/** Variant del componente Progress según porcentaje (Bug 3) */
+const getSemaforoVariant = (avance: number): 'success' | 'warning' | 'danger' => {
+  if (avance >= 90) return 'success';
+  if (avance >= 50) return 'warning';
+  return 'danger';
+};
+
+/** Badge tipo "chip" para % cumplimiento que cambia color según el porcentaje (Bug 3) */
+const getCumplimientoBadge = (avance: number) => {
+  if (avance >= 90) return { bg: '#D1FAE5', color: '#065F46', label: 'Óptimo' };
+  if (avance >= 70) return { bg: '#DBEAFE', color: '#1E40AF', label: 'Bueno' };
+  if (avance >= 50) return { bg: '#FEF3C7', color: '#92400E', label: 'Medio' };
+  if (avance >= 30) return { bg: '#FED7AA', color: '#9A3412', label: 'Bajo' };
+  return { bg: '#FEE2E2', color: '#991B1B', label: 'Crítico' };
+};
+
 /** Convierte el enum unidadMedida al símbolo visual correcto */
 const fmtUnidad = (unidad: string): string => {
   if (unidad === 'PORCENTAJE' || unidad === '%') return '%';
@@ -238,6 +222,7 @@ const fmtValor = (valor: any, unidad: string): string => {
 export function ModuloPlanAccionV4() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
+  const canMutatePlanAccion = authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_CREATE);
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('lista');
   const [busqueda, setBusqueda] = useState('');
@@ -282,7 +267,9 @@ export function ModuloPlanAccionV4() {
         periodicidad: ind.frecuenciaMedicion || 'MENSUAL',
         tipoIndicador: ind.tipoIndicador || 'GESTION',
         unidadMedida: ind.unidadMedida || '%',
-        ultimaActualizacion: new Date()
+        ultimaActualizacion: new Date(),
+        // Bug 6b: propagamos los registros del backend para mostrar el historial
+        registros: Array.isArray(ind.registros) ? ind.registros : [],
       }));
 
       setIndicadores(mapped);
@@ -355,6 +342,7 @@ export function ModuloPlanAccionV4() {
           tipoIndicador: ind.tipoIndicador || 'GESTION',
           unidadMedida: ind.unidadMedida || '%',
           ultimaActualizacion: new Date(),
+          registros: Array.isArray(ind.registros) ? ind.registros : [],
         })));
       }).catch(() => {});
     } catch (error) {
@@ -497,12 +485,15 @@ export function ModuloPlanAccionV4() {
   const handleGuardarAvance = async (data: any) => {
     try {
       if (!indicadorSeleccionado) return;
-      await legalService.registrarAvanceIndicador(indicadorSeleccionado.id, {
-        valor: data.valorActual,
-        observaciones: data.observacionesAvance
-      });
-      // Success toast is handled in the modal already? 
-      // Actually v4 ModalCargarAvance calls onGuardar but also has toast.
+      // Bug 6a: enviamos archivo si vino, observaciones siempre.
+      await legalService.registrarAvanceIndicador(
+        indicadorSeleccionado.id,
+        {
+          valor: data.valorActual,
+          observaciones: data.observacionesAvance,
+        },
+        data.evidenciaFile || undefined,
+      );
       setModalAvanceOpen(false);
       fetchData();
     } catch (error) {
@@ -787,10 +778,10 @@ export function ModuloPlanAccionV4() {
               expandedGroups={expandedGroups}
               toggleGroup={toggleGroup}
               onVerDetalles={handleVerDetalles}
-              onEditarIndicador={handleEditarIndicador}
-              onCargarAvance={handleCargarAvance}
-              onArchivar={handleArchivar}
-            onEliminar={handleEliminar}
+              onEditarIndicador={canMutatePlanAccion ? handleEditarIndicador : undefined}
+              onCargarAvance={canMutatePlanAccion ? handleCargarAvance : undefined}
+              onArchivar={canMutatePlanAccion ? handleArchivar : undefined}
+              onEliminar={canMutatePlanAccion ? handleEliminar : undefined}
             />
           )}
           {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
@@ -799,8 +790,8 @@ export function ModuloPlanAccionV4() {
             <VistaArchivados
               items={itemsArchivados}
               moduloNombre="Plan de Acción"
-              onRestaurar={handleRestaurar}
-              onEliminarPermanente={handleEliminarPermanente}
+              onRestaurar={canMutatePlanAccion ? handleRestaurar : undefined}
+              onEliminarPermanente={canMutatePlanAccion ? handleEliminarPermanente : undefined}
               onVolver={() => setTipoVista('lista')}
             />
           )}
@@ -841,13 +832,13 @@ export function ModuloPlanAccionV4() {
           setIndicadorSeleccionado(null);
         }}
         indicador={indicadorSeleccionado}
-        onEditar={() => handleEditarIndicador(indicadorSeleccionado!)}
-        onCargarAvance={() => handleCargarAvance(indicadorSeleccionado!)}
-        onArchivar={() => {
+        onEditar={canMutatePlanAccion ? () => handleEditarIndicador(indicadorSeleccionado!) : undefined}
+        onCargarAvance={canMutatePlanAccion ? () => handleCargarAvance(indicadorSeleccionado!) : undefined}
+        onArchivar={canMutatePlanAccion ? () => {
           if (indicadorSeleccionado) handleArchivar(indicadorSeleccionado);
           setModalDetalleOpen(false);
           setIndicadorSeleccionado(null);
-        }}
+        } : undefined}
       />
 
     </div>
@@ -860,10 +851,10 @@ interface VistaListaProps {
   expandedGroups: Set<string>;
   toggleGroup: (eje: string) => void;
   onVerDetalles: (indicador: Indicador) => void;
-  onEditarIndicador: (indicador: Indicador) => void;
-  onCargarAvance: (indicador: Indicador) => void;
-  onArchivar: (indicador: Indicador) => void;
-  onEliminar: (indicador: Indicador) => void;
+  onEditarIndicador?: (indicador: Indicador) => void;
+  onCargarAvance?: (indicador: Indicador) => void;
+  onArchivar?: (indicador: Indicador) => void;
+  onEliminar?: (indicador: Indicador) => void;
 }
 
 function VistaLista({
@@ -979,14 +970,34 @@ function VistaLista({
                             <span className="text-sm font-semibold text-blue-600">{fmtValor(ind.valorActual, ind.unidadMedida)}</span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 min-w-[100px]">
-                                <Progress value={ind.avance} className="h-2" />
-                              </div>
-                              <span className="text-sm font-bold min-w-[3rem] text-right" style={{ color: getSemaforoColor(ind.avance) }}>
-                                {ind.avance}%
-                              </span>
-                            </div>
+                            {(() => {
+                              const cb = getCumplimientoBadge(ind.avance);
+                              return (
+                                <div className="space-y-1.5 min-w-[160px]">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1">
+                                      <Progress
+                                        value={ind.avance}
+                                        variant={getSemaforoVariant(ind.avance)}
+                                        size="sm"
+                                      />
+                                    </div>
+                                    <span
+                                      className="text-sm font-bold min-w-[3rem] text-right"
+                                      style={{ color: getSemaforoColor(ind.avance) }}
+                                    >
+                                      {ind.avance}%
+                                    </span>
+                                  </div>
+                                  <span
+                                    className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                    style={{ backgroundColor: cb.bg, color: cb.color }}
+                                  >
+                                    {cb.label}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <Badge
@@ -1015,21 +1026,35 @@ function VistaLista({
                                   <DropdownMenuItem onClick={() => onVerDetalles(ind)}>
                                     <Eye className="w-4 h-4 mr-2" /> Ver Detalles
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => onCargarAvance(ind)}>
-                                    <Activity className="w-4 h-4 mr-2" /> Actualizar Avance
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onEditarIndicador(ind)}>
-                                    <Edit className="w-4 h-4 mr-2" /> Editar
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-orange-600 focus:text-orange-600 focus:bg-orange-50">
-                                    <Archive className="w-4 h-4 mr-2" /> Archivar
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onEliminar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                                    <Trash2 className="w-4 h-4 mr-2" /> Eliminar
-                                  </DropdownMenuItem>
+                                  {onCargarAvance && (
+                                    <DropdownMenuItem onClick={() => onCargarAvance(ind)}>
+                                      <Activity className="w-4 h-4 mr-2" /> Actualizar Avance
+                                    </DropdownMenuItem>
+                                  )}
+                                  {onEditarIndicador && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => onEditarIndicador(ind)}>
+                                        <Edit className="w-4 h-4 mr-2" /> Editar
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {onArchivar && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-orange-600 focus:text-orange-600 focus:bg-orange-50">
+                                        <Archive className="w-4 h-4 mr-2" /> Archivar
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {onEliminar && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => onEliminar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                        <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>

@@ -16,14 +16,24 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
-import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi } from './services/plan-anual';
+import {
+  usePlanAnualCompleto,
+  useCreatePlanAnual,
+  actividadesApi,
+  planAnualApi,
+  invalidatePlanAnualListCache,
+  normalizarAdjuntosTareaDesdeBackend,
+} from './services/plan-anual';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { esUuidPersona, idPersonaParaPlanAnual } from '../utils/persona-id-plan-anual';
+import { normalizarTareasConCortes } from '../utils/avancePlanAnual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft, ArrowRight,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
@@ -56,6 +66,108 @@ function normalizarArrayResponsablesBackend(raw: unknown): unknown[] {
     }
   }
   return Array.isArray(raw) ? raw : [];
+}
+
+function inferirResponsablesRolDesdeActividades(rol: any): Auditor[] {
+  const acts = rol?.actividades || [];
+  for (const act of acts) {
+    const list = normalizarArrayResponsablesBackend(act?.responsables);
+    if (list.length > 0) {
+      const r = list[0] as any;
+      return [
+        {
+          id: String(r.id || r.idPerson || r.id_person || ''),
+          nombre: String(r.nombre || r.name || ''),
+          cargo: r.cargo || 'Auditor',
+          email: r.email || '',
+        },
+      ].filter((a) => a.nombre);
+    }
+    if (typeof act?.responsable === 'string' && act.responsable !== 'Por asignar') {
+      return [{ id: `temp-${act.responsable}`, nombre: act.responsable, cargo: 'Auditor', email: '' }];
+    }
+  }
+  return [];
+}
+
+/** Responsable del rol desde jsonb, varchar o actividades del mismo rol. */
+function mapResponsablesRolDesdeBackend(rol: any): Auditor[] {
+  const list = normalizarArrayResponsablesBackend(rol?.responsables);
+  if (list.length > 0) {
+    const mapped = list.slice(0, 1).map((r: any) => ({
+      id: String(r.id || r.idPerson || r.id_person || ''),
+      nombre: String(r.nombre || r.name || ''),
+      cargo: r.cargo || 'Auditor',
+      email: r.email || '',
+    }));
+    if (mapped[0]?.nombre) return mapped;
+  }
+  if (rol?.responsable && rol.responsable !== 'Por asignar') {
+    const rid = String(rol.responsable_id || '').trim();
+    return [
+      {
+        id: rid || `temp-${rol.responsable}`,
+        nombre: String(rol.responsable),
+        cargo: 'Auditor',
+        email: '',
+      },
+    ];
+  }
+  const ridSolo = String(rol?.responsable_id || '').trim();
+  if (ridSolo) {
+    return [
+      {
+        id: ridSolo,
+        nombre: String(rol.responsable || rol.responsable_nombre || 'Responsable asignado'),
+        cargo: 'Auditor',
+        email: '',
+      },
+    ];
+  }
+  return inferirResponsablesRolDesdeActividades(rol);
+}
+
+const esUUID = esUuidPersona;
+
+async function limpiarBorradoresWizard(): Promise<void> {
+  try {
+    localStorage.removeItem('esap:wizard_plan_anual_draft');
+  } catch {
+    /* ignore */
+  }
+  try {
+    await planAnualApi.deleteWizardBorrador();
+  } catch (e) {
+    console.warn('[PlanAnual] No se pudo borrar borrador wizard en servidor:', e);
+  }
+}
+
+async function sincronizarResponsablesRolesEnBackend(
+  planId: string,
+  rolesConfig: any[],
+  rolesBackend: any[],
+): Promise<void> {
+  for (const rolConfig of rolesConfig) {
+    const rolBackend = rolesBackend.find((r: any) => r.rol_numero === rolConfig.numero);
+    if (!rolBackend?.id) continue;
+    const resp = (rolConfig.responsables || [])[0];
+    if (!resp?.nombre) continue;
+    const idPerson = idPersonaParaPlanAnual(resp);
+    const idPersistido =
+      idPerson || String(resp.id || resp.idPerson || resp.idTercero || '').trim() || undefined;
+    await planAnualApi.updateRol(planId, rolBackend.id, {
+      responsable: resp.nombre,
+      responsable_id: idPerson || idPersistido,
+      responsables: [
+        {
+          id: idPersistido || `temp-${resp.nombre}`,
+          nombre: resp.nombre,
+          cargo: resp.cargo,
+          email: resp.email,
+        },
+      ],
+    });
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -642,7 +754,10 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
       
       if (configuracionRol) {
         const actividadConfig = configuracionRol.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
-        requiereAutorizacionJefeOCI = actividadConfig?.requiereAutorizacionJefeOCI || false;
+        requiereAutorizacionJefeOCI = !!(
+          actividadConfig?.requiereAutorizacionJefeOCI
+          || actividadConfig?.requiereVerificacionDirector
+        );
         tipoEvidenciaConfig = actividadConfig?.tipoEvidencia;
       }
 
@@ -716,8 +831,8 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
         responsables: responsablesActividad.length > 0 ? responsablesActividad : (responsablesDelRol.length > 0 ? [responsableAsignado].filter(Boolean) : []),
         porcentajeAvance: 0,
         estado: 'PENDIENTE' as EstadoActividad,
-        requiereVerificacionDirector: act.requiereVerificacionDirector ?? false,
-        requiereAutorizacionJefeOCI, // ✅ NUEVO: Transferir configuración del wizard
+        requiereVerificacionDirector: requiereAutorizacionJefeOCI,
+        requiereAutorizacionJefeOCI,
         autorizadaPorJefeOCI: false,
         configuracionEvidencias,
         adjuntos: [],
@@ -797,8 +912,12 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
           responsables: responsablesActividadCustom.length > 0 ? responsablesActividadCustom : (responsableAsignado ? [responsableAsignado] : []),
           porcentajeAvance: 0,
           estado: 'PENDIENTE' as EstadoActividad,
-          requiereVerificacionDirector: false,
-          requiereAutorizacionJefeOCI: act.requiereAutorizacionJefeOCI || false,
+          requiereVerificacionDirector: !!(
+            act.requiereAutorizacionJefeOCI || act.requiereVerificacionDirector
+          ),
+          requiereAutorizacionJefeOCI: !!(
+            act.requiereAutorizacionJefeOCI || act.requiereVerificacionDirector
+          ),
           autorizadaPorJefeOCI: false,
           configuracionEvidencias,
           adjuntos: [],
@@ -1235,14 +1354,150 @@ export function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanA
 // FIN MOCK crearPlanConDatosMock
 
 // ════════════════════════════════════════════════════════════════════════════
+// FECHAS DE CORTES / TAREAS AL CARGAR EL PLAN (alineadas a la vigencia)
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Fecha DATE del backend → YYYY-MM-DD (calendario; UTC en Date para evitar 31-dic del año anterior). */
+function formatearFechaPlanBackend(fecha: unknown, fallback: string): string {
+  if (fecha == null || fecha === '') return fallback;
+  if (typeof fecha === 'string') {
+    const trimmed = fecha.trim();
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed.slice(0, 10)}T12:00:00`);
+    if (!Number.isNaN(dt.getTime())) {
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+    }
+    return fallback;
+  }
+  if (fecha instanceof Date && !Number.isNaN(fecha.getTime())) {
+    return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}-${String(fecha.getUTCDate()).padStart(2, '0')}`;
+  }
+  return fallback;
+}
+
+/** Mes/día calendario conservados; el año se fuerza al de la vigencia del plan (evita desfase UTC / año erróneo en JSON). */
+function normalizarFechaCampoAVigencia(fecha: unknown, vigencia: number): string {
+  if (fecha == null || fecha === '') return '';
+  let month = 1;
+  let day = 1;
+  if (typeof fecha === 'string') {
+    const trimmed = fecha.trim();
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      month = parseInt(iso[2], 10);
+      day = parseInt(iso[3], 10);
+    } else {
+      const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed.slice(0, 10)}T12:00:00`);
+      if (Number.isNaN(dt.getTime())) return '';
+      month = dt.getMonth() + 1;
+      day = dt.getDate();
+    }
+  } else if (fecha instanceof Date) {
+    if (Number.isNaN(fecha.getTime())) return '';
+    month = fecha.getMonth() + 1;
+    day = fecha.getDate();
+  } else {
+    return '';
+  }
+  const lastDay = new Date(vigencia, month, 0).getDate();
+  const safeDay = Math.min(day, lastDay);
+  return `${vigencia}-${String(month).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+}
+
+function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[] {
+  if (!Array.isArray(puntos)) return [];
+  return puntos.map((pc: any) => {
+    const next = { ...pc };
+    const fp = pc.fechaProgramada ?? pc.fecha_programada;
+    if (fp != null && fp !== '') {
+      next.fechaProgramada = normalizarFechaCampoAVigencia(fp, vigencia);
+    }
+    const fs = pc.fechaSeguimiento ?? pc.fecha_seguimiento;
+    if (fs != null && fs !== '') {
+      next.fechaSeguimiento = normalizarFechaCampoAVigencia(fs, vigencia);
+    }
+    const fr = pc.fechaReal ?? pc.fecha_real;
+    if (fr != null && fr !== '') {
+      next.fechaReal = normalizarFechaCampoAVigencia(fr, vigencia);
+    }
+    return next;
+  });
+}
+
+/** Tareas con puntoControlId alineado a los cortes de la actividad (BD o por índice). */
+function mapTareasSeguimientoDesdeBackend(
+  tareasRaw: unknown,
+  puntosControl: Array<{ id: string }>,
+  vigencia: number,
+): any[] {
+  const lista = Array.isArray(tareasRaw) ? tareasRaw : [];
+  return normalizarTareasConCortes(lista, puntosControl).map((t: any) => ({
+    id: t.id,
+    descripcion: t.descripcion || '',
+    completada: !!t.completada,
+    responsables: t.responsables || [],
+    fechaLimite: (() => {
+      const raw = t.fechaLimite ?? t.fecha_limite ?? t.fechaEntrega ?? t.fecha_entrega;
+      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+    })(),
+    fechaEntrega: (() => {
+      const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
+      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+    })(),
+    fechaCompletada: (() => {
+      const raw = t.fechaCompletada ?? t.fecha_completada;
+      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+    })(),
+    completadaPor: t.completadaPor || t.completada_por || undefined,
+    requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+    requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+    observaciones: t.observaciones || '',
+    adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
+    puntoControlId: t.puntoControlId,
+  }));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarModulo?: (seccion: string) => void }) {
+  const vigenciaContext = usePlanAnualVigenciaContextOptional();
+  const cambioPlanDesdeHeaderEnCursoRef = useRef<string | null>(null);
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   const [planAEditar, setPlanAEditar] = useState<PlanAnual | undefined>(undefined);
+  /** Fuerza remontaje del wizard solo al iniciar un plan nuevo en blanco. */
+  const [wizardSesionKey, setWizardSesionKey] = useState(0);
+  const [planesListVersion, setPlanesListVersion] = useState(0);
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeCrearPlan = puedeRealizar('plan-anual', 'create') || esSuperUsuario;
+  const puedeVerPlan = puedeRealizar('plan-anual', 'view') || esSuperUsuario;
+  const puedeEditarPlan = puedeRealizar('plan-anual', 'edit') || esSuperUsuario;
+  const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
+  const puedeActivarPlan = puedeRealizar('plan-anual', 'activate');
+  /** Misma regla que `puedeVerAprobacion` en el dashboard */
+  const puedeIrAAprobacion =
+    puedeAprobarPlan || puedeActivarPlan || puedeEditarPlan || esSuperUsuario;
+  const [wizardSoloLectura, setWizardSoloLectura] = useState(false);
+  const [dashboardSeccionForzada, setDashboardSeccionForzada] = useState<'gestion' | 'aprobar' | null>(null);
+  const limpiarSeccionForzadaDashboard = useCallback(() => setDashboardSeccionForzada(null), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const seccion = params.get('seccion');
+    const vigenciaParam = params.get('vigencia');
+    if (vigenciaParam) {
+      const v = parseInt(vigenciaParam, 10);
+      if (!Number.isNaN(v) && v > 2000) {
+        setAñoActual(v);
+      }
+    }
+    if (seccion === 'aprobar') {
+      setDashboardSeccionForzada('aprobar');
+    }
+  }, []);
   
   // ═══════════════════════════════════════════════════════════════════════
   // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
@@ -1267,8 +1522,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     plan: planDesdeBackend,
     auditores,
     estadisticas,
-    loading: cargandoDatos,
-    error: errorCarga,
+    loadingPlan: cargandoPlan,
+    loadingAuditores: cargandoAuditores,
     refetch: recargarPlan,
     createActividad,
     updateActividad,
@@ -1305,45 +1560,63 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     return mapeo[estadoBackend?.toLowerCase()] || 'BORRADOR';
   };
 
-  // Sincronizar plan del backend con estado local
-  useEffect(() => {
-    if (planDesdeBackend) {
+  // Stable ref for auditores — prevents recreating transformarPlanBackendAFicha on every render
+  const auditoresRef = useRef(auditores);
+  auditoresRef.current = auditores;
 
-
-
-      
+  const transformarPlanBackendAFicha = useCallback((planDesdeBackend: any): PlanAnual => {
+      const _auditores = auditoresRef.current;
       // Transformar datos del backend al formato del frontend
       // ✅ IMPORTANTE: Ordenar roles por rol_numero para mantener el orden del Decreto 648/2017
+      const añoPlanRaw = Number(planDesdeBackend.año);
+      const vigenciaSafe = Number.isFinite(añoPlanRaw) ? añoPlanRaw : new Date().getFullYear();
       const rolesOrdenados = [...planDesdeBackend.roles].sort((a, b) => a.rol_numero - b.rol_numero);
       
-      const planTransformado: PlanAnual = {
+      return {
         id: planDesdeBackend.id,
         vigencia: planDesdeBackend.año,
         version: 1,
         estado: mapearEstadoPlan(planDesdeBackend.estado),
-        jefeOCI: auditores[0] || { id: '1', nombre: planDesdeBackend.responsable, cargo: 'Jefe de Control Interno', email: '' },
+        // Debe coincidir con responsable_id / responsable del backend (no usar auditores[0]: desalineaba identidad y el banner de «responsable del plan»).
+        jefeOCI: (() => {
+          const pb = planDesdeBackend as any;
+          const rid = pb.responsable_id || pb.jefe_oci_id || '';
+          const nombreResp =
+            pb.responsable ||
+            pb.responsable_nombre ||
+            'Responsable del plan';
+          const emailResp = (pb.responsable_email || '').trim();
+          const cargoResp = pb.responsable_cargo || 'Jefe de Control Interno';
+          if (_auditores?.length) {
+            const norm = (s: string) =>
+              (s || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase();
+            const coincidencia =
+              (rid
+                ? _auditores.find((a) => String(a.id) === String(rid))
+                : undefined) ||
+              _auditores.find((a) => norm(a.nombre) === norm(nombreResp));
+            if (coincidencia) return coincidencia;
+          }
+          return {
+            id: rid || '1',
+            nombre: nombreResp,
+            cargo: cargoResp,
+            email: emailResp,
+          };
+        })(),
         fechaCreacion: planDesdeBackend.fecha_creacion,
-        // ═══════════════════════════════════════════════════════════════════
-        // CORRECCIÓN DE TIMEZONE: El backend NestJS/TypeORM serializa columnas
-        // DATE de PostgreSQL con desfase -1 día (UTC-5 Colombia).
-        // Ejemplo: DB tiene 2028-01-01 → backend devuelve "2027-12-31"
-        // Solución: sumar 1 día a las fechas que vienen del backend.
-        // ═══════════════════════════════════════════════════════════════════
-        fechaInicio: (() => {
-          const fi = planDesdeBackend.fecha_inicio;
-          if (!fi) return `${planDesdeBackend.año}-01-01`;
-          // Parsear a mediodía local para evitar timezone shift, luego sumar 1 día
-          const d = new Date(String(fi).split('T')[0] + 'T12:00:00');
-          d.setDate(d.getDate() + 1);
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        })(),
-        fechaFin: (() => {
-          const ff = planDesdeBackend.fecha_fin;
-          if (!ff) return `${planDesdeBackend.año}-12-31`;
-          const d = new Date(String(ff).split('T')[0] + 'T12:00:00');
-          d.setDate(d.getDate() + 1);
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        })(),
+        fechaInicio: formatearFechaPlanBackend(
+          planDesdeBackend.fecha_inicio,
+          `${vigenciaSafe}-01-01`,
+        ),
+        fechaFin: formatearFechaPlanBackend(
+          planDesdeBackend.fecha_fin,
+          `${vigenciaSafe}-12-31`,
+        ),
         fechaAprobacion: null,
         actaCICC: null,
         equipoAprobacion: planDesdeBackend.equipo_aprobacion || [],
@@ -1355,7 +1628,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           color: rol.color,
           icono: obtenerIconoRol(rol.rol_numero),
           descripcion: rol.descripcion,
-          actividades: rol.actividades.map(act => {
+          responsable: rol.responsable,
+          responsable_id: rol.responsable_id,
+          responsables: mapResponsablesRolDesdeBackend(rol),
+          actividades: rol.actividades.map((act: any) => {
             // Cast a any para acceder campos extendidos que vienen del backend
             const actExtendido = act as any;
 
@@ -1422,7 +1698,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
             const responsableSingular: Auditor | null = (() => {
               if (!act.responsable || act.responsable === 'Por asignar') return null;
-              const auditorEncontrado = auditores.find(a =>
+              const auditorEncontrado = _auditores.find(a =>
                 a.nombre.toLowerCase() === act.responsable.toLowerCase()
               );
               if (auditorEncontrado) return auditorEncontrado;
@@ -1450,6 +1726,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               }];
             }
 
+            const puntosControlAct = mapPuntosControlFechasVigencia(
+              actExtendido.puntos_control || actExtendido.puntosControl,
+              vigenciaSafe,
+            );
+
             return {
               id: act.id, // UUID string desde el backend
               nombre: act.nombre,
@@ -1458,6 +1739,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               fechaFin: formatearFecha(act.fecha_fin) || formatearFecha(act.fechaFin),
               responsable: responsableSingular,
               porcentajeAvance: act.porcentaje_avance ?? 0,
+              tipoCalculo: actExtendido.tipo_calculo || actExtendido.tipoCalculo || 'manual',
+              totalAuditoriasProgramadas: actExtendido.total_auditorias_programadas ?? actExtendido.totalAuditoriasProgramadas ?? 0,
+              totalAuditoriasFinalizadas: actExtendido.total_auditorias_finalizadas ?? actExtendido.totalAuditoriasFinalizadas ?? 0,
               estado: estadoFront,
               control: actExtendido.control || '',
               evaluacion: actExtendido.evaluacion || '',
@@ -1482,51 +1766,125 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               bitacoraObservaciones: actExtendido.bitacoraObservaciones || [],
               activo: actExtendido.activo ?? act.activo ?? true,
               responsables: responsablesLista,
-              // Puntos de control persistidos
-              puntosControl: actExtendido.puntos_control || [],
+              puntosControl: puntosControlAct,
               frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
               entradasSeguimiento: actExtendido.entradas_seguimiento || actExtendido.entradasSeguimiento || [],
-              // Tareas de seguimiento (sub-tareas)
-              tareasSeguimiento: (actExtendido.tareas_seguimiento || actExtendido.tareasSeguimiento || []).map((t: any) => ({
-                id: t.id,
-                descripcion: t.descripcion,
-                completada: t.completada || false,
-                responsables: t.responsables || [],
-                fechaLimite: t.fechaLimite || t.fecha_limite || undefined,
-                fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
-                fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
-                completadaPor: t.completadaPor || t.completada_por || undefined,
-                requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-                requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
-                observaciones: t.observaciones || '',
-                adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
-              })),
+              tareasSeguimiento: mapTareasSeguimientoDesdeBackend(
+                actExtendido.tareas_seguimiento || actExtendido.tareasSeguimiento,
+                puntosControlAct,
+                vigenciaSafe,
+              ),
               fechaCorte: formatearFecha(actExtendido.fecha_corte) || '',
             };
           })
         }))
       };
-      
+  }, []);
 
+  useEffect(() => {
+    if (!planDesdeBackend) return;
+    // No sacar al usuario del asistente cuando guarda borrador en BD desde el wizard.
+    if (vista === 'wizard') return;
+    // Evitar pisar el plan recién cargado por historial (getById): al cambiar año el hook
+    // puede seguir exponiendo el plan del año anterior hasta que termine getByYear.
+    const añoPlan = Number((planDesdeBackend as any).año);
+    if (Number.isFinite(añoPlan) && añoPlan !== añoActual) return;
 
-
-      
-      setPlanActual(planTransformado);
-      setVista('dashboard'); // Cambiar a dashboard cuando hay datos
+    // Un usuario que SOLO es aprobador (esSoloComite) solo puede ver planes
+    // donde es miembro del equipo de aprobación. Si este plan no le corresponde,
+    // intentar cargar uno al que SÍ tenga acceso.
+    const esSoloComiteLocal = puedeAprobarPlan && !puedeEditarPlan && !puedeActivarPlan && !puedeCrearPlan && !esSuperUsuario;
+    if (esSoloComiteLocal) {
+      try {
+        const authCache = (window as any).__esap_auth_cache;
+        const userEmail = (
+          authCache?.person?.email ||
+          authCache?.email ||
+          authCache?.dir_email ||
+          authCache?.username ||
+          ''
+        ).toLowerCase().trim();
+        const userId = String(
+          authCache?.person?.id ||
+          authCache?.person?.idPerson ||
+          authCache?.person?.id_person ||
+          authCache?.idPerson ||
+          authCache?.id_person ||
+          authCache?.id ||
+          ''
+        ).toLowerCase();
+        const equipo: any[] = (planDesdeBackend as any).equipo_aprobacion
+          || (planDesdeBackend as any).equipoAprobacion
+          || [];
+        const esAprobadorDePlan = Array.isArray(equipo) && equipo.some((m: any) => {
+          const mEmail = (m.email || '').toLowerCase().trim();
+          const mId = String(m.id || m.idPerson || m.idTercero || '').toLowerCase();
+          return (userEmail && mEmail === userEmail) || (userId && mId === userId);
+        });
+        if (!esAprobadorDePlan) {
+          console.log('[PlanAnualDefinitivo] Plan', añoPlan, 'no corresponde a este aprobador, buscando alternativa...');
+          // No establecer este plan - esperar a que planesAnteriores cargue y redirigir
+          return;
+        }
+      } catch (err) {
+        console.warn('[PlanAnualDefinitivo] Error verificando acceso de aprobador:', err);
+      }
     }
-  }, [planDesdeBackend, auditores]);
+
+    setPlanActual(transformarPlanBackendAFicha(planDesdeBackend));
+    setVista('dashboard');
+  }, [planDesdeBackend, añoActual, transformarPlanBackendAFicha, vista, puedeAprobarPlan, puedeEditarPlan, puedeActivarPlan, puedeCrearPlan, esSuperUsuario]);
   
   // Planes anteriores/disponibles - Carga desde backend
   const [planesAnteriores, setPlanesAnteriores] = useState<PlanAnual[]>([]);
+
+  // Para usuarios esSoloComite: si el plan cargado por defecto (ej. 2026) no les
+  // corresponde, planActual quedará null. Una vez que planesAnteriores se llene con
+  // sus planes filtrados, redirigir automáticamente al primero disponible.
+  useEffect(() => {
+    if (planActual) return; // Ya tiene plan activo
+    if (cargandoPlan) return; // Aún cargando
+    const esSoloComiteLocal = puedeAprobarPlan && !puedeEditarPlan && !puedeActivarPlan && !puedeCrearPlan && !esSuperUsuario;
+    if (!esSoloComiteLocal) return;
+    if (planesAnteriores.length === 0) return;
+
+    // Seleccionar el primer plan filtrado y cambiar el año
+    const primerPlan = planesAnteriores[0];
+    console.log('[PlanAnualDefinitivo] Redirigiendo a plan accesible:', primerPlan.vigencia);
+    setAñoActual(primerPlan.vigencia);
+    setPlanActual(primerPlan);
+    setVista('dashboard');
+  }, [planActual, planesAnteriores, cargandoPlan, puedeAprobarPlan, puedeEditarPlan, puedeActivarPlan, puedeCrearPlan, esSuperUsuario]);
+
+  const abrirWizardPlanNuevo = useCallback(async () => {
+    await limpiarBorradoresWizard();
+    setPlanAEditar(undefined);
+    setWizardSoloLectura(false);
+    setDashboardSeccionForzada(null);
+    setWizardSesionKey((k) => k + 1);
+    setVista('wizard');
+  }, []);
+
+  const continuarWizardConBorrador = useCallback(() => {
+    setWizardSoloLectura(false);
+    setPlanAEditar(undefined);
+    setDashboardSeccionForzada(null);
+    setVista('wizard');
+  }, [limpiarSeccionForzadaDashboard]);
 
   // Cargar lista de todos los planes disponibles
   useEffect(() => {
     const cargarPlanesDisponibles = async () => {
       try {
-        const response = await planAnualApi.getAll();
+        if (planesListVersion > 0) {
+          invalidatePlanAnualListCache();
+        }
+        const response = await planAnualApi.getAll({ light: true });
         if (response.data && Array.isArray(response.data)) {
           // Transformar planes del backend al formato frontend (normalizado para EDICIÓN en wizard)
           const planesTransformados = response.data.map((planBackend: any) => {
+            const añoPlanList = Number(planBackend.año ?? planBackend.vigencia);
+            const vigenciaLista = Number.isFinite(añoPlanList) ? añoPlanList : new Date().getFullYear();
             const rolesOrdenados = Array.isArray(planBackend.roles)
               ? [...planBackend.roles].sort((a: any, b: any) => (a.rol_numero || a.numero || 0) - (b.rol_numero || b.numero || 0))
               : [];
@@ -1546,6 +1904,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 fechaFin: String(act.fecha_fin || act.fechaFin || '').split('T')[0],
                 fechaCorte: String(act.fecha_corte || act.fechaCorte || '').split('T')[0],
                 porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+                tipoCalculo: act.tipo_calculo || act.tipoCalculo || 'manual',
+                totalAuditoriasProgramadas: act.total_auditorias_programadas ?? act.totalAuditoriasProgramadas ?? 0,
+                totalAuditoriasFinalizadas: act.total_auditorias_finalizadas ?? act.totalAuditoriasFinalizadas ?? 0,
                 estado: (act.estado || 'pendiente').toLowerCase() === 'completada'
                   ? 'COMPLETADA'
                   : (String(act.estado || '').toLowerCase().replace(/_/g, '-') === 'en-progreso' || String(act.estado || '').toLowerCase() === 'retrasada')
@@ -1571,23 +1932,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                   }
                   return { responsable: respSing, responsables: respList };
                 })(),
-                puntosControl: act.puntos_control || act.puntosControl || [],
-                frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
-                entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
-                tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
-                  id: t.id,
-                  descripcion: t.descripcion || '',
-                  completada: !!t.completada,
-                  responsables: t.responsables || [],
-                  fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
-                  fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
-                  fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
-                  completadaPor: t.completadaPor || t.completada_por || undefined,
-                  requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-                  requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
-                  observaciones: t.observaciones || '',
-                  adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
-                })),
+                ...(() => {
+                  const pcs = mapPuntosControlFechasVigencia(act.puntos_control || act.puntosControl, vigenciaLista);
+                  return {
+                    puntosControl: pcs,
+                    frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
+                    entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
+                    tareasSeguimiento: mapTareasSeguimientoDesdeBackend(
+                      act.tareas_seguimiento || act.tareasSeguimiento,
+                      pcs,
+                      vigenciaLista,
+                    ),
+                  };
+                })(),
               })),
             }));
 
@@ -1596,7 +1953,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               id: planBackend.id,
               vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
               version: planBackend.version || 1,
-              estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+              estado: mapearEstadoPlan(planBackend.estado || 'borrador'),
               nombrePlan:
                 planBackend.nombre
                 || planBackend.nombre_plan
@@ -1606,18 +1963,31 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 planBackend.total_actividades
                 || planBackend.totalActividades
                 || 0,
-              jefeOCI: {
-                id: planBackend.responsable_id || planBackend.jefe_oci_id || '',
-                nombre:
-                  planBackend.responsable
-                  || planBackend.responsable_nombre
-                  || planBackend.jefe_oci
-                  || 'No asignado',
-                cargo: planBackend.responsable_cargo || 'Responsable',
-                email: planBackend.responsable_email || ''
-              },
+              jefeOCI: (() => {
+                const rid = String(planBackend.responsable_id || planBackend.jefe_oci_id || '').trim();
+                return {
+                  id: rid,
+                  idPerson: rid || undefined,
+                  idTercero: rid || undefined,
+                  nombre:
+                    planBackend.responsable
+                    || planBackend.responsable_nombre
+                    || planBackend.jefe_oci
+                    || 'No asignado',
+                  cargo: planBackend.responsable_cargo || 'Responsable',
+                  email: planBackend.responsable_email || '',
+                };
+              })(),
               fechaAprobacion: planBackend.fecha_aprobacion || planBackend.fechaAprobacion || null,
               fechaCreacion: planBackend.fecha_creacion || planBackend.createdAt || new Date().toISOString(),
+              fechaInicio: formatearFechaPlanBackend(
+                planBackend.fecha_inicio ?? planBackend.fechaInicio,
+                `${vigenciaLista}-01-01`,
+              ),
+              fechaFin: formatearFechaPlanBackend(
+                planBackend.fecha_fin ?? planBackend.fechaFin,
+                `${vigenciaLista}-12-31`,
+              ),
               actaCICC: planBackend.acta_cicc || planBackend.actaCICC || null,
               // ✅ Campos en camelCase para que WizardCreacion los use correctamente
               equipoAprobacion: planBackend.equipo_aprobacion || planBackend.equipoAprobacion || [],
@@ -1625,33 +1995,225 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               roles: rolesNormalizados
             };
           });
-          setPlanesAnteriores(planesTransformados);
+
+          // Un usuario que SOLO es aprobador (Aprobador PAI) sin permisos de
+          // edición/creación/activación solo debe ver planes donde está en el
+          // equipo de aprobación. No le interesa ni puede actuar sobre los demás.
+          const esSoloComite = puedeAprobarPlan && !puedeEditarPlan && !puedeActivarPlan && !puedeCrearPlan && !esSuperUsuario;
+          console.log('[PlanAnualDefinitivo] Filtro planes:', {
+            esSoloComite,
+            puedeAprobarPlan,
+            puedeEditarPlan,
+            puedeActivarPlan,
+            puedeCrearPlan,
+            esSuperUsuario,
+            totalPlanes: planesTransformados.length,
+            equiposAprobacion: planesTransformados.map((p: any) => ({
+              vigencia: p.vigencia,
+              equipo: (p.equipoAprobacion || []).map((m: any) => m.email),
+            })),
+          });
+
+          if (esSoloComite) {
+            try {
+              const authCache = (window as any).__esap_auth_cache;
+              const userEmail = (
+                authCache?.person?.email ||
+                authCache?.email ||
+                authCache?.dir_email ||
+                authCache?.username ||
+                ''
+              ).toLowerCase().trim();
+              const userId = String(
+                authCache?.person?.id ||
+                authCache?.person?.idPerson ||
+                authCache?.person?.id_person ||
+                authCache?.idPerson ||
+                authCache?.id_person ||
+                authCache?.id ||
+                ''
+              ).toLowerCase();
+              console.log('[PlanAnualDefinitivo] Filtrando para usuario comité:', { userEmail, userId });
+
+              const planesFiltrados = planesTransformados.filter((p: any) => {
+                const equipo: any[] = p.equipoAprobacion || [];
+                if (!Array.isArray(equipo) || equipo.length === 0) return false;
+                return equipo.some((m: any) => {
+                  const mEmail = (m.email || '').toLowerCase().trim();
+                  const mId = String(m.id || m.idPerson || m.idTercero || '').toLowerCase();
+                  return (userEmail && mEmail === userEmail) || (userId && mId === userId);
+                });
+              });
+              console.log('[PlanAnualDefinitivo] Planes filtrados:', planesFiltrados.map((p: any) => p.vigencia));
+              setPlanesAnteriores(planesFiltrados);
+            } catch {
+              setPlanesAnteriores(planesTransformados);
+            }
+          } else {
+            setPlanesAnteriores(planesTransformados);
+          }
         }
       } catch (error) {
         console.error('Error cargando planes disponibles:', error);
       }
     };
     cargarPlanesDisponibles();
-  }, [planActual]); // Recargar cuando cambie el plan actual para reflejar nuevos planes
+  }, [planActual, planesListVersion]); // Recargar cuando cambie el plan actual para reflejar nuevos planes
 
-  // Handler para cambiar de plan
+  // Handler para cambiar de plan (historial: ojo). Carga por ID: solo cambiar año puede dejar planActual sin actualizar si getByYear falla.
   const handleCambiarPlan = async (planId: string) => {
-    // Si la persona toca visualizar el plan que ya está activo, la scrolleamos hacia arriba
     if (planId === planActual?.id) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    
-    const planSeleccionado = planesAnteriores.find(p => p.id === planId);
-    if (planSeleccionado) {
-      // Cambiar el año para que el hook usePlanAnualCompleto cargue el nuevo plan
-      setAñoActual(planSeleccionado.vigencia);
-      // El planActual se actualizará automáticamente cuando planDesdeBackend cambie
-      toast.success(`Cargando plan ${planSeleccionado.vigencia}...`);
+
+    const planSeleccionado = planesAnteriores.find((p) => p.id === planId);
+    if (!planSeleccionado) {
+      toast.error('No se encontró el plan en el historial.');
+      return;
+    }
+
+    const toastId = 'plan-anual-cambiar-vigencia';
+    toast.loading(`Cargando plan ${planSeleccionado.vigencia}…`, { id: toastId });
+
+    try {
+      let resp = await planAnualApi.getById(planId);
+      let raw: any = resp.data;
+      if (!resp.success || !raw) {
+        toast.error(resp.error || 'No se pudo cargar el plan.', { id: toastId });
+        return;
+      }
+
+      const rolesArr = Array.isArray(raw?.roles) ? raw.roles : [];
+      const sinActividades =
+        rolesArr.length === 0 ||
+        rolesArr.every((r: any) => !Array.isArray(r?.actividades) || r.actividades.length === 0);
+      const vig = raw.año ?? planSeleccionado.vigencia;
+      if (sinActividades && vig) {
+        const byYear = await planAnualApi.getByYear(vig);
+        if (byYear?.success && byYear.data) {
+          raw = byYear.data as any;
+        }
+      }
+
+      if (!Array.isArray(raw?.roles) || raw.roles.length === 0) {
+        toast.error('El plan no tiene roles/actividades en el servidor.', { id: toastId });
+        return;
+      }
+
+      setAñoActual(vig);
+      setPlanActual(transformarPlanBackendAFicha(raw));
+      setVista('dashboard');
+
+      try {
+        localStorage.setItem(
+          'esap:plan_anual_activo',
+          JSON.stringify({
+            vigencia: vig,
+            id: raw.id,
+            estado: raw.estado,
+            version: planSeleccionado.version ?? 1,
+            jefeOCINombre: raw.responsable || planSeleccionado.jefeOCI?.nombre || '',
+            fechaCorte: `${vig}-12-31`,
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+
+      toast.success(`Plan ${planSeleccionado.vigencia} cargado`, { id: toastId });
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al cargar el plan', { id: toastId });
     }
   };
 
-  const handleEditarPlan = async (plan: PlanAnual) => {
+  useEffect(() => {
+    const planSeleccionadoId = vigenciaContext?.planActivoId;
+    const planEstaDisponible = planesAnteriores.some((plan) => plan.id === planSeleccionadoId);
+    if (
+      vista !== 'dashboard' ||
+      !planSeleccionadoId ||
+      !planEstaDisponible ||
+      planSeleccionadoId === planActual?.id ||
+      cambioPlanDesdeHeaderEnCursoRef.current === planSeleccionadoId
+    ) {
+      return;
+    }
+
+    cambioPlanDesdeHeaderEnCursoRef.current = planSeleccionadoId;
+    void handleCambiarPlan(planSeleccionadoId).finally(() => {
+      if (cambioPlanDesdeHeaderEnCursoRef.current === planSeleccionadoId) {
+        cambioPlanDesdeHeaderEnCursoRef.current = null;
+      }
+    });
+  }, [vigenciaContext?.planActivoId, vista, planActual?.id, planesAnteriores]);
+
+  const prioridadPlanTrasEliminar = (estado: EstadoPlan): number => {
+    if (estado === 'VIGENTE') return 0;
+    if (estado === 'APROBADO') return 1;
+    if (estado === 'EN_REVISION') return 2;
+    if (estado === 'BORRADOR') return 3;
+    return 4;
+  };
+
+  const handlePlanEliminado = async (planIdEliminado: string) => {
+    invalidatePlanAnualListCache();
+
+    try {
+      const stored = localStorage.getItem('esap:plan_anual_activo');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id === planIdEliminado) {
+          localStorage.removeItem('esap:plan_anual_activo');
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const vigenciaEliminada = planesAnteriores.find((p) => p.id === planIdEliminado)?.vigencia;
+    const restantes = planesAnteriores.filter((p) => p.id !== planIdEliminado);
+    setPlanesAnteriores(restantes);
+    setPlanesListVersion((v) => v + 1);
+
+    if (planActual?.id !== planIdEliminado) {
+      toast.success('Plan en borrador eliminado', {
+        description: vigenciaEliminada
+          ? `Vigencia ${vigenciaEliminada} — sigues en el plan que tenías abierto.`
+          : 'Sigues en el plan que tenías abierto.',
+        duration: 5000,
+      });
+      return;
+    }
+
+    const candidatos = [...restantes].sort((a, b) => {
+      const pa = prioridadPlanTrasEliminar(a.estado);
+      const pb = prioridadPlanTrasEliminar(b.estado);
+      if (pa !== pb) return pa - pb;
+      return (b.vigencia ?? 0) - (a.vigencia ?? 0);
+    });
+
+    if (candidatos.length > 0) {
+      const siguiente = candidatos[0];
+      toast.info(`Se abrió el plan ${siguiente.vigencia}`, {
+        description: 'El plan eliminado ya no está disponible.',
+        duration: 6000,
+      });
+      await handleCambiarPlan(siguiente.id);
+      return;
+    }
+
+    setPlanActual(null);
+    setVista('inicio');
+    toast.success('Plan eliminado', {
+      description: 'No quedan otros planes registrados. Puedes crear uno nuevo.',
+      duration: 6000,
+    });
+  };
+
+  const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean) => {
+    setDashboardSeccionForzada(null);
+    setWizardSoloLectura(soloLectura);
     try {
       const resp = await planAnualApi.getById(plan.id);
       if (!resp?.success || !resp.data) {
@@ -1678,13 +2240,48 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         (a, b) => (a.rol_numero ?? a.numero ?? 0) - (b.rol_numero ?? b.numero ?? 0),
       );
 
+      const vigenciaPlan = planBackend.año || planBackend.ano || plan.vigencia;
       const planCompleto: PlanAnual = {
         ...plan,
         id: planBackend.id || plan.id,
-        vigencia: planBackend.año || planBackend.ano || plan.vigencia,
+        vigencia: vigenciaPlan,
         estado: mapearEstadoPlan(planBackend.estado || plan.estado || 'borrador'),
-        fechaInicio: planBackend.fecha_inicio || plan.fechaInicio || `${plan.vigencia}-01-01`,
-        fechaFin: planBackend.fecha_fin || plan.fechaFin || `${plan.vigencia}-12-31`,
+        jefeOCI: (() => {
+          const rid = planBackend.responsable_id || planBackend.jefe_oci_id || plan.jefeOCI?.id || '';
+          const nombreResp =
+            planBackend.responsable ||
+            planBackend.responsable_nombre ||
+            plan.jefeOCI?.nombre ||
+            'Responsable del plan';
+          const emailResp = (planBackend.responsable_email || plan.jefeOCI?.email || '').trim();
+          const cargoResp = planBackend.responsable_cargo || plan.jefeOCI?.cargo || 'Jefe de Control Interno';
+          const idPerson = String(rid || plan.jefeOCI?.id || '').trim();
+          return {
+            id: idPerson || plan.jefeOCI?.id || '1',
+            idPerson: idPerson || undefined,
+            idTercero: idPerson || plan.jefeOCI?.idTercero,
+            nombre: nombreResp,
+            cargo: cargoResp,
+            email: emailResp,
+          };
+        })(),
+        fechaInicio: (() => {
+          let fi = formatearFechaPlanBackend(
+            planBackend.fecha_inicio ?? plan.fechaInicio,
+            `${vigenciaPlan}-01-01`,
+          );
+          if (fi === `${vigenciaPlan - 1}-12-31`) fi = `${vigenciaPlan}-01-01`;
+          else if (parseInt(fi.slice(0, 4), 10) !== vigenciaPlan) fi = `${vigenciaPlan}${fi.slice(4)}`;
+          return fi;
+        })(),
+        fechaFin: (() => {
+          let ff = formatearFechaPlanBackend(
+            planBackend.fecha_fin ?? plan.fechaFin,
+            `${vigenciaPlan}-12-31`,
+          );
+          if (parseInt(ff.slice(0, 4), 10) !== vigenciaPlan) ff = `${vigenciaPlan}${ff.slice(4)}`;
+          return ff;
+        })(),
         equipoAprobacion: planBackend.equipo_aprobacion || planBackend.equipoAprobacion || plan.equipoAprobacion || [],
         ordenAprobacion: planBackend.orden_aprobacion || planBackend.ordenAprobacion || plan.ordenAprobacion || 'secuencial',
         roles: rolesOrdenados.map((rol: any) => ({
@@ -1694,23 +2291,51 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           color: rol.color,
           icono: obtenerIconoRol(rol.rol_numero ?? rol.numero),
           descripcion: rol.descripcion,
-          responsables: normalizarArrayResponsablesBackend(rol.responsables).slice(0, 1) as any,
-          actividades: (rol.actividades || []).map((act: any) => ({
+          responsable: rol.responsable,
+          responsable_id: rol.responsable_id,
+          responsables: mapResponsablesRolDesdeBackend(rol),
+          actividades: (rol.actividades || []).map((act: any) => {
+            const pcsWizard = mapPuntosControlFechasVigencia(
+              act.puntos_control || act.puntosControl,
+              vigenciaPlan,
+            );
+            return {
             ...act,
             id: act.id,
             nombre: act.nombre,
             descripcion: act.descripcion,
-            fechaInicio: act.fecha_inicio || act.fechaInicio || '',
-            fechaFin: act.fecha_fin || act.fechaFin || '',
+            fechaInicio: formatearFechaPlanBackend(act.fecha_inicio ?? act.fechaInicio, `${vigenciaPlan}-01-01`),
+            fechaFin: formatearFechaPlanBackend(act.fecha_fin ?? act.fechaFin, `${vigenciaPlan}-12-31`),
             porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+            tipoCalculo: act.tipo_calculo || act.tipoCalculo || 'manual',
+            totalAuditoriasProgramadas: act.total_auditorias_programadas ?? act.totalAuditoriasProgramadas ?? 0,
+            totalAuditoriasFinalizadas: act.total_auditorias_finalizadas ?? act.totalAuditoriasFinalizadas ?? 0,
             estado: (act.estado || 'pendiente').toUpperCase(),
             control: act.control || '',
             evaluacion: act.evaluacion || '',
             seguimiento: act.seguimiento || '',
             activo: act.activo !== false,
             incluidaEnPlan: act.incluidaEnPlan !== false,
-            puntosControl: act.puntos_control || act.puntosControl || [],
+            puntosControl: pcsWizard,
             frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
+            fechaCorte: formatearFechaPlanBackend(
+              act.fecha_corte ?? act.fechaCorte,
+              formatearFechaPlanBackend(act.fecha_fin ?? act.fechaFin, `${vigenciaPlan}-12-31`),
+            ),
+            requiereAutorizacionJefeOCI: !!(
+              act.requiere_autorizacion_jefe_oci
+              ?? act.requiereAutorizacionJefeOCI
+              ?? act.requiere_verificacion_director
+              ?? act.requiereVerificacionDirector
+            ),
+            requiereVerificacionDirector: !!(
+              act.requiereAutorizacionJefeOCI
+              ?? act.requiere_verificacion_director
+              ?? act.requiereVerificacionDirector
+            ),
+            autorizadaPorJefeOCI: !!(
+              act.verificada_por_director || act.verificadaPorDirector || act.autorizadaPorJefeOCI
+            ),
             ...(() => {
               const respSing =
                 act.responsable && act.responsable !== 'Por asignar'
@@ -1725,39 +2350,45 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               if (respList.length === 0 && respSing) respList = [{ ...respSing }];
               return { responsable: respSing, responsables: respList };
             })(),
-            tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
-              id: t.id,
-              descripcion: t.descripcion || '',
-              completada: !!t.completada,
-              responsables: t.responsables || [],
-              fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
-              fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
-              fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
-              completadaPor: t.completadaPor || t.completada_por || undefined,
-              requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-              requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
-              observaciones: t.observaciones || '',
-              adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
-            })),
+            tareasSeguimiento: mapTareasSeguimientoDesdeBackend(
+              act.tareas_seguimiento || act.tareasSeguimiento,
+              pcsWizard,
+              vigenciaPlan,
+            ),
             entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
-          })),
+          };
+          }),
         })),
       };
 
       setPlanAEditar(planCompleto);
+      setWizardSesionKey((k) => k + 1);
       setVista('wizard');
     } catch (error) {
       console.error('Error cargando plan completo para edición:', error);
       toast.error('No se pudo cargar el plan completo para edición');
       setPlanAEditar(plan);
+      setWizardSesionKey((k) => k + 1);
       setVista('wizard');
     }
   };
 
+  const handleEditarPlan = (plan: PlanAnual) => abrirWizardConPlan(plan, false);
+  const handleVerDefinicionPlan = (plan: PlanAnual) => abrirWizardConPlan(plan, true);
+
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
-  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string, comiteAprobacion?: Auditor[], ordenAprobacion?: string): Promise<boolean> => {
+  const handleCrearPlan = async (
+    vigencia: number,
+    jefeOCI: Auditor,
+    rolesConfig: any[],
+    fechaInicio: string,
+    fechaFin: string,
+    comiteAprobacion?: Auditor[],
+    ordenAprobacion?: string,
+    opciones?: { permanecerEnWizard?: boolean; silencioso?: boolean },
+  ): Promise<boolean> => {
     try {
       // ═══════════════════════════════════════════════════════════════
       // DEBUG: Resumen completo de lo que se va a enviar al backend
@@ -1790,10 +2421,16 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       console.log(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      const esUUID = (v: unknown): v is string =>
-        typeof v === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v);
-      // Validar si el id es un UUID válido. Si no lo es, enviamos undefined para evitar el Error 400 del Backend.
-      const esIdUUID = esUUID(jefeOCI.id);
+      // responsable_id = id_person (auth.personas), no el UUID de configuracion_profesionales_ocig
+      const responsableIdPerson = idPersonaParaPlanAnual(jefeOCI);
+      if (!responsableIdPerson) {
+        toast.error('Responsable del plan sin identificador válido', {
+          description:
+            'Vuelva a seleccionar el responsable en el paso 1 (debe ser un profesional OCI con cuenta en el sistema).',
+          duration: 7000,
+        });
+        return false;
+      }
 
       // Determinar si creamos o actualizamos
       let planCreado: any = null;
@@ -1801,9 +2438,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       if (planAEditar) {
         // Actualizar plan existente
         const resp = await planAnualApi.update(planAEditar.id, {
-          estado: planAEditar.estado,
+          estado: opciones?.permanecerEnWizard ? 'borrador' : planAEditar.estado,
           responsable: jefeOCI.nombre,
-          responsable_id: esIdUUID ? jefeOCI.id : undefined,
+          responsable_id: responsableIdPerson,
           fecha_inicio: fechaInicio,
           fecha_fin: fechaFin,
           equipo_aprobacion: comiteAprobacion || [],
@@ -1813,11 +2450,40 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         if (resp.success) {
           planCreado = resp.data;
 
+          // Asegurar que todos los roles de rolesConfig existan en el backend
+          const rolesBackendActualizados = [...(planCreado.roles || [])];
+          for (const rolConfig of rolesConfig) {
+            let rolBackend = rolesBackendActualizados.find((r: any) => r.rol_numero === rolConfig.numero);
+            if (!rolBackend) {
+              const newRolResp = await planAnualApi.addRol(planCreado.id, {
+                nombre: rolConfig.nombre,
+                descripcion: rolConfig.descripcion || 'Rol creado a medida',
+                color: rolConfig.color || '#10B981',
+                numero: rolConfig.numero
+              });
+              if (newRolResp.success && newRolResp.data) {
+                rolBackend = {
+                  id: newRolResp.data.id,
+                  rol_numero: newRolResp.data.rol_numero,
+                  nombre: newRolResp.data.nombre,
+                  actividades: []
+                };
+                rolesBackendActualizados.push(rolBackend);
+              } else {
+                console.error(`❌ Error creando rol personalizado en edición ${rolConfig.numero}:`, newRolResp.error);
+              }
+            }
+          }
+          planCreado.roles = rolesBackendActualizados;
+
           // Además de los datos generales del plan, sincronizar SOLO actividades modificadas.
-          const todasActividadesEdicion = rolesConfig.flatMap((rc: any) => [
-            ...(rc.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false),
-            ...(rc.actividadesCustom || []),
-          ]);
+          const todasActividadesEdicion = rolesConfig.flatMap((rc: any) => {
+            const rolBackend = planCreado.roles.find((r: any) => r.rol_numero === rc.numero);
+            return [
+              ...(rc.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false).map((a: any) => ({ ...a, rolBackendId: rolBackend?.id })),
+              ...(rc.actividadesCustom || []).map((a: any) => ({ ...a, rolBackendId: rolBackend?.id })),
+            ];
+          });
           const actividadesOriginales = (planAEditar?.roles || []).flatMap((r: any) => r.actividades || []);
           const originalPorId = new Map<string, any>(
             actividadesOriginales
@@ -1868,6 +2534,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             }
 
             const responsablesActividad = Array.isArray(act.responsables) ? act.responsables : [];
+            const requiereAuthJefe = !!(
+              act.requiereAutorizacionJefeOCI ?? act.requiereVerificacionDirector
+            );
             return {
               nombre: act.nombre || '',
               descripcion: act.descripcion || '',
@@ -1876,6 +2545,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               fecha_inicio: act.fechaInicio || undefined,
               fecha_fin: act.fechaFin || undefined,
               fecha_corte: act.fechaCorte || undefined,
+              requiereVerificacionDirector: requiereAuthJefe,
               configuracionEvidencias,
               puntos_control: Array.isArray(act.puntosControl) ? act.puntosControl : [],
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
@@ -1892,23 +2562,51 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                     requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
                     observaciones: t.observaciones || '',
                     adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+                    puntoControlId: t.puntoControlId || t.punto_control_id || null,
                   }))
                 : [],
             };
           };
 
           let actividadesSincronizadas = 0;
+          let actividadesCreadas = 0;
           let actividadesNoUuid = 0;
           let actividadesConError = 0;
           let actividadesSinCambios = 0;
 
           const updatesPendientes: Array<{ id: string; payload: any }> = [];
+          const creationsPendientes: Array<{ rolBackendId: string; payload: any }> = [];
+
           for (const act of todasActividadesEdicion) {
+            const payloadNuevo = construirPayloadActividad(act);
             if (!esUUID(act?.id)) {
-              actividadesNoUuid++;
+              if (act.rolBackendId) {
+                creationsPendientes.push({
+                  rolBackendId: act.rolBackendId,
+                  payload: {
+                    nombre: act.nombre,
+                    descripcion: act.descripcion || '',
+                    responsable: payloadNuevo.responsable,
+                    responsables: payloadNuevo.responsables,
+                    fecha_corte: payloadNuevo.fecha_corte,
+                    fecha_inicio: payloadNuevo.fecha_inicio || `${vigencia}-01-01`,
+                    fecha_fin: payloadNuevo.fecha_fin || `${vigencia}-12-31`,
+                    observaciones: '',
+                    control: act.control || '',
+                    evaluacion: act.evaluacion || '',
+                    seguimiento: act.seguimiento || '',
+                    requiereVerificacionDirector: payloadNuevo.requiereVerificacionDirector,
+                    configuracionEvidencias: payloadNuevo.configuracionEvidencias,
+                    puntos_control: payloadNuevo.puntos_control,
+                    frecuencia_puntos_control: payloadNuevo.frecuencia_puntos_control,
+                    tareas_seguimiento: payloadNuevo.tareas_seguimiento,
+                  }
+                });
+              } else {
+                actividadesNoUuid++;
+              }
               continue;
             }
-            const payloadNuevo = construirPayloadActividad(act);
             const original = originalPorId.get(String(act.id));
             if (original) {
               const payloadOriginal = construirPayloadActividad(original);
@@ -1938,8 +2636,68 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             });
           }
 
-          toast.success('Plan guardado exitosamente');
-          setPlanAEditar(undefined);
+          // Ejecutar creaciones de nuevas actividades
+          for (let i = 0; i < creationsPendientes.length; i += TAM_LOTE) {
+            const lote = creationsPendientes.slice(i, i + TAM_LOTE);
+            const resultados = await Promise.allSettled(
+              lote.map((c) => actividadesApi.create(c.rolBackendId, c.payload))
+            );
+            resultados.forEach((r) => {
+              if (r.status === 'fulfilled' && r.value?.success) {
+                actividadesCreadas++;
+              } else {
+                actividadesConError++;
+                console.error('[handleCrearPlan] Error creando actividad en edición:', r);
+              }
+            });
+          }
+
+          if (planCreado?.roles?.length) {
+            await sincronizarResponsablesRolesEnBackend(
+              planAEditar.id,
+              rolesConfig,
+              planCreado.roles,
+            );
+          }
+
+          await limpiarBorradoresWizard();
+          setAñoActual(vigencia);
+          setPlanesListVersion((v) => v + 1);
+          if (opciones?.permanecerEnWizard) {
+            const reloadedResp = await planAnualApi.getById(planAEditar.id);
+            if (reloadedResp.success && reloadedResp.data) {
+              setPlanAEditar(reloadedResp.data);
+            } else {
+              setPlanAEditar((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      vigencia,
+                      estado: 'BORRADOR',
+                      jefeOCI: {
+                        ...jefeOCI,
+                        id: responsableIdPerson,
+                        idPerson: responsableIdPerson,
+                        idTercero: responsableIdPerson,
+                      },
+                      fechaInicio,
+                      fechaFin,
+                      equipoAprobacion: comiteAprobacion || [],
+                      ordenAprobacion: (ordenAprobacion || 'secuencial') as 'secuencial' | 'paralelo',
+                    }
+                  : prev,
+              );
+            }
+            if (!opciones?.silencioso) {
+              toast.success('Plan guardado en borrador', {
+                description: 'Puede seguir editando en el asistente. El borrador temporal ya no aparece en inicio.',
+              });
+            }
+          } else {
+            if (!opciones?.silencioso) {
+              toast.success('Plan guardado exitosamente');
+            }
+          }
           return true;
         } else {
           toast.error('Error al actualizar el plan', { description: resp.error });
@@ -1950,9 +2708,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         planCreado = await crearPlanEnBackend({
           año: vigencia,
           responsable: jefeOCI.nombre,
-          responsable_id: esIdUUID ? jefeOCI.id : undefined,
+          responsable_id: responsableIdPerson,
           fecha_inicio: fechaInicio,
           fecha_fin: fechaFin,
+          estado: 'borrador',
           equipo_aprobacion: comiteAprobacion || [],
           orden_aprobacion: ordenAprobacion || 'secuencial',
         });
@@ -1971,8 +2730,30 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // Crear actividades para cada rol
       for (const rolConfig of rolesConfig) {
         // Buscar el rol correspondiente en el plan creado
-        const rolBackend = planCreado.roles.find((r: any) => r.rol_numero === rolConfig.numero);
+        let rolBackend = planCreado.roles.find((r: any) => r.rol_numero === rolConfig.numero);
         
+        if (!rolBackend) {
+          // Es un rol personalizado/adicional, lo creamos en el backend
+          const newRolResp = await planAnualApi.addRol(planCreado.id, {
+            nombre: rolConfig.nombre,
+            descripcion: rolConfig.descripcion || 'Rol creado a medida',
+            color: rolConfig.color || '#10B981',
+            numero: rolConfig.numero
+          });
+          if (newRolResp.success && newRolResp.data) {
+            rolBackend = {
+              id: newRolResp.data.id,
+              rol_numero: newRolResp.data.rol_numero,
+              nombre: newRolResp.data.nombre,
+              actividades: []
+            };
+            planCreado.roles.push(rolBackend);
+          } else {
+            console.error(`❌ Error creando rol personalizado ${rolConfig.numero}:`, newRolResp.error);
+            continue;
+          }
+        }
+
         if (rolBackend) {
           // Combinar actividades seleccionadas (solo incluidas en plan) y custom
           const todasActividades = [
@@ -1988,31 +2769,13 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             tareas: todasActividades[0]?.tareasSeguimiento?.length || 0
           });
 
-          const responsablesDelRol = rolConfig.responsables || [];
-
-          // Crear cada actividad en el backend
+          // Crear cada actividad en el backend (responsable de actividad independiente del responsable del rol)
           for (let i = 0; i < todasActividades.length; i++) {
             const act = todasActividades[i];
-            
-            // ⚡ LÓGICA ACTUALIZADA: 
-            // - Si el ROL tiene responsables asignados → asignar rotativamente a las actividades
-            // - Si el ROL NO tiene responsables → dejar como "Por asignar"
-            const responsablesDelRol = rolConfig.responsables || [];
-            let responsable: string;
-            
-            if (act.responsables && act.responsables.length > 0) {
-              // Usar el primer responsable asignado a la actividad
-              responsable = act.responsables[0].nombre || 'Por asignar';
-              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Responsable (actividad): ${responsable}`);
-            } else if (responsablesDelRol.length > 0) {
-              // Fallback: asignar responsable rotativo de los asignados al rol
-              responsable = responsablesDelRol[i % responsablesDelRol.length]?.nombre || 'Por asignar';
-              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Responsable (rol): ${responsable}`);
-            } else {
-              // Rol sin responsables asignados → actividad queda "Por asignar"
-              responsable = 'Por asignar';
-              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Sin asignar (rol sin responsables)`);
-            }
+            const responsableActividad =
+              act.responsables && act.responsables.length > 0
+                ? act.responsables[0].nombre || 'Por asignar'
+                : 'Por asignar';
 
             // ⚡ Convertir tipoEvidencia del Wizard a configuracionEvidencias del backend
             let configuracionEvidencias = act.configuracionEvidencias;
@@ -2064,10 +2827,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             const resultActividad = await actividadesApi.create(rolBackend.id, {
               nombre: act.nombre,
               descripcion: act.descripcion || '',
-              responsable: responsable,
-              responsables: act.responsables && act.responsables.length > 0
-                ? act.responsables
-                : (responsablesDelRol.length > 0 ? [responsablesDelRol[i % responsablesDelRol.length]] : []),
+              responsable: responsableActividad,
+              responsables:
+                act.responsables && act.responsables.length > 0 ? act.responsables : [],
               fecha_corte: act.fechaCorte || undefined,
               fecha_inicio: act.fechaInicio || `${vigencia}-01-01`,
               fecha_fin: act.fechaFin || `${vigencia}-12-31`,
@@ -2076,7 +2838,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               control: act.control || '',
               evaluacion: act.evaluacion || '',
               seguimiento: act.seguimiento || '',
-              requiereVerificacionDirector: act.requiereVerificacionDirector || false,
+              requiereVerificacionDirector: !!(
+                act.requiereAutorizacionJefeOCI || act.requiereVerificacionDirector
+              ),
               configuracionEvidencias: configuracionEvidencias,
               puntos_control: act.puntosControl && act.puntosControl.length > 0 ? act.puntosControl : undefined,
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
@@ -2095,6 +2859,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                     requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
                     observaciones: t.observaciones || '',
                     adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+                    puntoControlId: t.puntoControlId || t.punto_control_id || null,
                   }))
                 : undefined,
             });
@@ -2111,6 +2876,44 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         }
       }
 
+      if (planCreado?.id && planCreado?.roles?.length) {
+        await sincronizarResponsablesRolesEnBackend(planCreado.id, rolesConfig, planCreado.roles);
+      }
+
+      if (planCreado?.id) {
+        await limpiarBorradoresWizard();
+        setPlanesListVersion((v) => v + 1);
+        if (opciones?.permanecerEnWizard) {
+          setAñoActual(vigencia);
+          await abrirWizardConPlan(
+            {
+              id: planCreado.id,
+              vigencia,
+              version: 1,
+              estado: 'BORRADOR',
+              jefeOCI: {
+                ...jefeOCI,
+                id: responsableIdPerson,
+                idPerson: responsableIdPerson,
+                idTercero: responsableIdPerson,
+              },
+              fechaInicio,
+              fechaFin,
+              equipoAprobacion: comiteAprobacion || [],
+              ordenAprobacion: ordenAprobacion || 'secuencial',
+              roles: [],
+            } as PlanAnual,
+            false,
+          );
+          if (!opciones?.silencioso) {
+            toast.success('Plan creado en borrador', {
+              description: 'Sigue en el asistente. Ya no verá el aviso de borrador temporal en inicio.',
+            });
+          }
+          return true;
+        }
+      }
+
       // NO recargamos el plan ni cambiamos la vista aquí, 
       // lo hará el Wizard después de mostrar el Modal de feedback.
 
@@ -2124,14 +2927,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       if (actividadesFallidas === 0) {
-        toast.success('Plan creado exitosamente', {
-          description: `Plan anual ${vigencia} — ${actividadesCreadas} actividades guardadas`
-        });
+        if (!opciones?.silencioso) {
+          toast.success('Plan creado exitosamente', {
+            description: `Plan anual ${vigencia} — ${actividadesCreadas} actividades guardadas`
+          });
+        }
       } else if (actividadesCreadas > 0) {
-        toast.warning('Plan creado con errores parciales', {
-          description: `${actividadesCreadas} actividades guardadas, ${actividadesFallidas} fallaron. Error: ${erroresPorActividad[0]}`,
-          duration: 10000
-        });
+        if (!opciones?.silencioso) {
+          toast.warning('Plan creado con errores parciales', {
+            description: `${actividadesCreadas} actividades guardadas, ${actividadesFallidas} fallaron. Error: ${erroresPorActividad[0]}`,
+            duration: 10000
+          });
+        }
       } else {
         toast.error('El plan se creó pero no se guardaron las actividades', {
           description: `Error: ${erroresPorActividad[0] || 'Error de conexión con el servidor'}`,
@@ -2145,10 +2952,20 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // Verificar si ya existe un plan para esa vigencia entre los planes cargados
       const planExistente = planesAnteriores.find(p => p.vigencia === vigencia);
       if (planExistente) {
-        toast.error(`Ya existe un plan para la vigencia ${vigencia}`, {
-          description: `El plan "${planExistente.id}" (${planExistente.estado}) ya cubre esa vigencia. Puede abrirlo desde la pantalla de inicio o eliminarlo para crear uno nuevo.`,
-          duration: 12000
-        });
+        const esBorrador =
+          String(planExistente.estado ?? '').toLowerCase().replace(/_/g, '-') === 'borrador';
+        if (esBorrador) {
+          toast.info(`Ya hay un borrador para ${vigencia}`, {
+            description: 'Abriendo el plan para continuar la edición.',
+            duration: 8000,
+          });
+          await abrirWizardConPlan(planExistente, false);
+        } else {
+          toast.error(`Ya existe un plan para la vigencia ${vigencia}`, {
+            description: `Estado: ${planExistente.estado}. Ábralo desde la pantalla de inicio.`,
+            duration: 12000,
+          });
+        }
       } else {
         toast.error('No se pudo crear el Plan Anual', {
           description: `El servidor rechazó la creación para vigencia ${vigencia}. Verifique que no exista ya un plan o intente con otra vigencia.`,
@@ -2178,25 +2995,26 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   };
   FIN MOCK handleCrearPlanConMock */
 
-  // Mostrar loading mientras carga
-  if (cargandoDatos) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50/30">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4" />
-        <p className="text-gray-600">Cargando plan anual...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
+      {vista === 'inicio' && (cargandoPlan || cargandoAuditores) && (
+        <div className="shrink-0 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm text-blue-900 flex items-center gap-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent shrink-0" />
+          <span>
+            {cargandoPlan ? 'Sincronizando el plan del año seleccionado…' : 'Cargando referencias del equipo auditor…'}
+          </span>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         {vista === 'inicio' && (
           <PantallaInicio
             key="inicio"
             planesAnteriores={planesAnteriores}
-            onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
+            puedeVerPlan={puedeVerPlan}
+            onCrearNuevo={puedeCrearPlan ? abrirWizardPlanNuevo : undefined}
+            onContinuarBorrador={puedeCrearPlan ? continuarWizardConBorrador : undefined}
             onAbrirPlan={(plan) => {
+              setWizardSoloLectura(false);
               setPlanAEditar(undefined);
               // Si el plan ya está cargado para ese mismo año, ir directo al dashboard
               if (plan.vigencia === añoActual && planActual) {
@@ -2213,16 +3031,39 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
         {vista === 'wizard' && (
           <WizardCreacion
-            key="wizard"
+            key={`wizard-sesion-${wizardSesionKey}-${planAEditar?.id ?? 'nuevo'}-${wizardSoloLectura ? 'ro' : 'rw'}`}
             planAEditar={planAEditar}
-            onCancelar={() => setVista(planActual ? 'dashboard' : 'inicio')}
+            soloLectura={wizardSoloLectura}
+            puedeIrAAprobacion={wizardSoloLectura && puedeIrAAprobacion}
+            onIrAAprobacion={
+              puedeIrAAprobacion
+                ? () => {
+                    setWizardSoloLectura(false);
+                    setDashboardSeccionForzada('aprobar');
+                    setVista('dashboard');
+                  }
+                : undefined
+            }
+            onCancelar={() => {
+              setWizardSoloLectura(false);
+              setDashboardSeccionForzada(null);
+              setVista(planActual ? 'dashboard' : 'inicio');
+            }}
             onCrear={handleCrearPlan}
+            onGuardarBorrador={(v, j, r, fi, ff, c, o, opciones) =>
+              handleCrearPlan(v, j, r, fi, ff, c, o, { permanecerEnWizard: true, silencioso: opciones?.silencioso })
+            }
             onTerminado={async () => {
-              // añoActual ya fue sincronizado en handleCrearPlan
+              setWizardSoloLectura(false);
+              setDashboardSeccionForzada(null);
+              setPlanAEditar(undefined);
               await recargarPlan();
               setVista('dashboard');
             }}
             planesExistentes={planesAnteriores}
+            onCargarPlanBorrador={async (plan) => {
+              await abrirWizardConPlan(plan, false);
+            }}
           />
         )}
 
@@ -2240,11 +3081,15 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 setVista('rol4-integrado');
               }
             }}
-            onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
-            onEditarPlan={puedeCrearPlan ? handleEditarPlan : undefined}
+            onCrearNuevo={puedeCrearPlan ? abrirWizardPlanNuevo : undefined}
+            onEditarPlan={puedeEditarPlan ? handleEditarPlan : undefined}
+            onVerDefinicionPlan={puedeVerPlan ? handleVerDefinicionPlan : undefined}
+            seccionForzada={dashboardSeccionForzada}
+            onSeccionForzadaAplicada={limpiarSeccionForzadaDashboard}
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}
+            onPlanEliminado={handlePlanEliminado}
           />
         )}
 
@@ -2275,12 +3120,16 @@ function PlanAnualRol4IntegradoWrapper({ vigencia, onVolver }: { vigencia: numbe
 
 interface PantallaInicioProps {
   planesAnteriores: PlanAnual[];
+  /** CONTROL_INTERNO_PLAN_ANUAL_VIEW: mostrar acceso al dashboard del plan */
+  puedeVerPlan?: boolean;
   onCrearNuevo?: () => void;
+  /** Reanuda el JSON de borrador local/servidor sin borrarlo. */
+  onContinuarBorrador?: () => void;
   onAbrirPlan: (plan: PlanAnual) => void;
   onCargarMock?: () => void; // NUEVO: Para cargar datos de prueba
 }
 
-function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarMock }: PantallaInicioProps) {
+function PantallaInicio({ planesAnteriores, puedeVerPlan = false, onCrearNuevo, onContinuarBorrador, onAbrirPlan, onCargarMock }: PantallaInicioProps) {
   const vigenciaActual = new Date().getFullYear();
   
   // Revisar si existe un borrador local no enviado
@@ -2359,20 +3208,20 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
         </div>
 
         {/* Borrador en Progreso */}
-        {borradorLocal && onCrearNuevo && (
+        {borradorLocal && (onContinuarBorrador || onCrearNuevo) && (
           <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border-2 border-orange-200 p-8 shadow-lg mb-8 animate-pulse-slow">
             <h2 className="text-xl font-bold text-orange-900 mb-2 flex items-center gap-2">
               <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-              Borrador en Progreso (Vigencia {borradorLocal.vigencia || vigenciaActual})
+              Borrador temporal (Vigencia {borradorLocal.vigencia || vigenciaActual})
             </h2>
             <p className="text-orange-800 mb-4">
-              Tienes un plan anual que estabas editando pero aún no ha sido enviado al comité aprobador.
+              Progreso guardado solo en borrador JSON (aún no en la base de datos). Use el botón guardar (disquete) en el asistente para crear el plan en borrador oficial.
             </p>
             <button
-              onClick={onCrearNuevo}
+              onClick={onContinuarBorrador || onCrearNuevo}
               className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors shadow-sm"
             >
-              Continuar Editando
+              Continuar borrador temporal
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -2397,13 +3246,20 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
                       {plan.id} • {plan.estado} • Responsable: {plan.jefeOCI?.nombre || 'No asignado'}
                     </p>
                   </div>
-                  <button
-                    onClick={() => onAbrirPlan(plan)}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg font-medium flex items-center gap-2 transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Ver
-                  </button>
+                  {puedeVerPlan ? (
+                    <button
+                      onClick={() => onAbrirPlan(plan)}
+                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg font-medium flex items-center gap-2 transition-colors"
+                      title="Abrir plan en el dashboard"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Ver
+                    </button>
+                  ) : (
+                    <span className="px-3 py-2 text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
+                      Sin permiso de consulta
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

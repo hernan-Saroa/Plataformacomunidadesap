@@ -13,7 +13,7 @@
  */
 
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -193,7 +193,7 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
   yPos += 15;
 
   // Tabla de información general
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: yPos,
     head: [['Campo', 'Información']],
     body: [
@@ -275,7 +275,7 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
       ];
     });
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['#', 'Actividad', 'Responsable', 'Período', 'Avance', 'Estado']],
       body: actividadesData,
@@ -290,12 +290,12 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
         textColor: COLORES_ESAP.grisOscuro
       },
       columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 60 },
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 70 },
         2: { cellWidth: 35 },
-        3: { cellWidth: 30 },
+        3: { cellWidth: 28 },
         4: { cellWidth: 15, halign: 'center' },
-        5: { cellWidth: 25, halign: 'center' }
+        5: { cellWidth: 20 }
       },
       alternateRowStyles: {
         fillColor: [245, 245, 245]

@@ -4,8 +4,11 @@ import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from '../entities/correo-juridico-historial.entity';
+import { CorreoTrackingToken } from '../entities/correo-tracking-token.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 import { SmartClassificationService } from './smart-classification.service';
+import { NotificationClientService } from './notification-client.service';
+import { randomUUID } from 'crypto';
 
 export interface EmailFilters {
     tipo?: string;
@@ -26,11 +29,13 @@ export interface EmailClassification {
 }
 
 export interface SendEmailDto {
-    to: string;
+    to: string | string[];
     cc?: string[];
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    requestReadReceipt?: boolean;
+    requestDeliveryReceipt?: boolean;
 }
 
 import { ActuacionService } from './actuacion.service';
@@ -46,10 +51,120 @@ export class CorreosJuridicosService {
         private readonly adjuntoRepo: Repository<AdjuntoCorreo>,
         @InjectRepository(CorreoJuridicoHistorial)
         private readonly historialRepo: Repository<CorreoJuridicoHistorial>,
+        @InjectRepository(CorreoTrackingToken)
+        private readonly trackingRepo: Repository<CorreoTrackingToken>,
         private readonly graphService: MicrosoftGraphService,
         private readonly smartService: SmartClassificationService,
         private readonly actuacionService: ActuacionService,
+        private readonly notificationClient: NotificationClientService,
     ) { }
+
+    /**
+     * Notifica al JEFE_GESTION_LEGAL cuando un destinatario externo abre por primera vez
+     * un correo enviado desde la plataforma (acuse de recibido automático).
+     */
+    private async notificarAcuseDeRecibido(correoId: string, destinatarioEmail?: string): Promise<void> {
+        try {
+            const correo = await this.correoRepo.findOne({ where: { id: correoId } });
+            if (!correo) return;
+
+            // Solo notificar para correos ENVIADOS desde la plataforma
+            if (correo.direccion !== 'ENVIADO') return;
+
+            const destinatario = destinatarioEmail || correo.destinatariosTo || 'destinatario externo';
+            const remitente = correo.remitenteNombre || correo.remitenteEmail || 'Oficina Jurídica';
+            const fechaEnvio = correo.fechaRecepcion
+                ? new Date(correo.fechaRecepcion).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
+                : 'N/A';
+            const fechaApertura = new Date().toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+
+            const urlAccion = `/gestion-legal?modulo=comunicaciones&correoId=${encodeURIComponent(correoId)}`;
+
+            const emailHtml = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
+                    <div style="border-left: 4px solid #10B981; padding-left: 16px; margin-bottom: 20px;">
+                        <h2 style="color: #003DA5; margin: 0 0 4px;">📬 Acuse de Recibido</h2>
+                        <p style="color: #6b7280; margin: 0; font-size: 14px;">El destinatario ha abierto el correo enviado desde la plataforma</p>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px; width: 40%;">Destinatario:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px; font-weight: 600;">${destinatario}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Asunto:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px; font-weight: 600;">${correo.asunto || '(Sin asunto)'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Enviado por:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px;">${remitente}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Fecha de envío:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px;">${fechaEnvio}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Fecha de apertura:</td>
+                            <td style="padding: 8px 0; color: #10B981; font-size: 13px; font-weight: 600;">${fechaApertura}</td>
+                        </tr>
+                    </table>
+                    <p style="color: #6b7280; font-size: 12px; margin: 16px 0 0; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                        Este es un mensaje automático generado por el sistema de Gestión Legal SIGL.
+                    </p>
+                </div>
+            `;
+
+            await this.notificationClient.notifyByRoles(
+                ['JEFE_GESTION_LEGAL'],
+                {
+                    tipo_notificacion: 'ACUSE_RECIBIDO_CORREO',
+                    titulo: '📬 Acuse de recibido',
+                    mensaje: `${destinatario} ha recibido y abierto el correo "${correo.asunto || '(Sin asunto)'}"`,
+                    descripcion_corta: `Correo abierto: ${(correo.asunto || '').substring(0, 60)}`,
+                    icono: 'MailCheck',
+                    color: '#10B981',
+                    prioridad: 'Media',
+                    categoria: 'gestion-legal',
+                    tiene_accion: true,
+                    texto_boton_accion: 'Ver correo',
+                    url_accion: urlAccion,
+                    datos_adicionales: {
+                        correoId,
+                        destinatario,
+                        asunto: correo.asunto,
+                        fechaApertura: new Date().toISOString(),
+                    },
+                },
+                {
+                    subject: `Acuse de recibido: ${correo.asunto || '(Sin asunto)'}`,
+                    html: emailHtml,
+                },
+            );
+
+            this.logger.log(`✅ Acuse de recibido notificado a JEFE_GESTION_LEGAL para correo ${correoId}`);
+        } catch (error: any) {
+            this.logger.error(`Error notificando acuse de recibido para correo ${correoId}: ${error?.message}`);
+        }
+    }
+
+    /**
+     * Obtiene la URL base para tracking (pixel + links de descarga).
+     * - En producción: API_GATEWAY_URL (ej: https://plataforma.esap.edu.co)
+     *   las rutas son /legal/api/v1/correos/track/...
+     * - En desarrollo: directamente al puerto del legal-management-service
+     *   las rutas son /correos/track/...
+     */
+    private getTrackingBaseUrl(): { baseUrl: string; pathPrefix: string } {
+        const publicUrl = process.env.TRACKING_PUBLIC_URL || process.env.CORS_ORIGIN;
+        if (publicUrl) {
+            // Producción/QA/Dev server: usa el gateway (nginx recibe /services/* y lo pasa al api-gateway:3000)
+            const firstUrl = publicUrl.split(',')[0].trim();
+            return { baseUrl: firstUrl, pathPrefix: '/services/legal/api/v1' };
+        }
+        // Local dev: acceso directo al puerto del servicio (sin proxy Vite)
+        const port = process.env.PORT || '3008';
+        return { baseUrl: `http://localhost:${port}`, pathPrefix: '' };
+    }
 
     /**
      * Registra una acción en el historial del correo
@@ -87,6 +202,60 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Detecta si un email es un Delivery Status Notification (DSN), acuse de entrega/lectura,
+     * o bounce automático del MTA. Estos correos los genera el servidor (no un humano) y no
+     * deben aparecer como comunicaciones reales en la bandeja.
+     */
+    private esDeliveryReceiptOrDSN(email: any): boolean {
+        const subject = (email.subject || '').toLowerCase().trim();
+        const fromAddress = (email.from?.emailAddress?.address || '').toLowerCase();
+        const fromName = (email.from?.emailAddress?.name || '').toLowerCase();
+
+        // Prefijos típicos de asunto en español e inglés
+        const subjectPrefixes = [
+            'retransmitido:',
+            'relayed:',
+            'delivery status notification',
+            'undelivered mail',
+            'undeliverable',
+            'mail delivery failed',
+            'failure notice',
+            'returned mail',
+            'mail delivery subsystem',
+            'leído:',
+            'read:',
+            'no leído:',
+            'not read:',
+            'acuse de recibo',
+            'delivery receipt',
+            'read receipt',
+            'recibo de entrega',
+            'recibo de lectura',
+            'sin entregar:',
+            'no entregado:',
+        ];
+        if (subjectPrefixes.some(p => subject.startsWith(p))) {
+            return true;
+        }
+
+        // Remitentes típicos del MTA
+        const senderHints = [
+            'mailer-daemon',
+            'postmaster@',
+            'microsoftexchange',
+            'noreply@',
+            'no-reply@',
+            'donotreply@',
+            'do-not-reply@',
+        ];
+        if (senderHints.some(s => fromAddress.includes(s) || fromName.includes(s))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Sync one page of emails from Microsoft Graph
      * Returns nextLink for pagination
      */
@@ -106,6 +275,13 @@ export class CorreosJuridicosService {
 
             for (const email of emails) {
                 try {
+                    // Filtrar Delivery Status Notifications (DSN), acuses de lectura/entrega y bounces.
+                    // Estos correos los genera automáticamente el MTA y no son comunicaciones reales.
+                    if (this.esDeliveryReceiptOrDSN(email)) {
+                        this.logger.log(`  ⏭️  DSN/Auto-reply omitido: "${email.subject?.substring(0, 60)}"`);
+                        continue;
+                    }
+
                     // Check if already exists
                     const existing = await this.correoRepo.findOne({
                         where: { graphMessageId: email.id },
@@ -196,6 +372,15 @@ export class CorreosJuridicosService {
                         const entities = this.smartService.extractEntities(email.subject || '', email.bodyPreview || '');
 
                         // Create new record
+                        // Extraer body completo (HTML + texto). Si el sync no trae body (queries viejas),
+                        // se queda en NULL y se hidrata lazy desde getById() cuando el usuario abra el correo.
+                        const bodyHtmlFromGraph = (email as any).body?.content || '';
+                        const bodyContentType = (email as any).body?.contentType?.toLowerCase() || '';
+                        const cuerpoHtmlValue = bodyContentType === 'html' ? bodyHtmlFromGraph : '';
+                        const cuerpoTextoValue = bodyContentType === 'text'
+                            ? bodyHtmlFromGraph
+                            : (email.bodyPreview || '');
+
                         const newCorreo = this.correoRepo.create({
                             graphMessageId: email.id,
                             asunto: email.subject || '(Sin asunto)',
@@ -203,7 +388,8 @@ export class CorreosJuridicosService {
                             remitenteNombre: email.from?.emailAddress?.name || '',
                             destinatarios: JSON.stringify(email.toRecipients || []),
                             fechaRecepcion: new Date(email.receivedDateTime),
-                            cuerpoTexto: email.bodyPreview || '',
+                            cuerpoHtml: cuerpoHtmlValue || undefined,
+                            cuerpoTexto: cuerpoTextoValue,
                             tieneAdjuntos: email.hasAttachments || false,
                             leido: email.isRead || false,
                             archivado: false,
@@ -229,11 +415,37 @@ export class CorreosJuridicosService {
                         synced++;
                         this.logger.log(`Synced: ${email.subject?.substring(0, 50)}...`);
 
-                        // Sync attachments if email has any
+                        // Sync attachments if email has any — descargar y persistir a disco
+                        // para que el usuario pueda visualizarlos sin extra calls a Graph.
                         if (email.hasAttachments) {
                             try {
+                                const fs = require('fs');
+                                const path = require('path');
+                                const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+                                if (!fs.existsSync(uploadsDir)) {
+                                    fs.mkdirSync(uploadsDir, { recursive: true });
+                                }
+
                                 const attachments = await this.graphService.getAttachments(email.id);
                                 for (const att of attachments) {
+                                    let archivoLocalUrl: string | undefined;
+                                    let descargado = false;
+
+                                    // Guardar contentBytes a disco si Graph lo devolvió
+                                    if (att.contentBytes) {
+                                        try {
+                                            const buffer = Buffer.from(att.contentBytes, 'base64');
+                                            const safeName = (att.name || 'adjunto').replace(/[^a-zA-Z0-9.-]/g, '_');
+                                            const uniqueFilename = `recv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+                                            const filepath = path.join(uploadsDir, uniqueFilename);
+                                            fs.writeFileSync(filepath, buffer);
+                                            archivoLocalUrl = filepath;
+                                            descargado = true;
+                                        } catch (writeErr: any) {
+                                            this.logger.warn(`No se pudo persistir adjunto ${att.name} a disco: ${writeErr?.message}`);
+                                        }
+                                    }
+
                                     const adjunto = this.adjuntoRepo.create({
                                         correoId: savedCorreo.id,
                                         graphMessageId: email.id,
@@ -241,11 +453,12 @@ export class CorreosJuridicosService {
                                         nombre: att.name,
                                         contentType: att.contentType,
                                         tamanio: att.size,
-                                        descargado: false,
+                                        descargado,
+                                        archivoLocalUrl,
                                     });
                                     await this.adjuntoRepo.save(adjunto);
                                 }
-                                this.logger.log(`  -> Synced ${attachments.length} attachment(s)`);
+                                this.logger.log(`  -> Synced ${attachments.length} attachment(s) (descargados localmente)`);
                             } catch (attError) {
                                 this.logger.error(`Error syncing attachments for email ${email.id}:`, attError);
                             }
@@ -386,6 +599,11 @@ export class CorreosJuridicosService {
             throw new NotFoundException(`Correo ${id} not found`);
         }
 
+        // Ya está leído — idempotencia, no registrar duplicados
+        if (correo.leido) {
+            return correo;
+        }
+
         // Update in Graph (best-effort, may fail if Mail.ReadWrite permission is missing)
         if (correo.graphMessageId) {
             try {
@@ -398,7 +616,16 @@ export class CorreosJuridicosService {
         // Update in DB (always succeeds regardless of Graph)
         correo.leido = true;
         const saved = await this.correoRepo.save(correo);
-        await this.registrarAccion(correo.id, 'LEIDO', 'Correo marcado como leído');
+
+        // Solo registrar LEIDO en timeline si es un correo ENTRANTE (no enviado por nosotros)
+        if (correo.direccion !== 'ENVIADO') {
+            await this.registrarAccion(correo.id, 'LEIDO', 'Correo marcado como leído');
+
+            // ── Propagar LEIDO al correo ENVIADO del remitente ──
+            // Para que quien envió el correo vea en SU timeline que fue leído
+            await this.propagarEventoAEnviado(correo, 'LEIDO',
+                `Correo leído por destinatario desde la plataforma`);
+        }
         return saved;
     }
 
@@ -435,96 +662,138 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Send an email via Graph API and save record in DB
+     * Send an email via Graph API and save record in DB.
+     * ALL attachments are converted to tracked download links (no inline attachments).
+     * A tracking pixel is injected to detect when the recipient opens the email.
      */
     async sendEmail(dto: SendEmailDto): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        let finalBody = dto.body;
-        const inlineAttachments: any[] = [];
-        const largeAttachments: any[] = [];
         const fs = require('fs');
         const path = require('path');
+        const { baseUrl, pathPrefix } = this.getTrackingBaseUrl();
+        const toList = Array.isArray(dto.to) ? dto.to : [dto.to];
+        const destinatariosTo = toList.join(', ');
 
-        // Extract and sort attachments by size
+        // 1. Save correo record in DB first (need ID for tracking tokens)
+        const newCorreo = this.correoRepo.create({
+            graphMessageId: `sent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            asunto: dto.subject || '(Sin asunto)',
+            remitenteEmail: 'oficina.juridica@esap.edu.co',
+            remitenteNombre: 'Oficina Jurídica ESAP',
+            destinatariosTo,
+            destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
+            fechaRecepcion: new Date(),
+            cuerpoHtml: dto.body,
+            cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
+            tieneAdjuntos: !!(dto.attachments && dto.attachments.length > 0),
+            leido: true,
+            archivado: false,
+            urgente: false,
+            tipo: 'CORREO',
+            direccion: 'ENVIADO',
+            categoria: 'ENVIADO',
+            expedienteId: undefined,
+        });
+        const savedCorreo = await this.correoRepo.save(newCorreo);
+
+        // 2. Save ALL attachments locally and create adjunto records
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
         if (dto.attachments && dto.attachments.length > 0) {
-            for (const att of dto.attachments) {
-                const buffer = Buffer.from(att.contentBytes, 'base64');
-                // 2.5MB limit for inline Graph API attachments (to avoid 413 Payload Too Large)
-                if (buffer.length > 2.5 * 1024 * 1024) {
-                    largeAttachments.push({ att, buffer });
-                } else {
-                    inlineAttachments.push(att);
-                }
-            }
-        }
-
-        // Handle large attachments by saving locally and appending links
-        if (largeAttachments.length > 0) {
-            finalBody += '<br><br><div style="margin-top:20px; padding:15px; border:1px solid #e2e8f0; border-radius:8px; background-color:#f8fafc;">';
-            finalBody += '<h4 style="margin-top:0; color:#0f172a; font-family:sans-serif;">Archivos Adjuntos Pesados</h4>';
-            finalBody += '<ul style="font-family:sans-serif; color:#334155; margin-bottom:0;">';
-
-            const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
             if (!fs.existsSync(uploadsDir)) {
                 fs.mkdirSync(uploadsDir, { recursive: true });
             }
+        }
 
-            for (const { att, buffer } of largeAttachments) {
+        const savedAdjuntos: any[] = [];
+        if (dto.attachments && dto.attachments.length > 0) {
+            for (const att of dto.attachments) {
+                const buffer = Buffer.from(att.contentBytes, 'base64');
                 const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
                 const uniqueFilename = `sent_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
                 const filepath = path.join(uploadsDir, uniqueFilename);
                 fs.writeFileSync(filepath, buffer);
 
-                // Construct the download link using the API Gateway URL 
-                // Ensure this points to the external reachable API if available, else fallback to localhost
-                const baseUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
-                const downloadLink = `${baseUrl}/legal/api/v1/correos/adjuntos/local/${uniqueFilename}/download`;
+                const adjunto = this.adjuntoRepo.create({
+                    correoId: savedCorreo.id,
+                    graphMessageId: savedCorreo.graphMessageId,
+                    graphAttachmentId: `local-${uniqueFilename}`,
+                    nombre: att.name,
+                    contentType: att.contentType,
+                    tamanio: buffer.length,
+                    descargado: true,
+                    archivoLocalUrl: filepath,
+                });
+                const savedAdj = await this.adjuntoRepo.save(adjunto);
+                savedAdjuntos.push(savedAdj);
+            }
+        }
 
-                finalBody += `<li><a href="${downloadLink}" target="_blank" style="color:#2563eb; text-decoration:none;">Descargar ${att.name}</a> (${(buffer.length / (1024 * 1024)).toFixed(2)} MB)</li>`;
+        // 3. Build HTML body with tracking pixel + tracked download links
+        let finalBody = dto.body;
+
+        // Pixel de tracking (apertura del correo)
+        const pixelToken = randomUUID();
+        await this.trackingRepo.save(this.trackingRepo.create({
+            correoId: savedCorreo.id,
+            token: pixelToken,
+            tipo: 'OPEN_PIXEL',
+            destinatarioEmail: destinatariosTo,
+        }));
+
+        // Links trackeados para cada adjunto
+        if (savedAdjuntos.length > 0) {
+            finalBody += '<br/><div style="margin-top:16px;padding:16px;border:1px solid #e2e8f0;border-radius:8px;background-color:#f8fafc;font-family:sans-serif;">';
+            finalBody += '<h4 style="margin-top:0;color:#003DA5;font-size:14px;">📎 Documentos Adjuntos</h4>';
+            finalBody += '<ul style="padding-left:18px;margin-bottom:0;">';
+
+            for (const adj of savedAdjuntos) {
+                const dlToken = randomUUID();
+                await this.trackingRepo.save(this.trackingRepo.create({
+                    correoId: savedCorreo.id,
+                    adjuntoId: adj.id,
+                    token: dlToken,
+                    tipo: 'DOWNLOAD_LINK',
+                    destinatarioEmail: destinatariosTo,
+                }));
+                const downloadUrl = `${baseUrl}${pathPrefix}/correos/track/download/${dlToken}`;
+                const sizeMB = (adj.tamanio / (1024 * 1024)).toFixed(2);
+                finalBody += `<li style="margin-bottom:6px;"><a href="${downloadUrl}" target="_blank" style="color:#2563eb;text-decoration:none;font-weight:600;">${adj.nombre}</a> <span style="color:#64748b;font-size:12px;">(${sizeMB} MB)</span></li>`;
             }
             finalBody += '</ul></div>';
         }
 
+        // Pixel invisible al final
+        const pixelUrl = `${baseUrl}${pathPrefix}/correos/track/open/${pixelToken}?_=${Date.now()}`;
+        finalBody += `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
+
+        // 4. Send via Graph with modified HTML and NO inline file attachments
         const sent = await this.graphService.sendEmail(
             dto.to,
             dto.subject,
             finalBody,
             dto.cc,
-            inlineAttachments
+            [],  // No inline attachments — everything goes as tracked links
+            {
+                requestReadReceipt: !!dto.requestReadReceipt,
+                requestDeliveryReceipt: !!dto.requestDeliveryReceipt,
+            }
         );
 
         if (!sent) {
+            // Cleanup DB on failure
+            await this.adjuntoRepo.delete({ correoId: savedCorreo.id });
+            await this.trackingRepo.delete({ correoId: savedCorreo.id });
+            await this.correoRepo.delete(savedCorreo.id);
             return { success: false };
         }
 
-        // Save sent email record in DB
-        try {
-            const newCorreo = this.correoRepo.create({
-                graphMessageId: `sent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                asunto: dto.subject || '(Sin asunto)',
-                remitenteEmail: 'oficina.juridica@esap.edu.co',
-                remitenteNombre: 'Oficina Jurídica ESAP',
-                destinatariosTo: dto.to,
-                destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
-                fechaRecepcion: new Date(),
-                cuerpoHtml: dto.body,
-                cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
-                tieneAdjuntos: !!(dto.attachments && dto.attachments.length > 0),
-                leido: true,
-                archivado: false,
-                urgente: false,
-                tipo: 'CORREO',
-                direccion: 'ENVIADO',
-                categoria: 'ENVIADO',
-                expedienteId: undefined,
-            });
+        // 5. Update HTML in DB with the tracked version
+        savedCorreo.cuerpoHtml = finalBody;
+        await this.correoRepo.save(savedCorreo);
 
-            const savedCorreo = await this.correoRepo.save(newCorreo);
-            this.logger.log(`Sent email saved to DB: ${savedCorreo.id} -> ${dto.to}`);
-            return { success: true, correo: savedCorreo };
-        } catch (dbError) {
-            this.logger.error('Error saving sent email to DB (email was sent successfully):', dbError);
-            return { success: true };
-        }
+        // 6. Register ENVIADO event
+        await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${destinatariosTo}`, 'Sistema');
+        this.logger.log(`Sent email with tracking: ${savedCorreo.id} -> ${destinatariosTo} (${savedAdjuntos.length} tracked attachments)`);
+        return { success: true, correo: savedCorreo };
     }
 
     /**
@@ -569,6 +838,9 @@ export class CorreosJuridicosService {
             original.isReplied = true;
             await this.correoRepo.save(original);
             await this.registrarAccion(original.id, 'RESPONDIDO', `Respuesta enviada (${savedReply.id})`);
+            // ── Trazabilidad: Registrar ENVIADO en la respuesta ──
+            await this.registrarAccion(savedReply.id, 'ENVIADO', `Respuesta enviada a ${original.remitenteEmail}`, 'Sistema');
+            await this.injectTrackingIntoEmail(savedReply, original.remitenteEmail);
 
             this.logger.log(`Reply saved: ${savedReply.id} -> parent: ${original.id}`);
             return { success: true, correo: savedReply };
@@ -652,6 +924,9 @@ export class CorreosJuridicosService {
                 ? `Correo reenviado a ${to} (con ${additionalAttachments!.length} adjunto(s) adicional(es))`
                 : `Correo reenviado a ${to}`;
             await this.registrarAccion(original.id, 'REENVIADO', adjuntosDesc);
+            // ── Trazabilidad: Registrar ENVIADO en el reenvío ──
+            await this.registrarAccion(savedForward.id, 'ENVIADO', `Reenvío enviado a ${to}`, 'Sistema');
+            await this.injectTrackingIntoEmail(savedForward, to);
 
             this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
             return { success: true, correo: savedForward };
@@ -683,13 +958,6 @@ export class CorreosJuridicosService {
             '─'.repeat(60),
             originalText,
         ].join('\n');
-    }
-
-    /**
-     * Test Microsoft Graph connection
-     */
-    async testConnection(): Promise<{ success: boolean; message: string }> {
-        return this.graphService.testConnection();
     }
 
     /**
@@ -762,6 +1030,23 @@ export class CorreosJuridicosService {
         } catch (saveError) {
             this.logger.error('Could not cache attachment locally', saveError);
             // Non-blocking, return downloaded content anyway
+        }
+
+        // ── Trazabilidad: Registrar DOCUMENTO_ABIERTO (tracking interno) ──
+        this.registrarAccion(
+            adjunto.correoId,
+            'DOCUMENTO_ABIERTO',
+            `Documento "${adjunto.nombre}" descargado/abierto desde la plataforma`,
+            'Usuario plataforma',
+            { adjuntoId: adjunto.id, nombreDocumento: adjunto.nombre }
+        ).catch(() => {});
+
+        // ── Propagar DOCUMENTO_ABIERTO al correo ENVIADO (si este es ENTRANTE) ──
+        const parentCorreo = await this.correoRepo.findOne({ where: { id: adjunto.correoId } });
+        if (parentCorreo && parentCorreo.direccion !== 'ENVIADO') {
+            this.propagarEventoAEnviado(parentCorreo, 'DOCUMENTO_ABIERTO',
+                `Documento "${adjunto.nombre}" abierto por destinatario desde la plataforma`
+            ).catch(() => {});
         }
 
         return attachment;
@@ -936,60 +1221,6 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Batch Backfill: Classify unclassified emails
-     * @param limit Number of emails to process in this run
-     */
-    async batchClassifyBackfill(limit: number = 50): Promise<{ processed: number; updated: number }> {
-        this.logger.log(`Starting Batch Backfill for ${limit} emails...`);
-
-        // 1. Fetch unclassified emails (where ai_suggested_category is NULL)
-        const unclassified = await this.correoRepo.createQueryBuilder('correo')
-            .where('correo.aiSuggestedCategory IS NULL')
-            .take(limit)
-            .getMany();
-
-        this.logger.log(`Found ${unclassified.length} unclassified emails.`);
-
-        let processed = 0;
-        let updated = 0;
-
-        for (const email of unclassified) {
-            try {
-                // 2. Classify
-                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '', email.tieneAdjuntos || false);
-                const isUrgente = this.smartService.analyzeUrgency(email.asunto || '', email.cuerpoTexto || '');
-
-                // 3. Map to DB fields
-                let tipoDB = 'CORREO';
-                if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
-                if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
-                // Keep existing 'tipo' if it was manually set? 
-                // Assumption: Backfill overwrites or fills initial classification.
-                // Safest: Update tipo only if it's currently generic 'CORREO'
-                if (email.tipo === 'CORREO' && tipoDB !== 'CORREO') {
-                    email.tipo = tipoDB;
-                }
-
-                email.categoria = classification.category;
-                email.aiSuggestedCategory = classification.category;
-                email.moduloSugerido = classification.module;
-                email.confianzaClasificacion = classification.confidence;
-                email.urgente = isUrgente;
-
-                await this.correoRepo.save(email);
-                updated++;
-                processed++;
-            } catch (error) {
-                this.logger.error(`Error classifying email ${email.id} during backfill:`, error);
-                processed++; // Count as processed (attempted)
-            }
-        }
-
-        this.logger.log(`Batch Backfill complete. Updated ${updated}/${processed} emails.`);
-        return { processed, updated };
-    }
-
-    /**
      * Reclassify ALL incoming emails with updated heuristics
      * Skips manually-trained emails (isTrained = true) and sent emails
      */
@@ -1053,5 +1284,203 @@ export class CorreosJuridicosService {
 
         this.logger.log(`Reclassification complete. Processed: ${processed}, Changed: ${updated}, Unchanged: ${unchanged}`);
         return { processed, updated, unchanged };
+    }
+
+    // ===================================================================
+    //  TRACKING: Trazabilidad de apertura de correos y documentos
+    // ===================================================================
+
+    /**
+     * Inyecta pixel de tracking y convierte adjuntos a links con token en el HTML guardado.
+     * Se llama después de guardar un correo enviado/respondido/reenviado.
+     */
+    private async injectTrackingIntoEmail(correo: CorreoJuridico, destinatarioEmail: string): Promise<void> {
+        try {
+            const baseUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+            let htmlBody = correo.cuerpoHtml || correo.cuerpoTexto || '';
+
+            // 1. Crear token para pixel de apertura
+            const pixelToken = randomUUID();
+            const pixelTracking = this.trackingRepo.create({
+                correoId: correo.id,
+                token: pixelToken,
+                tipo: 'OPEN_PIXEL',
+                destinatarioEmail,
+            });
+            await this.trackingRepo.save(pixelTracking);
+
+            // Inyectar pixel invisible al final del HTML
+            const pixelUrl = `${baseUrl}/legal/api/v1/correos/track/open/${pixelToken}?_=${Date.now()}`;
+            const pixelHtml = `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
+
+            // 2. Crear tokens para cada adjunto del correo
+            const adjuntos = await this.adjuntoRepo.find({ where: { correoId: correo.id } });
+
+            if (adjuntos.length > 0) {
+                let linksHtml = '<br/><div style="margin-top:16px;padding:16px;border:1px solid #e2e8f0;border-radius:8px;background-color:#f8fafc;font-family:sans-serif;">';
+                linksHtml += '<h4 style="margin-top:0;color:#003DA5;font-size:14px;">📎 Documentos Adjuntos</h4>';
+                linksHtml += '<ul style="padding-left:18px;margin-bottom:0;">';
+
+                for (const adj of adjuntos) {
+                    const downloadToken = randomUUID();
+                    const dlTracking = this.trackingRepo.create({
+                        correoId: correo.id,
+                        adjuntoId: adj.id,
+                        token: downloadToken,
+                        tipo: 'DOWNLOAD_LINK',
+                        destinatarioEmail,
+                    });
+                    await this.trackingRepo.save(dlTracking);
+
+                    const downloadUrl = `${baseUrl}/legal/api/v1/correos/track/download/${downloadToken}`;
+                    const sizeMB = (adj.tamanio / (1024 * 1024)).toFixed(2);
+                    linksHtml += `<li style="margin-bottom:6px;"><a href="${downloadUrl}" target="_blank" style="color:#2563eb;text-decoration:none;font-weight:600;">${adj.nombre}</a> <span style="color:#64748b;font-size:12px;">(${sizeMB} MB)</span></li>`;
+                }
+
+                linksHtml += '</ul></div>';
+                htmlBody += linksHtml;
+            }
+
+            // Agregar pixel al final
+            htmlBody += pixelHtml;
+
+            // Guardar el HTML actualizado
+            correo.cuerpoHtml = htmlBody;
+            await this.correoRepo.save(correo);
+
+            this.logger.log(`📡 Tracking inyectado para correo ${correo.id}: pixel=${pixelToken}, adjuntos=${adjuntos.length}`);
+        } catch (error) {
+            this.logger.error(`Error inyectando tracking en correo ${correo.id}:`, error);
+            // Non-blocking
+        }
+    }
+
+    /**
+     * Procesa la apertura del pixel de tracking (llamado por GET /track/open/:token)
+     */
+    async processTrackingPixel(token: string, ip: string, userAgent: string): Promise<void> {
+        try {
+            const tracking = await this.trackingRepo.findOne({ where: { token, tipo: 'OPEN_PIXEL' } });
+            if (!tracking) return;
+
+            // Registrar solo la primera apertura como evento principal
+            const isFirstOpen = !tracking.abierto;
+
+            tracking.abierto = true;
+            tracking.fechaApertura = tracking.fechaApertura || new Date();
+            tracking.ipApertura = ip;
+            tracking.userAgent = userAgent;
+            await this.trackingRepo.save(tracking);
+
+            if (isFirstOpen) {
+                await this.registrarAccion(
+                    tracking.correoId,
+                    'CORREO_ABIERTO_EXTERNO',
+                    `El destinatario (${tracking.destinatarioEmail || 'externo'}) abrió el correo`,
+                    'Destinatario externo',
+                    { ip, userAgent: userAgent?.substring(0, 200), token }
+                );
+                this.logger.log(`📬 Tracking pixel activado para correo ${tracking.correoId} (IP: ${ip})`);
+
+                // Notificar al JEFE_GESTION_LEGAL (acuse de recibido automático)
+                this.notificarAcuseDeRecibido(tracking.correoId, tracking.destinatarioEmail).catch(err =>
+                    this.logger.warn(`Error enviando acuse de recibido: ${err?.message}`)
+                );
+            }
+        } catch (error) {
+            this.logger.error(`Error procesando tracking pixel ${token}:`, error);
+        }
+    }
+
+    /**
+     * Procesa la descarga trackeada de un documento (llamado por GET /track/download/:token)
+     * Retorna el archivo para que el controller lo sirva al usuario.
+     */
+    async processTrackingDownload(token: string, ip: string, userAgent: string): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+    } | null> {
+        try {
+            const tracking = await this.trackingRepo.findOne({ where: { token, tipo: 'DOWNLOAD_LINK' } });
+            if (!tracking || !tracking.adjuntoId) return null;
+
+            // Registrar apertura
+            const isFirstOpen = !tracking.abierto;
+            tracking.abierto = true;
+            tracking.fechaApertura = tracking.fechaApertura || new Date();
+            tracking.ipApertura = ip;
+            tracking.userAgent = userAgent;
+            await this.trackingRepo.save(tracking);
+
+            // Buscar el adjunto
+            const adjunto = await this.adjuntoRepo.findOne({ where: { id: tracking.adjuntoId } });
+            if (!adjunto) return null;
+
+            if (isFirstOpen) {
+                await this.registrarAccion(
+                    tracking.correoId,
+                    'DOCUMENTO_ABIERTO_EXTERNO',
+                    `El destinatario (${tracking.destinatarioEmail || 'externo'}) abrió el documento "${adjunto.nombre}"`,
+                    'Destinatario externo',
+                    { ip, adjuntoId: adjunto.id, nombreDocumento: adjunto.nombre, token }
+                );
+                this.logger.log(`📄 Tracking download activado para adjunto ${adjunto.nombre} (correo ${tracking.correoId})`);
+            }
+
+            // Descargar y servir el archivo
+            const attachment = await this.downloadAttachment(tracking.adjuntoId);
+            return attachment;
+        } catch (error) {
+            this.logger.error(`Error procesando tracking download ${token}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Propaga un evento (LEIDO, DOCUMENTO_ABIERTO) de un correo ENTRANTE
+     * al correo ENVIADO correspondiente del remitente.
+     * Busca por threadId primero, luego por asunto.
+     */
+    private async propagarEventoAEnviado(
+        correoEntrante: CorreoJuridico,
+        tipoEvento: string,
+        descripcion: string,
+    ): Promise<void> {
+        try {
+            let sentEmail: CorreoJuridico | null = null;
+
+            // 1. Buscar por threadId (más preciso)
+            if (correoEntrante.threadId) {
+                sentEmail = await this.correoRepo.findOne({
+                    where: { threadId: correoEntrante.threadId, direccion: 'ENVIADO' },
+                    order: { fechaRecepcion: 'DESC' },
+                });
+            }
+
+            // 2. Fallback: buscar por asunto exacto (sin prefijos RE:/RV:/FW:)
+            if (!sentEmail) {
+                const cleanSubject = correoEntrante.asunto
+                    ?.replace(/^(RE:|RV:|FW:|FWD:)\s*/gi, '')
+                    .trim();
+                if (cleanSubject) {
+                    sentEmail = await this.correoRepo.findOne({
+                        where: [
+                            { asunto: cleanSubject, direccion: 'ENVIADO' },
+                            { asunto: `RE: ${cleanSubject}`, direccion: 'ENVIADO' },
+                            { asunto: `RV: ${cleanSubject}`, direccion: 'ENVIADO' },
+                        ],
+                        order: { fechaRecepcion: 'DESC' },
+                    });
+                }
+            }
+
+            if (sentEmail) {
+                await this.registrarAccion(sentEmail.id, tipoEvento, descripcion, 'Sistema');
+                this.logger.log(`📨 Evento ${tipoEvento} propagado al correo ENVIADO ${sentEmail.id}`);
+            }
+        } catch (error) {
+            this.logger.error(`Error propagando evento ${tipoEvento} a ENVIADO:`, error);
+        }
     }
 }

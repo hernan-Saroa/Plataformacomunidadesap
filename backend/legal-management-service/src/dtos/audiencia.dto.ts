@@ -1,6 +1,8 @@
 export class CreateAudienciaDto {
     expedienteId: string;
     abogadoId: string;
+    abogadoNombre: string;
+    abogadoEmail?: string;
     titulo: string;
     fechaHoraInicio: Date;
     duracionMinutos: number;
@@ -27,5 +29,5 @@ export class AudienciaDTO {
     nombreInvestigado: string;
 
     abogadoId: string;
-    nombreAbogado: string;
+    nombreProfesional: string;
 }

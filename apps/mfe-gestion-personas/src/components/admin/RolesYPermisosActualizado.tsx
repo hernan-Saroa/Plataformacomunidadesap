@@ -93,6 +93,7 @@ const MODULOS_SISTEMA = [
   'Programas Académicos',
   'Gestión Profesoral',
   'Aspirantes',
+  'Plan de Trabajo Académico',
   
   // Graduados
   'Verificación de Graduados',
@@ -141,7 +142,7 @@ const MODULOS_SISTEMA = [
 
 // ============ DATOS - ROLES DEL SISTEMA ============
 
-const ROLES_SISTEMA: Rol[] = [
+export const ROLES_SISTEMA: Rol[] = [
   // 1. SUPER ADMINISTRADOR
   {
     id: 'rol-super-admin',
@@ -502,6 +503,24 @@ const ROLES_SISTEMA: Rol[] = [
     fechaCreacion: '2025-01-01'
   },
 
+  // 15.5 ESTUDIANTE
+  {
+    id: 'rol-estudiante',
+    nombre: 'Estudiante',
+    descripcion: 'Acceso al portal de estudiante y comunidad',
+    tipo: 'Sistema',
+    estado: 'Activo',
+    usuariosAsignados: 12500,
+    color: '#34D399',
+    icono: '🎒',
+    permisos: [
+      { id: 'perm-prog-est', modulo: 'Programas Académicos', acciones: ['leer'], descripcion: 'Consulta de programas' },
+      { id: 'perm-event-est', modulo: 'Comunidad - Eventos', acciones: ['leer'], descripcion: 'Visualización de eventos' }
+    ],
+    creadoPor: 'Sistema',
+    fechaCreacion: '2025-01-01'
+  },
+
   // 16. ASPIRANTE
   {
     id: 'rol-aspirante',
@@ -649,21 +668,28 @@ export function RolesYPermisosActualizado() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
+      {/* HEADER - World Class Design */}
+      <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900">
-            Roles y Permisos
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Administra {stats.totalRoles} roles y {stats.totalUsuarios} usuarios con permisos granulares
-          </p>
+        <div className="flex items-center gap-3 md:gap-4">
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: '#EBF0FA' }}>
+            <Shield className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
+          </div>
+          <div>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900">
+              Roles y Permisos
+            </h1>
+            <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
+              Administra roles del sistema y asigna permisos granulares
+            </p>
+          </div>
         </div>
 
         <Button onClick={() => setModalCrearRol(true)} style={{ background: '#003DA5' }}>
           <Plus className="w-4 h-4 mr-2" />
           Crear Rol
         </Button>
+      </div>
       </div>
 
       {/* TABS */}

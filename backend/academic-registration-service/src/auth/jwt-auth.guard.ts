@@ -6,13 +6,6 @@ import { IS_PUBLIC_KEY } from './public.decorator';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  private readonly methodScopedPublicPatterns = [
-    {
-      method: 'POST',
-      pattern: /^\/(?:api\/v\d+\/)?certificates\/descargas(?:\?.*)?$/i,
-    },
-  ];
-
   private readonly defaultPublicPatterns = [
     /^\/login/i,
     /^\/new-person/i,
@@ -41,16 +34,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   private matchesPublicPath(req: Request): boolean {
-    const method = (req.method || '').toUpperCase();
-    const methodScopedMatch = this.methodScopedPublicPatterns.some(
-      ({ method: allowedMethod, pattern }) =>
-        method === allowedMethod && pattern.test(req.originalUrl),
-    );
-
-    if (methodScopedMatch) {
-      return true;
-    }
-
     const patterns = [
       ...this.defaultPublicPatterns,
       ...(process.env.JWT_PUBLIC_PATHS || '')

@@ -247,13 +247,13 @@ function generarR05(ptas: any[]): ReporteGenerado {
 }
 
 function generarR06(ptas: any[]): ReporteGenerado {
-  const pendientes = ptas.filter(p => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestion Profesoral'].includes(p.estado));
+  const pendientes = ptas.filter(p => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestion Profesoral', 'PENDIENTE_APROBACION'].includes(p.estado));
   const filas = pendientes.map(p => {
     const dias = p.updated_at ? Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000) : 0;
     return {
       documento: p.cedula || p.numero_documento || '-', nombre: p.docente_nombre || 'N/A',
       territorial: p.territorial || '-',
-      nivel: p.estado === 'Pendiente Jefatura' ? 'N1' : p.estado === 'Pendiente Decanatura' ? 'N2' : 'N3',
+      nivel: p.estado === 'Pendiente Jefatura' ? 'N1' : p.estado === 'Pendiente Decanatura' ? 'N2' : p.estado === 'PENDIENTE_APROBACION' ? 'Componentes' : 'N3',
       dias, urgencia: dias > 7 ? 'CRITICA' : dias > 3 ? 'ALTA' : 'Normal',
     };
   }).sort((a, b) => b.dias - a.dias);
@@ -861,7 +861,7 @@ export function CentroReportesPTA() {
 
   const loadData = async () => {
     setLoading(true);
-    const res = await getAllPTAs({ periodo: '2026-1' });
+    const res = await getAllPTAs({ periodo: '2025-2' });
     // Validación robusta: asegurar que siempre sea un array
     if (res.success && Array.isArray(res.data)) {
       setPtas(res.data);

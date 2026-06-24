@@ -2,27 +2,17 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
-import { getBuildBase, getBuildOutDir } from '../../scripts/mfe.config.mjs';
+import { cspNonceBootstrap, getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const appDir = 'mfe-certificados-laborales';
-
-const stripPrivateIpLikeDependencyComments = () => ({
-  name: 'strip-private-ip-like-dependency-comments',
-  generateBundle(_: unknown, bundle: Record<string, { type: string; code?: string }>) {
-    for (const chunk of Object.values(bundle)) {
-      if (chunk.type === 'chunk' && chunk.code) {
-        chunk.code = chunk.code.replace(/ \/\/ 10\.4\.6\.2 <draw:object>/g, '');
-      }
-    }
-  },
-});
 
 export default defineConfig({
   base: getBuildBase(appDir),
   root: __dirname,
   plugins: [
     react(),
-    stripPrivateIpLikeDependencyComments(),
+    cspNonceBootstrap(appDir),
+    stripBundleComments(),
     federation({
       name: 'certificados_laborales',
       filename: 'remoteEntry.js',

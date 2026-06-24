@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Query, UseInterceptors, UploadedFile, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Query, UseInterceptors, UploadedFile, BadRequestException, NotFoundException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -6,6 +6,7 @@ import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 import { TareasNotasService } from '../services/tareas-notas.service';
 import { LegalNotificationsService } from '../services/legal-notifications.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('juzgamiento')
 export class JuzgamientoController {
@@ -16,11 +17,13 @@ export class JuzgamientoController {
     ) { }
 
     @Get()
-    async findAll(@Query('search') search?: string) {
+    async findAll(@Query('search') search?: string, @Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
         // 1. Obtener expedientes disciplinarios
         const rawExpedientes = await this.expedienteService.listarExpedientes({
             jurisdiccion: 'DISCIPLINARIO',
-            search
+            search,
+            abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined
         });
 
         // 2. Mapear al formato Kanban requerido por el frontend

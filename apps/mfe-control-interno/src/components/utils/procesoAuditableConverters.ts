@@ -107,6 +107,14 @@ export function convertirProcesoAFormularioDafp(
     const nivelRiesgoCEM =
       scoreRiesgoCEM >= 10 ? 'Crítico' : scoreRiesgoCEM >= 7 ? 'Alto' : scoreRiesgoCEM >= 4 ? 'Moderado' : 'Bajo';
 
+    let dep = ev.dependenciaResponsable || proceso._dependencia || proceso.dependenciaResponsable || '';
+    let mac = proceso._macroproceso || proceso.macroproceso || proceso.categoria || 'General';
+    if (ev.dependenciaResponsable && ev.dependenciaResponsable.includes('||')) {
+      const parts = ev.dependenciaResponsable.split('||');
+      dep = parts[0].trim();
+      mac = parts[1].trim();
+    }
+
     return {
       id: proceso.id,
       nombre: proceso.nombre,
@@ -126,7 +134,7 @@ export function convertirProcesoAFormularioDafp(
       planRotacion: ev.planRotacion || '1 año',
       diasRotacion: ev.diasRotacion ?? 360,
       decisionRotacion: (ev.decisionRotacion as FormularioDafpData['decisionRotacion']) || 'Incluir',
-      decisionFinal: (ev.decisionFinal as FormularioDafpData['decisionFinal']) || 'AUDITORÍA POSTERIOR',
+      decisionFinal: (ev.decisionFinal as FormularioDafpData['decisionFinal']) || 'INCLUIR_AUDITORIA_POSTERIOR',
       motivoDecision: ev.motivoDecision || '',
       prioridadRegla: ev.prioridadRegla ?? 5,
       criticidad: c,
@@ -143,9 +151,9 @@ export function convertirProcesoAFormularioDafp(
       nivelCriticidadDafp: ev.nivelCriticidadDafp || '',
       cicloRotacionDafp: ev.cicloRotacionDafp || '',
       codigo: proceso._codigo || proceso.codigo || '',
-      macroproceso: proceso._macroproceso || proceso.macroproceso || proceso.categoria || 'General',
+      macroproceso: mac,
       tipoProceso: proceso.tipo,
-      dependenciaResponsable: ev.dependenciaResponsable || proceso._dependencia || proceso.dependenciaResponsable || '',
+      dependenciaResponsable: dep,
       nivelRiesgo: proceso.nivelRiesgo,
       scoreRiesgo: scoreRiesgoCEM ?? proceso.puntajeRiesgo,
       numeroAuditorias: 0,
@@ -216,7 +224,7 @@ export function convertirProcesoAFormularioDafp(
     diasRotacion: evaluacionRiesgo?.diasRotacion ?? 360,
     decisionRotacion: (evaluacionRiesgo?.decisionRotacion as FormularioDafpData['decisionRotacion']) || 'Incluir',
     decisionFinal:
-      (evaluacionRiesgo?.decisionFinal as FormularioDafpData['decisionFinal']) || 'AUDITORÍA POSTERIOR',
+      (evaluacionRiesgo?.decisionFinal as FormularioDafpData['decisionFinal']) || 'INCLUIR_AUDITORIA_POSTERIOR',
     motivoDecision: evaluacionRiesgo?.motivoDecision || '',
     prioridadRegla: evaluacionRiesgo?.prioridadRegla ?? calcularPrioridadRegla(proceso.nivelRiesgo),
 

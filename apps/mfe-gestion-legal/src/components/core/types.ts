@@ -109,7 +109,7 @@ export interface ExpedienteJudicial {
   fechaVencimiento?: Date | string; // Add optional
   diasTotales: number;
   diasRestantes: number;
-  tipoConteoTermino?: 'HABILES' | 'CALENDARIO'; // Tipo de conteo de días
+  tipoConteoTermino?: 'HABILES' | 'CALENDARIO' | 'HORAS'; // Tipo de conteo de días o horas
   tiempoRestante?: string; // String formateado para mostrar (ej: "28 días hábiles")
 
   // Responsable
@@ -149,9 +149,21 @@ export interface ExpedienteJudicial {
   pretensionDemandante?: string;
 
   // Campos de fechas
-  fechaAdmision?: Date;
   fechaVencimientoTerminos?: Date;
   fechaUltimaActuacion?: Date;
+
+  // Riesgo y provisión
+  nivelRiesgo?: string;
+  provisionContable?: number;
+  observacionProvision?: string;
+  fechaEstimacionProvision?: string;
+
+  // Clasificación penal (solo aplica cuando tipoProceso = 'Proceso Penal')
+  esDelitoAdminPublica?: boolean;
+  esConductaPatrimonioPublico?: boolean;
+  esOtroDelitoPenal?: boolean;
+  otroDelitoPenalDescripcion?: string;
+  camposAdicionales?: Record<string, any>;
 }
 
 // ============================================================================
@@ -468,7 +480,6 @@ export interface SolicitudInforme {
   fechaNotificacion?: string;
 
   // Campos de fechas
-  fechaAdmision?: Date;
   fechaVencimientoTerminos?: Date;
   fechaUltimaActuacion?: Date;
   responsable: string;
@@ -563,6 +574,8 @@ export interface Actuacion {
   usuario: string;
   documentosAdjuntos?: string[]; // IDs de documentos
   observaciones?: string;
+  estadoAprobacion?: 'PENDIENTE' | 'APROBADO' | 'DEVUELTO';
+  mensajeDevolucion?: string;
 }
 
 export type TipoEventoTimeline =
@@ -877,6 +890,7 @@ export interface Riesgo {
     avance: number;
   }[];
   responsable: string;
+  responsableId?: string;
   documentos: Documento[];
   timeline: EventoTimeline[];
   fechaCreacion: Date;

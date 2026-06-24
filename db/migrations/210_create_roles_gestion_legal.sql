@@ -265,3 +265,8 @@ BEGIN
   ON CONFLICT (id_rol, id_permission) DO NOTHING;
 
 END $$;
+
+-- alix.hurtado@esap.edu.co - jefe gestion legal
+-- yesid.tafur@esap.edu.co - resuelve 1
+-- tatiana.espinosa@esap.edu.co - resuelve 2
+-- silvio.rosero@esap.edu.co - monitoreo

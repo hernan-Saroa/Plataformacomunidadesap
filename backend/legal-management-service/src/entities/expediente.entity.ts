@@ -118,9 +118,6 @@ export class Expediente {
     @Column({ name: 'fecha_notificacion', type: 'timestamp', nullable: true })
     fechaNotificacion: Date;
 
-    @Column({ name: 'fecha_admision', type: 'timestamp', nullable: true })
-    fechaAdmision: Date;
-
     @Column({ name: 'fecha_vencimiento_termino', type: 'timestamp', nullable: true })
     fechaVencimientoTermino: Date;
 
@@ -165,6 +162,19 @@ export class Expediente {
     @Column({ name: 'documentos_iniciales_urls', type: 'simple-array', nullable: true })
     documentosInicialesUrls: string[];
 
+    // Campos específicos para Proceso Penal (clasificación Contraloría / ANDJE)
+    @Column({ name: 'es_delito_admin_publica', default: false })
+    esDelitoAdminPublica: boolean;
+
+    @Column({ name: 'es_conducta_patrimonio_publico', default: false })
+    esConductaPatrimonioPublico: boolean;
+
+    @Column({ name: 'es_otro_delito_penal', default: false })
+    esOtroDelitoPenal: boolean;
+
+    @Column({ name: 'otro_delito_penal_descripcion', nullable: true, type: 'varchar', length: 200 })
+    otroDelitoPenalDescripcion: string;
+
     // Campos específicos para Juzgamiento Disciplinario
     @Column({ nullable: true, length: 50 })
     etapa: string;
@@ -186,6 +196,9 @@ export class Expediente {
 
     @Column({ type: 'text', nullable: true })
     hechos: string;
+
+    @Column({ name: 'campos_adicionales', type: 'jsonb', nullable: true })
+    camposAdicionales: Record<string, any>;
 
     @Column({ name: 'fecha_limite_etapa', type: 'timestamp', nullable: true })
     fechaLimiteEtapa: Date;

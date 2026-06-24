@@ -279,7 +279,7 @@ export default function ValidarCertificadoGraduado({
 
                 {certificado.campus && (
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
-                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Sede:</span>
+                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Sede (CETAP):</span>
                     <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.campus}</span>
                   </div>
                 )}
@@ -352,17 +352,6 @@ export default function ValidarCertificadoGraduado({
                 <p className="text-sm text-red-800 mb-2">
                   Este certificado ha sido revocado y no tiene validez legal.
                 </p>
-                {certificado.revocationReason && (
-                  <>
-                    <p className="text-sm font-semibold text-red-900 mt-3 mb-1">Razón:</p>
-                    <p className="text-sm text-red-800">{certificado.revocationReason}</p>
-                  </>
-                )}
-                {certificado.revocationDate && (
-                  <p className="text-sm text-red-800 mt-2">
-                    <strong>Fecha de revocación:</strong> {formatearFecha(certificado.revocationDate)}
-                  </p>
-                )}
               </div>
             </div>
           </div>

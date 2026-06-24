@@ -47,6 +47,17 @@ export function SolicitarCertificado() {
     return Math.round(parsed);
   };
 
+  const normalizarBoolean = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  };
+
   // ============================================
   // PASO 1: Verificar Documento
   // ============================================
@@ -54,7 +65,7 @@ export function SolicitarCertificado() {
     e.preventDefault();
 
     if (!documento.trim()) {
-      toast.error('Por favor ingresa tu número de documento');
+      toast.error('Por favor, ingresa tu número de documento');
       return;
     }
 
@@ -118,7 +129,7 @@ export function SolicitarCertificado() {
     e.preventDefault();
 
     if (!codigo.trim()) {
-      toast.error('Por favor ingresa el código de validación');
+      toast.error('Por favor, ingresa el código de validación');
       return;
     }
 
@@ -171,10 +182,23 @@ export function SolicitarCertificado() {
       observations: cert.request?.observations || cert.observations,
       templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
+    const incluyeSalario = normalizarBoolean(
+      cert.include_salary ?? cert.includeSalary ?? cert.incluyeSalario,
+      true,
+    );
+    const incluyePrimaTecnica = incluyeSalario
+      ? normalizarBoolean(
+          cert.include_technical_bonus ??
+            cert.includeTechnicalBonus ??
+            cert.incluyePrimaTecnica,
+          false,
+        )
+      : false;
 
     return {
+      id: cert.id,
       consecutivo: cert.certificate_number || cert.consecutivo || 'N/A',
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
@@ -182,6 +206,22 @@ export function SolicitarCertificado() {
       request: cert.request,
       templateSnapshot,
       templateType,
+      incluyeSalario,
+      incluyePrimaTecnica,
+      technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus,
+      technical_bonus_category:
+        cert.technical_bonus_category ??
+        cert.technicalBonusCategory ??
+        cert.request?.technical_bonus_category ??
+        cert.request?.technicalBonusCategory ??
+        null,
+      technical_bonuses:
+        cert.technical_bonuses ??
+        cert.technicalBonuses ??
+        cert.request?.technical_bonuses ??
+        cert.request?.technicalBonuses ??
+        templateSnapshot?.technicalBonuses ??
+        null,
       empleado: {
         nombre: cert.full_name,
         documento: cert.id_number,

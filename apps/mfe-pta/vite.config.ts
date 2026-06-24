@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
-import { getBuildBase, getBuildOutDir } from '../../scripts/mfe.config.mjs';
+import { cspNonceBootstrap, getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const appDir = 'mfe-pta';
 
@@ -12,13 +12,16 @@ export default defineConfig({
   root: __dirname,
   plugins: [
     react(),
+    cspNonceBootstrap(appDir),
     tailwindcss(),
+    stripBundleComments(),
     federation({
       name: 'pta',
       filename: 'remoteEntry.js',
       exposes: {
         './Module': path.resolve(__dirname, './src/components/PTAModule.tsx'),
         './Portal': path.resolve(__dirname, './src/components/PTAPortalModule.tsx'),
+        './AutogestionDocenteRUND': path.resolve(__dirname, './src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),
@@ -27,8 +30,6 @@ export default defineConfig({
     alias: [
       // Normaliza imports con sufijo de versión (ej. "lucide-react@0.487.0") a su paquete real.
       { find: /^(.+)@\d+\.\d+\.\d+$/, replacement: '$1' },
-      // Compatibilidad: código legacy usa "@supabase/supabase-js" (repo previo).
-      { find: '@supabase/supabase-js', replacement: '@jsr/supabase__supabase-js' },
       { find: 'leaflet', replacement: path.resolve(__dirname, './src/vendor/leaflet.ts') },
       { find: '@', replacement: path.resolve(__dirname, './src') },
       { find: '@esap-mfe/shared-hooks', replacement: path.resolve(__dirname, '../../packages/shared-hooks/src') },

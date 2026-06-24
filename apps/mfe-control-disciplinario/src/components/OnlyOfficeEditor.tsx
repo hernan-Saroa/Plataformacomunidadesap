@@ -28,22 +28,13 @@ export const OnlyOfficeEditor: React.FC<OnlyOfficeEditorProps> = ({ autoId, onCl
 
     script.onload = async () => {
       try {
-        // Obtener configuración desde el backend
-        const token = sessionStorage.getItem('esap_access_token');
-        const headers: HeadersInit = {
-          'Content-Type': 'application/json',
-        };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-
         // La ruta del backend es directa sin prefijos /api/v1/
         // Backend: GET /disciplinary-autos/:id/onlyoffice-config
         const configUrl = buildApiUrl('control-disciplinario', `/disciplinary-autos/${autoId}/onlyoffice-config`);
 
         const response = await fetch(configUrl, {
-          headers,
           credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
         });
 
         if (!response.ok) {

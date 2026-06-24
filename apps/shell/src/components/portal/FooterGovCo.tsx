@@ -54,7 +54,8 @@ export function FooterGovCo({ variant = 'light' }: FooterGovCoProps) {
             <div className="flex items-center gap-4">
               <ESAPLogo 
                 variant="color"
-                className="h-16 w-auto"
+                className="shrink-0"
+                style={{ width: '216px', height: '64px' }}
               />
             </div>
           </div>

@@ -2,6 +2,7 @@
  * MODAL DETALLES PROCESO — WORLD CLASS ESAP SIGL v5.1
  * Diseño canónico: pestañas General | Archivos | Actuaciones | Tareas | Notas
  * Usa createPortal para que el backdrop cubra toda la pantalla (bypass motion stacking context)
+ * PLANTILLA REAL- USADA
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -113,7 +114,7 @@ interface Proceso {
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
-  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string }[];
+  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url?: string }[];
   origenNoticia?: string;
   fechaRecepcionNoticia?: string;
   prioridadNoticia?: 'alta' | 'media' | 'baja';
@@ -218,14 +219,6 @@ interface ModalDetallesProcesoProps {
   onNavigateToRevision?: () => void;
 }
 
-// ─── Mock data ───────────────────────────────────────────────────────────────
-
-const MOCK_ACTUACIONES: ActuacionItem[] = [
-  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagaci�n preliminar', tipo: 'auto', responsable: 'Dr. Andr�s Moreno', etapa: 'Indagaci�n', observaciones: 'Se deja constancia del inicio de la actuaci�n preliminar.' },
-  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificaci�n al disciplinado', tipo: 'notificacion', responsable: 'Dr. Andr�s Moreno', etapa: 'Valoraci�n', observaciones: 'Se envi� comunicaci�n formal al disciplinado por los canales establecidos.' },
-  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignaci�n al profesional investigador', tipo: 'asignacion', responsable: 'Jefe OCID', etapa: 'Valoraci�n', observaciones: 'Asignaci�n realizada seg�n reparto interno.' },
-  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
-];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -290,7 +283,7 @@ interface CargaActiva {
 }
 
 function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return '';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -616,16 +609,10 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
         }
 
         const requestUrl = resolveArchivoRequestUrl(archivo, procesoId, true);
-        const token = sessionStorage.getItem('esap_access_token');
-        const headers: HeadersInit = { Accept: '*/*' };
-
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-
         const response = await fetch(requestUrl, {
           method: 'GET',
-          headers,
+          credentials: 'include',
+          headers: { Accept: '*/*' },
         });
 
         if (!response.ok) {
@@ -1451,12 +1438,12 @@ function ModalNuevaActuacion({
         exit={{ opacity: 0, scale: 0.98, y: 12 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ maxWidth: 900, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        style={{ maxWidth: 900, maxHeight: '92vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '20px' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
-          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+          style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -1798,12 +1785,12 @@ function ModalNuevaTarea({
         exit={{ opacity: 0, scale: 0.98, y: 12 }}
         transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         className="w-full bg-white rounded-[30px] shadow-2xl border border-slate-200 overflow-hidden"
-        style={{ maxWidth: 920, maxHeight: '90vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '32px' }}
+        style={{ maxWidth: 920, maxHeight: '92vh', boxShadow: '0 30px 90px rgba(15, 23, 42, 0.24)', borderRadius: '20px' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50"
-          style={{ borderTopLeftRadius: '32px', borderTopRightRadius: '32px' }}
+          style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
           <div
             className="absolute inset-x-0 top-0 h-1"
@@ -2139,18 +2126,46 @@ export function ModalDetallesProceso({
 
   // ═══ Cargar noticia asociada ═══
   useEffect(() => {
+    console.log('[ModalDetallesProceso] useEffect ejecutándose, proceso:', proceso?.id);
     if (!proceso?.id) {
+      console.log('[ModalDetallesProceso] No hay proceso.id, limpiando noticia');
       setNoticia(null);
       return;
     }
 
+    console.log('[ModalDetallesProceso] Cargando noticia para proceso:', proceso.id);
     disciplinaryService.getAssociatedNewsToProcess(proceso.id)
       .then((noticias) => {
+        console.log('[ModalDetallesProceso] ✅ API llamada exitosa, noticias recibidas:', noticias);
         // Asumimos que hay solo una noticia asociada
-        setNoticia(noticias[0] || null);
+        const noticiaRecibida = noticias[0] || null;
+        console.log('[ModalDetallesProceso] Noticia seleccionada:', noticiaRecibida);
+        if (noticiaRecibida) {
+          console.log('[ModalDetallesProceso] Campos de noticia:', {
+            id: noticiaRecibida.id,
+            radicado: noticiaRecibida.radicado,
+            origen: noticiaRecibida.origen,
+            hechos: noticiaRecibida.hechos,
+            disciplinable: noticiaRecibida.disciplinable,
+            denunciante: noticiaRecibida.denunciante,
+            territorial: noticiaRecibida.territorial,
+            dependenciaDenunciado: noticiaRecibida.dependenciaDenunciado,
+            fechaQueja: noticiaRecibida.fechaQueja,
+            fechaRecepcion: noticiaRecibida.fechaRecepcion,
+            fechaHechos: noticiaRecibida.fechaHechos
+          });
+        } else {
+          console.log('[ModalDetallesProceso] ⚠️ No hay noticia asociada para este proceso');
+        }
+        setNoticia(noticiaRecibida);
       })
       .catch((err) => {
-        console.error('[ModalDetallesProceso] Error cargando noticia:', err);
+        console.error('[ModalDetallesProceso] ❌ Error cargando noticia:', err);
+        console.error('[ModalDetallesProceso] Detalles del error:', {
+          message: err?.message,
+          status: err?.status,
+          response: err?.response
+        });
         setNoticia(null);
       });
   }, [proceso?.id]);
@@ -2227,11 +2242,12 @@ export function ModalDetallesProceso({
         };
       });
 
-      // ═══ Incluir archivos adjuntos de la noticia ═══
+      // ═══ Incluir archivos adjuntos de la noticia ═══ no se lo trporque duplica la evidencia
+      console.log('[ModalDetallesProceso] archivosAdjuntos recibidos:', proceso.archivosAdjuntos);
       const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
         const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
-        // Intentar encontrar la URL correspondiente en noticia.adjuntos (asumiendo orden)
-        const url = noticia?.adjuntos?.[index] || null;
+        const url = adj.url || noticia?.adjuntos?.[index] || null;
+        console.log('[ModalDetallesProceso] evidencia noticia', index, { nombre: adj.nombre, url, adj });
         return {
           id: `noticia-${index}`,
           nombre: adj.nombre,
@@ -2250,7 +2266,8 @@ export function ModalDetallesProceso({
         };
       });
 
-      setArchivosBackend(mapped.concat(archivosNoticia));
+      console.log('[ModalDetallesProceso] total archivos:', mapped.length, ' + noticia:', archivosNoticia.length);
+      setArchivosBackend(mapped);
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
       setArchivosBackend([]);
@@ -3011,10 +3028,13 @@ export function ModalDetallesProceso({
   }, [handleFilesSelected]);
 
   const pct             = Math.min(proceso.porcentajeTiempo, 100);
-  const diasTranscurridos = Math.max(0, 90 - proceso.diasRestantes);
+  const diasTranscurridos = pct < 100
+    ? Math.max(0, Math.round(proceso.diasRestantes * pct / (100 - pct)))
+    : Math.max(0, -proceso.diasRestantes);
   const sc              = SEMAFORO[proceso.semaforo] ?? SEMAFORO.rojo;
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
+  const isArchivado     = proceso.estadoActual === 'ARCHIVADO' || proceso.estadoActual === 'CERRADO' || proceso.etapaActual === 'Archivo';
 
   const TODOS_ARCHIVOS = archivosBackend;
   const ultimaActuacionActual = actuaciones[0]?.descripcion || proceso.ultimaActuacion;
@@ -3564,17 +3584,16 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(null);
   }, []);
 
-  const handleSolicitarReasignacion = useCallback(async (
+  const handleReasignacionInmediata = useCallback(async (
     nuevoProfesionalId: string,
     nuevoProfesionalNombre: string,
     justificacion: string,
     prioridad: 'NORMAL' | 'URGENTE'
   ) => {
     if (!proceso?.id) return;
-
     try {
       const user = authService.getCurrentUser();
-      await disciplinaryService.createReassignmentRequest({
+      const solicitud = await disciplinaryService.createReassignmentRequest({
         processId: proceso.id,
         newProfessionalId: nuevoProfesionalId,
         justification: justificacion,
@@ -3582,14 +3601,15 @@ export function ModalDetallesProceso({
         requestedBy: user?.fullName || user?.email || 'Usuario del Sistema',
         requestedById: user?.id,
       });
-
-      toast.success('Solicitud de reasignación creada', {
-        description: `Se ha enviado la solicitud al Jefe OCID para aprobación`,
-        duration: 6000,
+      await disciplinaryService.approveReassignmentRequest(solicitud.id, { approved: true });
+      toast.success('Profesional reasignado exitosamente', {
+        description: `El proceso ha sido reasignado a ${nuevoProfesionalNombre}`,
+        duration: 4000,
       });
+      setMostrarModalReasignar(false);
     } catch (error: any) {
-      console.error('[ModalDetallesProceso] Error creando solicitud de reasignación:', error);
-      toast.error(error?.message || 'No fue posible crear la solicitud de reasignación');
+      console.error('[ModalDetallesProceso] Error en reasignación inmediata:', error);
+      toast.error(error?.message || 'No fue posible realizar la reasignación');
     }
   }, [proceso?.id]);
 
@@ -3614,7 +3634,8 @@ export function ModalDetallesProceso({
       }
 
       if (archivo.downloadUrl) {
-        await disciplinaryService.downloadFileFromUrl(archivo.downloadUrl, nombreArchivo);
+        const normalizedUrl = disciplinaryService.getFileUrl(archivo.downloadUrl);
+        await disciplinaryService.downloadFileFromUrl(normalizedUrl, nombreArchivo);
       } else {
         await disciplinaryService.downloadDocument(proceso.id, archivo.id, nombreArchivo);
       }
@@ -3651,36 +3672,30 @@ export function ModalDetallesProceso({
     }
 
     const id = autoRecargar.id;
-    const nuevaVersion = (autoRecargar.version || 1) + 1;
-
-    // Actualizar el archivo existente con nueva versión
-    const enReal = archivosBackend.find(a => a.id === id);
-    if (enReal) {
-      enReal.estado = 'borrador';
-      enReal.version = nuevaVersion;
-      enReal.fecha = new Date().toISOString().split('T')[0];
-      enReal.tamaño = formatBytes(nuevoArchivo.size);
-      enReal.observacionesDevolucion = undefined;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === id ? {
-          ...a,
-          estado: 'borrador' as const,
-          version: nuevaVersion,
-          fecha: new Date().toISOString().split('T')[0],
-          tamaño: formatBytes(nuevoArchivo.size),
-          observacionesDevolucion: undefined,
-        } : a
-      ));
-    }
-
-    toast.success(`Auto reemplazado — Versión ${nuevaVersion}`, {
-      description: `${nuevoArchivo.name} (${formatBytes(nuevoArchivo.size)}) · Listo para enviar a revisión`,
-      duration: 5000,
-    });
-    setAutoRecargar(null);
-    if (inputRecargarRef.current) inputRecargarRef.current.value = '';
-  }, [autoRecargar]);
+    
+    // Iniciar subida real al backend
+    toast.promise(
+      disciplinaryService.uploadDocumentoRevision(id, nuevoArchivo, 'Recarga de archivo corregido'),
+      {
+        loading: 'Subiendo nueva versión del auto...',
+        success: (data) => {
+          // Recargar los documentos del expediente desde el backend
+          void cargarDocumentosExpediente();
+          
+          setAutoRecargar(null);
+          if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+          
+          return `Auto reemplazado — Versión ${data.currentVersion || (autoRecargar.version || 1) + 1}`;
+        },
+        error: (err) => {
+          console.error('Error al recargar auto:', err);
+          setAutoRecargar(null);
+          if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+          return 'Error al subir la nueva versión del documento';
+        }
+      }
+    );
+  }, [autoRecargar, cargarDocumentosExpediente]);
 
   // ── Helper: Renderizar fila de archivo ────────────────────────────────────────
   const renderArchivoFila = (archivo: Archivo, ocultarBadgeEtapa = false) => {
@@ -3722,7 +3737,7 @@ export function ModalDetallesProceso({
             )}
             <div className="flex items-center gap-1 mt-0.5">
               <p className="text-[10px] text-gray-500">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
-              {archivo.firmante === 'Archivo de la noticia' && (
+              {archivo.firmante === 'Radicador' && (
                 <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-300">
                   De la noticia
                 </span>
@@ -3756,7 +3771,7 @@ export function ModalDetallesProceso({
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
             )} */}
-            {puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
+            {!isArchivado && puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -3766,7 +3781,7 @@ export function ModalDetallesProceso({
                 <Send className="w-3 h-3" /><span className="hidden sm:inline">Enviar a Revisión</span>
               </button>
             )}
-            {puedeRecargar && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
+            {!isArchivado && puedeRecargar && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleRecargarArchivo(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
@@ -3776,13 +3791,13 @@ export function ModalDetallesProceso({
                 <RefreshCw className="w-3 h-3" /><span className="hidden sm:inline">Recargar</span>
               </button>
             )}
-            {isZip ? (
+            {archivo.firmante === 'Archivo de la noticia' || isZip ? (
               <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#FEF3C7'}
                 onMouseLeave={e => e.currentTarget.style.background = '#FFFBEB'}
-                title="Descargar archivo .ZIP">
+                title={isZip ? 'Descargar archivo .ZIP' : 'Descargar evidencia de la noticia'}>
                 <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
               </button>
             ) : (
@@ -3795,11 +3810,13 @@ export function ModalDetallesProceso({
                 <Eye className="w-3 h-3" /><span className="hidden sm:inline">Ver</span>
               </button>
             )}
-            <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
-              title="Descargar archivo">
-              <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
-            </button>
+            {archivo.firmante !== 'Archivo de la noticia' && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
+                title="Descargar archivo">
+                <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
+              </button>
+            )}
           </div>
         </div>
         {fueDevuelto && archivo.observacionesDevolucion && (
@@ -3993,8 +4010,17 @@ export function ModalDetallesProceso({
                 {tabActiva === 'general' && (() => {
                   const origenVal = proceso.origenNoticia || (proceso as any).origen || '';
                   const fechaRecNoticia = proceso.fechaRecepcionNoticia || '';
-                  const cantDenunciados = proceso.denunciados?.length || (proceso.denunciado ? 1 : 0);
-                  const cantDenunciantes = proceso.denunciantes?.length || (proceso.denunciante ? 1 : 0);
+
+
+                  const cantDenunciados = proceso.denunciados?.length ||
+                    (Array.isArray(proceso.denunciado) ? proceso.denunciado.length : (proceso.denunciado ? 1 : 0));
+                  const cantDenunciantes = proceso.denunciantes?.length ||
+                    (Array.isArray(proceso.denunciante) ? proceso.denunciante.length : (proceso.denunciante ? 1 : 0));
+
+                  console.log('[ModalDetallesProceso] Cantidades calculadas:', {
+                    cantDenunciados,
+                    cantDenunciantes
+                  });
                   const cantHechos = proceso.hechosSeparados?.length || (proceso.hechos ? 1 : 0);
                   const cantAdjuntos = proceso.archivosAdjuntos?.length || 0;
                   const territorial = proceso.territorial || (proceso.denunciado && typeof proceso.denunciado !== 'string' ? (proceso.denunciado as any).dependencia : '');
@@ -4036,7 +4062,7 @@ export function ModalDetallesProceso({
                         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-blue-100">
                           {[
                             { label: 'ORIGEN', value: origenVal || '—' },
-                            { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO') : '—' },
+                            { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
                             { label: 'PRIORIDAD', value: (proceso.prioridadNoticia || (proceso as any).prioridad || '—').toString().toUpperCase() },
                             { label: 'NOTICIA', value: proceso.noticiaOrigen || '—' },
                           ].map(({ label, value }) => (
@@ -4120,24 +4146,45 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                           {(() => {
-                             // Use proceso.denunciados if available, otherwise try noticia.denunciados, otherwise fallback to proceso.denunciado
-                             const denunciados = proceso.denunciados && proceso.denunciados.length > 0
-                               ? proceso.denunciados
-                               : (noticia?.denunciados && noticia.denunciados.length > 0
-                                   ? noticia.denunciados
-                                   : (proceso.denunciado ? [{
-                                       id: 'fallback-denunciado',
-                                       nombre: getNombre(proceso.denunciado),
-                                       identificacion: getId(proceso.denunciado),
-                                       cargo: cargo || '',
-                                       lugarHechos: '',
-                                       dependencia: proceso.dependencia || '',
-                                     }] : []));
+                            
+                            {(() => {
+                              // Use proceso.denunciados if available, otherwise try proceso.denunciado if it's an array,
+                              // otherwise try noticia.disciplinable, otherwise fallback to proceso.denunciado as single object
 
-                             return denunciados.length > 0 ? (
-                               denunciados.map((d, idx) => (
-                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
+                              let denunciados: any[] = [];
+
+                              if (proceso.denunciados && proceso.denunciados.length > 0) {
+                                denunciados = proceso.denunciados;
+                              } else if (Array.isArray(proceso.denunciado) && proceso.denunciado.length > 0) {
+                                denunciados = proceso.denunciado;
+                              } else if (noticia?.disciplinable) {
+                                denunciados = [{
+                                  id: 'noticia-disciplinable',
+                                  nombre: noticia.disciplinable.nombre,
+                                  identificacion: noticia.disciplinable.documento || noticia.disciplinable.cedula || '',
+                                  cargo: noticia.disciplinable.cargo || '',
+                                  lugarHechos: noticia.disciplinable.lugarHechos || '',
+                                  dependencia: noticia.disciplinable.dependencia || '',
+                                  apoderado: noticia.disciplinable.apoderado
+                                }];
+                              } else if (proceso.denunciado && !Array.isArray(proceso.denunciado)) {
+                                denunciados = [{
+                                  id: 'fallback-denunciado',
+                                  nombre: getNombre(proceso.denunciado),
+                                  identificacion: getId(proceso.denunciado),
+                                  cargo: cargo || '',
+                                  lugarHechos: '',
+                                  dependencia: proceso.dependencia || '',
+                                }];
+                              }
+
+
+
+
+
+                              return denunciados.length > 0 ? (
+                                denunciados.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
                                    <div className="flex items-center gap-2 mb-2">
                                      {denunciados.length > 1 && (
                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
@@ -4196,27 +4243,51 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                           {(() => {
-                             // Use proceso.denunciantes if available, otherwise try noticia.denunciantes, otherwise fallback to proceso.denunciante
-                             const denunciantes = proceso.denunciantes && proceso.denunciantes.length > 0
-                               ? proceso.denunciantes
-                               : (noticia?.denunciantes && noticia.denunciantes.length > 0
-                                   ? noticia.denunciantes
-                                   : (proceso.denunciante ? [{
-                                       id: 'fallback-denunciante',
-                                       nombre: getNombre(proceso.denunciante),
-                                       identificacion: getId(proceso.denunciante),
-                                       direccion: '',
-                                       telefono: '',
-                                       correo: '',
-                                       cargo: '',
-                                       entidad: '',
-                                       tipo: 'Denunciante' as const,
-                                     }] : []));
+                            
+                            {(() => {
+                              // Use proceso.denunciantes if available, otherwise try proceso.denunciante if it's an array,
+                              // otherwise try noticia.denunciante, otherwise fallback to proceso.denunciante as single object
 
-                             return denunciantes.length > 0 ? (
-                               denunciantes.map((d, idx) => (
-                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
+                              let denunciantes: any[] = [];
+
+                              if (proceso.denunciantes && proceso.denunciantes.length > 0) {
+                                denunciantes = proceso.denunciantes;
+                              } else if (Array.isArray(proceso.denunciante) && proceso.denunciante.length > 0) {
+                                denunciantes = proceso.denunciante;
+                              } else if (noticia?.denunciante) {
+                                denunciantes = [{
+                                  id: 'noticia-denunciante',
+                                  nombre: noticia.denunciante.nombre,
+                                  identificacion: noticia.denunciante.documento || noticia.denunciante.cedula || '',
+                                  direccion: noticia.denunciante.direccion || '',
+                                  telefono: noticia.denunciante.telefono || '',
+                                  correo: noticia.denunciante.email || '',
+                                  cargo: noticia.denunciante.cargo || '',
+                                  entidad: noticia.denunciante.entidad || '',
+                                  tipo: (noticia.denunciante.tipo as 'Denunciante' | 'Víctima') || 'Denunciante',
+                                  apoderado: noticia.denunciante.apoderado
+                                }];
+                              } else if (proceso.denunciante && !Array.isArray(proceso.denunciante)) {
+                                denunciantes = [{
+                                  id: 'fallback-denunciante',
+                                  nombre: getNombre(proceso.denunciante),
+                                  identificacion: getId(proceso.denunciante),
+                                  direccion: '',
+                                  telefono: '',
+                                  correo: '',
+                                  cargo: '',
+                                  entidad: '',
+                                  tipo: 'Denunciante' as const,
+                                }];
+                              }
+
+
+
+
+
+                              return denunciantes.length > 0 ? (
+                                denunciantes.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
                                    <div className="flex items-center gap-2 mb-2">
                                      {denunciantes.length > 1 && (
                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
@@ -4283,7 +4354,7 @@ export function ModalDetallesProceso({
                             <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
                             <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
                           </div>
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN) && (
+                          {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION_INMEDIATA) && (
                             <button
                               onClick={() => setMostrarModalReasignar(true)}
                               className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
@@ -4324,19 +4395,20 @@ export function ModalDetallesProceso({
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
-                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                              <button
-                                onClick={() => setMostrarModalPliego(true)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                                style={{ background: '#D97706', color: 'white' }}
-                              >
-                                <FileText className="w-4 h-4" />
-                                Auto Pliego de Cargos
-                              </button>
-                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                                Cierra el proceso y traslada a Oficina Jurídica
-                              </p>
-                            </div>
+                            // <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
+                            //   <button
+                            //     onClick={() => setMostrarModalPliego(true)}
+                            //     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                            //     style={{ background: '#D97706', color: 'white' }}
+                            //   >
+                            //     <FileText className="w-4 h-4" />
+                            //     Auto Pliego de Cargos
+                            //   </button>
+                            //   <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
+                            //     Cierra el proceso y traslada a Oficina Jurídica
+                            //   </p>
+                            // </div>
+                            null
                         ) : null;
                       }
 
@@ -4437,7 +4509,7 @@ export function ModalDetallesProceso({
                         </div>
                         <div className="space-y-2">
                           {proceso.hechosSeparados.map((h, idx) => (
-                            <div key={h.id || idx} className="flex items-start gap-2">
+                            <div key={`${h.id || 'no-id'}-${idx}`} className="flex items-start gap-2">
                               <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0 mt-0.5" style={{ backgroundColor: '#003DA5' }}>{idx + 1}</div>
                               <div>
                                 <p className="text-xs text-gray-700 leading-relaxed">{h.descripcion}</p>
@@ -4528,7 +4600,7 @@ export function ModalDetallesProceso({
                         ) : (
                           <div className="space-y-2">
                             {noticiasAsociadas.map((noticia: any, idx: number) => (
-                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                              <div key={`${noticia.id || 'no-id'}-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
                                 </div>
@@ -4538,7 +4610,7 @@ export function ModalDetallesProceso({
                                   <div className="flex items-center gap-3 mt-1.5 text-[9px] text-gray-500">
                                     <span className="flex items-center gap-1">
                                       <Calendar className="w-3 h-3" />
-                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO') : 'Sin fecha'}
+                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : 'Sin fecha'}
                                     </span>
                                     {noticia.prioridad && (
                                       <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold"
@@ -4897,9 +4969,9 @@ export function ModalDetallesProceso({
                 {/* ── ARCHIVOS ── */}
                 {tabActiva === 'archivos' && (
                   <div className="space-y-3">
-                    {/* Acceso rápido — chips inline */}
+                    {/* Acceso rápido — chips inline (solo si no está archivado) */}
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {TIPO_ARCHIVO.map(({ tipo, label, icon: Icon, color, bg, border, onClick }) => {
+                      {!isArchivado && TIPO_ARCHIVO.map(({ tipo, label, icon: Icon, color, bg, border, onClick }) => {
                         const count = TODOS_ARCHIVOS.filter(a => a.tipo === tipo).length;
                         return (
                           <button key={tipo} onClick={onClick}
@@ -5390,7 +5462,7 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Historial
                       </span>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE) && (
+                      {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaActuacion(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
@@ -5650,7 +5722,7 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Tareas
                       </span>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TAREAS_CREATE) && (
+                      {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TAREAS_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaTarea(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
@@ -5796,7 +5868,7 @@ export function ModalDetallesProceso({
                           <div className="flex-1 min-w-0 pt-0.5">
                             <p className="text-[12px] font-semibold text-slate-800 leading-6 break-words">{nota.texto}</p>
                           </div>
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
+                          {!isArchivado && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
                             <button
                               type="button"
                               onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
@@ -5889,8 +5961,8 @@ export function ModalDetallesProceso({
                       )}
                     </div>
 
-                    {/* Composición de nota */}
-                    <motion.div
+                    {/* Composición de nota (solo si no está archivado) */}
+                    {!isArchivado && <motion.div
                       layout
                       className="rounded-[28px] border border-blue-100 bg-[linear-gradient(180deg,rgba(248,250,255,0.98),rgba(255,255,255,0.98))] p-4 md:p-5 shadow-[0_18px_40px_rgba(0,61,165,0.07)]"
                     >
@@ -5924,7 +5996,7 @@ export function ModalDetallesProceso({
                         </button>
                         )}
                       </div>
-                    </motion.div>
+                    </motion.div>}
 
                     {/* Filtro por etapa (solo si hay notas) */}
                     {notas.length > 0 && notasTienenVariasEtapas && (
@@ -6201,7 +6273,7 @@ export function ModalDetallesProceso({
           <ModalReasignarProfesional
             proceso={proceso}
             onClose={() => setMostrarModalReasignar(false)}
-            onSolicitarReasignacion={handleSolicitarReasignacion}
+            onSolicitarReasignacion={handleReasignacionInmediata}
           />
         )}
       </AnimatePresence>
@@ -6219,7 +6291,7 @@ export function ModalDetallesProceso({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300]"
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100000]"
               onClick={(e) => e.target === e.currentTarget && setMostrarModalEnvioJuridica(false)}
             >
               <motion.div
@@ -6271,8 +6343,14 @@ export function ModalDetallesProceso({
                         }
                         try {
                           setEnviandoJuridica(true);
-                          const userId = authService.getCurrentUser()?.id || '';
-                          await disciplinaryService.sendJuridica(autoPliego.id, userId);
+                           const currentUser = authService.getCurrentUser();
+                           const userId = currentUser?.id || '';
+                           await disciplinaryService.sendJuridica(
+                               autoPliego.id, 
+                               userId, 
+                               currentUser?.email, 
+                               currentUser?.fullName || currentUser?.firstName
+                           );
                           toast.success('Auto enviado a jurídica exitosamente', {
                             description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
                             duration: 5000,

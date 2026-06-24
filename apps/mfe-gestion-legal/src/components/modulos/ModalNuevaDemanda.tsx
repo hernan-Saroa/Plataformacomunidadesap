@@ -4,12 +4,17 @@ interface ModalNuevaDemandaProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (demanda: NuevaDemandaData) => void;
+  tableroSeleccionado?: string;
 }
 
 export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
   tipoProceso: string;
+  territorial?: string;
+  dependencia?: string;
+  territorialNombre?: string;
+  dependenciaNombre?: string;
   demandantes: Array<{
     id: string;
     nombre: string;
@@ -59,6 +64,9 @@ export interface NuevaDemandaData {
   observaciones: string;
   terminoProcesalDias?: number;
   tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
+  esDelitoAdminPublica?: boolean;
+  esConductaPatrimonioPublico?: boolean;
+  camposAdicionales?: Record<string, any>;
 }
 
 function mapTipoPersona(tipo: 'Natural' | 'Juridica'): 'natural' | 'juridica' {
@@ -118,11 +126,18 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     hechos: data.hechos,
     observaciones: data.observaciones,
     terminoProcesalDias: data.termino,
-    tipoConteoTermino: data.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+    tipoConteoTermino: data.tipoPlazo === 'Horas' ? 'HORAS' : data.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+    esDelitoAdminPublica: data.esDelitoAdminPublica || false,
+    esConductaPatrimonioPublico: data.esConductaPatrimonioPublico || false,
+    territorial: data.territorial,
+    dependencia: data.dependencia,
+    territorialNombre: (data as any).territorialNombre,
+    dependenciaNombre: (data as any).dependenciaNombre,
+    camposAdicionales: data.camposAdicionales,
   };
 }
 
-export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
+export function ModalNuevaDemanda({ isOpen, onClose, onSave, tableroSeleccionado }: ModalNuevaDemandaProps) {
   const handleSave = (data: NuevaDemandaDataRestaurado) => {
     onSave(mapDemandaData(data));
   };
@@ -132,6 +147,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       isOpen={isOpen}
       onClose={onClose}
       onSave={handleSave}
+      tableroSeleccionado={tableroSeleccionado}
     />
   );
 }

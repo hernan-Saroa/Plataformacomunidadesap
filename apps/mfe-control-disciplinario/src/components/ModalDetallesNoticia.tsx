@@ -26,7 +26,9 @@ import {
   Scale, Clock, FileWarning, Download, Eye, Users, Gavel, Loader2
 } from 'lucide-react';
 import { authService } from '../../../services/api/authService';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import * as mammoth from 'mammoth';
 
 // ═══════════════════════════════════════════════════════════════
 // TIPOS (extendidos para datos completos de creación)
@@ -83,6 +85,7 @@ export interface NoticiaCompleta {
   id: string;
   numero: string;
   fechaRecepcion: string;
+  fechaQueja?: string;
   origen: string;
   denunciante: any;
   denunciado: any;
@@ -125,6 +128,38 @@ type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
 
 const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apoderado?.email || '';
 const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
+
+// ═══════════════════════════════════════════════════════════════
+// UTILIDADES DE FECHA - Parseo local para fechas sin timezone
+// ═══════════════════════════════════════════════════════════════
+
+const parseLocalDateTime = (dateString: string): Date | null => {
+  if (!dateString) return null;
+  // Manejar formato "YYYY-MM-DD HH:MM:SS" como fecha local
+  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+  if (match) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = match;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
+  }
+  // Intentar parsear como ISO
+  const isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(:(\d{2}))?/);
+  if (isoMatch) {
+    const [, year, month, day, hour, minute, , second = '0'] = isoMatch;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
+  }
+  return null;
+};
+
+const formatFechaLocal = (dateString: string | undefined | null): string => {
+  if (!dateString) return '0000';
+  const date = parseLocalDateTime(dateString);
+  if (!date) return '0000';
+  // Formato explícito sin timezone para preservar la fecha exacta
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -206,7 +241,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
 
   // Fecha de caducidad (5 años desde fecha de hechos)
   const fechaCaducidad = n.fechaHechos ? (() => {
-    const f = new Date(n.fechaHechos);
+    const f = parseLocalDateTime(n.fechaHechos);
+    if (!f) return null;
     f.setFullYear(f.getFullYear() + 5);
     return f.toISOString().split('T')[0];
   })() : null;
@@ -280,7 +316,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
           padding: '2vh 2vw',
           zIndex: 10000
         }}
-        onClick={(e) => e.target === e.currentTarget && setFileToView(null)}
+        onClick={(e) => e.target === e.currentTarget && closeFileViewer()}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -316,44 +352,55 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
             </div>
           </div>
           <div className="flex-1 overflow-hidden p-4">
-            {tipo.includes('pdf') ? (
-              <embed
-                src={fileBlobUrl}
-                type="application/pdf"
-                width="100%"
-                height="100%"
-                style={{ border: 'none' }}
-              />
-            ) : tipo.includes('image') ? (
-              <img
-                src={fileBlobUrl}
-                alt={nombre}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-              />
-            ) : tipo.includes('video') ? (
-              <video
-                src={fileBlobUrl}
-                controls
-                style={{ maxWidth: '100%', maxHeight: '100%' }}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <FileText className="w-16 h-16 text-gray-300 mb-4" />
-                <p className="text-lg font-bold text-gray-600 mb-2">No se puede previsualizar este tipo de archivo</p>
-                <p className="text-sm text-gray-500 mb-4">Formato no soportado: {tipo}</p>
-                {onDownload && (
-                <button
-                  onClick={() => {
-                    closeFileViewer();
-                    onDownload(viewingFile.url, nombre);
-                  }}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
-                >
-                  Descargar
-                </button>
-                )}
-              </div>
-            )}
+{fileBlobUrl && (
+            <>
+              {tipo.includes('pdf') || (nombre || '').toLowerCase().endsWith('.pdf') ? (
+                <embed
+                  src={fileBlobUrl}
+                  type="application/pdf"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                />
+              ) : tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(nombre || '') ? (
+                <img
+                  src={fileBlobUrl}
+                  alt={nombre}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
+              ) : tipo.includes('video') || /\.(mp4|webm|ogg|mov)$/i.test(nombre || '') ? (
+                <video
+                  src={fileBlobUrl}
+                  controls
+                  style={{ maxWidth: '100%', maxHeight: '100%' }}
+                />
+              ) : (nombre || '').toLowerCase().endsWith('.docx') || (nombre || '').toLowerCase().endsWith('.doc') || tipo.includes('html') || tipo.includes('word') ? (
+                <iframe
+                  src={fileBlobUrl}
+                  className="w-full h-full border-0 bg-white"
+                  title={`Vista previa de ${nombre}`}
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <FileText className="w-16 h-16 text-gray-300 mb-4" />
+                  <p className="text-lg font-bold text-gray-600 mb-2">No se puede previsualizar este tipo de archivo</p>
+                  <p className="text-sm text-gray-500 mb-4">Formato no soportado: {tipo || 'desconocido'}</p>
+                  {onDownload && (
+                  <button
+                    onClick={() => {
+                      closeFileViewer();
+                      onDownload(viewingFile.url, nombre);
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    Descargar
+                  </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           </div>
         </motion.div>
       </motion.div>,
@@ -373,13 +420,61 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     setViewingFile(archivo);
     setFileBlobUrl(null);
     try {
-      const token = sessionStorage.getItem('esap_access_token');
-      const requestUrl = archivo.url.includes('?') ? `${archivo.url}&view=true` : `${archivo.url}?view=true`;
-      const response = await fetch(requestUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(archivo.url || (archivo as any).fullUrl || '');
+      const response = await fetch(absoluteUrl, {
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load file');
-      const blob = await response.blob();
+      let blob = await response.blob();
+      const tipo = archivo.tipo || '';
+
+      // Soporte para previsualización de DOCX igual que evidencias (usando mammoth)
+      const isDocx = (archivo.nombre || '').toLowerCase().endsWith('.docx') || tipo.includes('word') || tipo.includes('docx');
+      if (isDocx) {
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          const htmlContent = result.value;
+          const docxHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+              <style>
+                .docx-content { max-width: 800px; margin: 0 auto; }
+                .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                .docx-content ul, .docx-content ol { margin-left: 20px; }
+                .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                .docx-content th { background-color: #f5f5f5; }
+              </style>
+              <div class="docx-content">
+                ${htmlContent}
+              </div>
+            </div>
+          `;
+          blob = new Blob([docxHtml], { type: 'text/html' });
+        } catch (convErr) {
+          console.error('Error convirtiendo DOCX para preview en noticia:', convErr);
+        }
+      } else {
+        // Asignar tipo MIME explícito para PDFs e imágenes
+        const isPdf = tipo.includes('pdf') || (archivo.nombre || '').toLowerCase().endsWith('.pdf');
+        const isImage = tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(archivo.nombre || '');
+        if (isPdf && blob.type !== 'application/pdf') {
+          blob = blob.slice(0, blob.size, 'application/pdf');
+        } else if (isImage && blob.type.startsWith('application/')) {
+          const ext = (archivo.nombre || '').split('.').pop()?.toLowerCase() || '';
+          const mimeMap: Record<string, string> = {
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            png: 'image/png',
+            gif: 'image/gif',
+            webp: 'image/webp',
+            svg: 'image/svg+xml'
+          };
+          blob = blob.slice(0, blob.size, mimeMap[ext] || 'image/png');
+        }
+      }
+
       const blobUrl = URL.createObjectURL(blob);
       setFileBlobUrl(blobUrl);
     } catch (error) {
@@ -512,13 +607,13 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               <X className="w-3.5 h-3.5" />
               Cerrar
             </button>
-            <span className="text-[10px] text-gray-400">
-              Radicado {n.fechaRegistro ? new Date(n.fechaRegistro).toLocaleDateString('es-CO') : new Date(n.fechaRecepcion).toLocaleDateString('es-CO')}
-              {n.radicador && ` por ${n.radicador}`}
-            </span>
+<span className="text-[10px] text-gray-400">
+               Radicado {formatFechaLocal(n.fechaRegistro) || formatFechaLocal(n.fechaRecepcion)}
+               {n.radicador && ` por ${n.radicador}`}
+             </span>
           </div>
           <div className="flex items-center gap-2">
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida' || n.estado === 'archivada' || n.estado === 'archivado') && (
               <button
                 onClick={() => { onClose(); onEditar(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg border text-gray-700 hover:bg-gray-100 transition-all"
@@ -528,7 +623,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 Editar
               </button>
             )}
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && !(n.numeroRC || n.entidadRemision || n.estado === 'remitida' || n.estado === 'archivada' || n.estado === 'archivado') && (
               <button
                 onClick={() => { onClose(); onConvertir(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
@@ -700,13 +795,13 @@ function TabGeneral({
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
           <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">Datos de Radicación</h3>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
-          {[
-            { label: 'NÚMERO', value: n.numero },
-            { label: 'ORIGEN', value: n.origen || '—' },
-            { label: 'FECHA RECEPCIÓN', value: n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO') : '—' },
-            { label: 'PRIORIDAD', value: n.prioridad?.toUpperCase() || '—' },
-          ].map(({ label, value }) => (
+<div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+            {[
+              { label: 'NÚMERO', value: n.numero },
+              { label: 'ORIGEN', value: n.origen || '—' },
+              { label: 'FECHA RECEPCIÓN', value: formatFechaLocal(n.fechaRecepcion) },
+              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.fechaQueja) || formatFechaLocal(n.fechaRecepcion) },
+            ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
               <p className="text-sm font-bold text-gray-900">{value}</p>
@@ -741,14 +836,14 @@ function TabGeneral({
               <Calendar className="w-4 h-4 text-amber-600" />
               <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Fecha de Hechos</span>
             </div>
-            <p className="text-sm font-bold text-gray-900">
-              {new Date(n.fechaHechos).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-            {fechaCaducidad && (
-              <p className="text-[11px] text-amber-700 mt-1">
-                Caducidad: {new Date(fechaCaducidad).toLocaleDateString('es-CO')}
-              </p>
-            )}
+<p className="text-sm font-bold text-gray-900">
+               {parseLocalDateTime(n.fechaHechos) ? `${parseLocalDateTime(n.fechaHechos)!.getDate().toString().padStart(2, '0')}/${(parseLocalDateTime(n.fechaHechos)!.getMonth() + 1).toString().padStart(2, '0')}/${parseLocalDateTime(n.fechaHechos)!.getFullYear()}` : '0000'}
+             </p>
+             {fechaCaducidad && (
+               <p className="text-[11px] text-amber-700 mt-1">
+                 Caducidad: {parseLocalDateTime(fechaCaducidad) ? `${parseLocalDateTime(fechaCaducidad)!.getDate().toString().padStart(2, '0')}/${(parseLocalDateTime(fechaCaducidad)!.getMonth() + 1).toString().padStart(2, '0')}/${parseLocalDateTime(fechaCaducidad)!.getFullYear()}` : ''}
+               </p>
+             )}
           </div>
         )}
       </div>
@@ -1030,12 +1125,12 @@ function TabHechos({ n }: { n: NoticiaCompleta }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-700 leading-relaxed">{hecho.descripcion}</p>
-                    {hecho.fecha && (
-                      <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(hecho.fecha).toLocaleDateString('es-CO')}
-                      </p>
-                    )}
+{hecho.fecha && (
+                       <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1">
+                         <Calendar className="w-3 h-3" />
+                         {formatFechaLocal(hecho.fecha)}
+                       </p>
+                     )}
                   </div>
                 </div>
               </div>
@@ -1119,22 +1214,22 @@ function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaComp
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[11px] text-gray-400">{formatFileSize(archivo.tamano)}</span>
                   <span className="text-gray-300">·</span>
-                  <span className="text-[11px] text-gray-400">
-                    {new Date(archivo.fechaSubida).toLocaleDateString('es-CO')}
-                  </span>
+<span className="text-[11px] text-gray-400">
+                     {formatFechaLocal(archivo.fechaSubida)}
+                   </span>
                 </div>
               </div>
-               <div className="flex gap-1" style={{ opacity: 1 }}>
-                 {/* {onView && (
-                   <button
-                     onClick={() => onView(archivo)}
-                     className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                     title="Ver"
-                   >
-                     <Eye className="w-4 h-4 text-gray-500" />
-                   </button>
-                 )} */}
-                 {onDownload && (
+                <div className="flex gap-1" style={{ opacity: 1 }}>
+                  {onView && (
+                    <button
+                      onClick={() => onView(archivo)}
+                      className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                      title="Previsualizar"
+                    >
+                      <Eye className="w-4 h-4 text-gray-500" />
+                    </button>
+                  )}
+                  {onDownload && (
                    <button
                      onClick={() => onDownload(archivo.url, archivo.nombre)}
                      className="p-2 rounded-lg hover:bg-gray-200 transition-colors"

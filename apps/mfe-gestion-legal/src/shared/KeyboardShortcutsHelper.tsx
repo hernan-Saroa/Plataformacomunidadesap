@@ -4,7 +4,7 @@
  * Se puede activar con Ctrl+K o haciendo clic en un botón
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Keyboard, Command } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -65,23 +65,10 @@ export function KeyboardShortcutsHelper({ moduleColor = '#003DA5' }: KeyboardSho
 
   return (
     <>
-      {/* Botón flotante para abrir */}
-      <Button
-        onClick={() => setIsOpen(true)}
-        variant="outline"
-        size="sm"
-        className="fixed bottom-4 right-4 z-30 shadow-lg border-2 hidden md:flex"
-        style={{ borderColor: moduleColor }}
-        title="Atajos de teclado (Ctrl+K)"
-      >
-        <Keyboard className="w-4 h-4 mr-2" style={{ color: moduleColor }} />
-        <span className="text-xs font-bold" style={{ color: moduleColor }}>Atajos</span>
-      </Button>
-
       {/* Modal de atajos */}
       <AnimatePresence>
         {isOpen && (
-          <>
+          <Fragment key="keyboard-shortcuts-modal">
             {/* Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -216,7 +203,7 @@ export function KeyboardShortcutsHelper({ moduleColor = '#003DA5' }: KeyboardSho
                 </div>
               </Card>
             </motion.div>
-          </>
+          </Fragment>
         )}
       </AnimatePresence>
     </>

@@ -1,6 +1,6 @@
 import { IsString, IsEnum, IsOptional, IsObject, IsInt, Min, Max, IsBoolean, IsNumber, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TipoProceso } from '../entities/proceso-auditable.entity';
+
 
 /** DTO anidado para evaluacionRiesgo — permite whitelist preservar criticidad, exposicion, mitigantes, scoreRiesgo */
 class EvaluacionRiesgoUpdateDto {
@@ -77,8 +77,8 @@ export class UpdateProcesoAuditableDto {
   descripcion?: string;
 
   @IsOptional()
-  @IsEnum(TipoProceso)
-  tipo?: TipoProceso;
+  @IsString()
+  tipo?: string;
 
   @IsOptional()
   @IsString()

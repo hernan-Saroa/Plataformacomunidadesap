@@ -1,0 +1,1 @@
+ALTER DATABASE esap_db SET timezone TO 'America/Bogota';

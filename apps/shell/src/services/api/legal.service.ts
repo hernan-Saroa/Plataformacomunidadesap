@@ -46,6 +46,16 @@ export interface Expediente {
     demandadoDireccion?: string;
     demandadoTelefono?: string;
     demandadoEmail?: string;
+    // Riesgo y provisión
+    nivelRiesgo?: string;
+    provisionContable?: number;
+    observacionProvision?: string;
+    fechaEstimacionProvision?: string;
+    // Clasificación penal
+    esDelitoAdminPublica?: boolean;
+    esConductaPatrimonioPublico?: boolean;
+    esOtroDelitoPenal?: boolean;
+    otroDelitoPenalDescripcion?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -257,9 +267,29 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${anexadoId}/desanexar`, { usuario });
     }
 
+    async notifyExpedienteToRole(expedienteId: string, payload: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/notify-role`, payload);
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);
+    }
+
+    async recalcularPlazosPorTipoProceso(tipoProceso: string, deltaDias: number): Promise<{ updated: number }> {
+        return apiClient.post<{ updated: number }>(`${SERVICE_PREFIX}/expedientes/recalcular-plazos`, { tipoProceso, deltaDias });
+    }
+
+    async renombrarTipoProceso(nombreAnterior: string, nombreNuevo: string): Promise<{ updated: number }> {
+        return apiClient.post<{ updated: number }>(`${SERVICE_PREFIX}/expedientes/renombrar-tipo-proceso`, { nombreAnterior, nombreNuevo });
     }
 
     // ==================== CONSULTAS JURÍDICAS ====================
@@ -347,9 +377,6 @@ export class LegalService {
 
 
 
-    async createAbogado(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
-    }
 
     // ==================== AUDIENCIAS ====================
     async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
@@ -427,6 +454,12 @@ export class LegalService {
 
     async actualizarDocumento(id: string, data: Partial<Documento>): Promise<Documento> {
         return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}`, data);
+    }
+
+    async actualizarDocumentoArchivo(id: string, file: File): Promise<Documento> {
+        const formData = new FormData();
+        formData.append('archivo', file);
+        return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}/upload`, formData);
     }
 
     async eliminarDocumento(id: string): Promise<void> {
@@ -915,9 +948,24 @@ export interface DocumentoOC {
 
 class OCService {
     // Organismos de Control
-    // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    async createOrganismoControl(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`, data);
+    }
+
+    async updateOrganismoControl(id: number, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`, data);
+    }
+
+    async deleteOrganismoControl(id: number): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`);
+    }
+
+    async syncOrganismosControl(organismos: any[]): Promise<any[]> {
+        return apiClient.post<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/sync`, organismos);
     }
 
     // Catálogo de tipos de requerimiento
@@ -1601,9 +1649,8 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        const token = sessionStorage.getItem('esap_auth_token');
         const response = await fetch(url, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: 'include',
         });
         if (!response.ok) throw new Error('Error descargando soporte');
 
@@ -1644,7 +1691,11 @@ export class ProcesosCoactivosService {
             if (error?.response?.status === 404) {
                 return null; // Si no existe, retorna null
             }
-            console.error(`Error getConfiguration(${key}):`, error);
+            if (!error?.status) {
+                console.warn(`[legal] Servicio no disponible al obtener config "${key}"`);
+            } else {
+                console.error(`Error getConfiguration(${key}):`, error);
+            }
             throw error;
         }
     }

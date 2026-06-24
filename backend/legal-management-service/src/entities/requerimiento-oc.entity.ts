@@ -1,6 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
-import { OrganismoControlOC } from './organismo-control-legal.entity';
-import { Abogado } from './abogado.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { DocumentoOC } from './documento-oc.entity';
 
 // Legacy type kept for compatibility, but now accepts any string from cat_tipos_requerimiento
@@ -14,10 +12,10 @@ export class RequerimientoOC {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ name: 'radicado_externo', length: 100 })
+    @Column({ name: 'radicado_externo', length: 100, nullable: true })
     radicadoExterno: string;
 
-    @Column({ name: 'radicado_interno', length: 30, unique: true })
+    @Column({ name: 'radicado_interno', length: 30, unique: true, nullable: true })
     radicadoInterno: string;
 
     @Column({ name: 'organismo_id', nullable: true })
@@ -30,16 +28,16 @@ export class RequerimientoOC {
     // @JoinColumn({ name: 'organismo_id' })
     // organismo: OrganismoControlOC;
 
-    @Column({ name: 'tipo_requerimiento', length: 50 })
+    @Column({ name: 'tipo_requerimiento', length: 50, nullable: true })
     tipoRequerimiento: TipoRequerimiento;
 
-    @Column({ type: 'text' })
+    @Column({ type: 'text', nullable: true })
     asunto: string;
 
     @Column({ type: 'text', nullable: true })
     descripcion: string;
 
-    @Column({ name: 'fecha_recepcion', type: 'date' })
+    @Column({ name: 'fecha_recepcion', type: 'date', nullable: true })
     fechaRecepcion: Date;
 
     @Column({ name: 'unidad_tiempo', length: 20, default: 'DIAS_HABILES' })
@@ -48,7 +46,7 @@ export class RequerimientoOC {
     @Column({ name: 'plazo_otorgado', default: 15 })
     plazoOtorgado: number;
 
-    @Column({ name: 'fecha_vencimiento', type: 'date' })
+    @Column({ name: 'fecha_vencimiento', type: 'date', nullable: true })
     fechaVencimiento: Date;
 
     @Column({ name: 'funcionario_responsable', length: 200, nullable: true })
@@ -58,11 +56,7 @@ export class RequerimientoOC {
     areaResponsable: string;
 
     @Column({ name: 'abogado_asignado_id', type: 'uuid', nullable: true })
-    abogadoAsignadoId: string;
-
-    @ManyToOne(() => Abogado, { eager: true, nullable: true })
-    @JoinColumn({ name: 'abogado_asignado_id' })
-    abogadoAsignado: Abogado;
+    abogadoAsignadoId: string | null;
 
     @Column({ length: 30, default: 'RECIBIDO' })
     estado: EstadoRequerimiento;

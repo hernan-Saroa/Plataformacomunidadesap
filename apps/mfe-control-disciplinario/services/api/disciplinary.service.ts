@@ -8,6 +8,7 @@
 
 import { apiClient, type UploadRequestOptions } from './apiClient';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
+import { authService } from '.';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -478,7 +479,7 @@ class DisciplinaryService {
             console.log(`  ${key}:`, typeof value === 'string' ? value : 'File');
         }
 
-        return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
+        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
     async updateNoticia(id: string, data: {
@@ -487,13 +488,67 @@ class DisciplinaryService {
         dependenciaDenunciado?: string;
         hechos?: string;
         denunciante?: any;
+        denunciantes?: any;
         disciplinable?: any;
+        disciplinables?: any;
         conductas?: string[];
+        conducta?: string;
         fechaHechos?: string | null;
         fechaQueja?: string;
         usuario?: string;
+        // ✅ Soporte para gestión de documentos adjuntos
+        adjuntosParaEliminar?: string[];
+        archivosAdjuntos?: File[];
     }): Promise<DisciplinaryNews> {
-        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);
+        console.log('[DISCIPLINARY SERVICE] updateNoticia CALLED - id:', id, 'archivosAdjuntos en data:', data?.archivosAdjuntos?.length || 0, 'paraEliminar:', data?.adjuntosParaEliminar?.length || 0);
+        const hasFileChanges = (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) ||
+                               (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0);
+
+        if (hasFileChanges) {
+            console.log('[DISCIPLINARY SERVICE] updateNoticia - hasFileChanges=true, archivosAdjuntos:', data.archivosAdjuntos?.length || 0, 'paraEliminar:', data.adjuntosParaEliminar?.length || 0);
+            const formData = new FormData();
+            // Campos simples
+            if (data.origen) formData.append('origen', data.origen);
+            if (data.territorial) formData.append('territorial', data.territorial);
+            if (data.dependenciaDenunciado) formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
+            if (data.hechos) formData.append('hechos', data.hechos);
+            if (data.fechaHechos) formData.append('fechaHechos', String(data.fechaHechos));
+            if (data.fechaQueja) formData.append('fechaQueja', data.fechaQueja);
+            if (data.usuario) formData.append('usuario', data.usuario);
+            if (data.conducta) formData.append('conducta', data.conducta);
+            if (data.conductas) formData.append('conductas', JSON.stringify(data.conductas));
+            if (data.denunciante) formData.append('denunciante', JSON.stringify(data.denunciante));
+            if (data.denunciantes) formData.append('denunciantes', JSON.stringify(data.denunciantes));
+            if (data.disciplinable) formData.append('disciplinable', JSON.stringify(data.disciplinable));
+            if (data.disciplinables) formData.append('disciplinables', JSON.stringify(data.disciplinables));
+            // Gestión documentos
+            if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
+                formData.append('adjuntosParaEliminar', JSON.stringify(data.adjuntosParaEliminar));
+            }
+            if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
+                console.log('[DISCIPLINARY SERVICE] appending', data.archivosAdjuntos.length, 'files to FormData');
+                data.archivosAdjuntos.forEach((file) => formData.append('files', file));
+            } else {
+                console.warn('[DISCIPLINARY SERVICE] hasFileChanges=true but no archivosAdjuntos to append!');
+            }
+            // Envío directo con fetch para garantizar que los archivos multipart lleguen (el apiClient wrapper a veces tiene problemas con PUT + FormData)
+            const fullUrl = buildApiUrl('control-disciplinario', `/disciplinary-news/${id}`);
+            return fetch(fullUrl, {
+              method: 'PUT',
+              body: formData,
+              credentials: 'include',
+            }).then(async (res) => {
+              if (!res.ok) {
+                const text = await res.text().catch(() => 'Error en actualización con archivos');
+                throw new Error(text);
+              }
+              return res.json();
+            });
+        }
+
+        // Sin cambios de archivos: JSON tradicional (limpiar campos extra)
+        const { archivosAdjuntos, adjuntosParaEliminar, ...jsonData } = data as any;
+        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, jsonData);
     }
 
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
@@ -696,10 +751,10 @@ class DisciplinaryService {
         }
         formData.append('file', file);
 
-        return apiClient.upload<{ message: string; url: string; filename: string }>(
+        return apiClient.post<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
-            uploadOptions,
+            {}
         );
     }
 
@@ -726,19 +781,14 @@ class DisciplinaryService {
             : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token de autenticacion
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -794,18 +844,14 @@ class DisciplinaryService {
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
 
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -870,6 +916,18 @@ class DisciplinaryService {
         return `/files/${filename}`;
     }
 
+    /**
+     * Obtener URL absoluta para fetch/preview de archivos adjuntos (noticias, evidencias, etc.)
+     * Construye la URL completa usando buildApiUrl para que funcione desde el MFE (puerto distinto)
+     */
+    getAbsoluteFileUrl(relativeUrl: string): string {
+        const rel = this.getFileUrl(relativeUrl);
+        if (/^https?:\/\//i.test(rel)) {
+            return rel;
+        }
+        return buildApiUrl('control-disciplinario', rel.startsWith('/') ? rel : `/${rel}`);
+    }
+
     // --- AUTOS ---
 
     async getAllAutos(): Promise<LegalAuto[]> {
@@ -930,9 +988,16 @@ class DisciplinaryService {
         });
     }
 
-    async sendJuridica(id: string, enviadoPorId: string): Promise<LegalAuto> {
+    async sendJuridica(
+        id: string, 
+        enviadoPorId: string, 
+        enviadoPorEmail?: string, 
+        enviadoPorNombre?: string
+    ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
-            enviadoPorId
+            enviadoPorId,
+            enviadoPorEmail,
+            enviadoPorNombre,
         });
     }
 
@@ -947,11 +1012,24 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
     }
 
+    
+    
+    /**
+     * Recarga / reemplazo de documento Word (usa PATCH)
+     */
     async uploadDocumentoRevision(id: string, file: File, comentario: string): Promise<any> {
         const formData = new FormData();
         formData.append('file', file);
         if (comentario) formData.append('comentario', comentario);
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
+        // Agregar userId si está disponible para la trazabilidad en el backend
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+            formData.append('userId', currentUser.id);
+        }
+        
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
     }
 
     // --- TÉRMINOS PROCESALES ---
@@ -989,7 +1067,7 @@ class DisciplinaryService {
     async uploadSignature(professionalId: string, file: File): Promise<{ url: string }> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
+        return apiClient.post<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
     }
 
     async getCandidates(): Promise<any[]> {
@@ -1001,12 +1079,16 @@ class DisciplinaryService {
     }
 
     // --- ARCHIVOS ---
-    async uploadFile(file: File, tipo: string = 'default'): Promise<{ url: string; filename: string }> {
+    async uploadFile(file: File, tipo: string = 'default', radicadoProceso?: string): Promise<{ url: string; filename: string }> {
         const formData = new FormData();
+        if (radicadoProceso) {
+            formData.append('radicadoProceso', radicadoProceso);
+        }
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
         formData.append('file', file);
-        return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
+
+        return apiClient.post<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData, {});
     }
 
     // ==================== CONFIGURACION ====================
@@ -1046,19 +1128,14 @@ class DisciplinaryService {
         const endpoint = `/api/v1/configuration/export/zip`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1143,7 +1220,7 @@ class DisciplinaryService {
         formData.append('usuarioCarga', data.aportadoPor || 'Sistema');
         formData.append('file', file);
 
-        return apiClient.upload<any>(
+        return apiClient.post<any>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -1189,7 +1266,7 @@ class DisciplinaryService {
         if (data.etapa) formData.append('etapa', data.etapa);
         if (data.categoria) formData.append('categoria', data.categoria);
         formData.append('usuarioCarga', data.usuarioCarga || 'Sistema');
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
     }
 
     async deleteOficio(processId: string, oficioId: string): Promise<void> {
@@ -1340,7 +1417,7 @@ class DisciplinaryService {
     async uploadAutoPlantilla(id: string, file: File): Promise<AutoConfiguration> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
+        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE OFICIOS ====================
@@ -1426,7 +1503,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
+        return apiClient.post<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE ACTAS ====================
@@ -1512,7 +1589,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
+        return apiClient.post<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== GENERAR CONSECUTIVO DE ACTA DESDE BACKEND ====================
@@ -1561,11 +1638,6 @@ class DisciplinaryService {
         emailDestinatario: string;
         createdAt: string;
     }> {
-        // Debug: verificar que hay token disponible
-        const token = sessionStorage.getItem('esap_auth_token');
-        console.log('[DEBUG] Token available:', !!token);
-        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-
         // Obtener la URL base del frontend para generar enlaces correctos
         // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
         const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;

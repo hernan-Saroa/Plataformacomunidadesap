@@ -141,6 +141,8 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+      PUBLIC_APP_URL: http://localhost:5173
     ports:
       - "3003:3003"
     depends_on:
@@ -204,6 +206,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+      DISCIPLINARY_STORAGE_PATH: ${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
     ports:
       - "3005:3005"
     depends_on:
@@ -211,6 +214,8 @@ services:
       - redis
     networks:
       - superapp-net
+    volumes:
+      - ${DISCIPLINARY_STORAGE_HOST_PATH:-./backend/internal-disciplinary-control-service/uploads}:${DISCIPLINARY_STORAGE_PATH:-/app/uploads}
 
   # ============ INTEROPERABILITY SERVICE ============
   interoperability-service:
@@ -262,6 +267,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
       TEMPLATES_PATH: /app/uploads/templates
     ports:
       - "3007:3007"

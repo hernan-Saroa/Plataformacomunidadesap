@@ -42,9 +42,12 @@ import {
   Send,
   AlertTriangle,
   Building2,  // ✅ NUEVO: Para filtro de sedes
-  Database
+  Database,
+  FileCheck2,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@esap-mfe/shared-ui/avatar';
@@ -61,13 +64,20 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import React from 'react';
-import graduadosService, { GraduadoArchivo, GraduadoData } from '../../services/api/graduados.service';
+import graduadosService, {
+  CertificadoGraduado,
+  GraduadoArchivo,
+  GraduadoData,
+} from '../../services/api/graduados.service';
+import { programasService } from '../../services/api/programas.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
+import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
+import { Container4K } from '@esap-mfe/shared-ui';
 
 type GraduateRow = {
   id: string;
@@ -85,13 +95,14 @@ type GraduateRow = {
   location: string;
   program?: string;
   document: string;
-  enrollmentMethod: 'qr' | 'manual' | 'massive' | 'integration';
+  enrollmentMethod: 'qr' | 'manual' | 'request' | 'massive' | 'integration';
   enrollmentDate: string;
   graduationDate: string;
   documentsCount: number;
   createdBy?: string;
   asignacionesSedes?: Array<{ nombreSede: string }>;
   territorial?: string;
+  sourceTerritorial?: string;
   certificatesCount: number;
   numRegistro?: string;
   numFolio?: string;
@@ -100,9 +111,49 @@ type GraduateRow = {
   updatedAt?: string;
 };
 
-// ✅ DÍA 4: Container4K para padding adaptativo
-// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
-import { Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
+const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
+  // El periodo ACTIVO (en_curso) es el autoritativo para los consumidores:
+  // sus territoriales/sedes/programas son los "correctos" que ven los demás
+  // microservicios. Solo si no hay ninguno en curso se respeta el último
+  // seleccionado y, como último recurso, el más reciente.
+  const activo = periods.find((period) => period?.estado === 'en_curso');
+  if (activo) return activo;
+  const savedPeriodCode = localStorage.getItem(storageKey) || '';
+  return (
+    periods.find((period) => getPeriodCode(period) === savedPeriodCode) ||
+    periods[0] ||
+    null
+  );
+};
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = <T extends {
+  createdAt?: string | Date;
+  created_at?: string | Date;
+  fechaCreacion?: string | Date;
+  anio?: number;
+  semestre?: number;
+}>(periods: T[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,6 +169,10 @@ export function GraduatesManagementModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
+  const [programasCatalog, setProgramasCatalog] = useState<string[]>([]);
+  const [estructuraPeriodoCatalogo, setEstructuraPeriodoCatalogo] = useState('');
+  const [programasPeriodoCatalogo, setProgramasPeriodoCatalogo] = useState('');
+  const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
@@ -127,6 +182,7 @@ export function GraduatesManagementModule() {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingGraduate, setIsDeletingGraduate] = useState(false);
   const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
   const [filesModalUser, setFilesModalUser] = useState<GraduateRow | null>(null);
   const [filesModalItems, setFilesModalItems] = useState<GraduadoArchivo[]>([]);
@@ -142,35 +198,46 @@ export function GraduatesManagementModule() {
   });
   const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
+  const canEditGraduates = authService.hasPermission(Permissions.GRADUATES_EDIT);
+  const canCreateGraduates =
+    authService.hasPermission(Permissions.GRADUATES_CREATE) || canEditGraduates;
+  const canExportGraduates = authService.hasPermission(Permissions.GRADUATES_EXPORT);
+  const canVerifyGraduateCertificates = authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE);
+  const canShowGraduateRowActions = canEditGraduates || canVerifyGraduateCertificates;
   const MAX_FILES_PER_GRADUATE = 5;
   const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_UPLOAD_SIZE_LABEL = '10 MB';
-  const PERSON_NAME_MAX_LENGTH = 80;
+  const PERSON_NAME_MIN_LENGTH = 5;
+  const PERSON_NAME_MAX_LENGTH = 150;
   const DOCUMENT_MIN_LENGTH = 5;
-  const DOCUMENT_MAX_LENGTH = 10;
+  const DOCUMENT_MAX_LENGTH = 20;
+  const EMAIL_MIN_LENGTH = 5;
   const EMAIL_MAX_LENGTH = 254;
-  const REGISTRY_FIELD_MAX_LENGTH = 12;
-  const PROGRAMAS_GRADUADOS = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
-  const isUnavailableProgram = (value?: string) =>
-    normalizeKey(value) === 'no disponible' || normalizeKey(value) === 'no especificado';
+  const REGISTRY_NUMBER_MAX_LENGTH = 20;
+  const FOLIO_BOOK_MAX_LENGTH = 10;
+  const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
+  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
+  const getCurrentActorName = () => {
+    const user = authService.getCurrentUser() as any;
+    const fullName =
+      user?.fullName ||
+      user?.full_name ||
+      [user?.firstName || user?.first_name, user?.lastName || user?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      user?.name ||
+      user?.email ||
+      user?.username;
 
+    return normalizeDisplayName(fullName) || undefined;
+  };
   // Estados para formularios
   const [editForm, setEditForm] = useState({
     firstName: '',
@@ -227,32 +294,31 @@ export function GraduatesManagementModule() {
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
   const sanitizeDigits = (value: string, maxLength: number) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
+  const sanitizeAlphanumeric = (value: string, maxLength: number) =>
+    value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
   const sanitizePersonName = (value: string) =>
-    value.replace(/[^\p{L}\s.'-]+/gu, '').slice(0, PERSON_NAME_MAX_LENGTH);
+    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
   const getPersonNameValidationError = (value: string, label: string) => {
     if (!value) return `${label} es obligatorio`;
-    if (value.length < 2) return `${label} debe tener al menos 2 caracteres`;
     if (value.length > PERSON_NAME_MAX_LENGTH) {
       return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
     }
-    if (/\d/.test(value)) return `${label} no puede contener numeros`;
-    if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
-      return `${label} solo puede contener letras, espacios, apostrofes, puntos o guiones`;
+    if (/\d/.test(value)) return `${label} no puede contener números`;
+    if (!PERSON_NAME_ALLOWED_REGEX.test(value) || !/\p{L}/u.test(value)) {
+      return `${label} solo puede contener letras, espacios, apóstrofes o guiones`;
     }
     return '';
   };
-  const sanitizeRegistroInput = (value: string) => {
-    const digits = sanitizeDigits(value, REGISTRY_FIELD_MAX_LENGTH);
-    return /^0+$/.test(digits) ? '' : digits;
-  };
-  const formatRegistroInput = (value?: string) => {
-    const digits = sanitizeRegistroInput(value || '');
-    if (!digits || /^0+$/.test(digits)) return '';
+  const sanitizeRegistryInput = (value: string, maxLength: number) =>
+    sanitizeDigits(value, maxLength);
+  const formatRegistryInput = (value: string | undefined, maxLength: number) => {
+    const digits = sanitizeRegistryInput(value || '', maxLength);
+    if (!digits) return '';
     return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
   const formatRegistroDisplay = (value?: string) => {
-    const digits = sanitizeRegistroInput(value || '');
-    if (!digits || /^0+$/.test(digits)) return 'N/A';
+    const digits = sanitizeRegistryInput(value || '', REGISTRY_NUMBER_MAX_LENGTH);
+    if (!digits) return 'N/A';
     return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
   const formatFileCount = (count: number) => (count === 1 ? '1 archivo' : `${count} archivos`);
@@ -308,6 +374,14 @@ export function GraduatesManagementModule() {
     }
     return { borderColor: '#E5E7EB', background: '#F9FAFB', color: '#6B7280' };
   };
+  const getFileTypeIconStyle = (file: { originalName?: string; mimeType?: string }) => {
+    const variant = getFileTypeBadgeVariant(file);
+    if (variant === 'pdf') return { background: '#FEF2F2', color: '#B91C1C' };
+    if (variant === 'word') return { background: '#EFF6FF', color: '#1D4ED8' };
+    if (variant === 'excel') return { background: '#ECFDF5', color: '#047857' };
+    if (variant === 'image') return { background: '#F3F4F6', color: '#4B5563' };
+    return { background: '#F8FAFC', color: '#475569' };
+  };
   const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
   const allowedFileMimeTypes = new Set([
     'application/pdf',
@@ -360,7 +434,65 @@ export function GraduatesManagementModule() {
     return 'inactive';
   };
 
-  const normalizeKey = (value?: string) => (value || '').trim().toLowerCase();
+  const normalizeKey = (value?: string) =>
+    normalizeSpaces(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  const uniqueSortedText = (values: Array<string | undefined | null>) => {
+    const byKey = new Map<string, string>();
+
+    values.forEach((value) => {
+      const cleaned = normalizeSpaces(value || '');
+      const key = normalizeKey(cleaned);
+      if (!key || byKey.has(key)) return;
+      byKey.set(key, cleaned);
+    });
+
+    return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, 'es'));
+  };
+  const normalizeDocumentKey = (value?: string) => {
+    const digits = (value || '').replace(/\D+/g, '');
+    return digits || normalizeKey(value);
+  };
+  const buildCertificateCountIndexes = (certificates: CertificadoGraduado[]) => {
+    const countsByGraduateId = new Map<string, number>();
+    const fallbackCountsByDocument = new Map<string, number>();
+    const seenCertificates = new Set<string>();
+
+    certificates.forEach((certificate) => {
+      const uniqueKey =
+        certificate.id ||
+        certificate.certificateNumber ||
+        certificate.verificationCode ||
+        `${certificate.graduateId || ''}:${certificate.idNumber || ''}:${certificate.issueDate || ''}`;
+      if (uniqueKey && seenCertificates.has(uniqueKey)) {
+        return;
+      }
+      if (uniqueKey) {
+        seenCertificates.add(uniqueKey);
+      }
+
+      const graduateId = (certificate.graduateId || '').trim();
+      if (graduateId) {
+        countsByGraduateId.set(
+          graduateId,
+          (countsByGraduateId.get(graduateId) || 0) + 1,
+        );
+        return;
+      }
+
+      const documentKey = normalizeDocumentKey(certificate.idNumber);
+      if (documentKey) {
+        fallbackCountsByDocument.set(
+          documentKey,
+          (fallbackCountsByDocument.get(documentKey) || 0) + 1,
+        );
+      }
+    });
+
+    return { countsByGraduateId, fallbackCountsByDocument };
+  };
   const normalizeDisplayName = (value?: string) => {
     const trimmed = (value || '').trim();
     if (!trimmed) return trimmed;
@@ -379,14 +511,27 @@ export function GraduatesManagementModule() {
     normalized.includes('integracion') ||
     normalized.includes('integración') ||
     normalized.includes('integration');
+  const extractSourceActor = (createdBy: string | undefined, prefix: string) => {
+    const rawValue = (createdBy || '').trim();
+    const separatorIndex = rawValue.indexOf(':');
+    if (separatorIndex < 0) return '';
+    const rawPrefix = normalizeKey(rawValue.slice(0, separatorIndex));
+    if (rawPrefix !== normalizeKey(prefix)) return '';
+    return rawValue.slice(separatorIndex + 1).trim();
+  };
   const resolveEnrollmentMethod = (createdBy?: string): GraduateRow['enrollmentMethod'] => {
     const normalized = normalizeKey(createdBy);
+    if (normalized.startsWith('bulk_upload')) {
+      return 'massive';
+    }
     if (
       normalized.includes('manual_review') ||
-      normalized.includes('manual') ||
       normalized.includes('revision') ||
       normalized.includes('revisión')
     ) {
+      return 'request';
+    }
+    if (normalized.includes('manual')) {
       return 'manual';
     }
     return 'integration';
@@ -397,17 +542,29 @@ export function GraduatesManagementModule() {
       return 'Integración';
     }
     if (normalized.startsWith('manual_review:')) {
-      const reviewer = createdBy?.split(':').slice(1).join(':').trim();
-      return normalizeDisplayName(reviewer) || 'Revisión manual';
+      const reviewer = extractSourceActor(createdBy, 'manual_review');
+      return normalizeDisplayName(reviewer) || 'Solicitud';
     }
     if (normalized === 'manual_review') {
-      return 'Revisión manual';
+      return 'Solicitud';
+    }
+    if (normalized.startsWith('bulk_upload:')) {
+      const uploader = extractSourceActor(createdBy, 'bulk_upload');
+      return normalizeDisplayName(uploader) || 'Carga masiva';
+    }
+    if (normalized === 'bulk_upload') {
+      return 'Carga masiva';
     }
     if (isIntegrationSource(normalized)) {
       return 'Integración';
     }
     return normalizeDisplayName(createdBy) || 'Integración';
   };
+
+  const canDeleteGraduateRecord = (user?: GraduateRow | null) =>
+    !!user &&
+    canEditGraduates &&
+    (user.enrollmentMethod === 'request' || user.enrollmentMethod === 'massive');
 
   const loadGraduateFiles = async (graduateId: string) => {
     setIsLoadingFiles(true);
@@ -608,11 +765,15 @@ export function GraduatesManagementModule() {
     setIsDeleteFileModalOpen(true);
   };
 
+  const handleCloseDeleteFileModal = () => {
+    setIsDeleteFileModalOpen(false);
+    setFileToDelete(null);
+  };
+
   const handleConfirmDeleteFile = async () => {
     if (!fileToDelete) return;
     await handleDeleteFile(fileToDelete.id);
-    setIsDeleteFileModalOpen(false);
-    setFileToDelete(null);
+    handleCloseDeleteFileModal();
   };
 
   const saveBlobAsFile = (blob: Blob, fileName: string) => {
@@ -637,7 +798,7 @@ export function GraduatesManagementModule() {
         saveBlobAsFile(blob, file.originalName || 'archivo');
         return;
       } catch (error) {
-        console.warn('Fallo la descarga por endpoint dedicado, se intentara ruta publica', error);
+      console.warn('Falló la descarga por endpoint dedicado, se intentará ruta pública', error);
       }
     }
 
@@ -649,17 +810,7 @@ export function GraduatesManagementModule() {
     try {
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers: (
-          sessionStorage.getItem('esap_auth_token') ||
-          sessionStorage.getItem('esap_access_token')
-        )
-          ? {
-              Authorization: `Bearer ${
-                sessionStorage.getItem('esap_auth_token') ||
-                sessionStorage.getItem('esap_access_token')
-              }`,
-            }
-          : undefined,
+        credentials: 'include',
       });
       if (!response.ok) {
         throw new Error('No se pudo descargar el archivo');
@@ -673,31 +824,150 @@ export function GraduatesManagementModule() {
   };
 
   useEffect(() => {
+    const refreshCatalogs = () => {
+      setCatalogRefreshToken((current) => current + 1);
+    };
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === ESTRUCTURA_PERIOD_STORAGE_KEY ||
+        event.key === PROGRAMAS_PERIOD_STORAGE_KEY
+      ) {
+        refreshCatalogs();
+      }
+    };
+
+    window.addEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
+
+    const loadProgramCatalog = async (periodoAcademico: string) => {
+      const pageSize = 200;
+
+      try {
+        const firstPage = await programasService.listar({
+          page: 1,
+          limit: pageSize,
+          periodoAcademico,
+        });
+        const total = Number(firstPage?.total || firstPage?.data?.length || 0);
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const extraPages =
+          totalPages > 1
+            ? await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, index) =>
+                  programasService
+                    .listar({
+                      page: index + 2,
+                      limit: pageSize,
+                      periodoAcademico,
+                    })
+                    .catch((error) => {
+                      console.warn('No se pudo cargar una página del catálogo de programas:', error);
+                      return null;
+                    }),
+                ),
+              )
+            : [];
+
+        return [firstPage, ...extraPages]
+          .flatMap((page) => page?.data || [])
+          .map((programa) => programa?.nombre)
+          .filter(Boolean) as string[];
+      } catch (error) {
+        console.warn('No se pudo cargar el catálogo dinámico de programas:', error);
+        return [];
+      }
+    };
 
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse, periodosResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
+          estructuraService.obtenerPeriodos().catch((error) => {
+            console.warn('No se pudieron cargar los periodos académicos:', error);
+            return [];
+          }),
         ]);
 
-        const estructuraSedes = estructuraResponse?.data?.sedes ?? [];
-        const estructuraSeccionales = estructuraResponse?.data?.seccionales ?? [];
+        const estructuraSedesMaestras = estructuraResponse?.data?.sedes ?? [];
+        const estructuraSeccionalesMaestras = estructuraResponse?.data?.seccionales ?? [];
+        const periodos = Array.isArray(periodosResponse)
+          ? sortPeriodsByCreation(periodosResponse)
+          : [];
+        const periodoEstructura = resolveCatalogPeriod(
+          periodos,
+          ESTRUCTURA_PERIOD_STORAGE_KEY,
+        );
+        const periodoProgramas = resolveCatalogPeriod(
+          periodos,
+          PROGRAMAS_PERIOD_STORAGE_KEY,
+        );
+        const codigoPeriodoEstructura = getPeriodCode(periodoEstructura);
+        const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
+
+        const [estadoEstructura, programasCatalogResponse] = await Promise.all([
+          periodoEstructura
+            ? estructuraService.obtenerEstadoSedesPeriodo(codigoPeriodoEstructura).catch((error) => {
+                console.warn(
+                  `No se pudo cargar la estructura del periodo ${codigoPeriodoEstructura}:`,
+                  error,
+                );
+                return null;
+              })
+            : Promise.resolve(null),
+          periodoProgramas
+            ? loadProgramCatalog(codigoPeriodoProgramas)
+            : Promise.resolve([]),
+        ]);
+
+        const estadoSedes = (estadoEstructura as any)?.data || estadoEstructura;
+        const idsSedesActivas = new Set<number>(
+          (estadoSedes?.idSedesActivas || []).map((id: unknown) => Number(id)),
+        );
+
+        const estructuraSedes = periodoEstructura
+          ? estructuraSedesMaestras.filter(
+              (sede) => idsSedesActivas.has(Number(sede.idSede)),
+            )
+          : [];
+        const idsSeccionalesPeriodo = new Set(
+          estructuraSedes
+            .map((sede) => sede.idSeccional)
+            .filter((id): id is number => typeof id === 'number'),
+        );
+        const estructuraSeccionales = periodoEstructura
+          ? estructuraSeccionalesMaestras.filter(
+              (seccional) => idsSeccionalesPeriodo.has(seccional.idSeccional),
+            )
+          : [];
 
         if (isMounted) {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
+          setProgramasCatalog(programasCatalogResponse);
+          setEstructuraPeriodoCatalogo(codigoPeriodoEstructura);
+          setProgramasPeriodoCatalogo(codigoPeriodoProgramas);
         }
 
-        const seccionalById = new Map<number, Seccional>();
-        estructuraSeccionales.forEach((seccional) => {
-          seccionalById.set(seccional.idSeccional, seccional);
+        const seccionalByName = new Map<string, Seccional>();
+        estructuraSeccionalesMaestras.forEach((seccional) => {
+          if (seccional?.nomSeccional) {
+            seccionalByName.set(normalizeKey(seccional.nomSeccional), seccional);
+          }
         });
 
         const sedeByName = new Map<string, Sede>();
-        estructuraSedes.forEach((sede) => {
+        estructuraSedesMaestras.forEach((sede) => {
           if (sede?.nomSede) {
             sedeByName.set(normalizeKey(sede.nomSede), sede);
           }
@@ -712,10 +982,10 @@ export function GraduatesManagementModule() {
           const campus = graduate.campus || 'Sin sede';
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
-          const territorialName =
-            graduate.seccionalName ||
-            sedeMatch?.seccional?.nomSeccional ||
-            (sedeMatch?.idSeccional ? seccionalById.get(sedeMatch.idSeccional)?.nomSeccional : undefined);
+          const rawSeccionalName = (graduate.seccionalName || '').trim();
+          const territorialName = rawSeccionalName
+            ? seccionalByName.get(normalizeKey(rawSeccionalName))?.nomSeccional
+            : undefined;
           const createdBy = graduate.createdBy;
           return {
             id: graduate.id,
@@ -734,7 +1004,10 @@ export function GraduatesManagementModule() {
             ],
             location: sedeName,
             territorial: territorialName,
-            program: graduate.programName || 'No especificado',
+            sourceTerritorial: rawSeccionalName || undefined,
+            program:
+              (graduate.programName || graduate.degreeTitle || '').trim() ||
+              'No especificado',
             document: graduate.idNumber,
             enrollmentMethod: resolveEnrollmentMethod(createdBy),
             enrollmentDate: graduate.enrollmentDate || '',
@@ -743,7 +1016,7 @@ export function GraduatesManagementModule() {
             createdBy: createdBy?.trim() || undefined,
             asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
             // Valor inicial para render rápido; luego se actualiza en segundo plano.
-            certificatesCount: graduate.graduationDate ? 1 : 0,
+            certificatesCount: 0,
             numRegistro: graduate.numRegistro,
             numFolio: graduate.numFolio,
             numLibro: graduate.numLibro,
@@ -782,33 +1055,22 @@ export function GraduatesManagementModule() {
           .then((certificatesResponse) => {
             if (!isMounted) return;
 
-            const certificatePrograms = new Map<string, Set<string>>();
-            (certificatesResponse || []).forEach((certificate) => {
-              if (!certificate.idNumber) return;
-              const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
-              if (!certificatePrograms.has(certificate.idNumber)) {
-                certificatePrograms.set(certificate.idNumber, new Set());
-              }
-              if (programKey) {
-                certificatePrograms.get(certificate.idNumber)!.add(programKey);
-              } else {
-                certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
-              }
-            });
-
-            const certificateCounts = new Map<string, number>();
-            certificatePrograms.forEach((programs, idNumber) => {
-              certificateCounts.set(idNumber, programs.size);
-            });
-
-            if (!certificateCounts.size) return;
+            const { countsByGraduateId, fallbackCountsByDocument } =
+              buildCertificateCountIndexes(certificatesResponse || []);
 
             setGraduates((prev) =>
-              prev.map((graduate) => ({
-                ...graduate,
-                certificatesCount:
-                  certificateCounts.get(graduate.document) ?? graduate.certificatesCount,
-              })),
+              prev.map((graduate) => {
+                const documentKey = normalizeDocumentKey(graduate.document);
+                return {
+                  ...graduate,
+                  certificatesCount:
+                    countsByGraduateId.get(graduate.id) ??
+                    (documentKey
+                      ? fallbackCountsByDocument.get(documentKey)
+                      : undefined) ??
+                    0,
+                };
+              }),
             );
           })
           .catch((error) => {
@@ -817,7 +1079,7 @@ export function GraduatesManagementModule() {
       } catch (error) {
         console.error('Error cargando graduados:', error);
         toast.error('No se pudieron cargar los graduados', {
-          description: 'Intenta recargar la pagina o verifica tu conexion.',
+          description: 'Intenta recargar la página o verifica tu conexión.',
         });
         if (isMounted) {
           setGraduates([]);
@@ -834,7 +1096,7 @@ export function GraduatesManagementModule() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [catalogRefreshToken]);
 
   const graduatesOnly = useMemo(() => graduates, [graduates]);
   const totalQueuedFiles = filesModalItems.length + filesUploadQueue.length;
@@ -852,55 +1114,74 @@ export function GraduatesManagementModule() {
     };
   }, [graduatesOnly]);
 
-  const uniquePrograms = useMemo(
-    () => Array.from(new Set(graduatesOnly.filter(u => u.program).map(u => u.program!))),
-    [graduatesOnly]
+  const programCatalogOptions = useMemo(() => {
+    return uniqueSortedText(programasCatalog);
+  }, [programasCatalog]);
+  // Programas provenientes de la integración: se toman de los graduados creados
+  // por ese medio (enrollmentMethod === 'integration'), se descartan los vacíos
+  // y "No especificado", y se muestran sin repetidos. Son la fuente dinámica de
+  // los selects de programa (filtro y edición). En local, donde normalmente no
+  // hay integración, esta lista queda vacía; en los servidores se llena sola.
+  const integrationProgramOptions = useMemo(
+    () =>
+      uniqueSortedText(
+        graduatesOnly
+          .filter((graduate) => graduate.enrollmentMethod === 'integration')
+          .map((graduate) => graduate.program),
+      ).filter((programa) => normalizeKey(programa) !== 'no especificado'),
+    [graduatesOnly, normalizeKey],
   );
-  const editProgramOptions = useMemo(() => {
-    const current = (editForm.program || '').trim();
-    if (current && !isUnavailableProgram(current) && !PROGRAMAS_GRADUADOS.includes(current)) {
-      return [current, ...PROGRAMAS_GRADUADOS];
-    }
-    return PROGRAMAS_GRADUADOS;
-  }, [editForm.program]);
+  const selectedIntegrationProgram = useMemo(
+    () =>
+      integrationProgramOptions.find(
+        (programa) => normalizeKey(programa) === normalizeKey(editForm.program),
+      ),
+    [editForm.program, integrationProgramOptions, normalizeKey],
+  );
+  const externalEditProgram =
+    editForm.program.trim() && !selectedIntegrationProgram
+      ? editForm.program
+      : '';
+  const editProgramOptions = useMemo(
+    () => uniqueSortedText([externalEditProgram, ...integrationProgramOptions]),
+    [externalEditProgram, integrationProgramOptions],
+  );
 
-  const territorialOptions = useMemo(() => {
-    if (seccionalesCatalog.length > 0) {
-      return Array.from(
-        new Set(
-          seccionalesCatalog
-            .map((seccional) => seccional?.nomSeccional)
-            .filter(Boolean)
-        )
-      );
-    }
+  const catalogTerritorialOptions = useMemo(
+    () =>
+      uniqueSortedText([
+        ...seccionalesCatalog.map((seccional) => seccional?.nomSeccional),
+        ...sedesCatalog.map((sede) => sede?.seccional?.nomSeccional),
+      ]),
+    [seccionalesCatalog, sedesCatalog],
+  );
 
-    return Array.from(
-      new Set(graduatesOnly.map((user) => user.territorial).filter(Boolean))
+  const catalogSedeOptions = useMemo(
+    () => uniqueSortedText(sedesCatalog.map((sede) => sede?.nomSede)),
+    [sedesCatalog],
+  );
+
+  const graduateSedeOptions = useMemo(() => {
+    return uniqueSortedText(
+      graduatesOnly.flatMap((user) => [
+        user.location,
+        ...(user.asignacionesSedes?.map((asig) => asig?.nombreSede) || []),
+      ]),
     );
-  }, [seccionalesCatalog, graduatesOnly]);
-
-  const uniqueSedes = useMemo(() => {
-    const sedes = new Set<string>();
-    graduatesOnly.forEach((user) => {
-      user.asignacionesSedes?.forEach((asig) => {
-        if (asig?.nombreSede) {
-          sedes.add(asig.nombreSede);
-        }
-      });
-    });
-    return Array.from(sedes);
   }, [graduatesOnly]);
 
-  const sedesOptions = useMemo(() => {
-    if (sedesCatalog.length > 0) {
-      return Array.from(
-        new Set(sedesCatalog.map((sede) => sede?.nomSede).filter(Boolean))
-      );
-    }
+  const knownSedeKeys = useMemo(
+    () => new Set([...catalogSedeOptions, ...graduateSedeOptions].map((sede) => normalizeKey(sede))),
+    [catalogSedeOptions, graduateSedeOptions, normalizeKey],
+  );
 
-    return Array.from(new Set(uniqueSedes));
-  }, [sedesCatalog, uniqueSedes]);
+  const territorialOptions = useMemo(() => {
+    return catalogTerritorialOptions;
+  }, [catalogTerritorialOptions]);
+
+  const sedesOptions = useMemo(() => {
+    return catalogSedeOptions;
+  }, [catalogSedeOptions]);
 
   const seccionalById = useMemo(() => {
     const map = new Map<number, Seccional>();
@@ -912,6 +1193,7 @@ export function GraduatesManagementModule() {
 
   const territorialBySede = useMemo(() => {
     const map = new Map<string, string>();
+
     sedesCatalog.forEach((sede) => {
       if (!sede?.nomSede) return;
       const seccionalName =
@@ -921,8 +1203,219 @@ export function GraduatesManagementModule() {
         map.set(normalizeKey(sede.nomSede), seccionalName);
       }
     });
+
+    if (map.size === 0) {
+      graduatesOnly.forEach((user) => {
+        const territorialName = user.territorial?.trim();
+        if (!territorialName || knownSedeKeys.has(normalizeKey(territorialName))) return;
+
+        const sedes = [
+          user.location,
+          ...(user.asignacionesSedes?.map((asig) => asig?.nombreSede) || []),
+        ];
+
+        sedes.forEach((sedeName) => {
+          const sedeKey = normalizeKey(sedeName);
+          if (sedeKey && !map.has(sedeKey)) {
+            map.set(sedeKey, territorialName);
+          }
+        });
+      });
+    }
+
     return map;
-  }, [sedesCatalog, seccionalById, normalizeKey]);
+  }, [sedesCatalog, seccionalById, graduatesOnly, knownSedeKeys, normalizeKey]);
+
+  const sedesByTerritorial = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+
+    seccionalesCatalog.forEach((seccional) => {
+      const seccionalName = seccional?.nomSeccional?.trim();
+      if (seccionalName) {
+        map.set(normalizeKey(seccionalName), new Set<string>());
+      }
+    });
+
+    sedesCatalog.forEach((sede) => {
+      const sedeName = sede?.nomSede?.trim();
+      if (!sedeName) return;
+
+      const seccionalName =
+        sede.seccional?.nomSeccional ||
+        (sede.idSeccional ? seccionalById.get(sede.idSeccional)?.nomSeccional : undefined);
+      if (!seccionalName) return;
+
+      const seccionalKey = normalizeKey(seccionalName);
+      if (!map.has(seccionalKey)) {
+        map.set(seccionalKey, new Set<string>());
+      }
+      map.get(seccionalKey)?.add(sedeName);
+    });
+
+    const hasCatalogSedeRelations = Array.from(map.values()).some((sedes) => sedes.size > 0);
+
+    if (!hasCatalogSedeRelations) {
+      graduatesOnly.forEach((user) => {
+        const seccionalName =
+          user.territorial?.trim() ||
+          (user.location ? territorialBySede.get(normalizeKey(user.location)) : '');
+        if (!seccionalName || knownSedeKeys.has(normalizeKey(seccionalName))) return;
+
+        const seccionalKey = normalizeKey(seccionalName);
+        if (!map.has(seccionalKey)) {
+          map.set(seccionalKey, new Set<string>());
+        }
+
+        [
+          user.location,
+          ...(user.asignacionesSedes?.map((asig) => asig?.nombreSede) || []),
+        ].forEach((sedeName) => {
+          const cleanedSede = normalizeSpaces(sedeName || '');
+          if (cleanedSede) {
+            map.get(seccionalKey)?.add(cleanedSede);
+          }
+        });
+      });
+    }
+
+    return new Map<string, string[]>(
+      Array.from(map.entries()).map(([seccionalKey, sedesSet]): [string, string[]] => [
+        seccionalKey,
+        Array.from(sedesSet).sort((a, b) => a.localeCompare(b, 'es')),
+      ]),
+    );
+  }, [
+    seccionalesCatalog,
+    sedesCatalog,
+    seccionalById,
+    graduatesOnly,
+    territorialBySede,
+    knownSedeKeys,
+    normalizeKey,
+  ]);
+
+  const bulkSedeTerritorialOptions = useMemo(() => {
+    const options: Array<{ territorial: string; sede: string }> = [];
+
+    territorialOptions.forEach((territorial) => {
+      const sedes = sedesByTerritorial.get(normalizeKey(territorial)) || [];
+      sedes.forEach((sede) => {
+        options.push({ territorial, sede });
+      });
+    });
+
+    if (options.length === 0) {
+      sedesOptions.forEach((sede) => {
+        const territorial = territorialBySede.get(normalizeKey(sede)) || '';
+        options.push({ territorial, sede });
+      });
+    }
+
+    return options.sort((a, b) =>
+      `${a.territorial} ${a.sede}`.localeCompare(`${b.territorial} ${b.sede}`, 'es'),
+    );
+  }, [
+    territorialOptions,
+    sedesByTerritorial,
+    sedesOptions,
+    territorialBySede,
+    normalizeKey,
+  ]);
+
+  const sedeFilterOptions = useMemo(() => {
+    if (locationFilter === 'all') {
+      return sedesOptions;
+    }
+
+    const sedesForTerritorial = sedesByTerritorial.get(normalizeKey(locationFilter)) || [];
+    return uniqueSortedText(sedesForTerritorial);
+  }, [locationFilter, sedesOptions, sedesByTerritorial, normalizeKey]);
+
+  const sedeFilterGroups = useMemo(() => {
+    const groupedSedeKeys = new Set<string>();
+    const groups = territorialOptions
+      .map((territorial) => {
+        const sedes = sedesByTerritorial.get(normalizeKey(territorial)) || [];
+        sedes.forEach((sede) => groupedSedeKeys.add(normalizeKey(sede)));
+        return { territorial, sedes };
+      })
+      .filter((group) => group.sedes.length > 0);
+
+    const ungrouped = sedesOptions.filter((sede) => !groupedSedeKeys.has(normalizeKey(sede)));
+
+    return { groups, ungrouped };
+  }, [territorialOptions, sedesByTerritorial, sedesOptions, normalizeKey]);
+
+  const editTerritorialOptions = useMemo(() => {
+    const mappedTerritorial = editForm.location
+      ? territorialBySede.get(normalizeKey(editForm.location))
+      : '';
+    return uniqueSortedText([
+      editForm.territorial,
+      mappedTerritorial,
+      ...territorialOptions,
+    ]);
+  }, [
+    editForm.location,
+    editForm.territorial,
+    territorialBySede,
+    territorialOptions,
+  ]);
+
+  const editSedesOptions = useMemo(() => {
+    const selectedTerritorialKey = normalizeKey(editForm.territorial);
+    const hasSelectedTerritorialCatalog =
+      !!selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey);
+    const baseOptions = hasSelectedTerritorialCatalog
+      ? sedesByTerritorial.get(selectedTerritorialKey) || []
+      : [];
+
+    // Los graduados integrados pueden conservar una territorial/sede externa al
+    // catálogo vigente. En ese caso se mantiene únicamente su sede actual; no se
+    // mezclan todas las sedes del catálogo ni se obliga al usuario a reemplazarla.
+    return uniqueSortedText([editForm.location, ...baseOptions]);
+  }, [
+    editForm.location,
+    editForm.territorial,
+    sedesByTerritorial,
+    normalizeKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      programFilter !== 'all' &&
+      !integrationProgramOptions.some(
+        (programa) => normalizeKey(programa) === normalizeKey(programFilter),
+      )
+    ) {
+      setProgramFilter('all');
+    }
+  }, [programFilter, integrationProgramOptions, normalizeKey]);
+
+  useEffect(() => {
+    if (
+      locationFilter !== 'all' &&
+      !territorialOptions.some(
+        (territorial) => normalizeKey(territorial) === normalizeKey(locationFilter),
+      )
+    ) {
+      setLocationFilter('all');
+    }
+  }, [locationFilter, territorialOptions, normalizeKey]);
+
+  useEffect(() => {
+    if (sedeFilter === 'all') {
+      return;
+    }
+
+    const sedeStillBelongsToTerritorial = sedeFilterOptions.some(
+      (sede) => normalizeKey(sede) === normalizeKey(sedeFilter),
+    );
+
+    if (!sedeStillBelongsToTerritorial) {
+      setSedeFilter('all');
+    }
+  }, [locationFilter, sedeFilter, sedeFilterOptions, normalizeKey]);
 
   const filteredUsers = useMemo(() => {
     return graduatesOnly.filter(user => {
@@ -932,15 +1425,40 @@ export function GraduatesManagementModule() {
         user.document.includes(searchQuery);
       
       const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-      const matchesProgram = programFilter === 'all' || user.program === programFilter;
-      const effectiveTerritorial = user.territorial;
-      const matchesLocation = locationFilter === 'all' || effectiveTerritorial === locationFilter;
-      const matchesSede = sedeFilter === 'all' || 
-        (user.asignacionesSedes && user.asignacionesSedes.some(asig => asig.nombreSede === sedeFilter));
+      const matchesProgram =
+        programFilter === 'all' || normalizeKey(user.program) === normalizeKey(programFilter);
+      const mappedTerritorial =
+        user.location ? territorialBySede.get(normalizeKey(user.location)) : undefined;
+      const storedTerritorial =
+        user.territorial && !knownSedeKeys.has(normalizeKey(user.territorial))
+          ? user.territorial
+          : undefined;
+      const effectiveTerritorial =
+        mappedTerritorial || storedTerritorial;
+      const matchesLocation =
+        locationFilter === 'all' ||
+        normalizeKey(effectiveTerritorial) === normalizeKey(locationFilter);
+      const userSedes = [
+        user.location,
+        ...(user.asignacionesSedes?.map((asig) => asig?.nombreSede) || []),
+      ];
+      const matchesSede =
+        sedeFilter === 'all' ||
+        userSedes.some((sede) => normalizeKey(sede) === normalizeKey(sedeFilter));
       
       return matchesSearch && matchesStatus && matchesProgram && matchesLocation && matchesSede;
     });
-  }, [graduatesOnly, searchQuery, statusFilter, programFilter, locationFilter, sedeFilter]);
+  }, [
+    graduatesOnly,
+    searchQuery,
+    statusFilter,
+    programFilter,
+    locationFilter,
+    sedeFilter,
+    territorialBySede,
+    knownSedeKeys,
+    normalizeKey,
+  ]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1006,22 +1524,27 @@ export function GraduatesManagementModule() {
     const methodConfig: Record<string, { label: string; className: string; icon: any }> = {
       qr: { 
         label: 'QR Code', 
-        className: 'bg-[#EDE9FE] text-[#5B21B6] border-[#8B5CF6]',
+        className: 'bg-violet-50 text-violet-700 border-violet-200',
         icon: QrCode
       },
       manual: { 
         label: 'Manual', 
-        className: 'bg-[#EFF6FF] text-[#1E40AF] border-[#3B82F6]',
+        className: 'bg-sky-50 text-sky-700 border-sky-200',
         icon: UserPlus
+      },
+      request: {
+        label: 'Solicitud',
+        className: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        icon: FileCheck2
       },
       integration: {
         label: 'Integración',
-        className: 'bg-[#FDE68A] text-[#92400E] border-[#F59E0B]',
+        className: 'bg-amber-50 text-amber-700 border-amber-200',
         icon: Database
       },
       massive: { 
         label: 'Carga Masiva', 
-        className: 'bg-[#D1FAE5] text-[#065F46] border-[#10B981]',
+        className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         icon: Upload
       }
     };
@@ -1030,7 +1553,7 @@ export function GraduatesManagementModule() {
     const Icon = config.icon;
     
     return (
-      <Badge className={`${config.className} border hover:${config.className}`}>
+      <Badge className={`${config.className} border shadow-sm transition-colors`}>
         <div className="flex items-center gap-1.5">
           <Icon className="w-3.5 h-3.5" />
           <span className="text-xs font-semibold">{config.label}</span>
@@ -1041,43 +1564,91 @@ export function GraduatesManagementModule() {
 
 
   const handleEdit = (user: GraduateRow) => {
+    if (!canEditGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Graduado para modificar este registro.',
+      });
+      return;
+    }
+
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
+    const rawStoredTerritorial =
+      (user.sourceTerritorial || user.territorial || '').trim();
+    const catalogTerritorial = territorialOptions.find(
+      (territorial) =>
+        normalizeKey(territorial) === normalizeKey(rawStoredTerritorial),
+    );
+    const storedTerritorial =
+      catalogTerritorial ||
+      rawStoredTerritorial ||
+      (user.location
+        ? territorialBySede.get(normalizeKey(user.location)) || ''
+        : '');
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName || '',
       lastName: user.lastName || '',
       email: (user.email || '').trim(),
       phone: sanitizedPhone,
-      document: user.document || '',
-      program: isUnavailableProgram(user.program) ? '' : user.program || '',
+      document: sanitizeAlphanumeric(user.document || '', DOCUMENT_MAX_LENGTH),
+      program: user.program || '',
       location: user.location,
-      territorial:
-        user.territorial ||
-        territorialBySede.get(normalizeKey(user.location)) ||
-        '',
-      numRegistro: sanitizeRegistroInput(user.numRegistro || ''),
-      numFolio: sanitizeRegistroInput(user.numFolio || ''),
-      numLibro: sanitizeRegistroInput(user.numLibro || ''),
+      territorial: storedTerritorial,
+      numRegistro: sanitizeRegistryInput(
+        user.numRegistro || '',
+        REGISTRY_NUMBER_MAX_LENGTH,
+      ),
+      numFolio: sanitizeRegistryInput(user.numFolio || '', FOLIO_BOOK_MAX_LENGTH),
+      numLibro: sanitizeRegistryInput(user.numLibro || '', FOLIO_BOOK_MAX_LENGTH),
     });
     setIsEditModalOpen(true);
   };
 
   const handleLocationChange = (value: string) => {
-    const mappedTerritorial = territorialBySede.get(normalizeKey(value));
     setEditForm((prev) => ({
       ...prev,
       location: value,
-      territorial: mappedTerritorial || prev.territorial || '',
     }));
   };
 
+  const handleTerritorialChange = (value: string) => {
+    const selectedTerritorialKey = normalizeKey(value);
+    const sedesForTerritorial =
+      selectedTerritorialKey && sedesByTerritorial.has(selectedTerritorialKey)
+        ? sedesByTerritorial.get(selectedTerritorialKey) || []
+        : null;
+
+    setEditForm((prev) => {
+      const keepLocation =
+        !value ||
+        !prev.location ||
+        !sedesForTerritorial ||
+        sedesForTerritorial.some(
+          (sede) => normalizeKey(sede) === normalizeKey(prev.location),
+        );
+
+      return {
+        ...prev,
+        territorial: value,
+        location: keepLocation ? prev.location : '',
+      };
+    });
+  };
+
   const handleDelete = (user: GraduateRow) => {
+    if (!canDeleteGraduateRecord(user)) {
+      toast.error('No se puede eliminar este graduado', {
+        description: 'Solo los graduados creados por solicitud o carga masiva pueden eliminarse desde esta vista.',
+      });
+      return;
+    }
+
     setSelectedUser(user);
     setIsDeleteModalOpen(true);
   };
 
   const handleViewDetails = (user: GraduateRow) => {
-    setExpandedUserId(expandedUserId === user.id ? null : user.id);
+    setExpandedUserId((current) => (current === user.id ? null : user.id));
   };
 
   const handleBlockUser = (user: GraduateRow) => {
@@ -1092,6 +1663,13 @@ export function GraduatesManagementModule() {
   };
 
   const handleVerifyTitle = (user?: GraduateRow) => {
+    if (!canVerifyGraduateCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Verificar Certificado para abrir esta validación.',
+      });
+      return;
+    }
+
     // setSelectedUser(user);
     // window.location.href = '/verificar-certificado-graduado';
     // ✅ NUEVO: Abrir vista completa de validación de certificados de grado
@@ -1112,25 +1690,108 @@ export function GraduatesManagementModule() {
     setIsEmailModalOpen(true);
   };
 
+  const handleOpenBulkUploadModal = () => {
+    if (!canCreateGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas permiso para registrar o editar graduados.',
+      });
+      return;
+    }
+    setIsBulkUploadModalOpen(true);
+  };
+
+  const handleBulkGraduatesImported = (createdGraduates: GraduadoData[]) => {
+    if (!createdGraduates.length) return;
+
+    const importedRows = createdGraduates.map((graduate) => {
+      const derivedName = splitFullName(graduate.fullName);
+      const firstName = (graduate.firstName || '').trim() || derivedName.firstName;
+      const lastName = (graduate.lastName || '').trim() || derivedName.lastName;
+      const campus = graduate.campus || 'Sin sede';
+      const mappedTerritorial = campus
+        ? territorialBySede.get(normalizeKey(campus))
+        : undefined;
+      const storedTerritorial =
+        graduate.seccionalName && !knownSedeKeys.has(normalizeKey(graduate.seccionalName))
+          ? graduate.seccionalName
+          : undefined;
+      const territorial =
+        mappedTerritorial || storedTerritorial;
+
+      return {
+        id: graduate.id,
+        personId: graduate.personId,
+        firstName,
+        lastName,
+        email: graduate.email || '',
+        phone: graduate.phone || 'N/A',
+        status: mapGraduateStatus(graduate.status),
+        roles: [
+          {
+            name: 'Graduado',
+            color: 'green',
+            since: graduate.graduationDate,
+          },
+        ],
+        location: campus,
+        territorial,
+        sourceTerritorial: graduate.seccionalName || undefined,
+        program:
+          (graduate.programName || graduate.degreeTitle || '').trim() ||
+          'No especificado',
+        document: graduate.idNumber,
+        enrollmentMethod: resolveEnrollmentMethod(graduate.createdBy || 'bulk_upload'),
+        enrollmentDate: graduate.enrollmentDate || graduate.createdAt || '',
+        graduationDate: graduate.graduationDate,
+        documentsCount: graduate.filesCount ?? 0,
+        createdBy: graduate.createdBy || 'bulk_upload',
+        asignacionesSedes: campus ? [{ nombreSede: campus }] : undefined,
+        certificatesCount: 0,
+        numRegistro: graduate.numRegistro,
+        numFolio: graduate.numFolio,
+        numLibro: graduate.numLibro,
+        createdAt: graduate.createdAt,
+        updatedAt: graduate.updatedAt,
+      } as GraduateRow;
+    });
+
+    setGraduates((prev) => {
+      const existingIds = new Set(prev.map((graduate) => graduate.id));
+      const newRows = importedRows.filter((graduate) => !existingIds.has(graduate.id));
+      return [...newRows, ...prev];
+    });
+    setCurrentPage(1);
+  };
+
   // Handlers para confirmar acciones en modales
   const confirmEdit = async () => {
     if (!selectedUser) return;
+    if (!canEditGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Graduado para guardar cambios.',
+      });
+      return;
+    }
+
     const trimmedFirstName = normalizeSpaces(editForm.firstName);
     const trimmedLastName = normalizeSpaces(editForm.lastName);
     const trimmedDocument = editForm.document.trim();
     const trimmedEmail = editForm.email.trim();
     const trimmedProgram = editForm.program.trim();
     const trimmedLocation = editForm.location.trim();
-    const cleanNumRegistro = sanitizeRegistroInput(editForm.numRegistro);
-    const cleanNumFolio = sanitizeRegistroInput(editForm.numFolio);
-    const cleanNumLibro = sanitizeRegistroInput(editForm.numLibro);
-    const effectiveTerritorial =
-      (
-        editForm.territorial ||
-        (editForm.location
-          ? territorialBySede.get(normalizeKey(editForm.location))
-          : '')
-      ).trim();
+    const cleanNumRegistro = sanitizeRegistryInput(
+      editForm.numRegistro,
+      REGISTRY_NUMBER_MAX_LENGTH,
+    );
+    const cleanNumFolio = sanitizeRegistryInput(
+      editForm.numFolio,
+      FOLIO_BOOK_MAX_LENGTH,
+    );
+    const cleanNumLibro = sanitizeRegistryInput(
+      editForm.numLibro,
+      FOLIO_BOOK_MAX_LENGTH,
+    );
+    const effectiveTerritorial = editForm.territorial.trim();
     const firstNameError = getPersonNameValidationError(trimmedFirstName, 'El nombre');
     if (firstNameError) {
       toast.error(firstNameError);
@@ -1141,36 +1802,53 @@ export function GraduatesManagementModule() {
       toast.error(lastNameError);
       return;
     }
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
+    if (
+      fullName.length < PERSON_NAME_MIN_LENGTH ||
+      fullName.length > PERSON_NAME_MAX_LENGTH
+    ) {
+      toast.error(
+        `El nombre completo debe tener entre ${PERSON_NAME_MIN_LENGTH} y ${PERSON_NAME_MAX_LENGTH} caracteres`,
+      );
+      return;
+    }
     if (!trimmedDocument) {
       toast.error('El documento es obligatorio');
       return;
     }
-    if (!/^\d+$/.test(trimmedDocument)) {
-      toast.error('El documento solo puede contener numeros');
+    if (!DOCUMENT_ALLOWED_REGEX.test(trimmedDocument)) {
+      toast.error('El documento solo puede contener letras y números');
       return;
     }
     if (
       trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
       trimmedDocument.length > DOCUMENT_MAX_LENGTH
     ) {
-      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} digitos`);
+      toast.error(
+        `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres`,
+      );
       return;
     }
     if (!trimmedEmail) {
-      toast.error('El correo electronico es obligatorio');
+      toast.error('El correo electrónico es obligatorio');
       return;
     }
-    if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
-      toast.error(`El correo electronico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
+    if (
+      trimmedEmail.length < EMAIL_MIN_LENGTH ||
+      trimmedEmail.length > EMAIL_MAX_LENGTH
+    ) {
+      toast.error(
+        `El correo electrónico debe tener entre ${EMAIL_MIN_LENGTH} y ${EMAIL_MAX_LENGTH} caracteres`,
+      );
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      toast.error('El correo electronico no tiene un formato valido');
+      toast.error('El correo electrónico no tiene un formato válido');
       return;
     }
     if (!trimmedProgram) {
-      toast.error('El programa academico es obligatorio');
+      toast.error('El programa académico es obligatorio');
       return;
     }
     if (!trimmedLocation) {
@@ -1178,34 +1856,45 @@ export function GraduatesManagementModule() {
       return;
     }
     if (!effectiveTerritorial) {
-      toast.error('La seccional es obligatoria');
+      toast.error('La territorial es obligatoria');
+      return;
+    }
+    if (!cleanNumRegistro) {
+      toast.error(
+        `El número de registro es obligatorio y debe tener entre 1 y ${REGISTRY_NUMBER_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
+    if (!cleanNumFolio) {
+      toast.error(
+        `El número de folio es obligatorio y debe tener entre 1 y ${FOLIO_BOOK_MAX_LENGTH} caracteres numéricos`,
+      );
+      return;
+    }
+    if (!cleanNumLibro) {
+      toast.error(
+        `El número de libro es obligatorio y debe tener entre 1 y ${FOLIO_BOOK_MAX_LENGTH} caracteres numéricos`,
+      );
       return;
     }
 
     setIsSaving(true);
     try {
-      const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
         email: trimmedEmail,
         idNumber: trimmedDocument,
-        programName: trimmedProgram || selectedUser.program || '',
+        programName: trimmedProgram,
         campus: trimmedLocation || undefined,
-        seccionalName: effectiveTerritorial || undefined,
-        numRegistro: cleanNumRegistro || undefined,
-        numFolio: cleanNumFolio || undefined,
-        numLibro: cleanNumLibro || undefined,
+        seccionalName: effectiveTerritorial,
+        numRegistro: cleanNumRegistro,
+        numFolio: cleanNumFolio,
+        numLibro: cleanNumLibro,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
-
-      const updatedTerritorial =
-        editForm.territorial ||
-        (editForm.location
-          ? territorialBySede.get(normalizeKey(editForm.location))
-          : selectedUser.territorial);
 
       setGraduates((prev) =>
         prev.map((graduate) =>
@@ -1219,9 +1908,10 @@ export function GraduatesManagementModule() {
                 numRegistro: cleanNumRegistro,
                 numFolio: cleanNumFolio,
                 numLibro: cleanNumLibro,
-                program: trimmedProgram || graduate.program,
+                program: trimmedProgram,
                 location: trimmedLocation || graduate.location,
-                territorial: updatedTerritorial || graduate.territorial,
+                territorial: effectiveTerritorial,
+                sourceTerritorial: effectiveTerritorial,
               }
             : graduate
         )
@@ -1241,11 +1931,35 @@ export function GraduatesManagementModule() {
     }
   };
 
-  const confirmDelete = () => {
-    toast.success('Graduado Eliminado', {
-      description: `Se eliminó: ${selectedUser?.firstName} ${selectedUser?.lastName}`
-    });
-    setIsDeleteModalOpen(false);
+  const confirmDelete = async () => {
+    if (!selectedUser) return;
+    if (!canDeleteGraduateRecord(selectedUser)) {
+      toast.error('No se puede eliminar este graduado', {
+        description: 'Solo los graduados creados por solicitud o carga masiva pueden eliminarse desde esta vista.',
+      });
+      setIsDeleteModalOpen(false);
+      return;
+    }
+
+    setIsDeletingGraduate(true);
+    try {
+      await graduadosService.graduados.eliminar(selectedUser.id);
+
+      setGraduates((prev) => prev.filter((graduate) => graduate.id !== selectedUser.id));
+      setExpandedUserId((current) => (current === selectedUser.id ? null : current));
+      toast.success('Graduado eliminado', {
+        description: `Se eliminó: ${selectedUser.firstName} ${selectedUser.lastName}`,
+      });
+      setIsDeleteModalOpen(false);
+      setSelectedUser(null);
+    } catch (error: any) {
+      console.error('Error eliminando graduado:', error);
+      toast.error('No se pudo eliminar el graduado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setIsDeletingGraduate(false);
+    }
   };
 
   const confirmBlock = () => {
@@ -1282,6 +1996,13 @@ export function GraduatesManagementModule() {
   };
 
   const handleOpenExportModal = () => {
+    if (!canExportGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
+      });
+      return;
+    }
+
     if (filteredUsers.length > 0) {
       setIsExportModalOpen(true);
       return;
@@ -1289,19 +2010,25 @@ export function GraduatesManagementModule() {
 
     toast.info('No hay graduados para exportar', {
       description: hasActiveFilters
-        ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-        : 'Aun no existen graduados registrados para exportacion.',
+        ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+        : 'Aún no existen graduados registrados para exportación.',
     });
   };
 
   const handleExportGraduates = () => {
     if (isExporting) return;
+    if (!canExportGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
+      });
+      return;
+    }
 
     const startDate = parseDateOnly(exportStartDate);
     const endDate = parseDateOnly(exportEndDate);
 
     if (startDate && endDate && startDate > endDate) {
-      toast.error('Rango de fechas invalido', {
+      toast.error('Rango de fechas inválido', {
         description: 'La fecha inicial no puede ser mayor que la fecha final.',
       });
       return;
@@ -1312,8 +2039,8 @@ export function GraduatesManagementModule() {
     if (filteredUsers.length === 0) {
       toast.info('No hay graduados para exportar', {
         description: hasActiveFilters
-          ? 'Los filtros activos no tienen resultados. Ajustalos antes de exportar.'
-          : 'Aun no existen graduados registrados para exportacion.',
+          ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+          : 'Aún no existen graduados registrados para exportación.',
       });
       setIsExporting(false);
       return;
@@ -1342,8 +2069,8 @@ export function GraduatesManagementModule() {
       'Nombre completo',
       'Correo',
       'Programa académico',
-      'Sede',
       'Territorial',
+      'Sede (CETAP)',
       'Número de registro',
       'Número de folio',
       'Número de libro',
@@ -1360,8 +2087,8 @@ export function GraduatesManagementModule() {
           `${user.firstName} ${user.lastName}`.trim(),
           user.email,
           user.program || '',
-          user.location || '',
           user.territorial || '',
+          user.location || '',
           formatRegistroDisplay(user.numRegistro) === 'N/A' ? '' : formatRegistroDisplay(user.numRegistro),
           formatRegistroDisplay(user.numFolio) === 'N/A' ? '' : formatRegistroDisplay(user.numFolio),
           formatRegistroDisplay(user.numLibro) === 'N/A' ? '' : formatRegistroDisplay(user.numLibro),
@@ -1384,7 +2111,7 @@ export function GraduatesManagementModule() {
     link.click();
     URL.revokeObjectURL(url);
 
-    toast.success('Exportacion completada', {
+    toast.success('Exportación completada', {
       description: `Se exportaron ${rows.length} graduados.`,
     });
     setIsExportModalOpen(false);
@@ -1400,53 +2127,103 @@ export function GraduatesManagementModule() {
   };
 
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || programFilter !== 'all' || locationFilter !== 'all' || sedeFilter !== 'all';
-  const selectedTerritorial = editForm.location
-    ? territorialBySede.get(normalizeKey(editForm.location))
-    : undefined;
+  const currentActorName = getCurrentActorName();
+  const bulkUploadCreatedBy = currentActorName
+    ? `bulk_upload:${currentActorName}`
+    : 'bulk_upload';
 
   return (
-    <Container4K className="space-y-6">
+    <>
+      <Toaster position="bottom-right" richColors />
+      <Container4K className="space-y-6">
       {/* ✅ Modal de Validador de Certificados */}
       <ValidarCertificadoGrado 
         isOpen={mostrarValidador} 
         onClose={() => setMostrarValidador(false)} 
       />
 
-      {/* Header - DÍA 5: ResponsiveHeader */}
-      <ResponsiveHeader
-        title="Gestión de Graduados"
-        description="Administra graduados y genera certificados de verificación de títulos"
-        icon={GraduationCap}
-        primaryAction={{
-          label: "Verificar Certificado",
-          icon: BadgeCheck,
-          onClick: () => handleVerifyTitle(),
-          variant: "primary"
-        }}
-        secondaryActions={[
-          {
-            label: "Exportar",
-            icon: Download,
-            onClick: handleOpenExportModal,
-            variant: "secondary"
-          }
-        ]}
+      {/* Modal de Carga Masiva de Graduados */}
+      <BulkGraduatesUploadModal
+        open={isBulkUploadModalOpen}
+        onOpenChange={setIsBulkUploadModalOpen}
+        onImported={handleBulkGraduatesImported}
+        createdBy={bulkUploadCreatedBy}
+        programOptions={integrationProgramOptions}
+        territorialOptions={territorialOptions}
+        sedeTerritorialOptions={bulkSedeTerritorialOptions}
+        programsPeriod={programasPeriodoCatalogo}
+        structurePeriod={estructuraPeriodoCatalogo}
       />
+
+      {/* Header propio de esta vista (responsive con wrap natural, sin colapsar a iconos/menú) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Izquierda: ícono + título + descripción */}
+        <div className="flex items-start gap-3 min-w-0">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: '#003DA5', boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)' }}
+          >
+            <GraduationCap className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-xl lg:text-2xl font-extrabold text-gray-900 tracking-tight">
+              Gestión de Graduados
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Administra graduados y genera certificados de verificación de títulos
+            </p>
+          </div>
+        </div>
+
+        {/* Derecha: acciones — mantienen su etiqueta y hacen wrap cuando falta espacio */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:justify-end lg:flex-shrink-0">
+          {canCreateGraduates && (
+            <button
+              onClick={handleOpenBulkUploadModal}
+              title="Carga Masiva"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all bg-white text-emerald-700 border-2 border-emerald-600 hover:bg-emerald-600 hover:text-white hover:shadow-md"
+            >
+              <Upload className="w-4 h-4 flex-shrink-0" />
+              <span>Carga Masiva</span>
+            </button>
+          )}
+          {canExportGraduates && (
+            <button
+              onClick={handleOpenExportModal}
+              title="Exportar"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white hover:shadow-md"
+            >
+              <Download className="w-4 h-4 flex-shrink-0" />
+              <span>Exportar</span>
+            </button>
+          )}
+          {canVerifyGraduateCertificates && (
+            <button
+              onClick={() => handleVerifyTitle()}
+              title="Verificar Certificado"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5"
+            >
+              <BadgeCheck className="w-4 h-4 flex-shrink-0" />
+              <span>Verificar Certificado</span>
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Búsqueda y Filtros */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.15 }}
-        className="bg-white rounded-xl border border-[#E5E7EB] p-4"
-        style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
+        className="rounded-2xl border border-[#E5E7EB] bg-white/95 p-3 sm:p-4"
+        style={{ boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)' }}
       >
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           {/* Input búsqueda */}
-          <div className="flex-1">
+          <div className="min-w-0 lg:w-[430px] lg:flex-none xl:w-[500px]">
             <div className="relative">
               <Search 
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+                className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2"
                 style={{ color: '#9CA3AF' }}
               />
               <input
@@ -1454,12 +2231,12 @@ export function GraduatesManagementModule() {
                 placeholder="Buscar por nombre, correo o documento..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full border-2 rounded-lg transition-all"
+                className="w-full rounded-lg border bg-white shadow-sm transition-all"
                 style={{
-                  paddingLeft: '48px',
-                  paddingRight: searchQuery ? '48px' : '16px',
-                  paddingTop: '12px',
-                  paddingBottom: '12px',
+                  paddingLeft: '42px',
+                  paddingRight: searchQuery ? '42px' : '16px',
+                  paddingTop: '11px',
+                  paddingBottom: '11px',
                   fontSize: '14px',
                   lineHeight: '20px',
                   color: '#1F2937',
@@ -1481,20 +2258,21 @@ export function GraduatesManagementModule() {
                   onClick={() => setSearchQuery('')}
                   className="absolute right-4 top-1/2 -translate-y-1/2"
                   style={{ color: '#9CA3AF' }}
+                  aria-label="Limpiar búsqueda"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-4 w-4" />
                 </button>
               )}
             </div>
           </div>
 
           {/* Filtros */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {/* Filtro Estado */}
             {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
+              className="h-[42px] w-full min-w-0 rounded-xl border px-3.5 text-sm transition-all"
               style={{
                 borderColor: '#D1D5DB',
                 color: '#1F2937',
@@ -1517,87 +2295,162 @@ export function GraduatesManagementModule() {
             </select> */}
 
             {/* Filtro Programa */}
-            <select
-              value={programFilter}
-              onChange={(e) => setProgramFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '180px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todos los programas</option>
-              {uniquePrograms.map(prog => (
-                <option key={prog} value={prog}>{prog}</option>
-              ))}
-            </select>
-
-            {/* ✅ NUEVO: Filtro por Sede */}
-            <select
-              value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '150px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todas las sedes</option>
-              {sedesOptions.map((sede) => (
-                <option key={sede} value={sede}>{sede}</option>
-              ))}
-            </select>
+            <div className="relative min-w-0">
+              <GraduationCap
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: '#64748B' }}
+              />
+              <select
+                value={programFilter}
+                onChange={(e) => setProgramFilter(e.target.value)}
+                className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-white py-0 pl-11 pr-10 text-sm font-semibold shadow-sm transition-all hover:border-[#94A3B8] hover:bg-[#FBFDFF]"
+                style={{
+                  borderColor: '#CBD5E1',
+                  color: '#1F2937',
+                  height: '44px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  backgroundImage: 'none',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#003DA5';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#CBD5E1';
+                  e.target.style.boxShadow = 'none';
+                }}
+              >
+                <option value="all">Todos los programas</option>
+                {integrationProgramOptions.map(prog => (
+                  <option key={prog} value={prog}>{prog}</option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                strokeWidth={2.25}
+                style={{ color: '#475569' }}
+              />
+            </div>
 
             {/* Filtro Territorial */}
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
-              style={{
-                borderColor: '#D1D5DB',
-                color: '#1F2937',
-                minWidth: '150px',
-                outline: 'none'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            >
-              <option value="all">Todas las seccionales</option>
-              {territorialOptions.map((territorial) => (
-                <option key={territorial} value={territorial}>{territorial}</option>
-              ))}
-            </select>
+            <div className="relative min-w-0">
+              <Building2
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: '#64748B' }}
+              />
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-white py-0 pl-11 pr-10 text-sm font-semibold shadow-sm transition-all hover:border-[#94A3B8] hover:bg-[#FBFDFF]"
+                style={{
+                  borderColor: '#CBD5E1',
+                  color: '#1F2937',
+                  height: '44px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  backgroundImage: 'none',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#003DA5';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#CBD5E1';
+                  e.target.style.boxShadow = 'none';
+                }}
+              >
+                <option value="all">Todas las territoriales</option>
+                {territorialOptions.map((territorial) => (
+                  <option key={territorial} value={territorial}>{territorial}</option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                strokeWidth={2.25}
+                style={{ color: '#475569' }}
+              />
+            </div>
+
+            {/* Filtro por Sede */}
+            <div className="relative min-w-0">
+              <MapPin
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: '#64748B' }}
+              />
+              <select
+                value={sedeFilter}
+                onChange={(e) => setSedeFilter(e.target.value)}
+                className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-white py-0 pl-11 pr-10 text-sm font-semibold shadow-sm transition-all hover:border-[#94A3B8] hover:bg-[#FBFDFF]"
+                style={{
+                  borderColor: '#CBD5E1',
+                  color: '#1F2937',
+                  height: '44px',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  backgroundImage: 'none',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#003DA5';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#CBD5E1';
+                  e.target.style.boxShadow = 'none';
+                }}
+              >
+                <option value="all">
+                  {locationFilter === 'all' ? 'Todas las sedes (CETAP)' : 'Todas las sedes de la territorial'}
+                </option>
+                {locationFilter === 'all' && sedeFilterGroups.groups.length > 0 ? (
+                  <>
+                    {sedeFilterGroups.groups.map((group) => (
+                      <optgroup key={group.territorial} label={group.territorial}>
+                        {group.sedes.map((sede) => (
+                          <option key={`${group.territorial}-${sede}`} value={sede}>
+                            {sede}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {sedeFilterGroups.ungrouped.length > 0 && (
+                      <optgroup label="Sedes sin territorial asociada">
+                        {sedeFilterGroups.ungrouped.map((sede) => (
+                          <option key={`ungrouped-${sede}`} value={sede}>
+                            {sede}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {sedeFilterOptions.map((sede) => (
+                      <option key={sede} value={sede}>{sede}</option>
+                    ))}
+                    {locationFilter !== 'all' && sedeFilterOptions.length === 0 && (
+                      <option value="" disabled>No hay sedes asociadas</option>
+                    )}
+                  </>
+                )}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+                strokeWidth={2.25}
+                style={{ color: '#475569' }}
+              />
+            </div>
 
             {hasActiveFilters && (
               <button
                 onClick={clearAllFilters}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all sm:col-span-2 lg:col-span-3"
                 style={{
                   background: '#FEF2F2',
                   color: '#991B1B',
@@ -1616,7 +2469,7 @@ export function GraduatesManagementModule() {
             )}
           </div>
         </div>
-                    </motion.div>
+      </motion.div>
 
       {/* Lista de Graduados */}
       <motion.div
@@ -1632,7 +2485,7 @@ export function GraduatesManagementModule() {
               Cargando graduados...
             </h3>
             <p className="text-sm text-[#6B7280]">
-              Estamos consultando la base de datos academica.
+              Estamos consultando la base de datos académica.
             </p>
           </div>
         ) : paginatedUsers.length === 0 ? (
@@ -1680,10 +2533,31 @@ export function GraduatesManagementModule() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
-                className="bg-white border-x border-b border-[#E5E7EB] last:rounded-b-xl overflow-hidden hover:shadow-md transition-shadow"
+                onClick={() => handleViewDetails(user)}
+                className={`overflow-hidden border-r border-b border-l-4 border-r-[#E5E7EB] border-b-[#E5E7EB] bg-white transition-all duration-200 last:rounded-b-xl ${
+                  expandedUserId === user.id
+                    ? 'relative z-[1] border-l-[#003DA5] bg-[#F8FBFF]'
+                    : 'border-l-transparent hover:shadow-md'
+                }`}
               >
                 {/* Fila Principal con Columnas */}
-                <div className="p-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedUserId === user.id}
+                  aria-label={`Ver detalles de ${user.firstName} ${user.lastName}`}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleViewDetails(user);
+                    }
+                  }}
+                  className={`p-4 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 ${
+                    expandedUserId === user.id
+                      ? 'bg-gradient-to-r from-[#EFF6FF] via-white to-white'
+                      : 'hover:bg-[#F8FBFF]'
+                  }`}
+                >
                   <div className="grid grid-cols-12 gap-4 items-center">
                     {/* Columna 1: Graduado (Avatar + Nombre + Contacto) */}
                     <div className="col-span-3">
@@ -1768,9 +2642,16 @@ export function GraduatesManagementModule() {
                     </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div
+                      className="col-span-3 flex items-center justify-end gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        onClick={() => handleViewDetails(user)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleViewDetails(user);
+                        }}
                         className="p-2 rounded-lg transition-all"
                         style={{
                           background: expandedUserId === user.id ? '#F0F6FF' : '#F9FAFB',
@@ -1786,9 +2667,11 @@ export function GraduatesManagementModule() {
                         <Eye className="w-4 h-4" />
                       </button>
 
+                      {canShowGraduateRowActions && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
+                            onClick={(event) => event.stopPropagation()}
                             className="p-2 rounded-lg transition-all"
                             style={{
                               background: '#F9FAFB',
@@ -1805,13 +2688,13 @@ export function GraduatesManagementModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {authService.hasPermission(Permissions.GRADUATES_EDIT) && (
+                          {canEditGraduates && (
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar
                           </DropdownMenuItem>
                           )}
-                          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
+                          {canVerifyGraduateCertificates && (
                           <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
                             <BadgeCheck className="w-4 h-4 mr-2" />
                             Verificar Certificado
@@ -1819,6 +2702,7 @@ export function GraduatesManagementModule() {
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1831,10 +2715,12 @@ export function GraduatesManagementModule() {
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      className="overflow-hidden border-t border-blue-100 bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50"
                     >
                       {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
-                      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 gap-3 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-3 [&>div]:rounded-lg [&>div]:border [&>div]:border-slate-200 [&>div]:bg-white [&>div]:p-3 [&>div]:shadow-sm">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documento
@@ -1861,24 +2747,24 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Sede
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
-                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {user.location}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Territorial
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Building2 className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.territorial || 'Sin territorial'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Sede (CETAP)
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.location}
                             </p>
                           </div>
                         </div>
@@ -1975,25 +2861,61 @@ export function GraduatesManagementModule() {
                           </div>
                         </div>
 
-                        <div className="md:col-span-2 lg:col-span-3">
+                        <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Archivos
                           </p>
-                          <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenFilesModal(user)}
+                            className="inline-flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:bg-blue-50"
+                            style={{ borderColor: '#BFDBFE', color: '#003DA5', background: '#FFFFFF' }}
+                            aria-label={`Gestionar archivos de ${user.firstName} ${user.lastName}`}
+                          >
+                            <span
+                              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+                              style={{ background: '#E0ECFF', color: '#003DA5' }}
+                            >
+                              <FileText className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0 text-left">
+                              <span className="block truncate" style={{ color: '#111827' }}>
+                                {formatFileCount(user.documentsCount ?? 0)}
+                              </span>
+                              <span className="block text-[11px] font-medium" style={{ color: '#64748B' }}>
+                                Gestionar archivos
+                              </span>
+                            </span>
+                            <Eye className="h-3.5 w-3.5 flex-shrink-0" />
+                          </button>
+                        </div>
+
+                        {canDeleteGraduateRecord(user) && (
+                          <div>
+                            <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                              Acciones
+                            </p>
                             <button
                               type="button"
-                              onClick={() => handleOpenFilesModal(user)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:bg-slate-100"
-                              style={{ borderColor: '#D1D5DB', color: '#1F2937', background: '#F9FAFB' }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDelete(user);
+                              }}
+                              className="inline-flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:border-red-300 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-100"
+                              style={{ borderColor: '#FECACA', color: '#B91C1C', background: '#FFFFFF' }}
+                              aria-label={`Eliminar graduado ${user.firstName} ${user.lastName}`}
                             >
-                              <FileText className="w-3.5 h-3.5" style={{ color: '#2563EB' }} />
-                              Archivos
+                              <span
+                                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+                                style={{ background: '#FEF2F2', color: '#B91C1C' }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </span>
+                              <span className="truncate">Eliminar graduado</span>
                             </button>
-                            <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                              {formatFileCount(user.documentsCount ?? 0)}
-                            </span>
                           </div>
-                        </div>
+                        )}
+
                       </div>
                     </motion.div>
                   )}
@@ -2119,37 +3041,131 @@ export function GraduatesManagementModule() {
           }}
         >
           <div className="flex h-full min-h-0 w-full flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Archivos del titulo
-            </DialogTitle>
-            <DialogDescription>
-              {filesModalUser
-                ? `Graduado: ${filesModalUser.firstName} ${filesModalUser.lastName} · Documento: ${filesModalUser.document}`
-                : 'Selecciona un graduado para ver sus archivos.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="graduate-files-body min-h-0 flex-1 overflow-y-auto py-4 pr-1 space-y-4">
-            <div className="grid gap-3 md:grid-cols-[1fr]">
-              <div className="flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400E' }}>
-                    Límite
-                  </p>
-                  <p className="text-sm font-semibold" style={{ color: '#78350F' }}>
-                    Máximo {MAX_FILES_PER_GRADUATE} archivos
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>
-                    Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
-                  </p>
+            <DialogHeader className="space-y-3">
+            <div
+              className="rounded-2xl border px-4 py-4"
+              style={{
+                borderColor: '#BFDBFE',
+                background: 'linear-gradient(135deg, #F8FAFF 0%, #FFFFFF 55%, #EFF6FF 100%)',
+              }}
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-12 w-12 flex-shrink-0">
+                    <AvatarFallback
+                      className="text-white font-semibold text-sm"
+                      style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' }}
+                    >
+                      {(filesModalUser?.firstName?.[0] || 'G')}{filesModalUser?.lastName?.[0] || ''}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <DialogTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
+                      Archivos del título
+                    </DialogTitle>
+                    <DialogDescription>
+                      {filesModalUser
+                        ? `Graduado: ${filesModalUser.firstName} ${filesModalUser.lastName} - Documento: ${filesModalUser.document}`
+                        : 'Selecciona un graduado para ver sus archivos.'}
+                    </DialogDescription>
+                    {filesModalUser?.program && (
+                      <p className="mt-1 truncate text-xs font-semibold" style={{ color: '#475569' }}>
+                        {filesModalUser.program}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs font-semibold rounded-full px-3 py-1" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                  {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE}
-                </span>
+
+                <div className="grid grid-cols-3 gap-2 md:w-[20rem]">
+                  <div className="rounded-xl border bg-white px-3 py-2 text-center" style={{ borderColor: '#DBEAFE' }}>
+                    <p className="text-lg font-bold leading-none" style={{ color: '#003DA5' }}>
+                      {filesModalItems.length}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
+                      Cargados
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-white px-3 py-2 text-center" style={{ borderColor: '#DBEAFE' }}>
+                    <p className="text-lg font-bold leading-none" style={{ color: '#047857' }}>
+                      {Math.max(0, MAX_FILES_PER_GRADUATE - totalQueuedFiles)}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
+                      Libres
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-white px-3 py-2 text-center" style={{ borderColor: '#DBEAFE' }}>
+                    <p className="text-lg font-bold leading-none" style={{ color: '#92400E' }}>
+                      {MAX_FILES_PER_GRADUATE}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
+                      Límite
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
+          </DialogHeader>
+
+            <div className="graduate-files-body min-h-0 flex-1 overflow-y-auto py-4 pr-1 space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div
+                  className="rounded-xl border px-4 py-3 shadow-sm"
+                  style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400E' }}>
+                        Capacidad de archivos
+                      </p>
+                      <p className="text-sm font-semibold" style={{ color: '#78350F' }}>
+                        {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE} espacios usados
+                      </p>
+                      <p className="mt-0.5 text-xs" style={{ color: '#92400E' }}>
+                        Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
+                      </p>
+                    </div>
+                    <span
+                      className="rounded-full px-3 py-1 text-xs font-semibold"
+                      style={{ background: '#FEF3C7', color: '#92400E' }}
+                    >
+                      Límite {MAX_FILES_PER_GRADUATE}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: '#FEF3C7' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (totalQueuedFiles / MAX_FILES_PER_GRADUATE) * 100)}%`,
+                        background: '#F59E0B',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-xl border px-4 py-3 shadow-sm"
+                  style={{ borderColor: '#DBEAFE', background: '#F8FAFF' }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#2563EB' }}>
+                    Formatos permitidos
+                  </p>
+                  <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                    Documentos del graduado
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {['PDF', 'Word', 'Excel', 'Imágenes'].map((type) => (
+                      <span
+                        key={type}
+                        className="rounded-full border bg-white px-3 py-1 text-xs font-semibold"
+                        style={{ borderColor: '#BFDBFE', color: '#1D4ED8' }}
+                      >
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
             <div className="rounded-xl border px-4 py-4 space-y-3 shadow-sm" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
               <div className="flex items-center justify-between">
@@ -2219,14 +3235,25 @@ export function GraduatesManagementModule() {
                   {filesUploadQueue.map((file, index) => (
                     <div
                       key={`${file.name}-${index}`}
-                      className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700"
+                      title={file.name}
+                      className="flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs shadow-sm"
+                      style={getFileTypeBadgeStyle({ originalName: file.name, mimeType: file.type })}
                     >
-                      <span className="max-w-[200px] truncate">{file.name}</span>
+                      <span
+                        className="max-w-[22rem] font-semibold leading-4 sm:max-w-[28rem]"
+                        style={{ overflowWrap: 'anywhere' }}
+                      >
+                        {file.name}
+                      </span>
+                      <span className="flex-shrink-0 rounded-full bg-white/75 px-2 py-0.5 text-[11px] font-semibold">
+                        {getFileTypeLabel({ originalName: file.name, mimeType: file.type })}
+                      </span>
                       <button
                         type="button"
                         onClick={() => handleRemoveQueuedFile(index)}
                         disabled={isUploadingFiles}
-                        className="text-gray-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={`Quitar ${file.name}`}
+                        className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/75 transition hover:bg-white hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         ×
                       </button>
@@ -2273,69 +3300,103 @@ export function GraduatesManagementModule() {
               </div>
             </div>
 
-            {isLoadingFiles ? (
-              <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
-                <p className="text-sm font-medium" style={{ color: '#374151' }}>
-                  Cargando archivos...
-                </p>
-              </div>
-            ) : filesModalItems.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
-                <p className="text-sm font-medium" style={{ color: '#374151' }}>
-                  No hay archivos cargados.
-                </p>
-                <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-                  Aqui se mostraran los archivos del titulo cuando se suban.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {filesModalItems.map((file) => {
-                  const fileUrl = buildServiceAssetUrl(
-                    'registro-academico',
-                    file.url || `/uploads/graduate-files/${file.storedName}`,
-                  );
-                  return (
+              {isLoadingFiles ? (
+                <div
+                  className="rounded-xl border border-dashed p-6 text-center"
+                  style={{ borderColor: '#BFDBFE', background: '#F8FAFF' }}
+                >
+                  <div
+                    className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
+                    style={{ background: '#E0ECFF', color: '#003DA5' }}
+                  >
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                    Cargando archivos...
+                  </p>
+                </div>
+              ) : filesModalItems.length === 0 ? (
+                <div
+                  className="rounded-xl border border-dashed p-6 text-center"
+                  style={{ borderColor: '#CBD5E1', background: '#F8FAFC' }}
+                >
+                  <div
+                    className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full"
+                    style={{ background: '#E0ECFF', color: '#003DA5' }}
+                  >
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                    No hay archivos cargados
+                  </p>
+                  <p className="mt-1 text-xs" style={{ color: '#64748B' }}>
+                    Aquí se mostrarán los documentos asociados al graduado.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                      Archivos cargados
+                    </p>
+                    <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: '#EEF2FF', color: '#3730A3' }}>
+                      {formatFileCount(filesModalItems.length)}
+                    </span>
+                  </div>
+                  {filesModalItems.map((file) => (
                     <div
                       key={file.id}
-                      className="graduate-files-item flex items-center justify-between rounded-lg border px-3 py-2"
+                      className="graduate-files-item flex flex-col gap-3 rounded-xl border px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                       style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: '#1F2937' }}>
-                          {file.originalName}
-                        </p>
-                        <p className="text-xs" style={{ color: '#6B7280' }}>
-                          {formatFileSize(file.sizeBytes)} ·{' '}
-                          <span
-                            className="graduate-files-type-badge inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold"
-                            style={getFileTypeBadgeStyle(file)}
-                          >
-                            {getFileTypeLabel(file)}
-                          </span>
-                        </p>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
+                          style={getFileTypeIconStyle(file)}
+                        >
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold" style={{ color: '#1F2937' }}>
+                            {file.originalName}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-xs" style={{ color: '#6B7280' }}>
+                              {formatFileSize(file.sizeBytes)}
+                            </span>
+                            <span
+                              className="graduate-files-type-badge inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                              style={getFileTypeBadgeStyle(file)}
+                            >
+                              {getFileTypeLabel(file)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                         <button
                           type="button"
                           onClick={() => handleDownloadFile(file)}
-                          className="graduate-files-action-btn text-xs font-semibold text-blue-600 hover:text-blue-700"
+                          className="graduate-files-action-btn inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition hover:bg-blue-50"
+                          style={{ borderColor: '#BFDBFE', color: '#1D4ED8', background: '#FFFFFF' }}
                         >
+                          <Download className="h-3.5 w-3.5" />
                           Descargar
                         </button>
                         <button
                           type="button"
                           onClick={() => handleRequestDeleteFile(file)}
-                          className="graduate-files-action-btn is-danger text-xs font-semibold text-red-500 hover:text-red-600"
+                          className="graduate-files-action-btn is-danger inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition hover:bg-red-50"
+                          style={{ borderColor: '#FECACA', color: '#DC2626', background: '#FFFFFF' }}
                         >
+                          <Trash2 className="h-3.5 w-3.5" />
                           Eliminar
                         </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
           </div>
 
           <DialogFooter>
@@ -2353,50 +3414,82 @@ export function GraduatesManagementModule() {
       </Dialog>
 
       {/* Modal: Confirmar eliminación de archivo */}
-      <Dialog open={isDeleteFileModalOpen} onOpenChange={setIsDeleteFileModalOpen}>
-        <DialogContent
-          className="graduate-files-confirm-dialog w-[92vw] max-w-md"
-          style={{
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
-              Confirmar eliminación
-            </DialogTitle>
-            <DialogDescription>
-              ¿Seguro que deseas eliminar el archivo{' '}
-              <span className="graduate-files-filename font-semibold text-gray-900">
-                {fileToDelete?.originalName}
-              </span>
-              ?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button
-              onClick={() => {
-                setIsDeleteFileModalOpen(false);
-                setFileToDelete(null);
+      <AnimatePresence>
+        {isDeleteFileModalOpen && (
+          <motion.div
+            className="pointer-events-auto fixed inset-0 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
+            style={{ zIndex: 10040 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-file-confirm-title"
+              aria-describedby="delete-file-confirm-description"
+              className="w-full max-w-md overflow-hidden rounded-xl border bg-white ring-1 ring-slate-900/5"
+              style={{
+                borderColor: '#D1D5DB',
+                boxShadow: '0 24px 80px rgba(15, 23, 42, 0.38), 0 4px 18px rgba(15, 23, 42, 0.16)',
               }}
-              className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
-              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              initial={{ opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
             >
-              Cancelar
-            </button>
-            <button
-              onClick={handleConfirmDeleteFile}
-              className="graduate-files-danger-btn px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
-              style={{ background: '#DC2626', color: '#FFFFFF' }}
+            <div className="flex gap-3 px-5 pb-4 pt-5">
+              <div
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ background: '#FEF3C7', color: '#B45309' }}
+              >
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <h3 id="delete-file-confirm-title" className="text-base font-semibold leading-6" style={{ color: '#111827' }}>
+                  Confirmar eliminacion
+                </h3>
+                <p id="delete-file-confirm-description" className="mt-1 text-sm leading-5" style={{ color: '#6B7280' }}>
+                  Se eliminara permanentemente el archivo{' '}
+                  <span className="graduate-files-filename font-semibold text-gray-900">
+                    {fileToDelete?.originalName}
+                  </span>
+                  .
+                </p>
+              </div>
+            </div>
+            <div
+              className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end"
+              style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}
             >
-              Eliminar
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+              <button
+                onClick={handleCloseDeleteFileModal}
+                className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
+                style={{ borderColor: '#D1D5DB', color: '#4B5563', background: '#FFFFFF' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDeleteFile}
+                className="graduate-files-danger-btn px-4 py-2 text-sm font-medium rounded-lg flex items-center justify-center gap-2"
+                style={{ background: '#DC2626', color: '#FFFFFF' }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar archivo
+              </button>
+            </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="w-[92vw] max-w-xl">
@@ -2431,6 +3524,12 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, firstName: sanitizePersonName(e.target.value) })
                 }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    firstName: normalizeSpaces(current.firstName),
+                  }))
+                }
 
                 placeholder="Nombre del graduado"
 
@@ -2461,6 +3560,12 @@ export function GraduatesManagementModule() {
 
                 onChange={(e) =>
                   setEditForm({ ...editForm, lastName: sanitizePersonName(e.target.value) })
+                }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    lastName: normalizeSpaces(current.lastName),
+                  }))
                 }
 
                 placeholder="Apellido del graduado"
@@ -2493,14 +3598,15 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({
                     ...editForm,
-                    document: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                    document: e.target.value.slice(0, DOCUMENT_MAX_LENGTH),
                   })
                 }
 
                 placeholder="Número de documento"
 
-                inputMode="numeric"
+                inputMode="text"
 
+                minLength={DOCUMENT_MIN_LENGTH}
                 maxLength={DOCUMENT_MAX_LENGTH}
 
                 required
@@ -2524,7 +3630,7 @@ export function GraduatesManagementModule() {
 
                 id="edit-program"
 
-                value={editForm.program}
+                value={selectedIntegrationProgram || editForm.program}
 
                 onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
 
@@ -2536,7 +3642,7 @@ export function GraduatesManagementModule() {
 
               >
 
-                <option value="">Seleccionar programa</option>
+                <option value="" hidden>Seleccionar programa académico</option>
 
                 {editProgramOptions.map((prog) => (
 
@@ -2545,6 +3651,12 @@ export function GraduatesManagementModule() {
                 ))}
 
               </select>
+
+              {externalEditProgram && externalEditProgram !== 'No especificado' && (
+                <p className="text-xs text-gray-500">
+                  Este programa no está dentro de los programas integrados; se conserva el valor actual del graduado.
+                </p>
+              )}
 
             </div>
 
@@ -2570,8 +3682,16 @@ export function GraduatesManagementModule() {
                 onChange={(e) =>
                   setEditForm({ ...editForm, email: e.target.value.slice(0, EMAIL_MAX_LENGTH) })
                 }
+                onBlur={() =>
+                  setEditForm((current) => ({
+                    ...current,
+                    email: current.email.trim(),
+                  }))
+                }
 
                 placeholder="correo@ejemplo.com"
+
+                minLength={EMAIL_MIN_LENGTH}
 
                 maxLength={EMAIL_MAX_LENGTH}
 
@@ -2584,9 +3704,54 @@ export function GraduatesManagementModule() {
 
             <div className="space-y-2">
 
+              <Label htmlFor="edit-territorial">
+
+                Territorial
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
+              <select
+
+                id="edit-territorial"
+
+                value={editForm.territorial}
+
+                onChange={(e) => handleTerritorialChange(e.target.value)}
+
+                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+
+                style={{ borderColor: '#D1D5DB' }}
+
+                required
+
+              >
+
+                <option value="">Sin territorial - seleccione una opción</option>
+
+                {editTerritorialOptions.map((territorial) => (
+
+                  <option key={territorial} value={territorial}>{territorial}</option>
+
+                ))}
+
+              </select>
+
+              {!editForm.territorial && (
+                <p className="text-xs text-gray-500">
+                  Debe seleccionar una territorial válida para guardar cambios.
+                </p>
+              )}
+
+            </div>
+
+
+            <div className="space-y-2">
+
               <Label htmlFor="edit-location">
 
-                Sede
+                Sede (CETAP)
 
                 <span className="text-red-500"> *</span>
 
@@ -2610,48 +3775,9 @@ export function GraduatesManagementModule() {
 
                 <option value="">Seleccionar sede</option>
 
-                {sedesOptions.map((sede) => (
+                {editSedesOptions.map((sede) => (
 
                   <option key={sede} value={sede}>{sede}</option>
-
-                ))}
-
-              </select>
-
-            </div>
-
-
-            <div className="space-y-2">
-
-              <Label htmlFor="edit-territorial">
-
-                Territorial
-
-                <span className="text-red-500"> *</span>
-
-              </Label>
-
-              <select
-
-                id="edit-territorial"
-
-                value={editForm.territorial || selectedTerritorial || ''}
-
-                onChange={(e) => setEditForm({ ...editForm, territorial: e.target.value })}
-
-                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
-
-                style={{ borderColor: '#D1D5DB' }}
-
-                required
-
-              >
-
-                <option value="">Seleccionar seccional</option>
-
-                {territorialOptions.map((territorial) => (
-
-                  <option key={territorial} value={territorial}>{territorial}</option>
 
                 ))}
 
@@ -2666,23 +3792,44 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numRegistro">Número de registro</Label>
+                  <Label htmlFor="edit-numRegistro">
+                    Número de registro
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numRegistro"
 
-                    value={formatRegistroInput(editForm.numRegistro)}
+                    value={formatRegistryInput(
+                      editForm.numRegistro,
+                      REGISTRY_NUMBER_MAX_LENGTH,
+                    )}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numRegistro: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numRegistro: sanitizeRegistryInput(
+                          e.target.value,
+                          REGISTRY_NUMBER_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      REGISTRY_NUMBER_MAX_LENGTH +
+                      Math.floor((REGISTRY_NUMBER_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -2691,23 +3838,41 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numFolio">Número de folio</Label>
+                  <Label htmlFor="edit-numFolio">
+                    Número de folio
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numFolio"
 
-                    value={formatRegistroInput(editForm.numFolio)}
+                    value={formatRegistryInput(editForm.numFolio, FOLIO_BOOK_MAX_LENGTH)}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numFolio: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numFolio: sanitizeRegistryInput(
+                          e.target.value,
+                          FOLIO_BOOK_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      FOLIO_BOOK_MAX_LENGTH +
+                      Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -2716,23 +3881,41 @@ export function GraduatesManagementModule() {
 
                 <div className="space-y-2">
 
-                  <Label htmlFor="edit-numLibro">Número de libro</Label>
+                  <Label htmlFor="edit-numLibro">
+                    Número de libro
+                    <span className="text-red-500"> *</span>
+                  </Label>
 
                   <Input
 
                     id="edit-numLibro"
 
-                    value={formatRegistroInput(editForm.numLibro)}
+                    value={formatRegistryInput(editForm.numLibro, FOLIO_BOOK_MAX_LENGTH)}
 
                     onChange={(e) =>
 
-                      setEditForm({ ...editForm, numLibro: sanitizeRegistroInput(e.target.value) })
+                      setEditForm({
+                        ...editForm,
+                        numLibro: sanitizeRegistryInput(
+                          e.target.value,
+                          FOLIO_BOOK_MAX_LENGTH,
+                        ),
+                      })
 
                     }
 
                     inputMode="numeric"
 
-                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+                    pattern="[0-9-]*"
+
+                    minLength={1}
+
+                    maxLength={
+                      FOLIO_BOOK_MAX_LENGTH +
+                      Math.floor((FOLIO_BOOK_MAX_LENGTH - 1) / 4)
+                    }
+
+                    required
 
                   />
 
@@ -2932,10 +4115,10 @@ export function GraduatesManagementModule() {
                 <label htmlFor="includeSignature" className="flex-1 text-sm cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-gray-600" />
-                    <span className="font-medium text-gray-900">Incluir Firma Digital</span>
+                    <span className="font-medium text-gray-900">Incluir firma institucional</span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Agrega firma digital oficial de ESAP para mayor seguridad
+                    Agrega la firma visual del firmante autorizado de ESAP al certificado
                   </p>
                 </label>
               </div>
@@ -3064,6 +4247,9 @@ export function GraduatesManagementModule() {
                   <p className="text-sm text-gray-600">
                     <strong>Documento:</strong> {selectedUser?.document}
                   </p>
+                  <p className="mt-2 text-xs font-semibold text-red-700">
+                    Origen: {selectedUser?.enrollmentMethod === 'massive' ? 'Carga masiva' : 'Solicitud'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -3104,76 +4290,115 @@ export function GraduatesManagementModule() {
       </Dialog>
 
       {/* Modal: Eliminar Graduado */}
-      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              Eliminar Graduado
-            </DialogTitle>
-            <DialogDescription>
-              Esta acción no se puede deshacer. ¿Estás completamente seguro?
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Trash2 className="w-5 h-5 mt-0.5 text-red-600" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900 mb-2">
-                    {selectedUser?.firstName} {selectedUser?.lastName}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-2">
-                    <strong>Email:</strong> {selectedUser?.email}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-2">
-                    <strong>Programa:</strong> {selectedUser?.program}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Documento:</strong> {selectedUser?.document}
-                  </p>
-                </div>
+      <Dialog
+        open={isDeleteModalOpen}
+        onOpenChange={(open) => {
+          if (!isDeletingGraduate) setIsDeleteModalOpen(open);
+        }}
+      >
+        <DialogContent
+          size="md"
+          className="top-1/2 -translate-y-1/2 p-0 sm:p-0 gap-0 overflow-hidden rounded-2xl border border-gray-100 shadow-2xl duration-300 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2"
+        >
+          {/* Encabezado */}
+          <DialogHeader className="px-5 pt-5 pb-4 text-left space-y-0 sm:text-left">
+            <div className="flex items-start gap-3 pr-6">
+              <span className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-red-100 ring-8 ring-red-50/70">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </span>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <DialogTitle className="text-base font-semibold text-gray-900">
+                  Eliminar Graduado
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm text-gray-500">
+                  ¿Estás seguro de que deseas eliminar este usuario?
+                </DialogDescription>
               </div>
             </div>
+          </DialogHeader>
 
-            <div className="bg-red-100 border border-red-300 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 text-red-700" />
-                <div className="text-xs text-red-900">
-                  <p className="font-semibold mb-1">⚠️ ADVERTENCIA: Esta acción es PERMANENTE</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    <li>Se eliminarán todos los datos del graduado</li>
-                    <li>Se borrarán todos sus certificados</li>
-                    <li>Se perderá el historial completo</li>
-                    <li>Esta acción NO puede revertirse</li>
+          {/* Cuerpo */}
+          <div className="px-5 space-y-3">
+            {/* Tarjeta del graduado */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+              <div className="flex items-center gap-2.5 pb-3 mb-3 border-b border-gray-200/80">
+                <span className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-600">
+                  <Trash2 className="w-4 h-4" />
+                </span>
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {selectedUser?.firstName} {selectedUser?.lastName}
+                </p>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0 text-gray-400">Email</dt>
+                  <dd className="flex-1 min-w-0 text-gray-700 break-words">{selectedUser?.email}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0 text-gray-400">Programa</dt>
+                  <dd className="flex-1 min-w-0 text-gray-700 break-words">{selectedUser?.program}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0 text-gray-400">Documento</dt>
+                  <dd className="flex-1 min-w-0 text-gray-700 break-words">{selectedUser?.document}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* Advertencia */}
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600" />
+                <div className="text-xs leading-relaxed text-red-900">
+                  <p className="font-semibold mb-1.5">Esta acción es permanente</p>
+                  <ul className="space-y-1">
+                    <li className="flex gap-1.5">
+                      <span className="text-red-400 leading-none">•</span>
+                      <span>Se eliminarán los datos del graduado.</span>
+                    </li>
+                    <li className="flex gap-1.5">
+                      <span className="text-red-400 leading-none">•</span>
+                      <span>Se borrarán sus certificados, validaciones y archivos asociados.</span>
+                    </li>
+                    <li className="flex gap-1.5">
+                      <span className="text-red-400 leading-none">•</span>
+                      <span>Esta acción no puede revertirse.</span>
+                    </li>
                   </ul>
                 </div>
               </div>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-5 py-4 mt-1 gap-2">
             <button
               onClick={() => setIsDeleteModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
-              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              disabled={isDeletingGraduate}
+              className="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Cancelar
+              No, cancelar
             </button>
             <button
               onClick={confirmDelete}
-              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 bg-red-600 text-white hover:bg-red-700"
+              disabled={isDeletingGraduate}
+              className="px-4 py-2.5 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 bg-red-600 text-white shadow-sm transition-all hover:bg-red-700 hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-red-600 disabled:active:scale-100"
             >
-              <Trash2 className="w-4 h-4" />
-              Eliminar Definitivamente
+              {isDeletingGraduate ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Sí, eliminar
+                </>
+              )}
             </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Container4K>
+      </Container4K>
+    </>
   );
 }
-
-
-

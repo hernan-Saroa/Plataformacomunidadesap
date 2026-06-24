@@ -49,6 +49,16 @@ export class AuthController {
     return 'Hello from Api Auth Service';
   }
 
+  /**
+   * Verifica el token JWT y devuelve el usuario autenticado.
+   * El frontend llama a este endpoint al recargar la página para restaurar la sesión.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('verify')
+  async verify(@Req() req: any) {
+    return this.authService.getVerifiedUser(req.user);
+  }
+
   @Public()
   @Post('login')
   @HttpCode(200)
@@ -95,7 +105,8 @@ export class AuthController {
       this.loginProtectionService.clearFailedAttempts(accountKeys);
       this.loginProtectionService.clearIpRateLimit(ipAddress);
       this.applyRateLimitHeaders(res, rateLimitState);
-      return response;
+      this.setAuthCookie(res, response.accessToken, req);
+      return this.stripAuthTokens(response);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         const failedState =
@@ -132,8 +143,14 @@ export class AuthController {
   @Public()
   @Post('login/microsoft')
   @HttpCode(200)
-  loginMicrosoft(@Body() dto: MicrosoftLoginDto) {
-    return this.authService.loginWithMicrosoft(dto);
+  async loginMicrosoft(
+    @Body() dto: MicrosoftLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const response = await this.authService.loginWithMicrosoft(dto);
+    this.setAuthCookie(res, response.accessToken, req);
+    return this.stripAuthTokens(response);
   }
 
   @Public()
@@ -184,9 +201,26 @@ export class AuthController {
     return this.authService.verifySignatureOtp(req.user, dto.code);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Public()
+  @Post('refresh')
+  @HttpCode(200)
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const rawCookie = req.headers.cookie || '';
+    const response = await this.authService.refreshUserToken(rawCookie);
+    this.setAuthCookie(res, response.accessToken, req);
+    return this.stripAuthTokens(response);
+  }
+
+  @Public()
   @Post('logout')
-  logout() {
+  logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    this.clearAuthCookie(res, req);
     return this.authService.logout();
   }
 
@@ -194,13 +228,6 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Req() req) {
-    return req.user;
-  }
-
-  // ✅ Endpoint requerido por el frontend para validar sesión
-  @UseGuards(JwtAuthGuard)
-  @Get('verify')
-  verify(@Req() req) {
     return req.user;
   }
 
@@ -229,6 +256,51 @@ export class AuthController {
     return identifier.includes('@')
       ? this.usersService.findByEmail(identifier)
       : this.usersService.findByUsername(identifier);
+  }
+
+  private setAuthCookie(res: Response, token: string, req?: Request): void {
+    const secure = this.shouldUseSecureCookie(req);
+    res.cookie('esap_access_token', token, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      maxAge: 3600 * 1000, // 1 hora en ms (mismo que el JWT)
+      path: '/',
+    });
+  }
+
+  private stripAuthTokens<T extends { accessToken?: string; refreshToken?: string }>(
+    response: T,
+  ): Omit<T, 'accessToken' | 'refreshToken'> {
+    const safeResponse = { ...response };
+    delete safeResponse.accessToken;
+    delete safeResponse.refreshToken;
+    return safeResponse;
+  }
+
+  private clearAuthCookie(res: Response, req?: Request): void {
+    res.clearCookie('esap_access_token', {
+      path: '/',
+      secure: this.shouldUseSecureCookie(req),
+      sameSite: 'lax',
+    });
+  }
+
+  private shouldUseSecureCookie(req?: Request): boolean {
+    const configured = process.env.AUTH_COOKIE_SECURE?.toLowerCase();
+    if (configured === 'true' || configured === '1' || configured === 'yes') {
+      return true;
+    }
+    if (configured === 'false' || configured === '0' || configured === 'no') {
+      return false;
+    }
+
+    const forwardedProtoHeader = req?.headers['x-forwarded-proto'];
+    const forwardedProto = Array.isArray(forwardedProtoHeader)
+      ? forwardedProtoHeader[0]
+      : forwardedProtoHeader;
+
+    return forwardedProto?.split(',')[0]?.trim() === 'https' || req?.secure === true;
   }
 
   private applyRateLimitHeaders(

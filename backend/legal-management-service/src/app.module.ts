@@ -8,7 +8,6 @@ import { databaseConfig } from './database.config';
 // Entities
 import { Expediente } from './entities/expediente.entity';
 import { Actuacion } from './entities/actuacion.entity';
-import { Abogado } from './entities/abogado.entity';
 import { Audiencia } from './entities/audiencia.entity';
 import { Documento } from './entities/documento.entity';
 import { Requerimiento } from './entities/requerimiento.entity';
@@ -46,11 +45,11 @@ import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { OficioEnviado } from './entities/oficio-enviado.entity';
 import { TasaReferencia } from './entities/tasa-referencia.entity';
 import { PlantillaDocumento } from './entities/plantilla-documento.entity';
+import { CorreoTrackingToken } from './entities/correo-tracking-token.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
 import { ActuacionController } from './controllers/actuacion.controller';
-import { AbogadoController, AbogadoStatsController } from './controllers/abogado.controller';
 import { AudienciaController } from './controllers/audiencia.controller';
 import { DocumentoController } from './controllers/documento.controller';
 import { RequerimientoController } from './controllers/requerimiento.controller';
@@ -75,11 +74,11 @@ import { ConfigurationsController } from './controllers/configurations.controlle
 import { OficiosController } from './controllers/oficios.controller';
 import { TasaReferenciaController } from './controllers/tasa-referencia.controller';
 import { PlantillasController } from './controllers/plantillas.controller';
+import { ReportesController } from './controllers/reportes.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
 import { ActuacionService } from './services/actuacion.service';
-import { AbogadoService } from './services/abogado.service';
 import { AudienciaService } from './services/audiencia.service';
 import { DocumentoService } from './services/documento.service';
 import { RequerimientoService } from './services/requerimiento.service';
@@ -111,6 +110,8 @@ import { TasaReferenciaService } from './services/tasa-referencia.service';
 import { PlantillasService } from './services/plantillas.service';
 import { NotificationClientService } from './services/notification-client.service';
 import { LegalNotificationsService } from './services/legal-notifications.service';
+import { ReportesService } from './services/reportes.service';
+import { AuthModule } from './auth/auth.module';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -119,11 +120,11 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
+    AuthModule,
     ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([
       Expediente,
       Actuacion,
-      Abogado,
       Audiencia,
       Requerimiento,
       OrganismoControl,
@@ -175,7 +176,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Tasas de Referencia
       TasaReferencia,
       // Plantillas de Documentos
-      PlantillaDocumento
+      PlantillaDocumento,
+      // Tracking de Correos (trazabilidad apertura/descarga)
+      CorreoTrackingToken
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -185,8 +188,6 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     DashboardController,
     ExpedienteController,
     ActuacionController,
-    AbogadoController,
-    AbogadoStatsController,
     AudienciaController,
     DocumentoController,
     ComentarioController,
@@ -213,14 +214,14 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Oficios
     OficiosController,
     TasaReferenciaController,
-    PlantillasController
+    PlantillasController,
+    ReportesController
   ],
   providers: [
     AppService,
     DashboardService,
     ExpedienteService,
     ActuacionService,
-    AbogadoService,
     AudienciaService,
     RequerimientoService,
     ComentarioService,
@@ -254,7 +255,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     PlantillasService,
     // Notificaciones
     NotificationClientService,
-    LegalNotificationsService
+    LegalNotificationsService,
+    // Reportes
+    ReportesService
   ],
 })
 export class AppModule { }

@@ -9,8 +9,9 @@ import {
   Menu,
   X,
 } from 'lucide-react';
-import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 import { PortalCommandPalette } from './PortalCommandPalette';
 import { Button } from '../ui/button';
 import {
@@ -25,7 +26,7 @@ import { Badge } from '../ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../ui/sheet';
 import { toast } from 'sonner';
 import { SystemSwitcher } from '../esap/SystemSwitcher';
-import { NotificacionesDropdown } from './NotificacionesDropdown';
+import { PortalNotificationBell } from './PortalNotificationBell';
 
 interface AuthenticatedPortalNavbarProps {
   userName: string;
@@ -135,7 +136,6 @@ const UserMenuButton = forwardRef<
       aria-label={`Menú de usuario: ${safeUserName}`}
     >
       <Avatar className="w-8 h-8 flex-shrink-0">
-        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${safeUserName}&backgroundColor=003DA5`} />
         <AvatarFallback className="bg-[#003DA5] text-white text-[13px] font-bold">
           {initials}
         </AvatarFallback>
@@ -170,6 +170,7 @@ export function AuthenticatedPortalNavbar({
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -226,11 +227,23 @@ export function AuthenticatedPortalNavbar({
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm transition-colors duration-300">
-      <div className="w-full max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 xl:px-4">
+      <div className="w-full max-w-[1280px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4" style={{ minHeight: 64, height: 64 }}>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <ESAPLogo variant="color" className="h-8 sm:h-9 md:h-10 w-auto" />
+              {isMobile ? (
+                <ESAPLogo 
+                  variant="icon-color" 
+                  className="shrink-0" 
+                  style={{ width: '38px', height: '44px' }} 
+                />
+              ) : (
+                <ESAPLogo 
+                  variant="color" 
+                  className="shrink-0" 
+                  style={{ width: '189px', height: '56px' }} 
+                />
+              )}
             </div>
           </div>
 
@@ -267,25 +280,34 @@ export function AuthenticatedPortalNavbar({
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0">
             {hasBothSystemsAccess && onSystemChange && (
               <SystemSwitcher
-                system="portal"
+                currentSystem="portal"
                 onSystemChange={onSystemChange}
-                compact
               />
             )}
 
-            <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
-              <DropdownMenuTrigger asChild>
-                <NotificationButton unreadCount={0} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[380px] p-0">
-                <NotificacionesDropdown onNavigate={handleNotificationNavigate} />
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <PortalNotificationBell onNavigate={handleNotificationNavigate} />
 
+            {/* Search icon — solo en mobile/tablet (search bar está en desktop) */}
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              className="lg:hidden relative flex items-center justify-center transition-all duration-200"
+              style={{
+                minWidth: 40, minHeight: 40, width: 40, height: 40,
+                borderRadius: 10, background: '#F3F4F6', border: 'none', cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#E5E7EB'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#F3F4F6'; }}
+              aria-label="Buscar"
+            >
+              <Search style={{ width: 20, height: 20, color: '#374151', strokeWidth: 2 }} />
+            </button>
+
+            {/* Settings — oculto en mobile (ya está en hamburger menu) */}
             <button
               type="button"
               onClick={() => onNavigate?.('configuracion')}
-              className="relative flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="hidden md:flex relative items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               style={{
                 minWidth: 40,
                 minHeight: 40,

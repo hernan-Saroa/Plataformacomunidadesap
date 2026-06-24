@@ -5,7 +5,7 @@
  * ✅ Validación y guardado
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -18,6 +18,8 @@ import {
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { authService, type AbogadoResuelve } from '../../../../services/api/authService';
 
 interface ModalRegistrarActuacionProps {
   isOpen: boolean;
@@ -25,6 +27,12 @@ interface ModalRegistrarActuacionProps {
   onGuardar: (actuacion: any, file?: File) => Promise<void> | void;
   expedienteId: string;
   radicado?: string; // Display-friendly identifier
+  documentosDelExpediente?: any[];
+  isApprovalMode?: boolean;
+  /** Abogado encargado del expediente (id), se preselecciona como responsable */
+  abogadoEncargadoId?: string;
+  /** Nombre del abogado encargado, para mostrar/preseleccionar */
+  abogadoEncargadoNombre?: string;
 }
 
 const TIPOS_ACTUACION = [
@@ -56,20 +64,93 @@ export function ModalRegistrarActuacion({
   onClose,
   onGuardar,
   expedienteId,
-  radicado
+  radicado,
+  documentosDelExpediente = [],
+  isApprovalMode = false,
+  abogadoEncargadoId,
+  abogadoEncargadoNombre
 }: ModalRegistrarActuacionProps) {
+  
+  const { getTiposActuacionesActivos } = useConfiguracionesSIGL();
+  const tiposActuacionesActivos = getTiposActuacionesActivos('defensa-judicial');
+  const opcionesTipoActuacion = tiposActuacionesActivos.length > 0 
+    ? tiposActuacionesActivos.map(t => t.nombre) 
+    : TIPOS_ACTUACION;
 
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [hora, setHora] = useState(new Date().toTimeString().slice(0, 5));
   const [tipo, setTipo] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [responsable, setResponsable] = useState('');
+  const [responsable, setResponsable] = useState(''); // nombre del responsable (valor que se guarda)
+  const [responsableId, setResponsableId] = useState(''); // id del usuario seleccionado (value del select)
+  const [responsables, setResponsables] = useState<AbogadoResuelve[]>([]);
+  const [loadingResponsables, setLoadingResponsables] = useState(false);
   const [estado, setEstado] = useState('Completado');
   const [observaciones, setObservaciones] = useState('');
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
-  const [archivo, setArchivo] = useState<File | null>(null);
+  const [documentosAsociados, setDocumentosAsociados] = useState<string[]>([]);
   const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setDocumentosAsociados(documentosDelExpediente.map((doc: any) => doc.id?.toString()));
+
+    let cancelado = false;
+    setLoadingResponsables(true);
+
+    authService
+      .getResponsablesActuacion()
+      .then((lista) => {
+        if (cancelado) return;
+
+        // Asegurar que el abogado encargado siempre esté disponible como opción,
+        // aunque su rol todavía no tenga el permiso asignado.
+        let opciones = lista;
+        const encargadoEnLista = lista.some(
+          (p) =>
+            (abogadoEncargadoId && p.id === abogadoEncargadoId) ||
+            (abogadoEncargadoNombre && p.nombreCompleto === abogadoEncargadoNombre),
+        );
+        if (!encargadoEnLista && (abogadoEncargadoId || abogadoEncargadoNombre)) {
+          const nombre = abogadoEncargadoNombre || 'Abogado encargado';
+          opciones = [
+            {
+              id: abogadoEncargadoId || `encargado:${nombre}`,
+              nombreCompleto: nombre,
+              nombre,
+              email: '',
+            },
+            ...lista,
+          ];
+        }
+        setResponsables(opciones);
+
+        // Preseleccionar el abogado encargado del expediente.
+        const preseleccion =
+          (abogadoEncargadoId &&
+            opciones.find((p) => p.id === abogadoEncargadoId)) ||
+          (abogadoEncargadoNombre &&
+            opciones.find((p) => p.nombreCompleto === abogadoEncargadoNombre)) ||
+          null;
+        if (preseleccion) {
+          setResponsableId(preseleccion.id);
+          setResponsable(preseleccion.nombreCompleto);
+        }
+      })
+      .catch((error) => {
+        console.error('Error cargando responsables de actuación', error);
+        if (!cancelado) setResponsables([]);
+      })
+      .finally(() => {
+        if (!cancelado) setLoadingResponsables(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [isOpen, abogadoEncargadoId, abogadoEncargadoNombre]);
 
   /**
    * Validar formulario
@@ -90,7 +171,7 @@ export function ModalRegistrarActuacion({
   /**
    * Guardar actuación
    */
-  const handleGuardar = async () => {
+  const handleGuardar = async (accionAprobacion?: 'aprobar' | 'devolver') => {
     if (!validarFormulario()) {
       toast.error('❌ Formulario incompleto', {
         description: 'Por favor corrige los errores marcados'
@@ -113,10 +194,12 @@ export function ModalRegistrarActuacion({
         estado,
         observaciones,
         expedienteId,
-        registradoPor: 'funcionario@esap.edu.co'
+        registradoPor: 'funcionario@esap.edu.co',
+        documentosAsociados,
+        accionAprobacion
       };
 
-      await onGuardar(nuevaActuacion, archivo || undefined);
+      await onGuardar(nuevaActuacion, undefined);
 
       // Success handled by parent or here if needed, but safer to rely on parent completion
       // Cleaning up
@@ -140,10 +223,11 @@ export function ModalRegistrarActuacion({
     setTipo('');
     setDescripcion('');
     setResponsable('');
+    setResponsableId('');
     setEstado('Completado');
     setObservaciones('');
     setErrores({});
-    setArchivo(null);
+    setDocumentosAsociados(documentosDelExpediente.map((doc: any) => doc.id?.toString()));
   };
 
   /**
@@ -166,7 +250,7 @@ export function ModalRegistrarActuacion({
   return (
     <>
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton size="md" className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Registrar Actuación Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar actuaciones procesales en el expediente {expedienteId}
@@ -254,7 +338,7 @@ export function ModalRegistrarActuacion({
                   }`}
               >
                 <option value="">Selecciona el tipo de actuación...</option>
-                {TIPOS_ACTUACION.map((t) => (
+                {opcionesTipoActuacion.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
@@ -304,15 +388,37 @@ export function ModalRegistrarActuacion({
                 <User className="w-4 h-4 inline mr-1" />
                 Responsable de la Actuación *
               </label>
-              <Input
-                placeholder="Ej: Dra. Ana María López"
-                value={responsable}
+              <select
+                value={responsableId}
+                disabled={loadingResponsables}
                 onChange={(e) => {
-                  setResponsable(e.target.value);
+                  const id = e.target.value;
+                  setResponsableId(id);
+                  const seleccionado = responsables.find((p) => p.id === id);
+                  setResponsable(seleccionado?.nombreCompleto || '');
                   setErrores({ ...errores, responsable: '' });
                 }}
-                className={`text-sm ${errores.responsable ? 'border-red-500' : ''}`}
-              />
+                className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 ${
+                  errores.responsable ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">
+                  {loadingResponsables
+                    ? 'Cargando responsables...'
+                    : 'Selecciona el responsable...'}
+                </option>
+                {responsables.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombreCompleto}
+                    {p.email ? ` — ${p.email}` : ''}
+                  </option>
+                ))}
+              </select>
+              {!loadingResponsables && responsables.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  No hay personas con el permiso para ser responsables de actuación.
+                </p>
+              )}
               {errores.responsable && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
@@ -355,63 +461,74 @@ export function ModalRegistrarActuacion({
             {/* Documento Adjunto */}
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                📎 Documento Adjunto (Opcional)
+                📎 Documentos Asociados (Opcional)
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
-                <input
-                  type="file"
-                  id="archivo-actuacion"
-                  accept=".pdf"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      const file = e.target.files[0];
-                      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-                        toast.error('Solo se permiten archivos PDF');
-                        e.target.value = '';
-                        return;
-                      }
-                      if (file.size > 60 * 1024 * 1024) {
-                        toast.error('El archivo no puede superar los 60MB');
-                        e.target.value = '';
-                        return;
-                      }
-                      setArchivo(file);
-                    }
-                  }}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="archivo-actuacion"
-                  className="flex flex-col items-center cursor-pointer"
-                >
-                  {archivo ? (
-                    <div className="flex items-center gap-2 text-green-700">
-                      <FileText className="w-6 h-6" />
-                      <span className="text-sm font-semibold">{archivo.name}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setArchivo(null);
-                        }}
-                        className="ml-2 text-red-500 hover:text-red-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <FileText className="w-8 h-8 text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-600">
-                        Haz clic para seleccionar un archivo
-                      </span>
-                      <span className="text-xs text-gray-400 mt-1">
-                        Solo archivos PDF (máx. 60MB)
-                      </span>
-                    </>
-                  )}
-                </label>
-              </div>
+
+              {documentosDelExpediente.length > 0 && (
+                <div className="border border-gray-300 rounded-lg overflow-hidden mb-4 bg-white">
+                  <div className="bg-blue-50 px-3 py-2 border-b border-blue-100 text-xs font-bold text-blue-800 flex justify-between items-center">
+                    <span>Seleccionar documentos ya cargados en el expediente</span>
+                    <Badge variant="outline" className="bg-white">{documentosDelExpediente.length} docs</Badge>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto p-2 space-y-1">
+                    {documentosDelExpediente.map(doc => {
+                      const idStr = doc.id?.toString();
+                      const isSelected = documentosAsociados.includes(idStr);
+                      return (
+                        <label 
+                          key={idStr} 
+                          className={`flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors border ${
+                            isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50 border-transparent'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setDocumentosAsociados(prev => [...prev, idStr]);
+                              } else {
+                                setDocumentosAsociados(prev => prev.filter(id => id !== idStr));
+                              }
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-gray-700'}`}>
+                              {doc.nombre}
+                            </p>
+                            <p className="text-xs text-gray-500">{doc.categoria} • {doc.fecha}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const idsDocs = documentosDelExpediente.map((doc: any) => doc.id?.toString());
+                    const todosSeleccionados = idsDocs.length > 0 && idsDocs.every(id => documentosAsociados.includes(id));
+                    return (
+                      <div className="border-t border-gray-100 px-3 py-2 bg-gray-50/60 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs font-bold text-blue-700 border-blue-200 hover:bg-blue-50"
+                          onClick={() => {
+                            if (todosSeleccionados) {
+                              setDocumentosAsociados([]);
+                            } else {
+                              setDocumentosAsociados(idsDocs);
+                            }
+                          }}
+                        >
+                          {todosSeleccionados ? 'Deseleccionar todos' : 'Seleccionar todos'}
+                        </Button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
             </div>
 
           </div>
@@ -427,24 +544,50 @@ export function ModalRegistrarActuacion({
             <X className="w-4 h-4 mr-2" />
             Cancelar
           </Button>
-          <Button
-            onClick={handleGuardar}
-            disabled={guardando}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            className="font-bold"
-          >
-            {guardando ? (
-              <>
-                <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Guardar Actuación
-              </>
-            )}
-          </Button>
+
+          {isApprovalMode ? (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleGuardar('devolver')}
+                disabled={guardando}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold"
+              >
+                {guardando ? (
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : <X className="w-4 h-4 mr-2" />}
+                Devolver
+              </Button>
+              <Button
+                onClick={() => handleGuardar('aprobar')}
+                disabled={guardando}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold"
+              >
+                {guardando ? (
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : <CheckCircle className="w-4 h-4 mr-2" />}
+                Aprobar
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={() => handleGuardar()}
+              disabled={guardando}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              className="font-bold"
+            >
+              {guardando ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Guardar Actuación
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

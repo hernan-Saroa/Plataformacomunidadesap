@@ -12,7 +12,7 @@ COPY package*.json ./
 
 
 # Install all dependencies (including dev dependencies for building)
-RUN npm install --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps --prefer-offline --no-audit
 
 # Copy source code
 COPY . .
@@ -37,7 +37,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm install --legacy-peer-deps --omit=dev && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps --omit=dev --prefer-offline --no-audit
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist

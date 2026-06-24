@@ -3,8 +3,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown, AlertTriangle, Shield, GraduationCap, Users, BookOpen, MapPin, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { useIsMobile } from '../ui/use-mobile';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@esap-mfe/shared-ui/dialog';
 import loginHeroImage from '../../assets/photo-1623156167557-281309073eef.png';
 
 interface MicrosoftCallbackResponse {
@@ -15,16 +24,19 @@ interface MicrosoftCallbackResponse {
 }
 
 interface LoginPageProps {
-  onLogin: (user: any, accessToken: string, rememberMe?: boolean) => void;
+  onLogin: (user: any, accessToken?: string, rememberMe?: boolean) => void;
   onBackToHome?: () => void;
+  onExistingSessionCheck?: () => Promise<any | null>;
+  onExistingSessionLogout?: () => Promise<void>;
 }
 
-export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
+export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExistingSessionLogout }: LoginPageProps) {
+  const isMobile = useIsMobile();
   const loginOptions =
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
       .toLowerCase();
-  const showMicrosoftLogin = false;
+  const showMicrosoftLogin = true;
   const showCredentialLogin = !showMicrosoftLogin || loginOptions !== 'microsoft';
 
   const [email, setEmail] = useState('');
@@ -37,6 +49,9 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [showRecuperarModal, setShowRecuperarModal] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
+  const [isCheckingExistingSession, setIsCheckingExistingSession] = useState(false);
+  const [isClosingExistingSession, setIsClosingExistingSession] = useState(false);
+  const [existingSessionUser, setExistingSessionUser] = useState<any | null>(null);
   const [microsoftLoginError, setMicrosoftLoginError] = useState<string | null>(null);
   const [bgLoaded, setBgLoaded] = useState(false);
 
@@ -128,7 +143,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
         onLogin(loginResponse.user, loginResponse.accessToken, rememberMe);
       } catch (error: any) {
-        console.error('Error en callback de Microsoft:', error);
+        // console.error('Error en callback de Microsoft:', error);
         setMicrosoftLoginError(error?.message || 'No fue posible completar el inicio de sesión con Microsoft.');
         toast.error('No fue posible iniciar sesión con Microsoft', {
           description: error?.message || 'Intenta nuevamente.',
@@ -141,6 +156,58 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
     void processMicrosoftCallback();
   }, [onLogin, rememberMe]);
+
+  useEffect(() => {
+    const search = window.location.search;
+    const isMicrosoftCallback = search.includes('code=') || search.includes('error=');
+    if (isMicrosoftCallback || !onExistingSessionCheck) return;
+
+    let cancelled = false;
+
+    const validateExistingSession = async () => {
+      setIsCheckingExistingSession(true);
+      try {
+        const user = await onExistingSessionCheck();
+        if (cancelled) return;
+
+        if (user) {
+          setExistingSessionUser(user);
+        } else {
+          setIsCheckingExistingSession(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setIsCheckingExistingSession(false);
+        }
+      }
+    };
+
+    void validateExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onExistingSessionCheck]);
+
+  const handleContinueExistingSession = () => {
+    if (!existingSessionUser) return;
+    setExistingSessionUser(null);
+    setIsCheckingExistingSession(false);
+    onLogin(existingSessionUser);
+  };
+
+  const handleCloseExistingSession = async () => {
+    if (!onExistingSessionLogout || isClosingExistingSession) return;
+
+    setIsClosingExistingSession(true);
+    try {
+      await onExistingSessionLogout();
+      setExistingSessionUser(null);
+      setIsCheckingExistingSession(false);
+    } finally {
+      setIsClosingExistingSession(false);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -165,6 +232,10 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isCheckingExistingSession) {
+      return;
+    }
     
     if (!validateForm()) {
       toast.error('Por favor corrija los errores en el formulario');
@@ -175,19 +246,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
     // 🔥 LIMPIAR CACHÉ COMPLETAMENTE AL HACER LOGIN
     sessionStorage.removeItem('esap-sesion-activa');
-    console.log('🗑️ LocalStorage limpiado');
 
     try {
-      console.log('📡 Llamando a authService.login');
-      
       // Llamar a la API de autenticación real
       const response = await authService.login({
         email: email.toLowerCase(),
         password,
         rememberMe,
       });
-
-      console.log('✅ [6] Auth service response received:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -250,21 +316,29 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login (igual que el LoginPage de esap)
       setRemainingAttempts(null);
       onLogin(response.user, response.accessToken, rememberMe);
-      console.log('✅ [8] onLogin handler completed');
     } catch (error: any) {
-      console.error('❌ Error de autenticación:', error);
       const statusCode =
+        error?.status ??
         error?.statusCode ??
+        error?.response?.status ??
         error?.response?.data?.statusCode ??
-        error?.response?.status;
-      const errorMessage =
+        null;
+      let errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
+
+      if (errorMessage === 'Error' || errorMessage === 'Failed to fetch') {
+        errorMessage = 'No se pudo conectar con el servidor. Verifica tu conexión o intenta más tarde.';
+      }
+
+      // Log para desarrolladores (sin spam)
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[Login Error] Status: ${statusCode || 'Network/CORS'}, Message:`, error?.message || error);
+      }
 
       // Manejar diferentes tipos de errores
       if (statusCode === 429) {
@@ -355,7 +429,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         setIsMicrosoftLoading(true);
         window.location.assign(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${query.toString()}`);
       } catch (error: any) {
-        console.error('Error iniciando OAuth Microsoft:', error);
+        // console.error('Error iniciando OAuth Microsoft:', error);
         setIsMicrosoftLoading(false);
         toast.error('No se pudo iniciar el login con Microsoft', {
           description: error?.message || 'Revisa la configuración OAuth.',
@@ -369,43 +443,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   return (
     <div
       data-login-page-root
-      className="min-h-screen flex flex-col lg:flex-row"
+      className="esap-login-root fixed inset-0 grid h-screen w-screen max-w-none overflow-hidden bg-white"
       style={{
-        width: '100vw',
-        minWidth: '100vw',
-        height: '100vh',
-        minHeight: '100vh',
+        width: '100dvw',
+        minWidth: '100dvw',
+        height: '100dvh',
+        minHeight: '100dvh',
         margin: 0,
+        maxWidth: 'none',
         position: 'fixed',
         inset: 0,
+        display: 'grid',
         overflow: 'hidden',
+        backgroundColor: '#fff',
         zIndex: 0,
       }}
     >
-      <style>{`
-        @media (min-width: 1024px) {
-          [data-login-left-pane] {
-            flex: 0 0 37.4% !important;
-            width: 37.4% !important;
-            max-width: 37.4% !important;
-          }
-
-          [data-login-hero-pane] {
-            flex: 0 0 62.6% !important;
-            width: 62.6% !important;
-            max-width: 62.6% !important;
-          }
-        }
-
-        @media (max-width: 1023px) {
-          [data-login-left-pane],
-          [data-login-hero-pane] {
-            width: 100% !important;
-            max-width: 100% !important;
-          }
-        }
-      `}</style>
-      <div data-login-left-pane className="flex flex-col min-h-screen lg:min-h-0 bg-white relative">
+      <div data-login-left-pane className="esap-login-left flex flex-col min-h-screen lg:min-h-0 bg-white relative">
         <div className="flex-shrink-0 px-6 sm:px-10 pt-6 sm:pt-8">
           <motion.button
             initial={{ opacity: 0, x: -10 }}
@@ -419,24 +473,29 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           </motion.button>
         </div>
 
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8 overflow-y-auto">
+        <div className="flex-1 flex flex-col items-center justify-start px-6 sm:px-10 py-8 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="w-full max-w-[420px]"
+            className="w-full max-w-[420px] my-auto"
           >
-            <div className="lg:hidden flex justify-center mb-10">
-              <ESAPLogo variant="color" className="h-14 w-auto" />
+            <div className="flex justify-center mb-8" style={{ marginBottom: isMobile ? '32px' : '40px' }}>
+              <ESAPLogo
+                variant="color"
+                className="shrink-0"
+                style={isMobile ? { width: '162px', height: '48px' } : { width: '189px', height: '56px' }}
+              />
             </div>
 
+
             <div style={{ marginBottom: '32px' }}>
-              <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
-                Iniciar Sesión
-              </h1>
-              <p style={{ fontSize: '16px', lineHeight: '1.5' }} className="text-gray-400">
-                Accede a tu cuenta ESAP
-              </p>
+	              <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
+	                {isCheckingExistingSession ? 'Validando sesión' : 'Iniciar Sesión'}
+	              </h1>
+	              <p style={{ fontSize: '16px', lineHeight: '1.5' }} className="text-gray-400">
+	                {isCheckingExistingSession ? 'Confirmando si ya tienes una sesión activa' : 'Accede a tu cuenta ESAP'}
+	              </p>
             </div>
 
             {showMicrosoftLogin && (
@@ -449,13 +508,17 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={() => handleSocialLogin('Microsoft')}
-                  disabled={isLoading || isMicrosoftLoading}
+	                  disabled={isLoading || isMicrosoftLoading || isCheckingExistingSession}
                   style={{ height: '52px', fontSize: '15px', borderRadius: '12px' }}
                   className="w-full flex items-center justify-center gap-2.5 border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Building2 className="w-5 h-5" />
                   <span className="font-semibold">
-                    {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
+	                    {isCheckingExistingSession
+	                      ? 'Validando sesión...'
+	                      : isMicrosoftLoading
+	                        ? 'Conectando con Microsoft...'
+	                        : 'Iniciar sesión con Microsoft'}
                   </span>
                 </button>
               </div>
@@ -499,7 +562,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                           setRemainingAttempts(null);
                         }}
                         placeholder="correo@esap.edu.co"
-                        disabled={isLoading}
+	                        disabled={isLoading || isCheckingExistingSession}
                         style={{ fontSize: '15px', border: 'none', outline: 'none', background: 'transparent', padding: '0 16px 0 0', width: '100%', height: '100%' }}
                       />
                     </div>
@@ -531,7 +594,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                           setErrors({ ...errors, password: undefined });
                         }}
                         placeholder="••••••••"
-                        disabled={isLoading}
+	                        disabled={isLoading || isCheckingExistingSession}
                         style={{ fontSize: '15px', border: 'none', outline: 'none', background: 'transparent', padding: '0', width: '100%', height: '100%', flex: '1' }}
                       />
                       <button
@@ -592,15 +655,15 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
                   <button
                     type="submit"
-                    disabled={isLoading}
+	                    disabled={isLoading || isCheckingExistingSession}
                     style={{ height: '52px', fontSize: '16px', borderRadius: '12px' }}
                     className="w-full font-semibold bg-[#1e5da8] hover:bg-[#164078] active:bg-[#0f3562] text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-lg shadow-[#1e5da8]/25 hover:shadow-xl hover:shadow-[#1e5da8]/35 active:scale-[0.98]"
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Ingresando...</span>
-                      </>
+	                    {isLoading || isCheckingExistingSession ? (
+	                      <>
+	                        <Loader2 className="w-5 h-5 animate-spin" />
+	                        <span>{isCheckingExistingSession ? 'Validando...' : 'Ingresando...'}</span>
+	                      </>
                     ) : (
                       <>
                         <LogIn className="w-5 h-5" />
@@ -726,7 +789,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   </AnimatePresence>
                 </div>
 
-                <p style={{ fontSize: '14px', marginTop: '28px' }} className="text-center text-gray-400">
+                <p style={{ fontSize: '14px', marginTop: '28px', display: 'none' }} className="text-center text-gray-400">
                   ¿No tienes cuenta?{' '}
                   <button className="text-[#1e5da8] hover:text-[#164078] transition-colors font-semibold">
                     Regístrate aquí
@@ -749,7 +812,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
-        className="hidden lg:flex relative overflow-hidden"
+        className="esap-login-hero relative overflow-hidden"
       >
         <div className="absolute inset-0">
           <img
@@ -777,7 +840,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            <ESAPLogo variant="white" className="h-16 xl:h-[74px] w-auto" />
+            <ESAPLogo variant="white" className="shrink-0" style={{ width: '250px', height: '74px' }} />
           </motion.div>
 
           <div className="space-y-8 xl:space-y-10">
@@ -870,13 +933,71 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         </div>
       </motion.div>
 
-      <ModalRecuperarContrasena
-        isOpen={showRecuperarModal}
-        onClose={() => setShowRecuperarModal(false)}
-      />
-    </div>
-  );
-}
+	      <ModalRecuperarContrasena
+	        isOpen={showRecuperarModal}
+	        onClose={() => setShowRecuperarModal(false)}
+	      />
+
+	      <Dialog
+	        open={Boolean(existingSessionUser)}
+	        onOpenChange={(open) => {
+	          if (!open) {
+	            setExistingSessionUser(null);
+	            setIsCheckingExistingSession(false);
+	          }
+	        }}
+	      >
+	        <DialogContent hideCloseButton className="w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:w-[50vw] sm:max-w-[50vw] lg:w-[42rem] lg:max-w-[42rem] max-h-[50vh] overflow-y-auto">
+	          <div className="p-6">
+	            <DialogHeader className="items-center text-center">
+	              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-[#1e5da8]">
+	                <Shield className="h-7 w-7" />
+	              </div>
+	              <DialogTitle className="text-xl font-bold text-gray-900">
+	                Ya tienes una sesión activa
+	              </DialogTitle>
+	              <DialogDescription className="text-sm leading-6 text-gray-500">
+	                Encontramos una sesión vigente para esta plataforma. Puedes continuar sin iniciar sesión nuevamente.
+	              </DialogDescription>
+	            </DialogHeader>
+
+	            {existingSessionUser && (
+	              <div className="mt-5 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-center">
+	                <p className="text-sm font-semibold text-gray-800">
+	                  {existingSessionUser?.person?.first_name
+	                    ? `${existingSessionUser.person.first_name} ${existingSessionUser.person.last_name || ''}`.trim()
+	                    : existingSessionUser?.fullName || existingSessionUser?.name || existingSessionUser?.username || 'Usuario ESAP'}
+	                </p>
+	                <p className="mt-1 text-xs text-gray-500">
+	                  {existingSessionUser?.person?.email || existingSessionUser?.email || 'Sesión autenticada'}
+	                </p>
+	              </div>
+	            )}
+
+	            <DialogFooter className="mt-6 sm:justify-between">
+	              <button
+	                type="button"
+	                onClick={handleCloseExistingSession}
+	                disabled={isClosingExistingSession}
+	                className="flex h-11 w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:flex-1"
+	              >
+	                {isClosingExistingSession ? 'Cerrando sesión...' : 'Cerrar sesión'}
+	              </button>
+	              <button
+	                type="button"
+	                onClick={handleContinueExistingSession}
+	                disabled={isClosingExistingSession}
+	                className="flex h-11 w-full items-center justify-center rounded-lg bg-[#1e5da8] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#164078] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:flex-1"
+	              >
+	                Continuar
+	              </button>
+	            </DialogFooter>
+	          </div>
+	        </DialogContent>
+	      </Dialog>
+	    </div>
+	  );
+	}
 
 function parseMicrosoftCallback(search: string): MicrosoftCallbackResponse {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);

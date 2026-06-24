@@ -7,10 +7,13 @@ import {
   Info,
   Layers,
   Save,
+  Search,
+  ChevronDown,
   Sparkles,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Dialog, DialogContent } from '@esap-mfe/shared-ui/dialog';
 
 type PonderacionRiesgo = 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO' | 'MUY BAJO';
 type ModoProcesoEspecial = 'ponderacion' | 'todos_los_anos';
@@ -38,7 +41,7 @@ export interface FormularioDafpData {
   planRotacion: string;
   diasRotacion: number;
   decisionRotacion: string;
-  decisionFinal: 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR';
+  decisionFinal: 'INCLUIR_PLAN_ANUAL' | 'INCLUIR_AUDITORIA_POSTERIOR';
   motivoDecision: string;
   prioridadRegla: number;
 
@@ -89,7 +92,7 @@ export interface ProcesoParaSelect {
 interface FormularioProcesoDafpProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (proceso: FormularioDafpData, procesoId?: string) => void;
+  onSubmit: (proceso: FormularioDafpData, procesoId?: string) => void | Promise<void>;
   procesoInicial?: FormularioDafpData | null;
   mode: 'create' | 'edit';
   procesosCatalog?: ProcesoParaSelect[];
@@ -176,6 +179,11 @@ function sanitizeCatalogValue(value?: string): string {
   return (value || '').replace(/\|/g, '/').trim() || 'Sin dato';
 }
 
+function parseUnidades(macroproceso?: string): string[] {
+  if (!macroproceso) return [];
+  return macroproceso.split(';').map(u => u.trim()).filter(Boolean);
+}
+
 function buildEncodedValue(proceso: ProcesoParaSelect): string {
   return [
     sanitizeCatalogValue(proceso.codigo || proceso.id),
@@ -216,9 +224,23 @@ function buildInitialData(
     }
   }
 
-  // Regla solicitada: solo localStorage; si no existe, usar año actual.
-  const vigencia = vigenciaStorage ?? currentYear;
-  const fechaCorte = fechaCorteStorage || `${vigencia}-12-31`;
+  let vigencia: number;
+  let fechaCorte: string;
+
+  if (procesoInicial?.vigencia) {
+    // Modo EDIT: conservar la vigencia del registro guardado
+    vigencia = procesoInicial.vigencia;
+    fechaCorte = procesoInicial.fechaCorte || `${vigencia}-12-31`;
+  } else if (vigenciaPlan) {
+    // Modo CREATE: usar vigencia que pasa el componente padre
+    vigencia = vigenciaPlan;
+    fechaCorte = fechaCortePlan || `${vigenciaPlan}-12-31`;
+  } else {
+    // Fallback: localStorage o año actual
+    vigencia = vigenciaStorage ?? currentYear;
+    fechaCorte = fechaCorteStorage || `${vigencia}-12-31`;
+  }
+  
   const modoProcesoEspecial = inferirModoEspecial(procesoInicial);
 
   return {
@@ -239,7 +261,7 @@ function buildInitialData(
     planRotacion: procesoInicial?.planRotacion || '',
     diasRotacion: procesoInicial?.diasRotacion ?? 0,
     decisionRotacion: procesoInicial?.decisionRotacion || '',
-    decisionFinal: procesoInicial?.decisionFinal || 'AUDITORÍA POSTERIOR',
+    decisionFinal: procesoInicial?.decisionFinal || 'INCLUIR_AUDITORIA_POSTERIOR',
     motivoDecision: procesoInicial?.motivoDecision || '',
     prioridadRegla: procesoInicial?.prioridadRegla ?? 5,
     criticidad: procesoInicial?.criticidad ?? 0,
@@ -368,10 +390,35 @@ export function FormularioProcesoDafpVisual({
   const [valorProcesoSeleccionado, setValorProcesoSeleccionado] = useState<string>(procesoInicial?.selectorProcesoCodificado || '');
 
   // ── Multi-select para Unidades Auditables ──
-  const [unidadesDisponibles, setUnidadesDisponibles] = useState<string[]>([]);
-  const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState<Set<string>>(new Set());
+  const [unidadesDisponibles, setUnidadesDisponibles] = useState<string[]>(() => {
+    const selectedFromCatalog = procesosCatalog?.find(p => p.id === procesoInicial?.id) || procesosCatalog?.find(p => p.nombre === procesoInicial?.nombre);
+    return parseUnidades(selectedFromCatalog?.macroproceso || procesoInicial?.macroproceso);
+  });
+  const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState<Set<string>>(() => {
+    return new Set(parseUnidades(procesoInicial?.macroproceso));
+  });
   const [unidadDropdownOpen, setUnidadDropdownOpen] = useState(false);
   const unidadDropdownRef = useRef<HTMLDivElement>(null);
+
+  // ── Searchable Select para Proceso ──
+  const [procesoDropdownOpen, setProcesoDropdownOpen] = useState(false);
+  const [procesoSearchTerm, setProcesoSearchTerm] = useState('');
+  const procesoDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (unidadDropdownRef.current && !unidadDropdownRef.current.contains(event.target as Node)) {
+        setUnidadDropdownOpen(false);
+      }
+      if (procesoDropdownRef.current && !procesoDropdownRef.current.contains(event.target as Node)) {
+        setProcesoDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const prevOpenRef = useRef(false);
   const prevProcesoIdRef = useRef<string | undefined>(undefined);
@@ -468,7 +515,7 @@ export function FormularioProcesoDafpVisual({
     [cicloRotacionDafp]
   );
   const nombreProcesoPriorizado = formData.nombre.trim() || 'Proceso no seleccionado';
-  const decisionFinal = priorizacionAnos.includes(1) ? 'INCLUIR PLAN ANUAL' : 'AUDITORÍA POSTERIOR';
+  const decisionFinal = priorizacionAnos.includes(1) ? 'INCLUIR_PLAN_ANUAL' : 'INCLUIR_AUDITORIA_POSTERIOR';
   const motivoDecision = useMemo(() => {
     if (!criteriosCompletos) return '';
     const base = `Ponderación DAFP ${ponderacionFinalDafp.toFixed(2)}. Nivel ${nivelCriticidadDafp}. Ciclo ${cicloRotacionDafp}.`;
@@ -478,7 +525,7 @@ export function FormularioProcesoDafpVisual({
     if (procesoEspecialActivo) {
       return `[ESPECIAL:ponderacion] ${base} Proceso especial evaluado según la ponderación DAFP.`;
     }
-    if (decisionFinal === 'INCLUIR PLAN ANUAL') {
+    if (decisionFinal === 'INCLUIR_PLAN_ANUAL') {
       return `${base} El proceso queda incluido en el año 1 del plan.`;
     }
     return `${base} El proceso se programa para años posteriores según la rotación definida.`;
@@ -518,6 +565,13 @@ export function FormularioProcesoDafpVisual({
     }));
     setProcesoIdSeleccionado(selectedFromCatalog?.id || nextForm.id || '');
     setValorProcesoSeleccionado(selectedFromCatalog?.encodedValue || nextForm.selectorProcesoCodificado || '');
+
+    // Inicializar el dropdown de unidades auditables en modo edición
+    const disponibles = parseUnidades(selectedFromCatalog?.macroproceso || nextForm.macroproceso);
+    setUnidadesDisponibles(disponibles);
+
+    const seleccionadas = parseUnidades(nextForm.macroproceso);
+    setUnidadesSeleccionadas(new Set(seleccionadas));
   }, [catalogoProcesos, fechaCortePlan, open, procesoInicial, vigenciaPlan]);
 
   const handleChange = <K extends keyof FormularioDafpData>(field: K, value: FormularioDafpData[K]) => {
@@ -537,7 +591,7 @@ export function FormularioProcesoDafpVisual({
 
     setProcesoIdSeleccionado(proceso.id);
     // Parse unidades auditables y auto-seleccionar todas
-    const unidadesParsed = macroproceso.split(';').map(u => u.trim()).filter(Boolean);
+    const unidadesParsed = parseUnidades(macroproceso);
     setUnidadesDisponibles(unidadesParsed);
     setUnidadesSeleccionadas(new Set(unidadesParsed));
     setFormData((prev) => ({
@@ -563,7 +617,7 @@ export function FormularioProcesoDafpVisual({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!procesoIdSeleccionado) {
@@ -603,7 +657,7 @@ export function FormularioProcesoDafpVisual({
           ? 'Moderado'
           : 'Bajo',
       scoreRiesgo: ponderacionFinalDafp,
-      auditable: decisionFinal === 'INCLUIR PLAN ANUAL',
+      auditable: priorizacionAnos.length > 0,
       horasEstimadas: calcHorasEstimadas(nivelCriticidadDafp, cicloRotacionDafp),
       procesoEspecial: procesoEspecialActivo,
       modoProcesoEspecial: modoEspecialActivo,
@@ -620,12 +674,11 @@ export function FormularioProcesoDafpVisual({
       selectorProcesoCodificado: valorProcesoSeleccionado,
     };
 
-    onSubmit(payload, procesoIdSeleccionado);
-
-    toast.success(mode === 'create' ? 'Proceso agregado al universo auditable.' : 'Evaluación DAFP actualizada.');
+    // ✅ FIX: await onSubmit para que el guardado se complete antes del toast
+    await Promise.resolve(onSubmit(payload, procesoIdSeleccionado));
   };
 
-  if (!open) return null;
+  // if (!open) return null;
 
   const nivelBadgeClass = LEVEL_STYLES[riesgoInherenteCualitativo];
   const readonlyProcesoValue =
@@ -642,36 +695,21 @@ export function FormularioProcesoDafpVisual({
       .join(' | ');
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 16 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-        >
-          <div className="flex items-center justify-between border-b-4 border-[#F57C00] bg-gradient-to-r from-[#003DA5] to-[#2962FF] px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20">
-                <Layers className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-lg font-black leading-tight text-white">
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
+          {/* HEADER */}
+          <div className="flex items-start justify-between p-6 border-b border-gray-200">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <Layers className="w-6 h-6" style={{ color: '#003DA5' }} />
+                <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
                   {mode === 'create' ? 'Agregar Proceso' : 'Editar Proceso'}
                 </h2>
-                <p className="text-xs font-medium text-white/80">
+              </div>
+                <p className="text-sm text-gray-600">
                   Universo de Auditoría Basada en Riesgos · RE-E-GE-034
                 </p>
-              </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-2 transition-all hover:bg-white/20"
-            >
-              <X className="h-5 w-5 text-white" />
-            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -699,23 +737,86 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
                       />
                     ) : (
-                      <select
-                        value={valorProcesoSeleccionado}
-                        onChange={(e) => handleSeleccionProceso(e.target.value)}
-                        className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition-all focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20"
-                        required
-                      >
-                        <option value="">-- Seleccione un proceso del catálogo --</option>
-                        {procesosAgrupados.map((group) => (
-                          <optgroup key={group.groupLabel} label={group.groupLabel}>
-                            {group.items.map((proceso) => (
-                              <option key={proceso.id} value={proceso.encodedValue}>
-                                {proceso.codigo} · {proceso.nombre}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                      <div className="relative" ref={procesoDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setProcesoDropdownOpen(!procesoDropdownOpen)}
+                          className={`w-full rounded-lg border-2 px-3 py-2.5 text-sm text-left flex items-center justify-between transition-all ${
+                            procesoDropdownOpen ? 'border-[#2962FF] ring-2 ring-[#2962FF]/20 bg-white' : 'border-gray-300 bg-white hover:border-[#2962FF]/50'
+                          }`}
+                        >
+                          <span className="truncate pr-4 text-gray-700">
+                            {valorProcesoSeleccionado ? 
+                              (() => {
+                                const p = catalogoProcesos.find(c => c.encodedValue === valorProcesoSeleccionado);
+                                return p ? `${p.codigo} · ${p.nombre}` : '-- Seleccione un proceso del catálogo --';
+                              })()
+                              : '-- Seleccione un proceso del catálogo --'}
+                          </span>
+                          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${procesoDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {procesoDropdownOpen && (
+                          <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg flex flex-col">
+                            <div className="p-2 border-b border-gray-100 sticky top-0 bg-white rounded-t-lg">
+                              <div className="flex items-center w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-[#2962FF] focus-within:ring-1 focus-within:ring-[#2962FF] transition-all">
+                                <Search className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  placeholder="Buscar proceso, proyecto o procedimiento..."
+                                  value={procesoSearchTerm}
+                                  onChange={(e) => setProcesoSearchTerm(e.target.value)}
+                                  className="w-full bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
+                                />
+                              </div>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto p-1">
+                              {procesosAgrupados.map((group) => {
+                                const filteredItems = group.items.filter((proceso) => 
+                                  `${proceso.codigo} ${proceso.nombre}`.toLowerCase().includes(procesoSearchTerm.toLowerCase())
+                                );
+                                
+                                if (filteredItems.length === 0) return null;
+
+                                return (
+                                  <div key={group.groupLabel} className="mb-2">
+                                    <div className="px-2 py-1 text-xs font-bold text-gray-500 bg-gray-50/80 sticky top-0 backdrop-blur-sm z-10">
+                                      {group.groupLabel}
+                                    </div>
+                                    {filteredItems.map((proceso) => (
+                                      <button
+                                        key={proceso.id}
+                                        type="button"
+                                        className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-start gap-2 ${
+                                          valorProcesoSeleccionado === proceso.encodedValue 
+                                            ? 'bg-blue-50 text-blue-700 font-medium' 
+                                            : 'text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                        onClick={() => {
+                                          handleSeleccionProceso(proceso.encodedValue);
+                                          setProcesoDropdownOpen(false);
+                                          setProcesoSearchTerm('');
+                                        }}
+                                      >
+                                        <span className="font-mono text-xs text-gray-500 mt-0.5">{proceso.codigo}</span>
+                                        <span>{proceso.nombre}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                );
+                              })}
+                              {procesosAgrupados.every(group => 
+                                group.items.filter(p => `${p.codigo} ${p.nombre}`.toLowerCase().includes(procesoSearchTerm.toLowerCase())).length === 0
+                              ) && (
+                                <div className="p-4 text-center text-sm text-gray-500">
+                                  No se encontraron resultados para "{procesoSearchTerm}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                     <p className="mt-1.5 text-[11px] text-gray-500">
                       Valor codificado: <code>{valorProcesoSeleccionado || 'código | nombre | tipo | dependencia | macroproceso'}</code>
@@ -823,10 +924,10 @@ export function FormularioProcesoDafpVisual({
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Vigencia <span className="text-red-500">*</span></label>
                       <input
                         type="number"
+                        readOnly
                         value={formData.vigencia}
-                        onChange={(e) => handleChange('vigencia', Number(e.target.value) || new Date().getFullYear())}
-                        className="w-full rounded-lg border-2 border-gray-300 px-3 py-2.5 text-center text-sm font-bold outline-none transition-all focus:border-[#2962FF]"
-                        required
+                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-center text-sm font-bold outline-none"
+                        title="La vigencia se hereda automáticamente del Plan Anual seleccionado"
                       />
                     </div>
                     <div>
@@ -1056,7 +1157,7 @@ export function FormularioProcesoDafpVisual({
                     RI×0.4 + Tiempo×0.1 + Alta Dirección×0.1 + Objetivos×0.1 + Hallazgos×0.3
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {riesgoInherenteCuantitativo || 0}×0.4 + {formData.tiempoUltimaAuditoria || 0}×0.1 + {formData.temasAltaDireccion || 0}×0.1 + {formData.objetivosEstrategicos || 0}×0.1 + {formData.hallazgosAnteriores || 0}×0.3
+                    {riesgoInherenteCuantitativo || 0}×0.4 + {formData.tiempoUltimaAuditoria || 0}×0.1 + {formData.temasAltaDireccion || 0}×0.1 + {formData.objetivosEstrategicos || 0}×0.1 + {formData.hallazgosAnteriores || 0}×0.3 = <span className="font-bold text-[#003DA5]">{criteriosCompletos ? ponderacionFinalDafp.toFixed(1) : '—'}</span>
                   </div>
                 </div>
 
@@ -1064,7 +1165,7 @@ export function FormularioProcesoDafpVisual({
                   <div className="rounded-xl border-2 border-green-200 bg-white p-4">
                     <div className="text-xs font-bold text-gray-500">Ponderación</div>
                     <div className="mt-1 text-2xl font-black text-[#003DA5]">
-                      {criteriosCompletos ? ponderacionFinalDafp.toFixed(2) : '—'}
+                      {criteriosCompletos ? ponderacionFinalDafp.toFixed(1) : '—'}
                     </div>
                   </div>
                   <div className="rounded-xl border-2 border-green-200 bg-white p-4">
@@ -1098,8 +1199,8 @@ export function FormularioProcesoDafpVisual({
                   </div>
                   <div className="rounded-xl border-2 border-green-200 bg-white p-4">
                     <div className="text-xs font-bold text-gray-500">Decisión</div>
-                    <div className={`mt-1 text-sm font-black ${decisionFinal === 'INCLUIR PLAN ANUAL' ? 'text-emerald-700' : 'text-orange-700'}`}>
-                      {criteriosCompletos ? decisionFinal : 'Pendiente'}
+                    <div className={`mt-1 text-sm font-black ${decisionFinal === 'INCLUIR_PLAN_ANUAL' ? 'text-emerald-700' : 'text-orange-700'}`}>
+                      {criteriosCompletos ? (decisionFinal === 'INCLUIR_PLAN_ANUAL' ? 'INCLUIR EN PLAN ANUAL' : 'AUDITORÍA POSTERIOR') : 'Pendiente'}
                     </div>
                   </div>
                 </div>
@@ -1158,8 +1259,7 @@ export function FormularioProcesoDafpVisual({
               </div>
             </div>
           </form>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        </DialogContent>
+      </Dialog>
   );
 }

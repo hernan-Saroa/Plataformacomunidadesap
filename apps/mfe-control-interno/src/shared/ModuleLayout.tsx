@@ -40,6 +40,9 @@ interface ModuleLayoutProps {
   
   // Opciones
   initialSidebarCollapsed?: boolean;
+
+  // ✅ Acciones adicionales en el header del área de contenido
+  headerActions?: ReactNode;
 }
 
 export function ModuleLayout({
@@ -51,7 +54,8 @@ export function ModuleLayout({
   activeSection,
   onSectionChange,
   children,
-  initialSidebarCollapsed = false
+  initialSidebarCollapsed = false,
+  headerActions,
 }: ModuleLayoutProps) {
   // Detectar tamaño de pantalla
   const [windowWidth, setWindowWidth] = useState(
@@ -64,21 +68,17 @@ export function ModuleLayout({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const isMobile = windowWidth < 768;
-  const isSmallTablet = windowWidth >= 768 && windowWidth < 1024;
+  // Alinear con el shell: sidebar del shell se oculta <1024px,
+  // por lo tanto el sub-sidebar del módulo también debe ocultarse <1024px.
+  const isMobile = windowWidth < 1024;
   
-  // Auto-colapsar en pantallas pequeñas (tablets)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    initialSidebarCollapsed || isSmallTablet
-  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Auto-colapsar cuando la pantalla es pequeña
+  // Sincronizar el estado colapsado cuando cambia la propiedad inicial
   useEffect(() => {
-    if (isSmallTablet && !sidebarCollapsed) {
-      setSidebarCollapsed(true);
-    }
-  }, [isSmallTablet]);
+    setSidebarCollapsed(initialSidebarCollapsed);
+  }, [initialSidebarCollapsed]);
 
   // Cerrar menú mobile al cambiar de sección
   const handleSectionChange = (section: string) => {
@@ -221,10 +221,10 @@ export function ModuleLayout({
       <motion.aside
         initial={false}
         animate={{ 
-          width: sidebarCollapsed ? 64 : (isSmallTablet ? 200 : 280)
+          width: sidebarCollapsed ? 64 : 280
         }}
         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-        className="hidden md:flex flex-shrink-0 border-r-2 flex-col relative h-screen"
+        className="hidden lg:flex flex-shrink-0 border-r-2 flex-col relative h-screen"
         style={{ 
           background: '#FFFFFF',
           borderColor: '#E5E7EB'
@@ -397,25 +397,33 @@ export function ModuleLayout({
       </motion.aside>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-1 flex flex-col w-full overflow-y-auto">
-        {/* Header CON BOTÓN HAMBURGUESA MOBILE */}
-        {isMobile && (
-          <div className="p-3 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-            <Button
-              onClick={() => setMobileMenuOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="flex-shrink-0 -ml-2"
-              style={{ color: moduleColor }}
-            >
-              <Menu className="w-6 h-6" />
-            </Button>
+      <main className="flex-1 flex flex-col w-full overflow-hidden">
+        {/* Header CON BOTÓN HAMBURGUESA MOBILE + ACCIONES (FIJO) */}
+        {(isMobile || headerActions) && (
+          <div className="px-4 py-3 border-b-2 flex items-center justify-between flex-shrink-0" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+            {isMobile ? (
+              <Button
+                onClick={() => setMobileMenuOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="flex-shrink-0 -ml-2"
+                style={{ color: moduleColor }}
+              >
+                <Menu className="w-6 h-6" />
+              </Button>
+            ) : <div />}
+            
+            {headerActions && (
+              <div className="flex items-center gap-3">
+                {headerActions}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Área de Contenido con Scroll - PADDING REDUCIDO */}
-        <div className="flex-1">
-          <div className="p-2">
+        {/* Área de Contenido con Scroll */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}

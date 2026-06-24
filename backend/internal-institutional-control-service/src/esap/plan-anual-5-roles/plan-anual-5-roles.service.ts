@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { existsSync, mkdirSync, unlinkSync, renameSync } from 'fs';
+import { extname, resolve as pathResolve } from 'path';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
 import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual, TipoEventoPlanAnual } from './entities/historial-plan-anual.entity';
+import { PlanAnualWizardBorrador } from './entities/plan-anual-wizard-borrador.entity';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
+import { UpdateRolPlanAnual5Dto } from './dto/update-rol-plan-anual-5.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
@@ -29,6 +33,15 @@ export class PlanAnual5RolesService {
     'en-ejecucion',
     'completado',
   ]);
+
+  /** YYYY-MM-DD → Date en UTC (evita corrimiento de día por UTC al guardar con TypeORM). */
+  private fechaSoloDia(valor?: string): Date | undefined {
+    if (!valor?.trim()) return undefined;
+    const base = valor.trim().split('T')[0];
+    const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return undefined;
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  }
 
   private normalizarEstadoPlan(estado?: string): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' {
     const estadoNormalizado = (estado || 'borrador').trim().toLowerCase().replace(/_/g, '-');
@@ -58,26 +71,57 @@ export class PlanAnual5RolesService {
     private readonly adjuntoRepository: Repository<AdjuntoActividadPlanAnual5>,
     @InjectRepository(HistorialPlanAnual)
     private readonly historialRepository: Repository<HistorialPlanAnual>,
+    @InjectRepository(PlanAnualWizardBorrador)
+    private readonly wizardBorradorRepository: Repository<PlanAnualWizardBorrador>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
   ) {}
 
-  async findAll(year?: number): Promise<PlanAnual5Roles[]> {
+  async findAll(year?: number, light = true): Promise<PlanAnual5Roles[]> {
     const query = this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
-      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
 
+    if (!light) {
+      query.leftJoinAndSelect('actividades.adjuntos', 'adjuntos');
+    }
+
     if (year) {
       query.andWhere('plan.año = :year', { year });
     }
 
-    return query.getMany();
+    const plans = await query.getMany();
+
+    // Enrich with responsable_email from auth.personas
+    const responsableIds = [...new Set(plans.map((p) => p.responsable_id).filter(Boolean))];
+    if (responsableIds.length > 0) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT id_person, dir_email FROM auth.personas WHERE id_person = ANY($1::uuid[])`,
+          [responsableIds]
+        );
+        const emailMap = new Map<string, string>();
+        for (const row of rows) {
+          if (row.id_person && row.dir_email) {
+            emailMap.set(String(row.id_person), String(row.dir_email));
+          }
+        }
+        for (const plan of plans) {
+          if (plan.responsable_id && emailMap.has(String(plan.responsable_id))) {
+            (plan as any).responsable_email = emailMap.get(String(plan.responsable_id));
+          }
+        }
+      } catch (err) {
+        console.error('[PlanAnual5RolesService] Error enriching findAll with responsable_email:', err);
+      }
+    }
+
+    return plans;
   }
 
   async findOne(id: string): Promise<PlanAnual5Roles> {
@@ -96,11 +140,26 @@ export class PlanAnual5RolesService {
       throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
     }
 
+    // Enrich with responsable_email
+    if (plan.responsable_id) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT dir_email FROM auth.personas WHERE id_person = $1::uuid`,
+          [plan.responsable_id]
+        );
+        if (rows && rows.length > 0 && rows[0].dir_email) {
+          (plan as any).responsable_email = rows[0].dir_email;
+        }
+      } catch (err) {
+        console.error('[PlanAnual5RolesService] Error enriching findOne with responsable_email:', err);
+      }
+    }
+
     return plan;
   }
 
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
-    return this.planRepository
+    const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
@@ -111,13 +170,34 @@ export class PlanAnual5RolesService {
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
+
+    if (plan && plan.responsable_id) {
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT dir_email FROM auth.personas WHERE id_person = $1::uuid`,
+          [plan.responsable_id]
+        );
+        if (rows && rows.length > 0 && rows[0].dir_email) {
+          (plan as any).responsable_email = rows[0].dir_email;
+        }
+      } catch (err) {
+        console.error('[PlanAnual5RolesService] Error enriching findByYear with responsable_email:', err);
+      }
+    }
+
+    return plan;
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
     // Verificar si ya existe un plan para la misma vigencia
     const existing = await this.findByYear(createDto.año);
     if (existing) {
-      throw new BadRequestException(`Ya existe un plan anual activo para la vigencia ${createDto.año}.`);
+      if (existing.estado === 'borrador') {
+        // Eliminar el borrador existente para permitir la creación del nuevo plan
+        await this.planRepository.remove(existing);
+      } else {
+        throw new BadRequestException(`Ya existe un plan anual activo para la vigencia ${createDto.año}.`);
+      }
     }
 
     // Crear el plan
@@ -125,8 +205,8 @@ export class PlanAnual5RolesService {
       año: createDto.año,
       responsable: createDto.responsable,
       responsable_id: createDto.responsable_id,
-      fecha_inicio: createDto.fecha_inicio ? new Date(createDto.fecha_inicio) : undefined,
-      fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
+      fecha_inicio: this.fechaSoloDia(createDto.fecha_inicio),
+      fecha_fin: this.fechaSoloDia(createDto.fecha_fin),
       estado: this.normalizarEstadoPlan(createDto.estado),
       fecha_creacion: new Date(),
       equipo_aprobacion: createDto.equipo_aprobacion || [],
@@ -138,14 +218,11 @@ export class PlanAnual5RolesService {
     // Obtener roles del template desde la BD (NO desde memoria)
     const rolesTemplate = await this.getRolesTemplate();
 
-    // Verificar que tenemos exactamente 5 roles
-    if (rolesTemplate.length !== 5) {
-      throw new BadRequestException(
-        `Se esperaban 5 roles del template, pero se encontraron ${rolesTemplate.length}. Verifique la tabla rol_decreto_648_template.`
-      );
+    if (rolesTemplate.length === 0) {
+      console.warn(`[PlanAnual5Roles] No se encontraron roles en el template para inicializar el plan.`);
     }
 
-    // Crear los 5 roles basados en el template de la BD (ya vienen ordenados por rol_numero)
+    // Crear los roles basados en el template de la BD (ya vienen ordenados por rol_numero)
     const roles = rolesTemplate.map((rolTemplate) =>
       this.rolRepository.create({
         planId: savedPlan.id,
@@ -205,6 +282,11 @@ export class PlanAnual5RolesService {
       plan.responsable = updateDto.responsable;
     }
 
+    if (updateDto.responsable_id !== undefined && updateDto.responsable_id !== plan.responsable_id) {
+      cambios.push({ campo: 'responsable_id', valorAnterior: plan.responsable_id || '', valorNuevo: updateDto.responsable_id || '' });
+      plan.responsable_id = updateDto.responsable_id;
+    }
+
     if (updateDto.estado !== undefined) {
       const estadoNormalizado = this.normalizarEstadoPlan(updateDto.estado);
       if (estadoNormalizado !== plan.estado) {
@@ -227,6 +309,12 @@ export class PlanAnual5RolesService {
       plan.orden_aprobacion = updateDto.orden_aprobacion;
     }
 
+    // Persistir firma de activación del Jefe OCI cuando se activa el plan
+    if ((updateDto as any).firma_activacion !== undefined) {
+      plan.firma_activacion = (updateDto as any).firma_activacion;
+      cambios.push({ campo: 'firma_activacion', valorAnterior: 'sin firma', valorNuevo: 'firmado' });
+    }
+
     // Manejo de fecha_inicio y fecha_fin del plan
     const oldFechaInicio = plan.fecha_inicio 
       ? (plan.fecha_inicio instanceof Date ? plan.fecha_inicio.toISOString().split('T')[0] : String(plan.fecha_inicio))
@@ -239,14 +327,14 @@ export class PlanAnual5RolesService {
       const newVal = updateDto.fecha_inicio;
       if (newVal !== oldFechaInicio) {
         cambios.push({ campo: 'fecha_inicio', valorAnterior: oldFechaInicio || '', valorNuevo: newVal });
-        plan.fecha_inicio = new Date(newVal);
+        plan.fecha_inicio = this.fechaSoloDia(newVal);
       }
     }
     if (updateDto.fecha_fin !== undefined) {
       const newVal = updateDto.fecha_fin;
       if (newVal !== oldFechaFin) {
         cambios.push({ campo: 'fecha_fin', valorAnterior: oldFechaFin || '', valorNuevo: newVal });
-        plan.fecha_fin = new Date(newVal);
+        plan.fecha_fin = this.fechaSoloDia(newVal);
       }
     }
 
@@ -816,7 +904,7 @@ export class PlanAnual5RolesService {
       TipoEventoPlanAnual.CAMBIO_ESTADO,
       'Eliminación de Plan Anual',
       `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
-      usuarioId || 1, 
+      usuarioId,
       JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
       'completado'
     );
@@ -827,6 +915,135 @@ export class PlanAnual5RolesService {
     // Ordenar roles por rol_numero y devolver en formato esperado
     const rolesOrdenados = (plan.roles || []).sort((a, b) => a.rol_numero - b.rol_numero);
     return { roles: rolesOrdenados };
+  }
+
+  /**
+   * Actualiza el responsable del rol (independiente del responsable de cada actividad).
+   */
+  async updateRol(
+    planId: string,
+    rolId: string,
+    updateDto: UpdateRolPlanAnual5Dto,
+    usuarioId?: string,
+  ): Promise<RolPlanAnual5> {
+    const rol = await this.rolRepository.findOne({
+      where: { id: rolId, planId },
+    });
+    if (!rol) {
+      throw new NotFoundException(`Rol ${rolId} no encontrado en el plan ${planId}`);
+    }
+
+    const cambios: Array<{ campo: string; valorAnterior: string; valorNuevo: string }> = [];
+
+    if (updateDto.responsable !== undefined && updateDto.responsable !== rol.responsable) {
+      cambios.push({
+        campo: 'responsable_rol',
+        valorAnterior: rol.responsable || '',
+        valorNuevo: updateDto.responsable,
+      });
+      rol.responsable = updateDto.responsable;
+    }
+
+    if (updateDto.responsable_id !== undefined && updateDto.responsable_id !== rol.responsable_id) {
+      cambios.push({
+        campo: 'responsable_id_rol',
+        valorAnterior: rol.responsable_id || '',
+        valorNuevo: updateDto.responsable_id || '',
+      });
+      rol.responsable_id = updateDto.responsable_id;
+    }
+
+    if (updateDto.responsables !== undefined) {
+      rol.responsables = updateDto.responsables;
+      if (!rol.responsable && updateDto.responsables.length > 0) {
+        rol.responsable = updateDto.responsables[0].nombre;
+        rol.responsable_id = updateDto.responsables[0].id || rol.responsable_id;
+      }
+    }
+
+    if (updateDto.activo !== undefined && updateDto.activo !== rol.activo) {
+      cambios.push({
+        campo: 'activo',
+        valorAnterior: String(rol.activo),
+        valorNuevo: String(updateDto.activo),
+      });
+      rol.activo = updateDto.activo;
+    }
+
+    if (updateDto.nombre !== undefined && updateDto.nombre !== rol.nombre) {
+      cambios.push({
+        campo: 'nombre',
+        valorAnterior: rol.nombre,
+        valorNuevo: updateDto.nombre,
+      });
+      rol.nombre = updateDto.nombre;
+    }
+
+    if (updateDto.descripcion !== undefined && updateDto.descripcion !== rol.descripcion) {
+      cambios.push({
+        campo: 'descripcion',
+        valorAnterior: rol.descripcion,
+        valorNuevo: updateDto.descripcion,
+      });
+      rol.descripcion = updateDto.descripcion;
+    }
+
+    if (updateDto.color !== undefined && updateDto.color !== rol.color) {
+      cambios.push({
+        campo: 'color',
+        valorAnterior: rol.color,
+        valorNuevo: updateDto.color,
+      });
+      rol.color = updateDto.color;
+    }
+
+    const saved = await this.rolRepository.save(rol);
+
+    if (cambios.length > 0) {
+      await this.registrarHistorial(
+        planId,
+        TipoEventoPlanAnual.ACTUALIZACION,
+        'Actualización responsable de rol',
+        `Rol ${rol.rol_numero}: responsable actualizado`,
+        usuarioId,
+        undefined,
+        undefined,
+        cambios,
+      );
+    }
+
+    return saved;
+  }
+
+  async addRolAdicional(
+    planId: string,
+    createRolDto: { nombre: string; descripcion: string; color: string; numero: number },
+    usuarioId?: string,
+  ): Promise<RolPlanAnual5> {
+    const plan = await this.findOne(planId);
+    if (!plan) throw new NotFoundException(`Plan ${planId} no encontrado`);
+
+    const rol = this.rolRepository.create({
+      planId: plan.id,
+      rol_numero: createRolDto.numero,
+      nombre: createRolDto.nombre,
+      descripcion: createRolDto.descripcion,
+      color: createRolDto.color,
+      activo: true,
+      responsables: []
+    });
+
+    const saved = await this.rolRepository.save(rol);
+
+    await this.registrarHistorial(
+      planId,
+      TipoEventoPlanAnual.ACTUALIZACION,
+      'Rol adicional creado',
+      `Rol ${saved.rol_numero}: ${saved.nombre} agregado al plan`,
+      usuarioId,
+    );
+
+    return saved;
   }
 
   private async recalcularRol(rolId: string): Promise<void> {
@@ -851,7 +1068,7 @@ export class PlanAnual5RolesService {
 
   private async recalcularPlan(planId: string): Promise<void> {
     const roles = await this.rolRepository.find({
-      where: { planId },
+      where: { planId, activo: true },
       relations: ['actividades'],
     });
 
@@ -879,6 +1096,69 @@ export class PlanAnual5RolesService {
     });
   }
 
+  private readonly uuidRegexHistorial =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /**
+   * Resuelve auth.personas.id_person para historial_plan_anual.usuario_id (tipo UUID).
+   * Acepta JWT sub (auth.user.id_user), id_person directo o id_tercero numérico legacy.
+   */
+  private async resolverIdPersonParaHistorial(
+    usuarioId?: string | number,
+  ): Promise<string | null> {
+    if (usuarioId == null || usuarioId === '' || usuarioId === 'system') {
+      return null;
+    }
+
+    const raw = String(usuarioId).trim();
+    if (!this.uuidRegexHistorial.test(raw)) {
+      const num = parseInt(raw, 10);
+      if (Number.isNaN(num) || String(num) !== raw) {
+        return null;
+      }
+      try {
+        const rows = await this.dataSource.query(
+          `SELECT id_person::text AS id_person
+           FROM auth.personas
+           WHERE id_tercero::text = $1
+           LIMIT 1`,
+          [raw],
+        );
+        return rows?.[0]?.id_person ? String(rows[0].id_person) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const porUser = await this.dataSource.query(
+        `SELECT u.id_person::text AS id_person
+         FROM auth."user" u
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [raw],
+      );
+      if (porUser?.[0]?.id_person) {
+        return String(porUser[0].id_person);
+      }
+
+      const porPersona = await this.dataSource.query(
+        `SELECT id_person::text AS id_person
+         FROM auth.personas
+         WHERE id_person::text = $1
+         LIMIT 1`,
+        [raw],
+      );
+      if (porPersona?.[0]?.id_person) {
+        return String(porPersona[0].id_person);
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   /**
    * Registra un evento en el historial del plan anual
    */
@@ -902,25 +1182,7 @@ export class PlanAnual5RolesService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      // Convertir usuarioId a número (bigint)
-      // La columna usuario_id es BIGINT NOT NULL y referencia auth.personas(id_tercero)
-      // Si viene como string (incluyendo 'system'), convertir a número o usar 1 como valor por defecto
-      // Si viene como número, usarlo directamente
-      if (typeof usuarioId === 'number') {
-        historial.usuarioId = usuarioId;
-      } else if (typeof usuarioId === 'string') {
-        // Intentar convertir string a número si es posible
-        // Si es 'system' o cualquier string no numérico, usar 1 como valor por defecto
-        const usuarioIdNum = parseInt(usuarioId, 10);
-        if (isNaN(usuarioIdNum) || usuarioId === 'system' || usuarioId.trim() === '') {
-          historial.usuarioId = 1; // Usar 1 como valor por defecto para sistema
-        } else {
-          historial.usuarioId = usuarioIdNum;
-        }
-      } else {
-        // Si no hay usuarioId, usar 1 como valor por defecto (sistema)
-        historial.usuarioId = 1;
-      }
+      historial.usuarioId = await this.resolverIdPersonParaHistorial(usuarioId);
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.estadoAnterior = estadoAnterior;
@@ -1097,6 +1359,256 @@ export class PlanAnual5RolesService {
         console.error(`[notificarCambioEstadoPlan] Error al crear notificación para ${usuarioId}:`, error);
       }
     }
+  }
+
+  /**
+   * Resuelve auth.user.id_user del responsable (mismo identificador que usa el Shell en campanita).
+   */
+  private async resolverUsuarioIdResponsablePlan(
+    plan: PlanAnual5Roles,
+    emailHint?: string,
+  ): Promise<string | null> {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const idPersonCandidatos = new Set<string>();
+    const emails = new Set<string>();
+
+    const agregarEmail = (value?: string | null) => {
+      const e = (value || '').trim().toLowerCase();
+      if (e && e.includes('@')) {
+        emails.add(e);
+      }
+    };
+
+    const agregarIdPerson = (value?: string | null) => {
+      const v = (value || '').trim();
+      if (uuidRegex.test(v)) {
+        idPersonCandidatos.add(v);
+      }
+    };
+
+    agregarIdPerson(plan.responsable_id);
+
+    if (plan.responsable_id) {
+      try {
+        const porConfig = await this.dataSource.query(
+          `SELECT c.id_tercero::text AS id_tercero, p.dir_email
+           FROM control_interno.configuracion_profesionales_ocig c
+           LEFT JOIN auth.personas p ON p.id_person::text = c.id_tercero::text
+           WHERE c.id::text = $1 OR c.id_tercero::text = $1
+           LIMIT 1`,
+          [String(plan.responsable_id)],
+        );
+        if (porConfig?.length) {
+          agregarIdPerson(porConfig[0].id_tercero);
+          agregarEmail(porConfig[0].dir_email);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error config OCI:',
+          error,
+        );
+      }
+    }
+
+    if (plan.responsable) {
+      const nombre = plan.responsable.trim();
+      try {
+        const porNombre = await this.dataSource.query(
+          `SELECT p.id_person::text AS id_person, p.dir_email
+           FROM auth.personas p
+           WHERE p.nom_largo ILIKE $1
+              OR CONCAT(p.nom_tercero, ' ', p.pri_apellido) ILIKE $1
+              OR CONCAT(p.pri_apellido, ' ', p.nom_tercero) ILIKE $1
+           ORDER BY
+             CASE WHEN p.nom_largo ILIKE $2 THEN 0 ELSE 1 END
+           LIMIT 5`,
+          [`%${nombre}%`, nombre],
+        );
+        for (const row of porNombre || []) {
+          agregarIdPerson(row.id_person);
+          agregarEmail(row.dir_email);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error por nombre:',
+          error,
+        );
+      }
+    }
+
+    agregarEmail(emailHint);
+
+    for (const idPerson of idPersonCandidatos) {
+      try {
+        const porPersona = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           WHERE u.id_person::text = $1 AND u.is_active = true
+           LIMIT 1`,
+          [idPerson],
+        );
+        if (porPersona?.[0]?.id_user) {
+          return String(porPersona[0].id_user);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error id_person:',
+          error,
+        );
+      }
+    }
+
+    for (const email of emails) {
+      try {
+        const porEmail = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE (
+             LOWER(TRIM(u.username)) = $1
+             OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = $1
+           )
+           AND u.is_active = true
+           LIMIT 1`,
+          [email],
+        );
+        if (porEmail?.[0]?.id_user) {
+          return String(porEmail[0].id_user);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error email:',
+          error,
+        );
+      }
+    }
+
+    if (plan.responsable_id) {
+      try {
+        const legacy = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           WHERE u.id_user::text = $1
+              OR u.id_tercero::text = $1
+           LIMIT 1`,
+          [String(plan.responsable_id)],
+        );
+        if (legacy?.[0]?.id_user) {
+          return String(legacy[0].id_user);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error legacy id:',
+          error,
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Un editor solicita al responsable del plan que revise y envíe al comité PAI.
+   */
+  async notificarResponsableEnvioRevision(
+    planId: string,
+    usuarioSolicitanteId?: string,
+    solicitanteNombre?: string,
+    mensajeAdicional?: string,
+    responsableEmail?: string,
+  ): Promise<{
+    ok: boolean;
+    destinatarioNombre: string;
+    porcentajeAsignacion: number;
+    listoParaEnvio: boolean;
+  }> {
+    const plan = await this.findOne(planId);
+    const estado = (plan.estado || '').toLowerCase();
+
+    if (!['borrador', 'devuelto'].includes(estado)) {
+      throw new BadRequestException(
+        'Solo se puede notificar al responsable cuando el plan está en borrador o devuelto.',
+      );
+    }
+
+    const usuarioId = await this.resolverUsuarioIdResponsablePlan(
+      plan,
+      responsableEmail,
+    );
+    if (!usuarioId) {
+      throw new BadRequestException(
+        `No se encontró un usuario activo para el responsable "${plan.responsable || 'sin nombre'}". ` +
+          'Verifique que tenga cuenta en el sistema, email en personas y que responsable_id sea id_person (no el UUID de configuración OCI).',
+      );
+    }
+
+    const actividades = await this.actividadRepository.find({
+      where: { planId, activo: true },
+    });
+    const total = actividades.length;
+    const asignadas = actividades.filter((a) => {
+      const resp = (a.responsable || '').trim();
+      const responsablesJson = Array.isArray(a.responsables) ? a.responsables : [];
+      return resp.length > 0 || responsablesJson.length > 0;
+    }).length;
+    const porcentajeAsignacion =
+      total > 0 ? Math.round((asignadas / total) * 100) : 0;
+    const comiteConfigurado = (plan.equipo_aprobacion || []).length >= 1;
+    const listoParaEnvio = porcentajeAsignacion === 100 && comiteConfigurado;
+
+    const solicitante = (solicitanteNombre || 'Un colaborador').trim();
+    const extra = (mensajeAdicional || '').trim();
+    const estadoLabel = estado === 'devuelto' ? 'devuelto con observaciones' : 'borrador';
+
+    let mensaje = `${solicitante} indica que el Plan Anual ${plan.año} está listo para tu revisión. `;
+    mensaje += `Estado: ${estadoLabel}. Asignación de responsables: ${porcentajeAsignacion}%`;
+    if (!comiteConfigurado) {
+      mensaje += '. Falta configurar al menos un miembro del comité de aprobación';
+    } else if (!listoParaEnvio) {
+      mensaje += '. Revisa actividades pendientes antes de enviar al comité';
+    } else {
+      mensaje += '. Puedes enviarlo al comité PAI desde la pestaña Aprobación';
+    }
+    if (extra) {
+      mensaje += `. Nota: ${extra}`;
+    }
+
+    await this.notificacionesService.create({
+      usuarioId,
+      tipoNotificacion: TipoNotificacion.OTRO,
+      titulo: `Plan Anual ${plan.año} — pendiente de tu envío al comité`,
+      mensaje,
+      prioridad: PrioridadNotificacion.ALTA,
+      canal: CanalNotificacion.SISTEMA,
+      metadata: {
+        planAnualId: plan.id,
+        año: plan.año,
+        accion: 'enviar_comite_pai',
+        abrirSeccion: 'aprobar',
+        solicitante,
+        porcentajeAsignacion,
+        listoParaEnvio,
+      },
+      accionUrl: `/control-interno/plan-anual?seccion=aprobar&vigencia=${plan.año}`,
+    });
+
+    await this.registrarHistorial(
+      planId,
+      TipoEventoPlanAnual.ACTUALIZACION,
+      'Notificación al responsable',
+      `${solicitante} solicitó al responsable (${plan.responsable || 'sin nombre'}) revisar y enviar el plan al comité PAI.`,
+      usuarioSolicitanteId,
+      plan.estado,
+      plan.estado,
+    );
+
+    return {
+      ok: true,
+      destinatarioNombre: plan.responsable || 'Responsable del plan',
+      porcentajeAsignacion,
+      listoParaEnvio,
+    };
   }
 
   /**
@@ -1345,10 +1857,106 @@ export class PlanAnual5RolesService {
     return this.adjuntoRepository.save(adjunto);
   }
 
+  private static readonly EXTENSIONES_ADJUNTO_PERMITIDAS = new Set([
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.zip',
+  ]);
+
+  async uploadAdjuntoArchivo(
+    actividadId: string,
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      path: string;
+    },
+    meta?: { tareaId?: string; cargadoPor?: string },
+  ): Promise<{
+    id: string;
+    nombre: string;
+    tipo: string;
+    tamanio: number;
+    fecha: string;
+    urlDownload: string;
+    urlPreview: string;
+    tareaId?: string;
+  }> {
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    const ext = extname(file.originalname || '').toLowerCase();
+    if (!PlanAnual5RolesService.EXTENSIONES_ADJUNTO_PERMITIDAS.has(ext)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido (${ext || 'sin extensión'}). Use PDF, Word, Excel, imágenes o ZIP.`,
+      );
+    }
+
+    const uploadBase = process.env.PLAN_ANUAL_UPLOAD_PATH
+      || process.env.UPLOAD_PATH
+      || './uploads/plan-anual';
+    const dir = `${uploadBase}/${actividadId}`.replace(/\\/g, '/');
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const storedRelative = `${actividadId}/${randomName}${ext}`;
+    const rutaFinal = `${uploadBase}/${storedRelative}`.replace(/\\/g, '/');
+
+    renameSync(file.path, rutaFinal);
+
+    const adjunto = this.adjuntoRepository.create({
+      actividadId,
+      nombre: file.originalname,
+      tipo: file.mimetype,
+      tamanio: file.size,
+      rutaArchivo: rutaFinal,
+      cargadoPor: meta?.cargadoPor,
+      url: `/plan-anual-5-roles/adjuntos/{id}/download`,
+    });
+    const saved = await this.adjuntoRepository.save(adjunto);
+    saved.url = `/plan-anual-5-roles/adjuntos/${saved.id}/download`;
+    await this.adjuntoRepository.save(saved);
+
+    return {
+      id: saved.id,
+      nombre: saved.nombre,
+      tipo: saved.tipo,
+      tamanio: Number(saved.tamanio) || file.size,
+      fecha: (saved.fechaCarga || new Date()).toISOString(),
+      urlDownload: `/plan-anual-5-roles/adjuntos/${saved.id}/download`,
+      urlPreview: `/plan-anual-5-roles/adjuntos/${saved.id}/preview`,
+      tareaId: meta?.tareaId,
+    };
+  }
+
+  async obtenerAdjuntoParaDescarga(adjuntoId: string): Promise<AdjuntoActividadPlanAnual5> {
+    const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
+    if (!adjunto) {
+      throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+    if (!adjunto.rutaArchivo || !existsSync(adjunto.rutaArchivo)) {
+      throw new BadRequestException('El archivo no existe en el servidor');
+    }
+    return adjunto;
+  }
+
   async deleteAdjunto(adjuntoId: string): Promise<void> {
     const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
     if (!adjunto) {
       throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+
+    if (adjunto.rutaArchivo && existsSync(adjunto.rutaArchivo)) {
+      try {
+        unlinkSync(adjunto.rutaArchivo);
+      } catch {
+        // No bloquear borrado en BD si el archivo ya no está en disco
+      }
     }
 
     await this.adjuntoRepository.remove(adjunto);
@@ -1700,6 +2308,49 @@ export class PlanAnual5RolesService {
         porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento
       }
     };
+  }
+
+  // —— Borrador del wizard (Nuevo plan) por usuario ——
+  async getWizardBorrador(userId: string | undefined): Promise<{ payload: Record<string, unknown> | null; updatedAt: string | null }> {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const row = await this.wizardBorradorRepository.findOne({ where: { usuarioId: userId } });
+    return {
+      payload: (row?.payload as Record<string, unknown>) ?? null,
+      updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
+    };
+  }
+
+  async saveWizardBorrador(
+    userId: string | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<{ ok: true; savedAt: string }> {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const enriched: Record<string, unknown> = {
+      ...payload,
+      savedAt: new Date().toISOString(),
+    };
+    if (typeof enriched.timestamp !== 'number') {
+      enriched.timestamp = Date.now();
+    }
+    let row = await this.wizardBorradorRepository.findOne({ where: { usuarioId: userId } });
+    if (!row) {
+      row = this.wizardBorradorRepository.create({ usuarioId: userId, payload: enriched });
+    } else {
+      row.payload = enriched;
+    }
+    await this.wizardBorradorRepository.save(row);
+    return { ok: true, savedAt: enriched.savedAt as string };
+  }
+
+  async deleteWizardBorrador(userId: string | undefined): Promise<void> {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    await this.wizardBorradorRepository.delete({ usuarioId: userId });
   }
 }
 

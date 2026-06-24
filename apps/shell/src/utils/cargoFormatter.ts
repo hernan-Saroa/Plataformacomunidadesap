@@ -101,7 +101,7 @@ export const formatCargoDisplay = ({
   codGrade,
   templateType,
   includeCodeLabel = false,
-  codeLabel = 'Codigo',
+  codeLabel = 'Código',
   observations,
   encargoFlag,
 }: FormatCargoDisplayOptions): string => {
@@ -120,14 +120,14 @@ export const formatCargoDisplay = ({
   let inferredCode = '';
   let inferredGrade = '';
 
-  // Caso compacto administrativo: "... 202816" -> codigo 2028, grado 16.
+  // Caso compacto administrativo: "... 202816" -> código 2028, grado 16.
   const compactAdminMatch = baseText.match(/^(.*?)(?:\s+)?(\d{4})(\d{2})$/);
   if (compactAdminMatch && /[A-Za-z\u00C0-\u00FF]/.test(compactAdminMatch[1] || '')) {
     inferredCode = compactAdminMatch[2];
     inferredGrade = compactAdminMatch[3];
     baseText = normalizarEspacios(compactAdminMatch[1]);
   } else {
-    // Caso docente/administrativo con codigo al final: "... Codigo 40640".
+    // Caso docente/administrativo con código al final: "... Código 40640".
     const trailingCodeMatch = baseText.match(
       /^(.*?)(?:\s+)?(?:c[oó]digo\s+)?(\d{4,5})$/i,
     );

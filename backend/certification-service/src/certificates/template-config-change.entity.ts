@@ -40,7 +40,4 @@ export class TemplateConfigChange {
 
   @Column({ name: 'changed_by', nullable: true })
   changedBy: string;
-
-  @Column({ name: 'user_info', type: 'jsonb', nullable: true })
-  userInfo: Record<string, any>;
 }

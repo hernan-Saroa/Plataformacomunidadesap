@@ -918,7 +918,7 @@ export function DocentesSection() {
             
             {/* Brand */}
             <div>
-              <ESAPLogo variant="white" className="h-12 mb-6" />
+              <ESAPLogo variant="white" className="mb-6 shrink-0" style={{ width: '162px', height: '48px' }} />
               <p className="text-gray-400 mb-6 leading-relaxed">
                 Transformando la educación pública en Colombia con tecnología de clase mundial.
               </p>

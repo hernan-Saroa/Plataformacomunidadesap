@@ -13,10 +13,30 @@ import {
   BadRequestException,
   UseGuards,
   Req,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, resolve as pathResolve } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import type { Response } from 'express';
+import { Public } from '../../auth/decorators/public.decorator';
+
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination: string;
+  filename: string;
+  path: string;
+  buffer: Buffer;
+}
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
+import { UpdateRolPlanAnual5Dto } from './dto/update-rol-plan-anual-5.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -33,9 +53,14 @@ export class PlanAnual5RolesController {
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.PLAN_ANUAL_VIEW)
-  async findAll(@Query('year') year?: string) {
+  async findAll(
+    @Query('year') year?: string,
+    /** Por defecto true: listados sin adjuntos (menor payload). Detalle: findByYear / :id */
+    @Query('light') light?: string,
+  ) {
     const yearNum = year ? parseInt(year, 10) : undefined;
-    return this.service.findAll(yearNum);
+    const lightMode = light !== 'false' && light !== '0';
+    return this.service.findAll(yearNum, lightMode);
   }
 
   // Rutas específicas deben ir ANTES de las genéricas
@@ -45,6 +70,32 @@ export class PlanAnual5RolesController {
   async findByYear(@Param('year') year: string) {
     const yearNum = parseInt(year, 10);
     return this.service.findByYear(yearNum);
+  }
+
+  /** Borrador del asistente "Nuevo plan" (un fila JSON por usuario). Debe ir antes de :id. */
+  @Get('wizard-borrador/me')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE, CIP.PLAN_ANUAL_EDIT)
+  async getWizardBorrador(@Req() req: any) {
+    return this.service.getWizardBorrador(req.user?.userId);
+  }
+
+  @Put('wizard-borrador/me')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE, CIP.PLAN_ANUAL_EDIT)
+  async saveWizardBorrador(
+    @Body() body: { payload?: Record<string, unknown> },
+    @Req() req: any,
+  ) {
+    return this.service.saveWizardBorrador(req.user?.userId, body?.payload ?? {});
+  }
+
+  @Delete('wizard-borrador/me')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE, CIP.PLAN_ANUAL_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteWizardBorrador(@Req() req: any) {
+    await this.service.deleteWizardBorrador(req.user?.userId);
   }
 
   @Get(':planId/roles')
@@ -100,6 +151,36 @@ export class PlanAnual5RolesController {
     return this.service.create(createDto, req.user?.userId);
   }
 
+  @Post(':id/roles')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_CREATE)
+  @HttpCode(HttpStatus.CREATED)
+  async addRol(
+    @Param('id') planId: string,
+    @Body() createRolDto: { nombre: string; descripcion: string; color: string; numero: number },
+    @Req() req: any,
+  ) {
+    if (!planId || planId === 'undefined') {
+      throw new BadRequestException('planId es requerido');
+    }
+    return this.service.addRolAdicional(planId, createRolDto, req.user?.userId);
+  }
+
+  @Put(':id/roles/:rolId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  async updateRol(
+    @Param('id') planId: string,
+    @Param('rolId') rolId: string,
+    @Body() updateDto: UpdateRolPlanAnual5Dto,
+    @Req() req: any,
+  ) {
+    if (!planId || planId === 'undefined' || !rolId || rolId === 'undefined') {
+      throw new BadRequestException('planId y rolId son requeridos');
+    }
+    return this.service.updateRol(planId, rolId, updateDto, req.user?.userId);
+  }
+
   // Ruta genérica de actualización debe ir ANTES de las rutas con parámetros dinámicos
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -153,6 +234,37 @@ export class PlanAnual5RolesController {
       throw new BadRequestException('id es requerido');
     }
     return this.service.update(id, { estado: 'activo' }, req.user?.userId);
+  }
+
+  @Post(':id/notificar-responsable')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  @HttpCode(HttpStatus.OK)
+  async notificarResponsable(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      solicitanteNombre?: string;
+      mensaje?: string;
+      responsableEmail?: string;
+    },
+    @Req() req: any,
+  ) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    const solicitanteNombre =
+      body?.solicitanteNombre ||
+      req.user?.nombre ||
+      req.user?.fullName ||
+      req.user?.email;
+    return this.service.notificarResponsableEnvioRevision(
+      id,
+      req.user?.userId,
+      solicitanteNombre,
+      body?.mensaje,
+      body?.responsableEmail,
+    );
   }
 
   // Rutas específicas de actividades
@@ -327,6 +439,101 @@ export class PlanAnual5RolesController {
       throw new BadRequestException('actividadId es requerido');
     }
     return this.service.addAdjunto(actividadId, createDto);
+  }
+
+  /**
+   * Sube un archivo real al servidor y devuelve metadatos para adjuntosTarea.
+   * POST /plan-anual-5-roles/actividades/:actividadId/adjuntos/upload
+   */
+  @Post('actividades/:actividadId/adjuntos/upload')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_FOLLOW_UP)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = process.env.PLAN_ANUAL_UPLOAD_PATH
+            || process.env.UPLOAD_PATH
+            || './uploads/plan-anual/temp';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async uploadAdjuntoArchivo(
+    @Param('actividadId') actividadId: string,
+    @UploadedFile() file: MulterFile,
+    @Body() body: { tareaId?: string },
+    @Req() req: { user?: { username?: string; userId?: string } },
+  ) {
+    if (!actividadId || actividadId === 'undefined') {
+      throw new BadRequestException('actividadId es requerido');
+    }
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+    return this.service.uploadAdjuntoArchivo(actividadId, file, {
+      tareaId: body?.tareaId,
+      cargadoPor: req.user?.username,
+    });
+  }
+
+  @Get('adjuntos/:adjuntoId/download')
+  @Public()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_FOLLOW_UP)
+  async downloadAdjunto(@Param('adjuntoId') adjuntoId: string, @Res() res: Response) {
+    if (!adjuntoId || adjuntoId === 'undefined') {
+      throw new BadRequestException('adjuntoId es requerido');
+    }
+    const adjunto = await this.service.obtenerAdjuntoParaDescarga(adjuntoId);
+    const mime = (adjunto.tipo || 'application/octet-stream').trim();
+    const encodedFilename = encodeURIComponent(adjunto.nombre);
+    res.setHeader('Content-Type', `${mime}; charset=utf-8`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${adjunto.nombre}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    if (adjunto.tamanio) {
+      res.setHeader('Content-Length', String(adjunto.tamanio));
+    }
+    return res.sendFile(pathResolve(adjunto.rutaArchivo));
+  }
+
+  @Get('adjuntos/:adjuntoId/preview')
+  @Public()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_FOLLOW_UP)
+  async previewAdjunto(@Param('adjuntoId') adjuntoId: string, @Res() res: Response) {
+    if (!adjuntoId || adjuntoId === 'undefined') {
+      throw new BadRequestException('adjuntoId es requerido');
+    }
+    const adjunto = await this.service.obtenerAdjuntoParaDescarga(adjuntoId);
+    const mime = (adjunto.tipo || '').trim().toLowerCase();
+    const esImagen = mime.startsWith('image/');
+    const esPdf = mime === 'application/pdf' || mime.startsWith('application/pdf');
+    if (!esImagen && !esPdf) {
+      throw new BadRequestException('Este tipo de archivo no se puede previsualizar');
+    }
+    const encodedFilename = encodeURIComponent(adjunto.nombre);
+    res.setHeader('Content-Type', `${adjunto.tipo}; charset=utf-8`);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${adjunto.nombre}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    return res.sendFile(pathResolve(adjunto.rutaArchivo));
   }
 
   @Delete('adjuntos/:adjuntoId')

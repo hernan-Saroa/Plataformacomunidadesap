@@ -140,7 +140,7 @@ export function SolicitarCertificadoPublico({ onBack }: SolicitarCertificadoPubl
     if (!documento || documento.length < 5) {
       console.log('⚠️ Documento inválido - mostrando toast');
       toast.error('Documento inválido', {
-        description: 'Por favor ingresa un número de documento válido',
+        description: 'Por favor, ingresa un número de documento válido',
         duration: 3000
       });
       return;
@@ -212,7 +212,7 @@ export function SolicitarCertificadoPublico({ onBack }: SolicitarCertificadoPubl
 
     if (codigoIngresado.length !== 6) {
       toast.error('Código incompleto', {
-        description: 'Por favor ingresa los 6 dígitos del código',
+        description: 'Por favor, ingresa los 6 dígitos del código',
         duration: 3000
       });
       return;

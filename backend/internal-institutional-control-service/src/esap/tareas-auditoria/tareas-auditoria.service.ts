@@ -34,6 +34,7 @@ export class TareasAuditoriaService {
     tipoEvento: TipoEvento,
     accion: string,
     descripcion: string,
+    usuarioId?: string,
   ): Promise<void> {
     if (!auditoriaId) return;
     
@@ -47,7 +48,7 @@ export class TareasAuditoriaService {
       historial.tipoEvento = tipoEvento;
       historial.fecha = new Date(fecha);
       historial.hora = hora;
-      historial.usuarioId = null; // TODO: UUID de auth.personas desde contexto de autenticación
+      historial.usuarioId = usuarioId || null;
       historial.accion = accion;
       historial.descripcion = descripcion;
       historial.cambios = [];
@@ -181,7 +182,7 @@ export class TareasAuditoriaService {
   /**
    * Crea una nueva tarea
    */
-  async create(dto: CreateTareaAuditoriaDto): Promise<TareaAuditoria> {
+  async create(dto: CreateTareaAuditoriaDto, usuarioId?: string): Promise<TareaAuditoria> {
     // Verificar que la auditoría existe
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: dto.auditoriaId },
@@ -210,6 +211,7 @@ export class TareasAuditoriaService {
       TipoEvento.NOTA, // Usamos NOTA para tareas
       'Tarea creada',
       `Se creó la tarea "${saved.titulo}" en fase ${saved.fase || 'general'}`,
+      usuarioId,
     );
 
     return this.serializeTarea(saved);
@@ -221,6 +223,7 @@ export class TareasAuditoriaService {
   async update(
     id: string,
     dto: UpdateTareaAuditoriaDto,
+    usuarioId?: string,
   ): Promise<TareaAuditoria> {
     const tarea = await this.tareaRepository.findOne({ where: { id } });
 
@@ -266,6 +269,7 @@ export class TareasAuditoriaService {
         TipoEvento.NOTA,
         `Tarea ${dto.estado === EstadoTarea.COMPLETADA ? 'completada' : 'actualizada'}`,
         `La tarea "${updated.titulo}" cambió a estado ${dto.estado}`,
+        usuarioId,
       );
     }
 
@@ -275,17 +279,17 @@ export class TareasAuditoriaService {
   /**
    * Completa una tarea (shortcut)
    */
-  async completar(id: string): Promise<TareaAuditoria> {
+  async completar(id: string, usuarioId?: string): Promise<TareaAuditoria> {
     return this.update(id, {
       estado: EstadoTarea.COMPLETADA,
       progreso: 100,
-    });
+    }, usuarioId);
   }
 
   /**
    * Elimina una tarea
    */
-  async remove(id: string): Promise<void> {
+  async remove(id: string, usuarioId?: string): Promise<void> {
     const tarea = await this.tareaRepository.findOne({ where: { id } });
 
     if (!tarea) {
@@ -303,6 +307,7 @@ export class TareasAuditoriaService {
       TipoEvento.ELIMINACION,
       'Tarea eliminada',
       `Se eliminó la tarea "${titulo}"`,
+      usuarioId,
     );
   }
 

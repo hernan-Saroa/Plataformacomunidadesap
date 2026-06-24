@@ -1191,6 +1191,16 @@ ALTER INDEX audit.idx_request_logs_user_id ATTACH PARTITION audit.request_logs_p
 
 
 --
+-- Name: request_logs trigger_create_partition_before_insert; Type: TRIGGER; Schema: audit; Owner: -
+--
+
+CREATE TRIGGER trigger_create_partition_before_insert
+    BEFORE INSERT ON audit.request_logs
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION audit.request_logs_partition_trigger();
+
+
+--
 -- PostgreSQL database dump complete
 --
 

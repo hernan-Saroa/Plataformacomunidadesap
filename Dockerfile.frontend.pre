@@ -23,6 +23,7 @@ ARG VITE_ONLYOFFICE_URL=/onlyoffice
 ARG VITE_MICROSOFT_TENANT_ID=
 ARG VITE_MICROSOFT_CLIENT_ID=
 ARG VITE_LOGIN_OPTIONS=both
+ARG ESAP_BUILD_DATE=
 
 # Exportar como variable de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar la variable correctamente
@@ -31,6 +32,7 @@ ENV VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}
 ENV VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}
 ENV VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}
 ENV VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}
+ENV ESAP_BUILD_DATE=${ESAP_BUILD_DATE}
 RUN test -n "${VITE_MICROSOFT_TENANT_ID}" && test -n "${VITE_MICROSOFT_CLIENT_ID}"
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
     echo "VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}" >> .env.production && \
@@ -42,10 +44,15 @@ RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
 # Build de producción (Vite lee .env.production automáticamente)
 RUN npm run build && \
     echo "Verificando que el bundle no exponga hosts sensibles..." && \
-    if grep -r -E "4\\.156\\.71\\.181|135\\.237\\.81\\.133|172\\.16\\.202\\.169|172\\.16\\.202\\.222|outlook\\.office\\.com|humanosoft\\.esap\\.edu\\.co|arca\\.esap\\.edu\\.co|onlyoffice:80" /app/build/assets/*.js; then exit 1; fi
+    if grep -r -E "4\\.156\\.71\\.181|135\\.237\\.81\\.133|172\\.16\\.202\\.169|172\\.16\\.202\\.222|outlook\\.office\\.com|humanosoft\\.esap\\.edu\\.co|arca\\.esap\\.edu\\.co|onlyoffice:80" /app/build/assets/*.js; then exit 1; fi && \
+    echo "ZAP-004: Verificando ausencia de marcadores TODO/FIXME en comentarios del bundle..." && \
+    node scripts/check-bundle-comments.mjs /app/build/assets && \
+    echo "ZAP-004: OK - bundle sin comentarios sensibles."
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production
+
+COPY docker/nginx/nginx.main.conf /etc/nginx/nginx.conf
 
 # Copiar configuración personalizada de nginx
 RUN mkdir -p /opt/esap-nginx

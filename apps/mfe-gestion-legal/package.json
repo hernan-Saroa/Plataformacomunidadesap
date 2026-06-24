@@ -11,14 +11,16 @@
   "dependencies": {
     "@esap-mfe/shared-hooks": "*",
     "@esap-mfe/shared-types": "*",
+    "@esap-mfe/shared-ui": "*",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^3.11.174",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.10.1",
-    "@esap-mfe/shared-ui": "*"
+    "react-router-dom": "^7.10.1"
   },
   "devDependencies": {
+    "@originjs/vite-plugin-federation": "^1.4.1",
     "@vitejs/plugin-react-swc": "^3.10.2",
-    "vite": "^6.3.5",
-    "@originjs/vite-plugin-federation": "^1.4.1"
+    "vite": "^6.3.5"
   }
 }

@@ -2,13 +2,24 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
-import { getBuildOutDir, getRemoteDefinitions, shellApp } from '../../scripts/mfe.config.mjs';
+import { cspNonceBootstrap, getBuildOutDir, getRemoteDefinitions, shellApp, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const devExternalRedirects: Record<string, string> = {
   '/externos/correo-institucional': 'https://outlook.office.com',
   '/externos/humano-soft': 'https://humanosoft.esap.edu.co',
   '/externos/arca': 'https://arca.esap.edu.co',
 };
+
+const buildDateSource = process.env.ESAP_BUILD_DATE
+  ? new Date(process.env.ESAP_BUILD_DATE)
+  : new Date();
+const buildDateValue = Number.isNaN(buildDateSource.getTime()) ? new Date() : buildDateSource;
+const buildDate = new Intl.DateTimeFormat('es-CO', {
+  timeZone: 'America/Bogota',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+}).format(buildDateValue);
 
 const externalRedirectPlugin = () => ({
   name: 'esap-dev-external-redirects',
@@ -31,8 +42,13 @@ const externalRedirectPlugin = () => ({
 
 export default defineConfig(({ command }) => ({
   root: __dirname,
+  define: {
+    __ESAP_BUILD_DATE__: JSON.stringify(buildDate),
+  },
   plugins: [
     react(),
+    cspNonceBootstrap(shellApp.appDir),
+    stripBundleComments(),
     externalRedirectPlugin(),
     federation({
       name: shellApp.federationName,
@@ -79,7 +95,6 @@ export default defineConfig(({ command }) => ({
       '@radix-ui/react-aspect-ratio@1.1.2': '@radix-ui/react-aspect-ratio',
       '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
       '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
-      '@jsr/supabase__supabase-js@2.49.8': '@jsr/supabase__supabase-js',
       '@esap-mfe/shared-hooks': path.resolve(__dirname, '../../packages/shared-hooks/src'),
       '@esap-mfe/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
       '@esap-mfe/shared-types': path.resolve(__dirname, '../../packages/shared-types/src'),

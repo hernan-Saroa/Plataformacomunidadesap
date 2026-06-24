@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Toaster } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PTAProvider } from '../../contexts/PTAContext';
 import { VisualizadorPTAAjustes } from './VisualizadorPTAAjustes';
 import { WizardCrearPTA } from './WizardCrearPTA';
@@ -276,7 +276,7 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
   // Dashboard de aprobadores
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <PTAProvider>
       <DashboardAprobadorIntegrado
         onVerDetalle={handleVerDetallePTA}

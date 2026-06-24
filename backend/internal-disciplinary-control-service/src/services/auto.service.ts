@@ -18,6 +18,7 @@ import { SequenceService } from './sequence.service';
 import { JuridicaEmailService } from './juridica-email.service';
 import {
   DisciplinaryProcess,
+  ProcessStage,
   ProcessStatus,
 } from '../entities/disciplinary-process.entity';
 
@@ -239,11 +240,30 @@ export class AutoService {
       auto.numero = await this.sequenceService.generateAutoConsecutivo();
       await this.prepareApprovedDocument(auto);
 
+      // Embeber firma del jefe si está configurada
+      if (auto.documentUrl && this.isPdfDocument(auto)) {
+        try {
+          await this.pdfModifierService.addSignature(auto.documentUrl, 'Jefe Control Disciplinario', 'Jefe Oficina');
+        } catch (e) {
+          console.warn('Firma del jefe no disponible, se omite del PDF:', e.message);
+        }
+      }
+
       // Nota: Para auto pliego de cargos, se aprueba pero no se cierra el proceso inmediatamente.
       // El envío a jurídica se hace posteriormente mediante el botón "Envío a jurídica".
 
       if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
+      }
+
+      // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
+      if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
+        await this.processService.changeStageByAutoApertura(
+          auto.processId,
+          auto.etapaDestino as ProcessStage,
+          new Date(),
+          aprobadoPorId,
+        );
       }
 
       // Si es AUTO_PRORROGA, extender la fecha de vencimiento de la etapa activa
@@ -776,7 +796,12 @@ export class AutoService {
   /**
    * Envía el auto pliego de cargos aprobado a la Oficina Jurídica
    */
-  async sendPliegoToJuridica(id: string, enviadoPorId: string): Promise<void> {
+  async sendPliegoToJuridica(
+    id: string, 
+    enviadoPorId: string, 
+    enviadoPorEmail?: string, 
+    enviadoPorNombre?: string
+  ): Promise<void> {
     const auto = await this.findById(id, ['process']);
 
     if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
@@ -797,6 +822,8 @@ export class AutoService {
     const datosConsolidados = await this.processService.cerrarPorPliegoCargos(
       auto.processId,
       enviadoPorId,
+      enviadoPorEmail,
+      enviadoPorNombre,
     );
 
     // Marcar el auto como NOTIFICADO para que no reaparezca en la lista de borradores

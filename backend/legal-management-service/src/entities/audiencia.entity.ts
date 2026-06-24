@@ -1,5 +1,4 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Abogado } from './abogado.entity';
 import { Expediente } from './expediente.entity';
 
 @Entity('audiencias', { schema: 'legal_management' })
@@ -17,9 +16,11 @@ export class Audiencia {
     @Column({ name: 'abogado_id' })
     abogadoId: string;
 
-    @ManyToOne(() => Abogado, abogado => abogado.audiencias)
-    @JoinColumn({ name: 'abogado_id' })
-    abogado: Abogado;
+    @Column({ name: 'abogado_nombre', nullable: true })
+    abogadoNombre: string;
+
+    @Column({ name: 'abogado_email', nullable: true })
+    abogadoEmail: string;
 
     @Column()
     titulo: string;

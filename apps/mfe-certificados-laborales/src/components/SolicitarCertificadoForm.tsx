@@ -19,7 +19,7 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { toast } from 'sonner';
-import { validarEmpleadoEnBD, generarCertificadoAutomatico } from '../../lib/api/certificadosAPI';
+import { validarEmpleadoEnBD, generarCertificadoAutomatico } from '../../../../shell/src/lib/api/certificadosAPI';
 
 interface FormData {
   tipoDocumento: string;
@@ -128,7 +128,7 @@ export function SolicitarCertificadoForm() {
     } catch (error) {
       console.error('Error al procesar solicitud:', error);
       toast.error('Error al procesar tu solicitud', {
-        description: 'Por favor intenta nuevamente o contacta al área de Talento Humano'
+        description: 'Por favor, intenta nuevamente o contacta al área de Talento Humano'
       });
     } finally {
       setIsLoading(false);

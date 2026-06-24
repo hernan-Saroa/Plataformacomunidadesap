@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Download, Filter, Calendar, ChevronDown, FileText, Shield, BarChart3, Activity, List, Clock, AlertTriangle } from 'lucide-react';
 import { Card, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Container4K, ResponsiveHeader, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { AuditLogTable } from './AuditLogTable';
 import { AuditEventDetail, type AuditEvent } from './AuditEventDetail';
 import { AuditAnalytics } from './AuditAnalytics';
@@ -26,14 +27,58 @@ interface FilterOptions {
   ipAddress: string;
 }
 
+const AUDIT_PAGE_SIZE = 10;
+const BOGOTA_UTC_OFFSET = '-05:00';
+const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+const padDatePart = (value: number) => String(value).padStart(2, '0');
+
+const toBogotaIsoString = (date: Date): string => {
+  const bogotaDate = new Date(date.getTime() - BOGOTA_OFFSET_MS);
+  const year = bogotaDate.getUTCFullYear();
+  const month = padDatePart(bogotaDate.getUTCMonth() + 1);
+  const day = padDatePart(bogotaDate.getUTCDate());
+  const hours = padDatePart(bogotaDate.getUTCHours());
+  const minutes = padDatePart(bogotaDate.getUTCMinutes());
+  const seconds = padDatePart(bogotaDate.getUTCSeconds());
+  const milliseconds = String(bogotaDate.getUTCMilliseconds()).padStart(3, '0');
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}${BOGOTA_UTC_OFFSET}`;
+};
+
+const resolveDateRange = (filters: FilterOptions): Pick<LoadLogsParams, 'startDate' | 'endDate'> => {
+  const now = new Date();
+  const endDate = toBogotaIsoString(now);
+
+  if (filters.dateRange === 'custom') {
+    return {
+      startDate: filters.startDate ? `${filters.startDate}T00:00:00.000${BOGOTA_UTC_OFFSET}` : undefined,
+      endDate: filters.endDate ? `${filters.endDate}T23:59:59.999${BOGOTA_UTC_OFFSET}` : undefined,
+    };
+  }
+
+  const rangesInHours: Record<string, number> = {
+    last1h: 1,
+    last24h: 24,
+    last7d: 24 * 7,
+    last30d: 24 * 30,
+    last90d: 24 * 90,
+  };
+
+  const hours = rangesInHours[filters.dateRange] ?? rangesInHours.last24h;
+  const startDate = toBogotaIsoString(new Date(now.getTime() - hours * 60 * 60 * 1000));
+
+  return { startDate, endDate };
+};
+
 export function AuditModulePremium() {
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(100);
   
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: 'last24h',
@@ -52,11 +97,14 @@ export function AuditModulePremium() {
   const loadLogs = async () => {
     setLoading(true);
     try {
+      const dateRange = resolveDateRange(filters);
       const params: LoadLogsParams = {
-        startDate: filters.startDate,
-        endDate: filters.endDate,
+        ...dateRange,
         ipAddress: filters.ipAddress,
         modules: filters.modules,
+        search: debouncedSearchQuery || undefined,
+        limit: AUDIT_PAGE_SIZE,
+        offset: (currentPage - 1) * AUDIT_PAGE_SIZE,
       };
       const result = await loadAuditLogs(params);
       setLogs(result.logs || []);
@@ -73,7 +121,16 @@ export function AuditModulePremium() {
 
   useEffect(() => {
     loadLogs();
-  }, [filters.startDate, filters.endDate, filters.ipAddress, filters.modules]);
+  }, [currentPage, debouncedSearchQuery, filters.dateRange, filters.startDate, filters.endDate, filters.ipAddress, filters.modules]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setCurrentPage(1);
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const events: AuditEvent[] = useMemo(() => {
     if (!logs || !Array.isArray(logs)) return [];
@@ -1106,18 +1163,6 @@ export function AuditModulePremium() {
 
   const filteredEvents = useMemo(() => {
     return events.filter(event => {
-      // Search query
-      if (searchQuery) {
-        const searchLower = searchQuery.toLowerCase();
-        const matchesSearch = 
-          event.user.toLowerCase().includes(searchLower) ||
-          event.action.toLowerCase().includes(searchLower) ||
-          event.module.toLowerCase().includes(searchLower) ||
-          event.userId.toLowerCase().includes(searchLower) ||
-          event.details.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
-      }
-
       // Severity filter
       if (filters.severities.length > 0 && !filters.severities.includes(event.severity)) {
         return false;
@@ -1149,7 +1194,7 @@ export function AuditModulePremium() {
 
       return true;
     });
-  }, [events, searchQuery, filters]);
+  }, [events, filters]);
 
   const handleEventClick = (event: AuditEvent) => {
     setSelectedEvent(event);
@@ -1202,8 +1247,15 @@ export function AuditModulePremium() {
     }
   };
 
+  const handleFiltersChange = (nextFilters: FilterOptions) => {
+    setCurrentPage(1);
+    setFilters(nextFilters);
+  };
+
   const handleClearFilters = () => {
     setSearchQuery('');
+    setDebouncedSearchQuery('');
+    setCurrentPage(1);
     setFilters({
       dateRange: 'last24h',
       startDate: '',
@@ -1225,117 +1277,107 @@ export function AuditModulePremium() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
-    <div className="space-y-4 md:space-y-6 pb-6">
+    <Toaster position="bottom-right" richColors />
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-white to-blue-50/30 rounded-2xl p-4 md:p-6 shadow-lg border border-gray-100"
+        transition={{ duration: 0.3 }}
       >
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl bg-gradient-to-br from-[#1e5da8] to-blue-600 flex items-center justify-center shadow-lg">
-                <Shield className="w-6 h-6 md:w-7 md:h-7 text-white" strokeWidth={2} />
+        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5" style={{marginBottom: '20px'}}>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+            <div className="flex items-start gap-3 md:gap-4">
+              <div 
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#EBF0FA' }}
+              >
+                <Shield className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
               </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-extrabold text-[--esap-gray-900] tracking-tight">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
                   Auditoría Premium
                 </h1>
-                <p className="text-xs md:text-sm font-medium text-[--esap-gray-600] mt-1">
+                <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
                   Trazabilidad completa con análisis avanzado de seguridad
                 </p>
               </div>
             </div>
+            {/* Export Button */}
+            <div className="relative">
+              <motion.button
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-[#003DA5] text-white hover:bg-[#002D7A] rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all text-sm md:text-base w-full lg:w-auto justify-center group"
+              >
+                <Download className="w-4 h-4 group-hover:animate-bounce" />
+                <span>Exportar</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${exportMenuOpen ? 'rotate-180' : ''}`} />
+              </motion.button>
+
+              {exportMenuOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setExportMenuOpen(false)}
+                  />
+                  
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50"
+                  >
+                    <div className="p-2">
+                      <button
+                        onClick={() => handleExport('csv')}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                          <FileText className="w-4 h-4 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">Exportar CSV</p>
+                          <p className="text-xs text-gray-500">Archivo de datos</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleExport('excel')}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                          <FileText className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">Exportar Excel</p>
+                          <p className="text-xs text-gray-500">Hoja de cálculo</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleExport('pdf')}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                          <FileText className="w-4 h-4 text-red-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">Exportar PDF</p>
+                          <p className="text-xs text-gray-500">Documento portátil</p>
+                        </div>
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </div>
           </div>
-
-          {/* Export Button */}
-          <div className="relative">
-            <motion.button
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setExportMenuOpen(!exportMenuOpen)}
-              className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-gradient-to-r from-[#1e5da8] to-blue-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all text-sm md:text-base w-full lg:w-auto justify-center group"
-            >
-              <Download className="w-4 h-4 group-hover:animate-bounce" />
-              <span>Exportar</span>
-              <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${exportMenuOpen ? 'rotate-180' : ''}`} />
-            </motion.button>
-
-            {exportMenuOpen && (
-              <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setExportMenuOpen(false)}
-                />
-                
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50"
-                >
-                  <div className="p-2">
-                    <button
-                      onClick={() => handleExport('csv')}
-                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                        <FileText className="w-4 h-4 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">Exportar CSV</p>
-                        <p className="text-xs text-gray-500">Archivo de datos</p>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleExport('excel')}
-                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
-                        <FileText className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">Exportar Excel</p>
-                        <p className="text-xs text-gray-500">Hoja de cálculo</p>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleExport('pdf')}
-                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors font-medium text-gray-700 flex items-center gap-3 rounded-lg group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
-                        <FileText className="w-4 h-4 text-red-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">Exportar PDF</p>
-                        <p className="text-xs text-gray-500">Documento portátil</p>
-                      </div>
-                    </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Search Bar */}
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar eventos por usuario, acción, módulo..."
-            className="w-full pl-12 pr-4 py-3 md:py-3.5 border-2 border-gray-300 rounded-xl focus:border-[#1e5da8] focus:ring-4 focus:ring-blue-100 transition-all text-sm md:text-base"
-          />
         </div>
       </motion.div>
 
       {/* Filtros Avanzados */}
       <AuditAdvancedFilters
         filters={filters}
-        onFiltersChange={setFilters}
+        onFiltersChange={handleFiltersChange}
         availableModules={availableModules}
         onClearFilters={handleClearFilters}
       />
@@ -1350,13 +1392,28 @@ export function AuditModulePremium() {
         </div>
       )}
 
+      {/* Search Bar */}
+      <div className="relative mb-1">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar eventos por usuario, acción, módulo..."
+          className="w-full pl-12 pr-2 py-2 md:py-2 border-2 border-gray-300 rounded-xl focus:border-[#1e5da8] focus:ring-4 focus:ring-blue-100 transition-all text-sm md:text-base"
+        />
+      </div>
+
       {/* Content Based on View Mode */}
       {!loading && viewMode === 'table' && (
         <AuditLogTable 
           events={filteredEvents}
           onEventClick={handleEventClick}
-          searchQuery={searchQuery}
           onExportEvent={(event, format) => handleExport(format, event)}
+          currentPage={currentPage}
+          pageSize={AUDIT_PAGE_SIZE}
+          totalItems={total}
+          onPageChange={setCurrentPage}
         />
       )}
 

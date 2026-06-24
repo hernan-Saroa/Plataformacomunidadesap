@@ -13,10 +13,18 @@ import { Geopolitica } from './users/geopolitica.entity';
 import { Sede } from './users/sede.entity';
 import { Seccional } from './users/seccional.entity';
 import { ProgramaAcademico } from './programas/programa.entity';
-import { RegistroCalificado } from './programas/registro-calificado.entity';
-import { AcreditacionPrograma } from './programas/acreditacion.entity';
+import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
+import { AsignaturasModule } from './asignaturas/asignaturas.module';
+import { PortalModule } from './portal/portal.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { CarpetaDigitalModule } from './carpeta-digital/carpeta-digital.module';
+import { CarpetaDigital } from './carpeta-digital/carpeta-digital.entity';
+import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
+import { DocumentoCarpetaDigital } from './carpeta-digital/documento-carpeta-digital.entity';
+import { EstructuraImportModule } from './estructura-import/estructura-import.module';
+import { LoginSettingsModule } from './settings/login-settings.module';
+import { SystemSetting } from './settings/system-setting.entity';
 
 @NestModule({
   imports: [
@@ -39,14 +47,23 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
         Sede,
         Seccional,
         ProgramaAcademico,
-        RegistroCalificado,
-        AcreditacionPrograma,
+        Asignatura,
+        CarpetaDigital,
+        TipoDocumento,
+        DocumentoCarpetaDigital,
+        SystemSetting,
       ],
-      synchronize: false, // Desactivado para evitar conflictos con tablas existentes
+      synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
+      logging: true,
     }),
     UsersModule,
     AuthModule,
     ProgramasModule,
+    AsignaturasModule,
+    PortalModule,
+    CarpetaDigitalModule,
+    EstructuraImportModule,
+    LoginSettingsModule,
   ],
   providers: [
     {
@@ -55,4 +72,4 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     },
   ],
 })
-export class AppModule {}
+export class AppModule {} // LoginSettingsModule loaded

@@ -13,11 +13,12 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
+import { config, getDefaultHeaders, getUserContextHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
 import { syncEngine } from './syncEngine';
+import { getAppOnlineStatus } from '../../utils/connectivity';
 
 // ============================================================================
 // TIPOS INTERNOS
@@ -26,6 +27,8 @@ import { syncEngine } from './syncEngine';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipErrorLog?: boolean;
+  skipAuthRefresh?: boolean;
   retries?: number;
 }
 
@@ -45,6 +48,8 @@ export interface UploadRequestOptions {
   onProgressDetail?: (detail: UploadProgressDetail) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
+  skipAuthRefresh?: boolean;
+  _authRetry?: boolean;
 }
 
 // ============================================================================
@@ -97,10 +102,11 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       ...fetchConfig
     } = customConfig || {};
 
-    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
   }
 
   /**
@@ -188,10 +194,12 @@ export class ApiClient {
       onProgressDetail,
       signal,
       timeoutMs,
+      skipAuthRefresh = false,
+      _authRetry = false,
     } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
-    const headers = getDefaultHeaders(true);
+    const headers = this.addAuthHeader(getDefaultHeaders(true));
     delete (headers as any)['Content-Type'];
 
     return new Promise((resolve, reject) => {
@@ -218,7 +226,7 @@ export class ApiClient {
       }
 
       // Success
-      xhr.addEventListener('load', () => {
+      xhr.addEventListener('load', async () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const responseText = xhr.responseText;
@@ -231,6 +239,20 @@ export class ApiClient {
             resolve((response.data !== undefined ? response.data : response) as T);
           } catch (error) {
             reject(new Error('Error al parsear respuesta del servidor'));
+          }
+        } else if (xhr.status === 401 && !skipAuthRefresh && !_authRetry) {
+          try {
+            const newToken = await this.refreshAccessToken();
+            if (newToken) {
+              resolve(this.upload<T>(endpoint, formData, {
+                ...resolvedOptions,
+                _authRetry: true,
+              }));
+              return;
+            }
+            reject(new Error('Sesion expirada. Por favor, inicia sesion nuevamente.'));
+          } catch {
+            reject(new Error('Sesion expirada. Por favor, inicia sesion nuevamente.'));
           }
         } else {
           try {
@@ -257,6 +279,7 @@ export class ApiClient {
       });
 
       xhr.open('POST', url);
+      xhr.withCredentials = true;
 
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
@@ -293,6 +316,8 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipErrorLog = false,
+      skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -302,7 +327,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, skipErrorLog);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -313,6 +338,7 @@ export class ApiClient {
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
+          !error.status ||        // Error de red: servicio no disponible (ERR_CONNECTION_REFUSED, timeout, etc.)
           attempt > retries
         ) {
           throw error;
@@ -335,12 +361,13 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean,
     allowRefresh = true,
+    skipErrorLog = false,
   ): Promise<T> {
     const isGet = !fetchConfig.method || fetchConfig.method.toUpperCase() === 'GET';
     const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
 
     // 🔴 MODO OFFLINE: Interceptar si no hay conexión
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (!getAppOnlineStatus()) {
       if (isGet) {
         try {
           const cached = await offlineCache.getCache(url);
@@ -371,7 +398,8 @@ export class ApiClient {
     // 🟢 MODO ONLINE
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
-      : getDefaultHeaders(true);
+      : this.addAuthHeader(getDefaultHeaders(true));
+    this.addLegalContextHeaders(url, headers);
 
     // Si el body es FormData, quitamos el Content-Type para que el navegador lo ponga con el boundary
     if (fetchConfig.body instanceof FormData) {
@@ -398,8 +426,11 @@ export class ApiClient {
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
-          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       // Manejo de respuesta
@@ -412,11 +443,15 @@ export class ApiClient {
       
       return responseData;
     } catch (error: any) {
-      // Solo loguear errores de requests que no sean del servicio de notificaciones
-      if (!url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
-        console.log('🔴 Error en request:', error);
-      }
       clearTimeout(timeoutId);
+      // Errores de red (servicio no disponible) — solo warn, no spam
+      if (!skipErrorLog && !url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
+        if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+          // console.warn('⚠️ Servicio no disponible:', url);
+        } else {
+          // console.log('🔴 Error en request:', error);
+        }
+      }
 
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');
@@ -438,7 +473,7 @@ export class ApiClient {
   ): Promise<Blob> {
     const headers = skipAuth
       ? { Accept: '*/*' }
-      : getDefaultHeaders(true);
+      : this.addAuthHeader(getDefaultHeaders(true));
 
     // Para descargas no enviamos Content-Type JSON.
     delete (headers as any)['Content-Type'];
@@ -466,6 +501,9 @@ export class ApiClient {
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       if (!response.ok) {
@@ -544,7 +582,7 @@ export class ApiClient {
       if (response.ok) {
         data = {} as any; // For 200 OK with empty body
       } else {
-        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        const emptyError: any = new Error(`Error en la petición (status: ${response.status})`);
         emptyError.status = response.status;
         emptyError.response = { status: response.status, data: null };
         throw emptyError;
@@ -581,11 +619,20 @@ export class ApiClient {
     // Error
     if ('error' in data) {
       let errorMessage = 'Error desconocido';
-      let details = data.error.details;
-      if (typeof data.error === 'string') { // 1. Si error es string
+      let details = (data as any).error?.details || null;
+
+      // 1. Preferir siempre `message` si existe en el objeto raíz y es un string o array
+      if ('message' in data && data.message) {
+        if (typeof data.message === 'string' && data.message.trim() !== '') {
+          errorMessage = data.message;
+        } else if (Array.isArray(data.message) && data.message.length > 0) {
+          errorMessage = data.message.join(', ');
+        }
+      } else if (typeof data.error === 'string') {
+        // 2. Si error es string
         errorMessage = data.error || errorMessage;
-      }
-      if (typeof data.error === 'object' && data.error !== null) { // 2. Si error es objeto con message
+      } else if (typeof data.error === 'object' && data.error !== null) {
+        // 3. Si error es objeto con message
         const errObj = data.error as any;
         if (typeof errObj.message === 'string') {
           errorMessage = errObj.message || errorMessage;
@@ -593,18 +640,9 @@ export class ApiClient {
           errorMessage = errObj.message.join(', ');
         }
       }
-      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raíz
-        errorMessage = (data as any).message;
+
+      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') {
         details = (data as any).message;
-      }
-      // 4. Caso NestJS standard exception filter (statusCode, message, error)
-      if ('message' in data && 'statusCode' in data) {
-        const msg = (data as any).message;
-        if (typeof msg === 'string') {
-          errorMessage = msg;
-        } else if (Array.isArray(msg)) {
-          errorMessage = msg.join(', ');
-        }
       }
 
       const error: any = new Error(errorMessage);
@@ -635,68 +673,36 @@ export class ApiClient {
   }
 
   /**
-   * Refresh del access token
+   * Refresh del access token.
+   * El token viaja como cookie HttpOnly: el frontend no lo lee ni lo guarda.
    */
   private async refreshAccessToken(): Promise<string | null> {
-    // Si ya está refrescando, esperar
     if (this.isRefreshing) {
       return new Promise((resolve) => {
-        this.refreshSubscribers.push((token: string) => {
-          resolve(token);
-        });
+        this.refreshSubscribers.push((token: string) => resolve(token || null));
       });
     }
 
     this.isRefreshing = true;
 
     try {
-      const refreshToken = sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-
-      if (!refreshToken) {
-        // Hacer logout automático cuando no hay refresh token
-        console.warn('No refresh token available - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // 🔄 Nuevo endpoint versionado para refresh
-      const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
+      const response = await fetch(this.buildURL(API_ENDPOINTS.AUTH.REFRESH), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
         ...CORS_CONFIG,
       });
 
       if (!response.ok) {
-        // Hacer logout automático cuando el refresh falla
-        console.warn('Token refresh failed with status:', response.status, '- logging out');
-        this.handleLogout();
+        console.warn('Token refresh failed with status:', response.status);
+        this.resolveRefreshSubscribers(null);
         return null;
       }
 
-      const data = await response.json();
-
-      // El backend expone el token en data.data.accessToken (contrato NestJS)
-      const newToken = data?.data?.accessToken || data?.accessToken;
-
-      if (!newToken) {
-        console.warn('Refresh response without accessToken - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // Guardar nuevo token
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
-      sessionStorage.setItem('esap_access_token', newToken);
-
-      // Notificar a todos los subscribers
-      this.refreshSubscribers.forEach((callback) => callback(newToken));
-      this.refreshSubscribers = [];
-
-      return newToken;
+      this.resolveRefreshSubscribers('cookie-refreshed');
+      return 'cookie-refreshed';
     } catch (error) {
-      console.warn('Token refresh error:', error, '- logging out');
-      this.handleLogout();
+      console.warn('Token refresh error:', error);
+      this.resolveRefreshSubscribers(null);
       return null;
     } finally {
       this.isRefreshing = false;
@@ -704,22 +710,16 @@ export class ApiClient {
   }
 
   /**
-   * Logout y limpiar datos
+   * Resuelve las solicitudes que esperaban el refresh sin exponer tokens al frontend.
    */
-  private handleLogout(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
-
-    toast.error('Sesión expirada', {
-      description: 'Por favor, inicia sesión nuevamente',
-    });
-
-    // Redirigir a login
-    window.location.href = '/login';
+  private resolveRefreshSubscribers(token: string | null): void {
+    this.refreshSubscribers.forEach((callback) => callback(token || ''));
+    this.refreshSubscribers = [];
   }
 
+  public addAuthHeader(headers: HeadersInit = {}): HeadersInit {
+    return headers;
+  }
   /**
    * Muestra toast de error según el código HTTP
    */
@@ -825,6 +825,15 @@ export class ApiClient {
         .filter((key) => key.startsWith(config.STORAGE_KEYS.CACHE_PREFIX))
         .forEach((key) => localStorage.removeItem(key));
     }
+  }
+
+  private addLegalContextHeaders(url: string, headers: HeadersInit): void {
+    if (!this.isLegalManagementUrl(url)) return;
+    Object.assign(headers as Record<string, string>, getUserContextHeaders());
+  }
+
+  private isLegalManagementUrl(url: string): boolean {
+    return url.includes('/legal/api/') || url.includes(':3008/');
   }
 }
 

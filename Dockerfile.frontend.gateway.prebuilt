@@ -1,5 +1,7 @@
 FROM nginx:alpine
 
+COPY docker/nginx/nginx.main.conf /etc/nginx/nginx.conf
+
 RUN mkdir -p /opt/esap-nginx
 COPY nginx.frontend.gateway.prebuilt.conf /opt/esap-nginx/http.conf
 COPY nginx.frontend.gateway.prebuilt.tls.conf.template /opt/esap-nginx/tls.conf.template

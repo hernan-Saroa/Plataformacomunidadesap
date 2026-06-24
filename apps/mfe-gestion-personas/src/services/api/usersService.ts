@@ -5,7 +5,7 @@
  */
 
 import { apiClient } from './apiClient';
-import { API_ENDPOINTS } from '../../config/environment';
+import { API_ENDPOINTS } from '../../../config/environment';
 import type { 
   User, 
   CreateUserDTO, 
@@ -117,9 +117,7 @@ class UsersService {
     const response = await fetch(
       `${apiClient['baseURL']}${API_ENDPOINTS.USERS.EXPORT}?${new URLSearchParams(params as any)}`,
       {
-        headers: {
-          Authorization: `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
-        },
+        credentials: 'include',
       }
     );
 

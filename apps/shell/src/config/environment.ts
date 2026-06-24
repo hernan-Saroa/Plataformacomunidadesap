@@ -6,7 +6,7 @@
  *
  * MODOS DE CONEXIÓN:
  * 1. Gateway Mode (default para Docker): Todas las requests van al API Gateway
- *    - URL: http://localhost:3000/{service}/api/v1/{path}
+ *    - URL local: http://localhost:4000/{service}/api/v1/{path}
  *
  * 2. Direct Mode (para desarrollo local sin Docker): Cada servicio en su puerto
  *    - Auth: http://localhost:3001/{path}
@@ -29,10 +29,8 @@ const VITE_PUBLIC_FRONTEND_URL = import.meta.env.VITE_PUBLIC_FRONTEND_URL as str
 const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | undefined;
 
 // Modo de API: 'gateway' (usa API Gateway) o 'direct' (conexión directa a microservicios)
-// Auto-detectar: localhost = direct, producción = gateway
+// Por defecto usamos gateway tambien en local para que el frontend no llame directo a los microservicios.
 const VITE_API_MODE = import.meta.env.VITE_API_MODE as string | undefined;
-const isLocalhost = typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 const isLoopbackHost = (host?: string | null) =>
   host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -46,7 +44,8 @@ const rewriteLoopbackUrl = (rawUrl: string): string => {
     const currentHost = window.location.hostname;
 
     if (isLoopbackHost(url.hostname) && currentHost && !isLoopbackHost(currentHost)) {
-      url.hostname = currentHost;
+      url.host = window.location.host;
+      url.protocol = window.location.protocol;
       if (!hadTrailingSlash && url.pathname === '/' && !url.search && !url.hash) {
         return `${url.protocol}//${url.host}`;
       }
@@ -83,8 +82,13 @@ const getBrowserGatewayUrl = (): string | null => {
 
   const { protocol, hostname, origin } = window.location;
 
-  if (isLoopbackHost(hostname)) {
-    return `${protocol}//${hostname}:3000`;
+  // En desarrollo local, el shell corre en 3000 y el API Gateway en 4000.
+  if (ENV === 'development' || isLoopbackHost(hostname)) {
+    return `${protocol}//${hostname}:4000`;
+  }
+
+  if (hostname.endsWith('.trycloudflare.com')) {
+    return origin.replace(/\/$/, '');
   }
 
   return `${origin.replace(/\/$/, '')}/services`;
@@ -130,7 +134,7 @@ export const getApiGatewayBaseUrl = (): string => {
   return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
 };
 
-export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
+export const API_MODE = VITE_API_MODE || 'gateway';
 
 export const ONLYOFFICE_URL = (() => {
   const configuredUrl = VITE_ONLYOFFICE_URL
@@ -150,7 +154,7 @@ export const ONLYOFFICE_URL = (() => {
 
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
-  development: 'http://localhost:3000', // API Gateway local
+  development: 'http://localhost:4000', // API Gateway local
   dev: '/services',
   production: '/services',
 };
@@ -200,7 +204,7 @@ export const getServiceUrl = (serviceName: keyof typeof MICROSERVICE_URLS): stri
 /**
  * Construye la URL completa para un endpoint
  * En modo 'direct': http://localhost:3002/users (sin prefijo de servicio)
- * En modo 'gateway': http://localhost:3000/auth/api/v1/users (con prefijo)
+ * En modo 'gateway': http://localhost:4000/auth/api/v1/users (con prefijo)
  */
 export const buildApiUrl = (serviceName: keyof typeof MICROSERVICE_URLS, path: string): string => {
   if (API_MODE === 'direct') {
@@ -313,7 +317,7 @@ export const config = {
     enableAnalytics: ENV === 'production',
   },
 
-  // Keys para localStorage
+  // Keys para sessionStorage (tokens de sesión — NO localStorage)
   STORAGE_KEYS: {
     AUTH_TOKEN: 'esap_auth_token',
     REFRESH_TOKEN: 'esap_refresh_token',
@@ -350,6 +354,7 @@ export const API_ENDPOINTS = {
     VERIFY_RESET_CODE: '/auth/api/v1/verify-reset-code',
     RESET_PASSWORD: '/auth/api/v1/reset-password',
     CHANGE_PASSWORD: '/auth/api/v1/change-password',
+    LOGIN_SETTINGS: '/auth/api/v1/login-settings',
   },
 
   // Usuarios (auth-service)
@@ -464,37 +469,70 @@ export const API_ENDPOINTS = {
     DOWNLOAD: (id: string) => `/certificados/api/v1/${id}/download`,
     VERIFY: (code: string) => `/certificados/api/v1/verify/${code}`,
   },
+
+  // Gestión Legal (legal-management-service)
+  LEGAL: {
+    BASE: '/legal/api/v1',
+    EXPEDIENTES: '/legal/api/v1/expedientes',
+    EXPEDIENTE_BY_ID: (id: string) => `/legal/api/v1/expedientes/${id}`,
+    RECALCULAR_PLAZOS: '/legal/api/v1/expedientes/recalcular-plazos',
+    RENOMBRAR_TIPO_PROCESO: '/legal/api/v1/expedientes/renombrar-tipo-proceso',
+    CONFIGURATIONS: (key: string) => `/legal/api/v1/configurations/${key}`,
+  },
 };
 
-// Headers comunes para todas las requests
-export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
-  const headers: HeadersInit = {
+// Headers comunes para todas las requests.
+// Los tokens JWT viajan como cookie HttpOnly (OTIC-001) y el navegador los envía
+// automáticamente gracias a credentials:'include' en CORS_CONFIG.
+// NO se inyecta el header Authorization desde el frontend.
+export const getDefaultHeaders = (_includeAuth = true): HeadersInit => {
+  return {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json; charset=utf-8',
     'X-Client-Version': '1.0.0',
     'X-Client-Platform': 'web',
   };
+};
 
-  if (includeAuth) {
-    const primaryToken = sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    const legacyToken = sessionStorage.getItem('esap_access_token');
-    const token = primaryToken || legacyToken;
+export const getUserContextHeaders = (): HeadersInit => {
+  const user =
+    typeof window !== 'undefined'
+      ? (window as any).__esap_auth_cache
+      : null;
+  const userId =
+    user?.id_user ??
+    user?.user?.id_user ??
+    user?.userId ??
+    user?.id ??
+    user?.sub;
+  const userEmail =
+    user?.email ??
+    user?.person?.email ??
+    user?.mail;
+  const userName =
+    user?.fullName ??
+    user?.full_name ??
+    user?.name ??
+    user?.person?.full_name ??
+    (user?.person?.first_name || user?.person?.last_name
+      ? `${user.person.first_name ?? ''} ${user.person.last_name ?? ''}`.trim()
+      : undefined);
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+      .map((role: any) =>
+        typeof role === 'string'
+          ? role
+          : role?.code || role?.name || '',
+      )
+      .filter(Boolean)
+    : [];
 
-    // Compatibilidad con módulos legados: migrar token antiguo a la clave nueva.
-    if (!primaryToken && legacyToken) {
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, legacyToken);
-    }
-
-    if (token) {
-      headers[config.AUTH.TOKEN_HEADER] = `${config.AUTH.TOKEN_PREFIX} ${token}`;
-      // Header redundante para entornos con proxy/SSL que no reenvían Authorization.
-      if (API_MODE !== 'direct') {
-        headers['X-Access-Token'] = token;
-      }
-    }
-  }
-
-  return headers;
+  return {
+    ...(userId ? { 'X-User-ID': userId } : {}),
+    ...(userEmail ? { 'X-User-Email': userEmail } : {}),
+    ...(userName ? { 'X-User-Name': userName } : {}),
+    ...(roles.length ? { 'X-User-Roles': roles.join(',') } : {}),
+  };
 };
 
 // Configuración de CORS para desarrollo

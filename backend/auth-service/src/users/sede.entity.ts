@@ -16,10 +16,10 @@ export class Sede {
   @Column({ name: 'id_empresa', type: 'bigint', nullable: true, default: 1 })
   idEmpresa: number;
 
-  @Column({ name: 'cod_sede', length: 5, nullable: true })
+  @Column({ name: 'cod_sede', length: 20, nullable: true })
   codSede: string;
 
-  @Column({ name: 'nom_sede', length: 50 })
+  @Column({ name: 'nom_sede', nullable: true })
   nomSede: string;
 
   @Column({ name: 'id_geopolitica', type: 'bigint', nullable: true })

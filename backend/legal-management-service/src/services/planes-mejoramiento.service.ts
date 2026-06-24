@@ -2,8 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull, Not } from 'typeorm';
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from '../entities/planes-mejoramiento.entity';
+import { PlanHallazgo } from '../entities/plan-hallazgo.entity';
 import { Riesgo } from '../entities/riesgo.entity';
-import { Abogado } from '../entities/abogado.entity';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -16,8 +16,99 @@ export class PlanesMejoramientoService {
         private seguimientoRepo: Repository<PlanSeguimiento>,
         @InjectRepository(PlanComentario)
         private comentarioRepo: Repository<PlanComentario>,
+        @InjectRepository(PlanHallazgo)
+        private hallazgoRepo: Repository<PlanHallazgo>,
         private dataSource: DataSource
     ) { }
+
+    // ==================== Bug 5c: HALLAZGOS / ACCIONES DE MEJORA ====================
+
+    /**
+     * Recalcula el `avancePorcentaje` del plan a partir de sus hallazgos.
+     * Regla: si NO hay hallazgos, no cambiamos el avance (lo siguen manejando los seguimientos).
+     * Si HAY hallazgos, el avance del plan = promedio del avance de sus hallazgos.
+     * Esto garantiza que el plan no llegue a 100% hasta que TODOS los hallazgos
+     * estén en 100%.
+     */
+    private async recalcularAvancePlanDesdeHallazgos(planId: string): Promise<void> {
+        const hallazgos = await this.hallazgoRepo.find({ where: { planId } });
+        if (hallazgos.length === 0) return;
+        const suma = hallazgos.reduce((acc, h) => acc + Number(h.porcentajeAvance || 0), 0);
+        const promedio = Math.round(suma / hallazgos.length);
+        const plan = await this.planRepo.findOneBy({ id: planId });
+        if (plan) {
+            plan.avancePorcentaje = promedio;
+            await this.planRepo.save(plan);
+        }
+    }
+
+    async getHallazgos(planId: string) {
+        return this.hallazgoRepo.find({
+            where: { planId },
+            order: { createdAt: 'ASC' },
+        });
+    }
+
+    async createHallazgo(planId: string, data: {
+        nombre: string;
+        descripcion?: string;
+        porcentajeAvance?: number;
+        createdBy?: string;
+        file?: Express.Multer.File;
+    }) {
+        await this.findOne(planId);
+        if (!data.nombre || !data.nombre.trim()) {
+            throw new NotFoundException('El nombre del hallazgo es obligatorio');
+        }
+        const porcentaje = Math.max(0, Math.min(100, Number(data.porcentajeAvance ?? 0)));
+
+        const hallazgo = this.hallazgoRepo.create({
+            planId,
+            nombre: data.nombre.trim(),
+            descripcion: data.descripcion?.trim() ?? null as any,
+            porcentajeAvance: porcentaje,
+            createdBy: data.createdBy ?? 'Sistema',
+            archivoUrl: data.file ? `files/${data.file.filename}` : null as any,
+            archivoNombre: data.file?.originalname ?? null as any,
+            archivoMime: data.file?.mimetype ?? null as any,
+        });
+        const saved = await this.hallazgoRepo.save(hallazgo);
+        await this.recalcularAvancePlanDesdeHallazgos(planId);
+        return saved;
+    }
+
+    async updateHallazgo(hallazgoId: string, data: {
+        nombre?: string;
+        descripcion?: string;
+        porcentajeAvance?: number;
+        file?: Express.Multer.File;
+    }) {
+        const hallazgo = await this.hallazgoRepo.findOneBy({ id: hallazgoId });
+        if (!hallazgo) throw new NotFoundException('Hallazgo no encontrado');
+
+        if (data.nombre !== undefined && data.nombre.trim()) hallazgo.nombre = data.nombre.trim();
+        if (data.descripcion !== undefined) hallazgo.descripcion = data.descripcion?.trim() ?? null as any;
+        if (data.porcentajeAvance !== undefined) {
+            hallazgo.porcentajeAvance = Math.max(0, Math.min(100, Number(data.porcentajeAvance)));
+        }
+        if (data.file) {
+            hallazgo.archivoUrl = `files/${data.file.filename}`;
+            hallazgo.archivoNombre = data.file.originalname;
+            hallazgo.archivoMime = data.file.mimetype;
+        }
+        const saved = await this.hallazgoRepo.save(hallazgo);
+        await this.recalcularAvancePlanDesdeHallazgos(hallazgo.planId);
+        return saved;
+    }
+
+    async deleteHallazgo(hallazgoId: string) {
+        const hallazgo = await this.hallazgoRepo.findOneBy({ id: hallazgoId });
+        if (!hallazgo) throw new NotFoundException('Hallazgo no encontrado');
+        const planId = hallazgo.planId;
+        await this.hallazgoRepo.remove(hallazgo);
+        await this.recalcularAvancePlanDesdeHallazgos(planId);
+        return { ok: true };
+    }
 
     async findAll() {
         // We purposefully create a query builder to join with Risks manually if needed, 
@@ -30,7 +121,7 @@ export class PlanesMejoramientoService {
         const planes = await this.planRepo.find({
             where: { archivedAt: IsNull() },
             order: { createdAt: 'DESC' },
-            relations: ['evidencias', 'seguimientos', 'comentarios']
+            relations: ['evidencias', 'seguimientos', 'comentarios', 'hallazgos']
         });
 
         // Enhance with Risk Title if origin is RIESGO
@@ -38,25 +129,22 @@ export class PlanesMejoramientoService {
         // Let's just fetch all risks for now (assuming not millions) or fetch individually.
         // Better: Fetch IDs.
         const riskIds = planes.filter(p => p.origen === 'RIESGO' && p.origenId).map(p => p.origenId);
-        const abogadoIds = planes.filter(p => p.responsableId).map(p => p.responsableId);
-
-        console.log('Fetching names for Abogado IDs:', abogadoIds); // Debug Log
+        const responsableIds = planes.filter(p => p.responsableId).map(p => p.responsableId);
 
         let riskMap = new Map();
-        let abogadoMap = new Map();
+        let responsableMap = new Map<string, string>();
 
         if (riskIds.length > 0) {
             const risks = await this.dataSource.getRepository(Riesgo).findBy({ id: In(riskIds) });
             riskMap = new Map(risks.map(r => [r.id, r.nombre]));
         }
 
-        if (abogadoIds.length > 0) {
-            const abogados = await this.dataSource.getRepository(Abogado).findBy({ id: In(abogadoIds) });
-            abogadoMap = new Map(abogados.map(a => [a.id, a.nombreCompleto]));
+        if (responsableIds.length > 0) {
+            responsableMap = await this.resolveResponsablesDesdeAuth(responsableIds);
         }
 
         return planes.map(p => {
-            const respNombre = abogadoMap.get(p.responsableId);
+            const respNombre = p.responsableId ? responsableMap.get(p.responsableId) : null;
             return {
                 ...p,
                 riesgoTitulo: p.origen === 'RIESGO' ? riskMap.get(p.origenId) : null,
@@ -87,15 +175,15 @@ export class PlanesMejoramientoService {
     async findOne(id: string) {
         const plan = await this.planRepo.findOne({
             where: { id },
-            relations: ['evidencias', 'seguimientos', 'comentarios']
+            relations: ['evidencias', 'seguimientos', 'comentarios', 'hallazgos']
         });
         if (!plan) throw new NotFoundException(`Plan ${id} no encontrado`);
 
-        // Lookup responsable name - first try abogado, then entity field
+        // Lookup responsable name from auth, then entity field
         let responsableNombre = plan.responsableNombre || 'Sin Asignar';
         if (plan.responsableId) {
-            const abogado = await this.dataSource.getRepository(Abogado).findOneBy({ id: plan.responsableId });
-            if (abogado) responsableNombre = abogado.nombreCompleto;
+            const responsables = await this.resolveResponsablesDesdeAuth([plan.responsableId]);
+            responsableNombre = responsables.get(plan.responsableId) || responsableNombre;
         }
 
         // Attach Risk Info
@@ -117,6 +205,34 @@ export class PlanesMejoramientoService {
             riesgoTitulo,
             seguimientos: seguimientosConFecha
         };
+    }
+
+    private async resolveResponsablesDesdeAuth(ids: string[]): Promise<Map<string, string>> {
+        const filteredIds = [...new Set(ids.filter(Boolean))];
+        if (filteredIds.length === 0) return new Map();
+
+        try {
+            const rows = await this.dataSource.query(
+                `SELECT
+                    u.id_user::text AS id_user,
+                    u.public_id::text AS public_id,
+                    COALESCE(p.nom_largo, u.username, u.id_user::text) AS nombre
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE u.id_user::text = ANY($1)
+                    OR u.public_id::text = ANY($1)`,
+                [filteredIds],
+            );
+
+            const map = new Map<string, string>();
+            for (const row of rows) {
+                if (row.id_user) map.set(row.id_user, row.nombre);
+                if (row.public_id) map.set(row.public_id, row.nombre);
+            }
+            return map;
+        } catch {
+            return new Map();
+        }
     }
 
     async getDocumentos(planId: string): Promise<PlanEvidencia[]> {
@@ -144,11 +260,37 @@ export class PlanesMejoramientoService {
         return this.evidenciaRepo.save(evidencia);
     }
 
-    async addSeguimiento(planId: string, data: { descripcionAvance: string; porcentajeReportado: number; usuarioId?: string }) {
+    async addSeguimiento(planId: string, data: {
+        descripcionAvance: string;
+        porcentajeReportado: number;
+        usuarioId?: string;
+        file?: Express.Multer.File;
+        tituloDocumento?: string;
+        uploadedBy?: string;
+    }) {
         const plan = await this.findOne(planId);
 
-        // Create tracking record
-        const seguimiento = this.seguimientoRepo.create({ ...data, planId });
+        // Bug 5: si vino archivo adjunto, lo guardamos como evidencia/documento
+        // del plan ANTES de crear el seguimiento, para que el avance quede atado
+        // a su soporte en la misma transacción lógica.
+        if (data.file) {
+            const evidencia = this.evidenciaRepo.create({
+                planId,
+                titulo: data.tituloDocumento || data.file.originalname,
+                urlArchivo: data.file.filename,
+                tipoArchivo: data.file.mimetype,
+                uploadedBy: data.uploadedBy || data.usuarioId || 'Sistema',
+            });
+            await this.evidenciaRepo.save(evidencia);
+        }
+
+        // Create tracking record (sin propagar el File)
+        const seguimiento = this.seguimientoRepo.create({
+            descripcionAvance: data.descripcionAvance,
+            porcentajeReportado: data.porcentajeReportado,
+            usuarioId: data.usuarioId,
+            planId,
+        });
         await this.seguimientoRepo.save(seguimiento);
 
         // Update Plan percentage

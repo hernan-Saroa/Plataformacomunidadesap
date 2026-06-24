@@ -3,7 +3,6 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { Expediente } from './entities/expediente.entity';
 import { Actuacion } from './entities/actuacion.entity';
-import { Abogado } from './entities/abogado.entity';
 import { Audiencia } from './entities/audiencia.entity';
 import { Requerimiento } from './entities/requerimiento.entity';
 import { OrganismoControl } from './entities/organismo-control.entity';
@@ -41,6 +40,7 @@ import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity'
 
 // Planes de Mejoramiento
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from './entities/planes-mejoramiento.entity';
+import { PlanHallazgo } from './entities/plan-hallazgo.entity';
 
 // Documentos de Consultas Jurídicas
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
@@ -51,6 +51,7 @@ import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historia
 import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from './entities/correo-juridico-historial.entity';
+import { CorreoTrackingToken } from './entities/correo-tracking-token.entity';
 
 // Excepciones Procesales
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
@@ -83,7 +84,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     // No especificar schema por defecto para permitir múltiples schemas
 
     entities: [
-        Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
+        Expediente, Actuacion, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
         Actor,
         // Órganos de Control
@@ -99,11 +100,11 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Decisiones
         DecisionDisciplinaria,
         // Planes de Mejoramiento
-        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario,
+        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario, PlanHallazgo,
         // Documentos de Consultas Jurídicas
         DocumentoConsulta, ComentarioConsulta, ConsultaJuridicaHistorial,
         // Correos Jurídicos
-        CorreoJuridico, AdjuntoCorreo, CorreoJuridicoHistorial,
+        CorreoJuridico, AdjuntoCorreo, CorreoJuridicoHistorial, CorreoTrackingToken,
         // Excepciones Procesales
         ExcepcionProcesal,
         // Procesos Coactivos
@@ -115,7 +116,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Plantillas de Documentos
         PlantillaDocumento
     ],
-    synchronize: false, // ⚠️ Reverted to false to avoid conflicts
+    synchronize: process.env.TYPEORM_SYNC === 'true',
     logging: ['error'], // Solo mostrar errores, no queries
 };
 

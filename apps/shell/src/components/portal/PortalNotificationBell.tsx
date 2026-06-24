@@ -1,11 +1,13 @@
 /**
- * PortalNotificationBell — Campana de notificaciones para el Portal Transaccional
+ * Campana de notificaciones del Portal Transaccional.
+ * Lee desde NotificationsContext → notifications-service (3009) vía GET /users/{id}/notifications.
+ * Las alertas de Control Interno se insertan en notifications.notificacion desde el servicio 3007.
  */
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle, XCircle, AlertTriangle, Info, X, Check, Trash2 } from 'lucide-react';
-import { useNotifications } from '../esap/NotificationsContext';
+import { useNotifications, type GlobalNotification } from '../esap/NotificationsContext';
 
 function timeAgo(date: Date): string {
   const now = Date.now();
@@ -21,17 +23,33 @@ function timeAgo(date: Date): string {
   return `hace ${days}d`;
 }
 
-const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
+const TYPE_CONFIG: Record<string, { icon: typeof Info; color: string; bg: string }> = {
   success: { icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
   error: { icon: XCircle, color: '#DC2626', bg: '#FEE2E2' },
   warning: { icon: AlertTriangle, color: '#D97706', bg: '#FEF3C7' },
   info: { icon: Info, color: '#003DA5', bg: '#EFF6FF' },
 };
 
-export function PortalNotificationBell() {
-  const { notifications, markAsRead, clearAll, unreadCount } = useNotifications();
+function visualType(n: GlobalNotification): string {
+  const p = (n.prioridad || '').toLowerCase();
+  if (p === 'crítica' || p === 'critica' || p === 'alta') return 'warning';
+  if (n.tipo_notificacion?.includes('rechazo')) return 'error';
+  if (n.tipo_notificacion?.includes('aprobacion') || n.tipo_notificacion?.includes('APR-001')) return 'success';
+  return 'info';
+}
+
+interface PortalNotificationBellProps {
+  /** Navegación del portal (ej. control-interno-gestion) */
+  onNavigate?: (section: string) => void;
+}
+
+export function PortalNotificationBell({ onNavigate }: PortalNotificationBellProps) {
+  const { notifications, markAsRead, markAllAsRead, clearNotifications, unreadCount } =
+    useNotifications();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const visible = notifications.filter((n) => !n.archivada);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -45,23 +63,28 @@ export function PortalNotificationBell() {
     }
   }, [open]);
 
-  const handleMarkAllRead = () => {
-    notifications.forEach((n) => {
-      if (!n.read) markAsRead(n.id);
-    });
+  const handleOpenNotification = (n: GlobalNotification) => {
+    markAsRead(n.id_notificacion);
+    const url = (n.url_accion || '').trim();
+    if (url && onNavigate) {
+      const section = url.includes('::') ? url.split('::')[0] : url.replace(/^\//, '');
+      if (section) onNavigate(section);
+    }
+    setOpen(false);
   };
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative' }}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         style={{
           position: 'relative',
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
+          width: 40,
+          height: 40,
+          borderRadius: 10,
           border: 'none',
-          background: open ? '#EFF6FF' : 'transparent',
+          background: open ? '#EFF6FF' : '#F3F4F6',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -69,26 +92,27 @@ export function PortalNotificationBell() {
           transition: 'background 0.15s',
         }}
         title="Notificaciones"
+        aria-label={`Notificaciones${unreadCount > 0 ? ` (${unreadCount} sin leer)` : ''}`}
       >
-        <Bell style={{ width: 18, height: 18, color: open ? '#003DA5' : '#6B7280' }} />
+        <Bell style={{ width: 20, height: 20, color: open ? '#003DA5' : '#374151', strokeWidth: 2 }} />
         {unreadCount > 0 && (
           <span
             style={{
               position: 'absolute',
-              top: 2,
-              right: 2,
-              minWidth: 16,
-              height: 16,
-              borderRadius: 8,
-              background: '#DC2626',
-              color: 'white',
-              fontSize: '0.58rem',
-              fontWeight: 800,
+              top: 6,
+              right: 6,
+              minWidth: 18,
+              height: 18,
+              padding: '0 4px',
+              borderRadius: 9,
+              background: '#EF4444',
+              color: '#FFFFFF',
+              fontSize: 10,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '0 3px',
-              border: '2px solid white',
+              border: '2px solid #FFFFFF',
               lineHeight: 1,
             }}
           >
@@ -109,7 +133,7 @@ export function PortalNotificationBell() {
               top: '100%',
               right: 0,
               marginTop: 6,
-              width: 360,
+              width: 380,
               maxHeight: 460,
               background: 'white',
               borderRadius: 14,
@@ -151,7 +175,8 @@ export function PortalNotificationBell() {
               <div style={{ display: 'flex', gap: 4 }}>
                 {unreadCount > 0 && (
                   <button
-                    onClick={handleMarkAllRead}
+                    type="button"
+                    onClick={() => markAllAsRead()}
                     style={{
                       padding: '3px 8px',
                       borderRadius: 6,
@@ -170,10 +195,11 @@ export function PortalNotificationBell() {
                     <Check style={{ width: 10, height: 10 }} /> Leer todas
                   </button>
                 )}
-                {notifications.length > 0 && (
+                {visible.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => {
-                      clearAll();
+                      clearNotifications();
                       setOpen(false);
                     }}
                     style={{
@@ -189,12 +215,13 @@ export function PortalNotificationBell() {
                       alignItems: 'center',
                       gap: 3,
                     }}
-                    title="Limpiar todas"
+                    title="Limpiar vista local"
                   >
                     <Trash2 style={{ width: 10, height: 10 }} />
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setOpen(false)}
                   style={{
                     width: 24,
@@ -214,25 +241,27 @@ export function PortalNotificationBell() {
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: 380 }}>
-              {notifications.length === 0 ? (
+              {visible.length === 0 ? (
                 <div style={{ padding: '40px 16px', textAlign: 'center', color: '#9CA3AF' }}>
                   <Bell style={{ width: 28, height: 28, margin: '0 auto 8px', color: '#D1D5DB' }} />
                   <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Sin notificaciones</div>
-                  <div style={{ fontSize: '0.72rem', marginTop: 2 }}>Las notificaciones aparecerán aquí</div>
+                  <div style={{ fontSize: '0.72rem', marginTop: 2 }}>
+                    Las alertas de Control Interno y otros módulos aparecerán aquí
+                  </div>
                 </div>
               ) : (
-                notifications.map((n) => {
-                  const cfg = TYPE_CONFIG[n.type] || TYPE_CONFIG.info;
+                visible.map((n) => {
+                  const cfg = TYPE_CONFIG[visualType(n)] || TYPE_CONFIG.info;
                   const Icon = cfg.icon;
                   return (
                     <div
-                      key={n.id}
-                      onClick={() => markAsRead(n.id)}
+                      key={n.id_notificacion}
+                      onClick={() => handleOpenNotification(n)}
                       style={{
                         padding: '12px 16px',
                         borderBottom: '1px solid #F9FAFB',
                         cursor: 'pointer',
-                        background: n.read ? 'white' : '#F9FAFB',
+                        background: n.leida ? 'white' : '#F9FAFB',
                         display: 'flex',
                         gap: 10,
                       }}
@@ -252,10 +281,12 @@ export function PortalNotificationBell() {
                       >
                         <Icon style={{ width: 16, height: 16 }} />
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#111827' }}>{n.title}</div>
-                        <div style={{ fontSize: '0.76rem', color: '#6B7280', marginTop: 2 }}>{n.message}</div>
-                        <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginTop: 6 }}>{timeAgo(new Date(n.timestamp))}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#111827' }}>{n.titulo}</div>
+                        <div style={{ fontSize: '0.76rem', color: '#6B7280', marginTop: 2 }}>{n.mensaje}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginTop: 6 }}>
+                          {timeAgo(new Date(n.fecha_creacion))}
+                        </div>
                       </div>
                     </div>
                   );
@@ -268,4 +299,3 @@ export function PortalNotificationBell() {
     </div>
   );
 }
-

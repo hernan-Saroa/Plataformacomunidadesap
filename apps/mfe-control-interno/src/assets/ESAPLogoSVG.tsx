@@ -1,1 +1,1 @@
-export * from '../components/assets/ESAPLogoSVG';
+export * from '../../../shell/src/components/assets/ESAPLogoSVG';

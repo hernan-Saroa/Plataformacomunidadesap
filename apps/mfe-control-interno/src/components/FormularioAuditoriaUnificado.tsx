@@ -30,7 +30,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft,
+  X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
   User, Calendar, Target, FileText, Shield, Info, Users, Building2,
   ClipboardCheck, DollarSign, TrendingUp, FileCheck, MapPin, Clock,
   AlertTriangle, CheckSquare, Layers, Zap, BookOpen, Settings
@@ -41,8 +41,11 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
-import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
+import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../services/api/controlInternoService';
+import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -80,10 +83,28 @@ export interface HitoAuditoria {
   responsable: string;
 }
 
+/**
+ * Persona que será responsable del área auditada (auditado).
+ * Es la persona que recibirá las notificaciones del informe preliminar y
+ * accederá al portal del auditado para responder los hallazgos.
+ *
+ * Se selecciona desde el catálogo `auth.personas` mediante el endpoint
+ * `GET /auditorias/personas/search?q=...`.
+ */
+export interface ResponsableArea {
+  idPersona: string;
+  nombre: string;
+  email: string;
+  cargo?: string;
+  numeroIdentificacion?: string;
+  isAuditorBackend?: boolean;
+  roles?: string | null;
+}
+
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
-  tipoAuditoria: 'regular' | 'territorial' | 'especial' | 'seguimiento';
+  tipoAuditoria: string; // Ahora es completamente dinámico
   titulo: string;
   descripcion: string;
   
@@ -93,6 +114,9 @@ export interface AuditoriaUnificadaFormData {
   procesoAuditado: string;
   alcance: string;
   focos?: string[]; // Focos de la auditoría (opcional, multi-select)
+  // Responsable del área auditada (persona del catálogo auth.personas).
+  // Es OBLIGATORIO: define quién recibe el informe preliminar y entra al portal del auditado.
+  responsableArea?: ResponsableArea;
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -142,13 +166,13 @@ export interface AuditoriaUnificadaFormData {
   rolDecretoAsociado?: string;
   
   // 10. ESTADO KANBAN (para crear auditoria en columna correcta)
-  estadoKanban?: 'Plan Anual' | 'Planeación' | 'Trabajo de Campo' | 'Elaboración Informe' | 'Informe Final' | 'Seguimiento' | 'Cerrada';
+  estadoKanban?: 'Programa Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Finalizada';
 }
 
 interface FormularioAuditoriaUnificadoProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: AuditoriaUnificadaFormData) => void;
+  onSubmit: (data: AuditoriaUnificadaFormData) => void | boolean | Promise<void | boolean>;
   initialData?: Partial<AuditoriaUnificadaFormData>;
   mode: 'create' | 'edit';
 }
@@ -157,11 +181,12 @@ interface FormularioAuditoriaUnificadoProps {
 // DATOS MOCK
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TERRITORIALES = [
-  'Nacional', 'Antioquia', 'Atlántico', 'Bogotá', 'Bolívar', 'Boyacá', 'Caldas',
-  'Caquetá', 'Cauca', 'Cesar', 'Chocó', 'Córdoba', 'Cundinamarca', 'Huila',
-  'La Guajira', 'Magdalena', 'Meta', 'Nariño', 'Norte de Santander', 'Quindío',
-  'Risaralda', 'Santander', 'Sucre', 'Tolima', 'Valle del Cauca'
+// TERRITORIALES: Ahora se cargan dinámicamente desde Estructura Organizacional
+// (ver useEffect cargarSeccionales dentro del componente principal)
+const TERRITORIALES_FALLBACK = [
+  'Sede Central', 'Antioquia', 'Atlántico', 'Bolívar', 'Boyacá', 'Caldas',
+  'Cauca', 'Chocó', 'Cundinamarca', 'Huila', 'Meta', 'Nariño',
+  'Norte de Santander', 'Quindío', 'Santander', 'Tolima', 'Valle del Cauca'
 ];
 
 const AREAS_INSTITUCIONALES = [
@@ -232,7 +257,7 @@ interface FieldWrapperProps {
   error?: string | null;
   required?: boolean;
   children: React.ReactNode;
-  helpText?: string;
+  helpText?: React.ReactNode;
 }
 
 function FieldWrapper({ label, error, required, children, helpText }: FieldWrapperProps) {
@@ -257,10 +282,10 @@ function FieldWrapper({ label, error, required, children, helpText }: FieldWrapp
         )}
       </AnimatePresence>
       {!error && helpText && (
-        <p className="text-xs text-gray-500 flex items-center gap-1">
-          <Info className="w-3 h-3" />
-          {helpText}
-        </p>
+        <div className="text-xs text-gray-500 flex items-start gap-1 mt-1">
+          <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">{helpText}</div>
+        </div>
       )}
     </div>
   );
@@ -270,6 +295,13 @@ function FieldWrapper({ label, error, required, children, helpText }: FieldWrapp
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Helper to parse YYYY-MM-DD local dates avoiding UTC timezone shift
+const parseLocalDate = (dateString: string) => {
+  if (!dateString) return new Date();
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export function FormularioAuditoriaUnificado({
   open,
   onClose,
@@ -277,16 +309,18 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
+  const vigenciaPlanCtx = usePlanAnualVigenciaContextOptional();
   const [pasoActual, setPasoActual] = useState(1);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipoAuditoria: initialData?.tipoAuditoria || '',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
     areaObjetivo: initialData?.areaObjetivo || '',
     procesoAuditado: initialData?.procesoAuditado || '',
     alcance: initialData?.alcance || '',
+    responsableArea: initialData?.responsableArea,
     auditorLider: initialData?.auditorLider || '',
     auditorAsignado: initialData?.auditorAsignado || '',
     equipoAuditores: initialData?.equipoAuditores || [],
@@ -319,8 +353,18 @@ export function FormularioAuditoriaUnificado({
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
     rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
-    estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
+    estadoKanban: initialData?.estadoKanban || 'Programa Anual' // Por defecto crear en Plan Anual
   });
+
+  useEffect(() => {
+    if (!open || !vigenciaPlanCtx) return;
+    setFormData((prev) => ({
+      ...prev,
+      vinculadaPlanAnual: initialData?.vinculadaPlanAnual ?? true,
+      planAnualId: initialData?.planAnualId ?? vigenciaPlanCtx.planActivoId ?? prev.planAnualId,
+      planAnualAño: initialData?.planAnualAño ?? vigenciaPlanCtx.vigencia,
+    }));
+  }, [open, vigenciaPlanCtx?.planActivoId, vigenciaPlanCtx?.vigencia, initialData?.vinculadaPlanAnual, initialData?.planAnualId, initialData?.planAnualAño]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
@@ -347,12 +391,86 @@ export function FormularioAuditoriaUnificado({
   // Estado para búsqueda de procesos
   const [busquedaProceso, setBusquedaProceso] = useState('');
   const [mostrarSugerenciasProcesos, setMostrarSugerenciasProcesos] = useState(false);
+
+  // Estado para autocompletado del Responsable del Área Auditada (Paso 2).
+  // Se busca contra el catálogo `auth.personas` por nombre, email o identificación.
+  const [busquedaResponsable, setBusquedaResponsable] = useState('');
+  const [resultadosResponsable, setResultadosResponsable] = useState<ResponsableArea[]>([]);
+  const [buscandoResponsable, setBuscandoResponsable] = useState(false);
+  const [mostrarSugerenciasResponsable, setMostrarSugerenciasResponsable] = useState(false);
+  // Lista completa de personas precargadas (para mostrar sin escribir al hacer focus)
+  const [personasPrecargadas, setPersonasPrecargadas] = useState<ResponsableArea[]>([]);
   
   // Estado para evaluaciones completas (incluye datos de riesgo)
   const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
 
+  // Estado para seccionales/territoriales cargadas desde Estructura Organizacional
+  const [seccionalesDisponibles, setSeccionalesDisponibles] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
+  const [cargandoSeccionales, setCargandoSeccionales] = useState(false);
+
   const TOTAL_PASOS = 9;
   
+  // Precargar todas las personas disponibles al abrir el formulario
+  useEffect(() => {
+    const precargarPersonas = async () => {
+      if (!open) return;
+      try {
+        const resp = await auditoriasApi.getAllAuditados();
+        if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
+          let list = resp.data.map((p: any) => ({
+            idPersona: String(p.idPersona ?? p.id ?? ''),
+            nombre: p.nombre ?? '',
+            email: p.email ?? '',
+            cargo: p.cargo,
+            numeroIdentificacion: p.numeroIdentificacion,
+            isAuditorBackend: p.isAuditor ?? false,
+            roles: p.roles ?? null,
+          }));
+
+          // Si el backend no devolvió roles, obtenerlos del auth service
+          const sinRoles = list.every((p: ResponsableArea) => !p.roles);
+          if (sinRoles) {
+            try {
+              const { getApiGatewayBaseUrl } = await import('../../../config/environment');
+              const gw = getApiGatewayBaseUrl();
+              const authResp = await fetch(`${gw}/auth/api/v1/users?limit=300`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+              });
+              if (authResp.ok) {
+                const authData = await authResp.json();
+                const usersArr = Array.isArray(authData) ? authData : (authData?.data || authData?.users || []);
+                // Crear mapa email -> roles
+                const rolesMap = new Map<string, string>();
+                usersArr.forEach((u: any) => {
+                  const email = (u.email || u.person?.email || u.person?.dir_email || '').toLowerCase();
+                  const roles = Array.isArray(u.roles)
+                    ? u.roles.map((r: any) => typeof r === 'string' ? r : (r.name || r.code || '')).filter(Boolean).join(', ')
+                    : '';
+                  if (email && roles) {
+                    rolesMap.set(email, roles);
+                  }
+                });
+                // Enriquecer lista con roles
+                list = list.map((p: ResponsableArea) => ({
+                  ...p,
+                  roles: rolesMap.get((p.email || '').toLowerCase()) || p.roles || null,
+                }));
+              }
+            } catch (authErr) {
+              console.warn('[FormularioAuditoriaUnificado] No se pudieron obtener roles desde auth:', authErr);
+            }
+          }
+
+          setPersonasPrecargadas(list);
+        }
+      } catch (err) {
+        console.warn('[FormularioAuditoriaUnificado] No se pudieron precargar personas:', err);
+      }
+    };
+    precargarPersonas();
+  }, [open]);
+
   // Cargar profesionales OCI configurados del backend
   useEffect(() => {
     const cargarAuditores = async () => {
@@ -366,6 +484,11 @@ export function FormularioAuditoriaUnificado({
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
             .filter((config: any) => config.activo)
+            .filter((config: any) => {
+              // Excluir profesionales huérfanos cuyo usuario ya no existe en auth.personas
+              const nombre = config.nombre || '';
+              return nombre && nombre !== 'Usuario Sin Nombre' && nombre !== 'Sin Nombre';
+            })
             .map((config: any) => ({
               id: String(config.idTercero),
               nombre: config.nombre || `Profesional ${config.idTercero}`,
@@ -419,8 +542,8 @@ export function FormularioAuditoriaUnificado({
       
       setCargandoProcesos(true);
       try {
-        // Obtener evaluaciones del universo de auditorías
-        const evaluaciones = await controlInternoService.getEvaluaciones();
+        // Obtener evaluaciones del universo de auditorías filtrando por vigencia actual si existe
+        const evaluaciones = await controlInternoService.getEvaluaciones(vigenciaPlanCtx?.vigencia);
         
         if (evaluaciones && evaluaciones.length > 0) {
           // Guardar evaluaciones completas para acceder a datos de riesgo
@@ -443,10 +566,10 @@ export function FormularioAuditoriaUnificado({
             setProcesosAuditables(procesosArray);
             console.log(`[FormularioAuditoria] ✅ ${procesosArray.length} procesos auditables cargados desde el universo`);
           } else {
-            console.warn('[FormularioAuditoria] No se encontraron procesos en las evaluaciones, usando fallback');
+            console.log('[FormularioAuditoria] No se encontraron procesos en las evaluaciones, usando fallback');
           }
         } else {
-          console.warn('[FormularioAuditoria] No hay evaluaciones registradas, usando procesos fallback');
+          console.log('[FormularioAuditoria] No hay evaluaciones registradas, usando procesos fallback');
         }
       } catch (error) {
         console.error('[FormularioAuditoria] Error al cargar procesos auditables:', error);
@@ -459,31 +582,60 @@ export function FormularioAuditoriaUnificado({
     cargarProcesos();
   }, [open]);
 
+  // Cargar seccionales/territoriales desde Estructura Organizacional
+  useEffect(() => {
+    const cargarSeccionales = async () => {
+      if (!open) return;
+      setCargandoSeccionales(true);
+      try {
+        const seccionales = await estructuraService.obtenerSeccionales();
+        if (seccionales && seccionales.length > 0) {
+          setSeccionalesDisponibles(seccionales.map((s: any) => ({
+            id: s.id,
+            nombre: s.nombre,
+            codigo: s.codigo,
+          })));
+          console.log(`[FormularioAuditoria] ✅ ${seccionales.length} seccionales/territoriales cargadas desde Estructura Organizacional`);
+        } else {
+          // Usar fallback si no hay seccionales configuradas
+          setSeccionalesDisponibles(TERRITORIALES_FALLBACK.map((t, i) => ({ id: i + 1, nombre: t })));
+          console.warn('[FormularioAuditoria] No hay seccionales en Estructura Organizacional, usando fallback');
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] Error al cargar seccionales:', error);
+        setSeccionalesDisponibles(TERRITORIALES_FALLBACK.map((t, i) => ({ id: i + 1, nombre: t })));
+      } finally {
+        setCargandoSeccionales(false);
+      }
+    };
+    cargarSeccionales();
+  }, [open]);
+
   // Auto-calcular etapas del cronograma (PROMPT: 4-4-5 semanas)
   useEffect(() => {
     if (formData.fechaInicioPlaneacion && !formData.fechaFinPlaneacion && mode === 'create') {
-      const inicioP = new Date(formData.fechaInicioPlaneacion);
+      const inicioP = parseLocalDate(formData.fechaInicioPlaneacion);
       
       // 1. Planeación: 4 semanas (28 días)
-      const finP = new Date(inicioP);
+      const finP = new Date(inicioP.getTime());
       finP.setDate(finP.getDate() + 27);
       const fechaFinP = finP.toISOString().split('T')[0];
       
       // 2. Ejecución: 4 semanas (28 días)
-      const inicioE = new Date(finP);
+      const inicioE = new Date(finP.getTime());
       inicioE.setDate(inicioE.getDate() + 1);
       const fechaInicioE = inicioE.toISOString().split('T')[0];
       
-      const finE = new Date(inicioE);
+      const finE = new Date(inicioE.getTime());
       finE.setDate(finE.getDate() + 27);
       const fechaFinE = finE.toISOString().split('T')[0];
       
       // 3. Comunicación: 5 semanas (35 días)
-      const inicioC = new Date(finE);
+      const inicioC = new Date(finE.getTime());
       inicioC.setDate(inicioC.getDate() + 1);
       const fechaInicioC = inicioC.toISOString().split('T')[0];
       
-      const finC = new Date(inicioC);
+      const finC = new Date(inicioC.getTime());
       finC.setDate(finC.getDate() + 34);
       const fechaFinC = finC.toISOString().split('T')[0];
       
@@ -507,6 +659,65 @@ export function FormularioAuditoriaUnificado({
       setBusquedaProceso(formData.procesoAuditado);
     }
   }, [formData.titulo, formData.procesoAuditado, busquedaProceso]);
+
+  // ========== AUTOCOMPLETADO DEL RESPONSABLE DEL ÁREA AUDITADA (Paso 2) ==========
+  // Cuando el campo está vacío, muestra todas las personas precargadas.
+  // Al escribir (≥1 char), filtra primero sobre las precargadas y además llama al backend.
+  useEffect(() => {
+    const q = busquedaResponsable.trim();
+
+    // Sin búsqueda: mostrar lista precargada, omitiendo a los auditores
+    if (q.length === 0) {
+      setResultadosResponsable(personasPrecargadas);
+      setBuscandoResponsable(false);
+      return;
+    }
+
+    // Filtrado local inmediato sobre la lista precargada
+    const qLower = q.toLowerCase();
+    const filtradosLocal = personasPrecargadas.filter(
+      (p) =>
+        (p.nombre.toLowerCase().includes(qLower) ||
+        p.email.toLowerCase().includes(qLower) ||
+        (p.numeroIdentificacion ?? '').includes(q))
+    );
+    setResultadosResponsable(filtradosLocal);
+
+    // También llama al backend para búsqueda más amplia (≥2 chars)
+    if (q.length < 2) return;
+
+    let cancelado = false;
+    setBuscandoResponsable(true);
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await auditoriasApi.searchAuditados(q);
+        if (cancelado) return;
+        if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
+          const fetched = resp.data.map((p: any) => ({
+            idPersona: String(p.idPersona ?? p.id ?? ''),
+            nombre: p.nombre ?? '',
+            email: p.email ?? '',
+            cargo: p.cargo,
+            numeroIdentificacion: p.numeroIdentificacion,
+            isAuditorBackend: p.isAuditor ?? false,
+            roles: p.roles ?? null,
+          }));
+          setResultadosResponsable(fetched);
+        }
+        // Si backend no retorna nada, quedamos con el filtrado local
+      } catch (err) {
+        if (!cancelado) {
+          console.warn('[FormularioAuditoriaUnificado] Error buscando personas:', err);
+        }
+      } finally {
+        if (!cancelado) setBuscandoResponsable(false);
+      }
+    }, 350);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [busquedaResponsable, personasPrecargadas]);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -646,11 +857,31 @@ export function FormularioAuditoriaUnificado({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validar tipo de auditoría
+    if (!formData.tipoAuditoria) {
+      toast.error('Debe seleccionar un tipo de auditoría');
+      setPasoActual(1);
+      return;
+    }
 
     // Validaciones básicas - titulo contiene el proceso seleccionado
     if (!formData.titulo || formData.titulo.length < 5) {
       toast.error('Debe seleccionar un proceso auditable como título');
       setPasoActual(1);
+      return;
+    }
+
+    // Validar Responsable del Área Auditada (Paso 2). Es obligatorio porque define
+    // quién recibe el informe preliminar y entra al portal del auditado.
+    if (!formData.responsableArea || !formData.responsableArea.idPersona) {
+      toast.error('Debe seleccionar el responsable del área auditada');
+      setPasoActual(2);
+      return;
+    }
+    if (!formData.responsableArea.email || !formData.responsableArea.email.includes('@')) {
+      toast.error('La persona seleccionada como responsable del área no tiene un correo válido');
+      setPasoActual(2);
       return;
     }
 
@@ -667,8 +898,8 @@ export function FormularioAuditoriaUnificado({
       return;
     }
     
-    const inicioPlaneacion = new Date(formData.fechaInicioPlaneacion);
-    const finPlaneacion = new Date(formData.fechaFinPlaneacion);
+    const inicioPlaneacion = parseLocalDate(formData.fechaInicioPlaneacion);
+    const finPlaneacion = parseLocalDate(formData.fechaFinPlaneacion);
     if (finPlaneacion <= inicioPlaneacion) {
       toast.error('La fecha de fin de Planeación debe ser posterior a la fecha de inicio');
       setPasoActual(4);
@@ -682,8 +913,8 @@ export function FormularioAuditoriaUnificado({
         setPasoActual(4);
         return;
       }
-      const inicioEjecucion = new Date(formData.fechaInicioEjecucion);
-      const finEjecucion = new Date(formData.fechaFinEjecucion);
+      const inicioEjecucion = parseLocalDate(formData.fechaInicioEjecucion);
+      const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
       if (inicioEjecucion < finPlaneacion) {
         toast.error('La fecha de inicio de Ejecución debe ser igual o posterior al fin de Planeación');
         setPasoActual(4);
@@ -708,9 +939,9 @@ export function FormularioAuditoriaUnificado({
         setPasoActual(4);
         return;
       }
-      const finEjecucion = new Date(formData.fechaFinEjecucion);
-      const inicioComunicacion = new Date(formData.fechaInicioComunicacion);
-      const finComunicacion = new Date(formData.fechaFinComunicacion);
+      const finEjecucion = parseLocalDate(formData.fechaFinEjecucion);
+      const inicioComunicacion = parseLocalDate(formData.fechaInicioComunicacion);
+      const finComunicacion = parseLocalDate(formData.fechaFinComunicacion);
       if (inicioComunicacion < finEjecucion) {
         toast.error('La fecha de inicio de Comunicación debe ser igual o posterior al fin de Ejecución');
         setPasoActual(4);
@@ -741,9 +972,23 @@ export function FormularioAuditoriaUnificado({
       console.log('   fechaFinEjecucion:', formData.fechaFinEjecucion);
       console.log('   fechaInicioComunicacion:', formData.fechaInicioComunicacion);
       console.log('   fechaFinComunicacion:', formData.fechaFinComunicacion);
+      console.log('   auditorLider:', formData.auditorLider);
+      console.log('   supervisorAsignado:', formData.supervisorAsignado);
+      console.log('   equipoAuditores:', formData.equipoAuditores);
+      console.log('   titulo:', formData.titulo);
+      console.log('   tipoAuditoria:', formData.tipoAuditoria);
       console.log('═══════════════════════════════════════════════════════════════');
       
-      await onSubmit(formData);
+      const dataToSubmit = { ...formData };
+      
+      const resultado = await onSubmit(dataToSubmit);
+      
+      // ✅ Verificar si onSubmit retornó false (error en backend)
+      if (resultado === false) {
+        console.error('❌ FormularioAuditoriaUnificado - onSubmit retornó false, auditoría NO creada');
+        toast.error('No se pudo crear la auditoría. Revisa los datos e intenta de nuevo.');
+        return;
+      }
       
       // Log detallado en consola si incluye hallazgos preliminares
       if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
@@ -781,8 +1026,9 @@ export function FormularioAuditoriaUnificado({
       
       onClose();
     } catch (error) {
-      toast.error('Error al guardar la auditoría');
-      console.error(error);
+      const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error al guardar la auditoría: ${errorMsg}`);
+      console.error('❌ FormularioAuditoriaUnificado - Error:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -819,7 +1065,22 @@ export function FormularioAuditoriaUnificado({
           />
         );
       case 2:
-        return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} evaluaciones={evaluacionesDisponibles} />;
+        return (
+          <Paso2ClasificacionAlcance
+            formData={formData}
+            onChange={handleChange}
+            evaluaciones={evaluacionesDisponibles}
+            busquedaResponsable={busquedaResponsable}
+            setBusquedaResponsable={setBusquedaResponsable}
+            resultadosResponsable={resultadosResponsable}
+            buscandoResponsable={buscandoResponsable}
+            mostrarSugerenciasResponsable={mostrarSugerenciasResponsable}
+            setMostrarSugerenciasResponsable={setMostrarSugerenciasResponsable}
+            auditoresDisponibles={auditoresDisponibles}
+            seccionalesDisponibles={seccionalesDisponibles}
+            cargandoSeccionales={cargandoSeccionales}
+          />
+        );
       case 3:
         return <Paso3EquipoAuditor formData={formData} onChange={handleChange} auditores={auditoresDisponibles} />;
       case 4:
@@ -894,70 +1155,43 @@ export function FormularioAuditoriaUnificado({
   ];
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* OVERLAY */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999]"
-            onClick={onClose}
-          />
-
-          {/* MODAL CONTENT */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-          >
-            <div
-              className="bg-white rounded-lg shadow-2xl w-full h-full max-h-[90vh] flex flex-col max-w-5xl"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <Dialog open={open} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-hidden flex flex-col">
               {/* HEADER */}
-              <div className="flex items-start justify-between p-6 border-b border-gray-200">
+              <div className="flex items-start justify-between px-6 py-3 border-b border-gray-200">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Shield className="w-6 h-6" style={{ color: '#003DA5' }} />
-                    <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                      {mode === 'create' ? 'Nueva Auditoría OCI' : 'Editar Auditoría OCI'}
-                    </h2>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <Shield className="w-5 h-5" style={{ color: '#003DA5' }} />
+                    <DialogTitle asChild>
+                      <h2 className="text-xl font-black" style={{ color: '#003DA5' }}>
+                        {mode === 'create' ? 'Nueva Auditoría OCI' : 'Editar Auditoría OCI'}
+                      </h2>
+                    </DialogTitle>
                   </div>
-                  <p className="text-sm text-gray-600">
-                    Formulario Unificado de Control Interno de Gestión - ESAP
-                  </p>
+                  <DialogDescription asChild>
+                    <p className="text-xs text-gray-600">
+                      Formulario Unificado de Control Interno de Gestión - ESAP
+                    </p>
+                  </DialogDescription>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="ml-4"
-                  aria-label="Cerrar modal"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
               </div>
 
               {/* INDICADOR DE PROGRESO */}
-              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-bold text-gray-700">
+              <div className="px-6 py-2 bg-gray-50 border-b border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-gray-700">
                     Paso {pasoActual} de {TOTAL_PASOS}
                   </span>
                   <Badge
-                    className="bg-blue-100 text-blue-700 border-blue-200"
+                    className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] px-2 py-0"
                     variant="outline"
                   >
                     {Math.round((pasoActual / TOTAL_PASOS) * 100)}% Completado
                   </Badge>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
                   <motion.div
-                    className="h-2 rounded-full"
+                    className="h-1.5 rounded-full"
                     style={{ backgroundColor: '#003DA5' }}
                     initial={{ width: 0 }}
                     animate={{ width: `${(pasoActual / TOTAL_PASOS) * 100}%` }}
@@ -966,21 +1200,21 @@ export function FormularioAuditoriaUnificado({
                 </div>
 
                 {/* Breadcrumb de pasos - Solo móvil */}
-                <div className="mt-3 lg:hidden">
-                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                <div className="mt-2 lg:hidden">
+                  <p className="text-[11px] text-gray-600 flex items-center gap-1">
                     {pasos[pasoActual - 1].icono}
                     {pasos[pasoActual - 1].titulo}
                   </p>
                 </div>
 
                 {/* Tabs de pasos - Desktop */}
-                <div className="hidden lg:flex gap-2 mt-3 overflow-x-auto pb-2">
+                <div className="hidden lg:flex gap-1.5 mt-2 overflow-x-auto pb-1 custom-scrollbar">
                   {pasos.map((paso) => (
                     <button
                       key={paso.numero}
                       onClick={() => setPasoActual(paso.numero)}
                       className={`
-                        flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium
+                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium
                         transition-all whitespace-nowrap
                         ${
                           pasoActual === paso.numero
@@ -999,7 +1233,7 @@ export function FormularioAuditoriaUnificado({
               </div>
 
               {/* CONTENIDO DEL PASO */}
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={pasoActual}
@@ -1072,11 +1306,8 @@ export function FormularioAuditoriaUnificado({
                   )}
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+            </DialogContent>
+          </Dialog>
   );
 }
 
@@ -1119,24 +1350,52 @@ function Paso1InformacionBasica({
     proceso.toLowerCase().includes(busquedaProceso.toLowerCase())
   );
 
-  const handleSeleccionarProceso = (proceso: string) => {
+  const handleSeleccionarProceso = (procesoOEvaluacion: string | EvaluacionProceso) => {
+    let tituloStr = '';
+    let procesoNombreStr = '';
+    let evaluacionProceso: EvaluacionProceso | undefined;
+
+    if (typeof procesoOEvaluacion === 'string') {
+      tituloStr = procesoOEvaluacion;
+      procesoNombreStr = procesoOEvaluacion;
+      // Buscar la primera evaluación que coincida con el nombre (fallback)
+      evaluacionProceso = evaluaciones.find(
+        (ev: EvaluacionProceso) => ev.proceso?.nombre === procesoOEvaluacion
+      );
+    } else {
+      // Es una EvaluacionProceso seleccionada específicamente
+      evaluacionProceso = procesoOEvaluacion;
+      procesoNombreStr = evaluacionProceso.proceso?.nombre || '';
+      
+      let dep = evaluacionProceso.proceso?.dependencia || evaluacionProceso.dependenciaResponsable || '';
+      let mac = evaluacionProceso.proceso?.macroproceso || '';
+      if (evaluacionProceso.dependenciaResponsable && evaluacionProceso.dependenciaResponsable.includes('||')) {
+        const parts = evaluacionProceso.dependenciaResponsable.split('||');
+        dep = parts[0].trim();
+        mac = parts[1].trim();
+      }
+      const unidad = mac || dep;
+      tituloStr = unidad ? `${procesoNombreStr} (${unidad})` : procesoNombreStr;
+    }
+
     // Guardar en ambos campos: titulo (para BD) y procesoAuditado
-    onChange('titulo', proceso);
-    onChange('procesoAuditado', proceso);
-    setBusquedaProceso(proceso);
+    onChange('titulo', tituloStr);
+    onChange('procesoAuditado', procesoNombreStr);
+    setBusquedaProceso(tituloStr);
     setMostrarSugerenciasProcesos(false);
     
-    // 🔍 Buscar la evaluación asociada al proceso seleccionado
-    const evaluacionProceso = evaluaciones.find(
-      (ev: EvaluacionProceso) => ev.proceso?.nombre === proceso
-    );
-    
-    if (evaluacionProceso && evaluacionProceso.proceso?.evaluacionRiesgo) {
-      const riesgo = evaluacionProceso.proceso.evaluacionRiesgo;
+    if (evaluacionProceso) {
+      const riesgo = evaluacionProceso.proceso?.evaluacionRiesgo || { totalRiesgos: 0, riesgoInherente: 0, riesgoResidual: 0, nivelControl: 0, probabilidad: 0, impacto: 0 };
       
-      // Mapear nivelRiesgo del backend al formato del formulario
+      // Mapear nivelRiesgo del backend al formato del formulario, dando prioridad a Criticidad DAFP
       let nivelRiesgoForm: 'Bajo' | 'Medio' | 'Alto' | 'Crítico' = 'Medio';
-      if (riesgo.nivelRiesgo) {
+      if (evaluacionProceso.nivelCriticidadDafp) {
+        const nivel = evaluacionProceso.nivelCriticidadDafp.toLowerCase();
+        if (nivel.includes('bajo')) nivelRiesgoForm = 'Bajo';
+        else if (nivel.includes('medio') || nivel.includes('moderado')) nivelRiesgoForm = 'Medio';
+        else if (nivel.includes('alto')) nivelRiesgoForm = 'Alto';
+        else if (nivel.includes('critico') || nivel.includes('crítico') || nivel.includes('extremo')) nivelRiesgoForm = 'Crítico';
+      } else if (riesgo.nivelRiesgo) {
         const nivel = riesgo.nivelRiesgo.toLowerCase();
         if (nivel === 'bajo') nivelRiesgoForm = 'Bajo';
         else if (nivel === 'medio') nivelRiesgoForm = 'Medio';
@@ -1147,78 +1406,16 @@ function Paso1InformacionBasica({
       // Actualizar nivel de riesgo automáticamente
       onChange('nivelRiesgo', nivelRiesgoForm);
       
-      // Construir lista de riesgos identificados basados en la evaluación
-      const riesgosIdentificadosArr: string[] = [];
+      // Inicializar riesgos y controles vacíos para que el usuario los ingrese manualmente
+      onChange('riesgosIdentificados', []);
+      onChange('controlesAplicar', []);
       
-      if (riesgo.totalRiesgos > 0) {
-        riesgosIdentificadosArr.push(`Evaluación DAFP: ${riesgo.totalRiesgos} riesgos totales (${riesgo.riesgosExtremos || 0} Extremos, ${riesgo.riesgosAltos || 0} Altos, ${riesgo.riesgosModerados || 0} Moderados, ${riesgo.riesgosBajos || 0} Bajos)`);
-      }
-
-      if (riesgo.riesgoInherente > 6) {
-        riesgosIdentificadosArr.push(`Riesgo inherente ALTO (${riesgo.riesgoInherente}/9) - Requiere controles reforzados`);
-      }
-      
-      if (riesgo.riesgoResidual > 4) {
-        riesgosIdentificadosArr.push(`Riesgo residual ELEVADO (${riesgo.riesgoResidual}/9) - Los controles actuales son insuficientes`);
-      }
-      
-      if (riesgo.nivelControl < 2) {
-        riesgosIdentificadosArr.push(`Controles actuales DÉBILES (nivel ${riesgo.nivelControl}/3) - Se requiere fortalecer el ambiente de control`);
-      }
-      
-      if (riesgo.probabilidad >= 3) {
-        riesgosIdentificadosArr.push(`Probabilidad de materialización ALTA (${riesgo.probabilidad}/3) - Se requiere monitoreo continuo`);
-      }
-      
-      if (riesgo.impacto >= 3) {
-        riesgosIdentificadosArr.push(`Impacto potencial ALTO (${riesgo.impacto}/3) - Puede afectar significativamente los objetivos institucionales`);
-      }
-      
-      // Agregar información de decisión si existe
-      if (riesgo.decisionFinal && riesgo.motivoDecision) {
-        riesgosIdentificadosArr.push(`Decisión DAFP: ${riesgo.decisionFinal} - ${riesgo.motivoDecision}`);
-      }
-      
-      // Actualizar riesgos identificados
-      if (riesgosIdentificadosArr.length > 0) {
-        onChange('riesgosIdentificados', riesgosIdentificadosArr);
-      }
-      
-      // Construir controles a aplicar basados en la evaluación
-      const controles: string[] = [];
-      
-      if (riesgo.nivelControl < 2) {
-        controles.push('Implementar mapa de riesgos actualizado del proceso');
-        controles.push('Documentar y formalizar controles existentes');
-      }
-      
-      if (riesgo.probabilidad >= 2) {
-        controles.push('Establecer indicadores de alerta temprana');
-        controles.push('Realizar pruebas de eficacia de controles preventivos');
-      }
-      
-      if (riesgo.impacto >= 3) {
-        controles.push('Verificar existencia de planes de contingencia');
-        controles.push('Evaluar segregación de funciones y responsabilidades');
-      }
-      
-      controles.push('Revisión documental de políticas y procedimientos');
-      controles.push('Entrevistas con responsables del proceso');
-      controles.push('Muestreo estadístico de transacciones');
-      
-      // Actualizar controles a aplicar
-      if (controles.length > 0) {
-        onChange('controlesAplicar', controles);
-      }
-      
-      console.log('✅ Riesgos y controles cargados automáticamente desde evaluación del proceso');
+      console.log('✅ Nivel de riesgo cargado automáticamente desde evaluación del proceso');
       console.log(`   - Nivel de riesgo: ${nivelRiesgoForm}`);
-      console.log(`   - Riesgos identificados: ${riesgosIdentificadosArr.length}`);
-      console.log(`   - Controles a aplicar: ${controles.length}`);
       
       // Notificar al usuario
-      toast.success('Riesgos y controles cargados automáticamente', {
-        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificadosArr.length} riesgos | ${controles.length} controles`
+      toast.success('Proceso seleccionado', {
+        description: `Nivel de riesgo inicial: ${nivelRiesgoForm}`
       });
     }
   };
@@ -1255,32 +1452,33 @@ function Paso1InformacionBasica({
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {(tiposAuditoria.length > 0 ? tiposAuditoria : [
-                  { id: 'regular', codigo: 'regular', nombre: 'Regular', color: undefined },
-                  { id: 'territorial', codigo: 'territorial', nombre: 'Territorial', color: undefined },
-                  { id: 'especial', codigo: 'especial', nombre: 'Especial', color: undefined },
-                  { id: 'seguimiento', codigo: 'seguimiento', nombre: 'Seguimiento', color: undefined }
-                ]).map(tipo => (
-                  <button
-                    key={tipo.id}
-                    type="button"
-                    onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
-                    className={`
-                      px-4 py-3 rounded-lg border-2 transition-all duration-200
-                      flex flex-col items-center justify-center gap-2 font-medium
-                      ${
-                        formData.tipoAuditoria === tipo.codigo.toLowerCase()
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                      }
-                    `}
-                  >
-                    {tipo.color && (
-                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
-                    )}
-                    <span className="text-sm">{tipo.nombre}</span>
-                  </button>
-                ))}
+                {tiposAuditoria.length > 0 ? (
+                  tiposAuditoria.map(tipo => (
+                    <button
+                      key={tipo.id}
+                      type="button"
+                      onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
+                      className={`
+                        px-4 py-3 rounded-lg border-2 transition-all duration-200
+                        flex flex-col items-center justify-center gap-2 font-medium
+                        ${
+                          formData.tipoAuditoria === tipo.codigo.toLowerCase()
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                        }
+                      `}
+                    >
+                      {tipo.color && (
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
+                      )}
+                      <span className="text-sm">{tipo.nombre}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="col-span-full py-4 text-center text-sm text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
+                    No hay tipos de auditoría configurados. Por favor, créelos en la sección de Configuraciones.
+                  </div>
+                )}
               </div>
             )}
           </FieldWrapper>
@@ -1302,7 +1500,7 @@ function Paso1InformacionBasica({
 
           {/* Título de Auditoría - BÚSQUEDA CON AUTOCOMPLETADO */}
           <FieldWrapper 
-            label="Título de Auditoría" 
+            label="Asociar a Proceso" 
             required
             helpText={
               cargandoProcesos 
@@ -1313,80 +1511,132 @@ function Paso1InformacionBasica({
             <div className="relative">
               <Input
                 value={busquedaProceso}
-                onChange={(e) => handleChangeBusqueda(e.target.value)}
+                onChange={(e) => {
+                  handleChangeBusqueda(e.target.value);
+                  setMostrarSugerenciasProcesos(true);
+                }}
                 onFocus={() => setMostrarSugerenciasProcesos(true)}
                 placeholder="Escribe para buscar y seleccionar el proceso a auditar..."
-                className="border-gray-300"
+                className="border-gray-300 pr-10 cursor-pointer"
                 disabled={cargandoProcesos}
                 autoComplete="off"
               />
               
-              {cargandoProcesos && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {cargandoProcesos ? (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                     className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full"
                   />
                 </div>
+              ) : (
+                <div 
+                  className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-400 hover:text-gray-600"
+                  onClick={() => setMostrarSugerenciasProcesos(!mostrarSugerenciasProcesos)}
+                >
+                  <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${mostrarSugerenciasProcesos ? 'rotate-180' : ''}`} />
+                </div>
               )}
 
               {/* Lista de sugerencias con información de riesgo */}
-              {mostrarSugerenciasProcesos && busquedaProceso && procesosFiltrados.length > 0 && (
+              {mostrarSugerenciasProcesos && (evaluaciones.length > 0 || procesosFiltrados.length > 0) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   className="absolute z-50 w-full mt-1 bg-white border-2 border-blue-300 rounded-lg shadow-xl max-h-80 overflow-y-auto"
                 >
-                  {procesosFiltrados.map((proceso, index) => {
-                    // Buscar evaluación para mostrar nivel de riesgo
-                    const evaluacion = evaluaciones.find(
-                      (ev: EvaluacionProceso) => ev.proceso?.nombre === proceso
-                    );
-                    const nivelRiesgo = evaluacion?.proceso?.evaluacionRiesgo?.nivelRiesgo || 'medio';
-                    const riesgoInherente = evaluacion?.proceso?.evaluacionRiesgo?.riesgoInherente || 0;
-                    
-                    // Colores según nivel de riesgo
-                    const colorRiesgo = 
-                      nivelRiesgo === 'bajo' ? 'bg-green-100 text-green-700 border-green-300' :
-                      nivelRiesgo === 'medio' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
-                      nivelRiesgo === 'alto' ? 'bg-orange-100 text-orange-700 border-orange-300' :
-                      'bg-red-100 text-red-700 border-red-300';
-                    
-                    return (
+                  {evaluaciones.length > 0 ? (
+                    // Mostrar desde evaluaciones (Universo Auditable real)
+                    evaluaciones
+                      .filter(ev => {
+                        if (!busquedaProceso) return true;
+                        const searchStr = `${ev.proceso?.nombre || ''} ${ev.dependenciaResponsable || ''}`;
+                        return searchStr.toLowerCase().includes(busquedaProceso.toLowerCase());
+                      })
+                      .map((evaluacion, index) => {
+                        // Usar nivelCriticidadDafp (de la evaluación) igual que en la tabla Universo Auditable
+                        const nivelRiesgoStr = evaluacion.nivelCriticidadDafp || evaluacion.proceso?.evaluacionRiesgo?.nivelRiesgo || 'Medio';
+                        const nivelRiesgo = nivelRiesgoStr.toLowerCase();
+                        
+                        // En Universo Auditable se usan los ponderados DAFP, si no existen se hace fallback a riesgo inherente
+                        const ponderacionDafp = evaluacion.ponderacionFinalDafp || 0;
+                        const riesgoInherente = evaluacion.proceso?.evaluacionRiesgo?.riesgoInherente || 0;
+                        const nombreProceso = evaluacion.proceso?.nombre || 'Proceso sin nombre';
+                        
+                        let dep = evaluacion.proceso?.dependencia || evaluacion.dependenciaResponsable || '';
+                        let mac = evaluacion.proceso?.macroproceso || '';
+                        if (evaluacion.dependenciaResponsable && evaluacion.dependenciaResponsable.includes('||')) {
+                          const parts = evaluacion.dependenciaResponsable.split('||');
+                          dep = parts[0].trim();
+                          mac = parts[1].trim();
+                        }
+                        const unidad = mac || dep;
+                        
+                        // Colores según nivel de riesgo (igual que en UniversoAuditableUnificado)
+                        const colorRiesgo = 
+                          nivelRiesgo.includes('bajo') ? 'bg-green-100 text-green-700 border-green-300' :
+                          nivelRiesgo.includes('medio') || nivelRiesgo.includes('moderado') ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                          nivelRiesgo.includes('alto') ? 'bg-orange-100 text-orange-700 border-orange-300' :
+                          'bg-red-100 text-red-700 border-red-300';
+                        
+                        return (
+                          <button
+                            key={`ev-${evaluacion.id || index}`}
+                            type="button"
+                            onClick={() => handleSeleccionarProceso(evaluacion)}
+                            className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex flex-col gap-1 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                                  <span className="text-sm font-medium text-gray-900">{nombreProceso}</span>
+                                </div>
+                                {unidad && (
+                                  <span className="text-xs text-gray-500 ml-6">{unidad}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-2 py-1 rounded-full border font-bold ${colorRiesgo}`}>
+                                  {nivelRiesgoStr.toUpperCase()}
+                                </span>
+                                {ponderacionDafp > 0 ? (
+                                  <span className="text-xs text-gray-500 font-medium" title="Ponderación DAFP">
+                                    {ponderacionDafp}/5
+                                  </span>
+                                ) : riesgoInherente > 0 ? (
+                                  <span className="text-xs text-gray-500 font-medium" title="Riesgo Inherente">
+                                    {riesgoInherente}/9
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                  ) : (
+                    // Fallback a procesos institucionales estáticos
+                    procesosFiltrados.map((proceso, index) => (
                       <button
-                        key={index}
+                        key={`proc-${index}`}
                         type="button"
                         onClick={() => handleSeleccionarProceso(proceso)}
                         className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 flex-1">
-                            <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
-                            <span className="text-sm font-medium text-gray-900">{proceso}</span>
-                          </div>
-                          {evaluacion && (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-1 rounded-full border font-bold ${colorRiesgo}`}>
-                                {nivelRiesgo.toUpperCase()}
-                              </span>
-                              {riesgoInherente > 0 && (
-                                <span className="text-xs text-gray-500 font-medium">
-                                  {riesgoInherente}/9
-                                </span>
-                              )}
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span className="text-sm font-medium text-gray-900">{proceso}</span>
                         </div>
                       </button>
-                    );
-                  })}
+                    ))
+                  )}
                 </motion.div>
               )}
 
               {/* Mensaje si no hay resultados */}
-              {mostrarSugerenciasProcesos && busquedaProceso && procesosFiltrados.length === 0 && (
+              {mostrarSugerenciasProcesos && busquedaProceso && evaluaciones.length === 0 && procesosFiltrados.length === 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1431,9 +1681,31 @@ function Paso1InformacionBasica({
 
 interface Paso2Props extends PasoProps {
   evaluaciones: EvaluacionProceso[];
+  busquedaResponsable: string;
+  setBusquedaResponsable: (v: string) => void;
+  resultadosResponsable: ResponsableArea[];
+  buscandoResponsable: boolean;
+  mostrarSugerenciasResponsable: boolean;
+  setMostrarSugerenciasResponsable: (v: boolean) => void;
+  auditoresDisponibles: any[];
+  seccionalesDisponibles: { id: number; nombre: string; codigo?: string }[];
+  cargandoSeccionales: boolean;
 }
 
-function Paso2ClasificacionAlcance({ formData, onChange, evaluaciones }: Paso2Props) {
+function Paso2ClasificacionAlcance({
+  formData,
+  onChange,
+  evaluaciones,
+  busquedaResponsable,
+  setBusquedaResponsable,
+  resultadosResponsable,
+  buscandoResponsable,
+  mostrarSugerenciasResponsable,
+  setMostrarSugerenciasResponsable,
+  auditoresDisponibles = [],
+  seccionalesDisponibles = [],
+  cargandoSeccionales = false,
+}: Paso2Props) {
   // Buscar la evaluación del proceso seleccionado para obtener la dependencia
   const evaluacionProceso = evaluaciones.find(
     (ev: EvaluacionProceso) => ev.proceso?.nombre === formData.titulo || ev.proceso?.nombre === formData.procesoAuditado
@@ -1468,6 +1740,39 @@ function Paso2ClasificacionAlcance({ formData, onChange, evaluaciones }: Paso2Pr
                 <span className="text-gray-400">Primero seleccione un proceso en el Paso 1</span>
               )}
             </div>
+          </FieldWrapper>
+
+          {/* Territorial / Seccional - Cargado desde Estructura Organizacional */}
+          <FieldWrapper
+            label="Territorial / Seccional"
+            required
+            helpText="Seleccione la territorial o seccional donde se realizará la auditoría. Los datos provienen del módulo de Estructura Organizacional."
+          >
+            <div className="relative">
+              <select
+                value={formData.territorial}
+                onChange={(e) => onChange('territorial', e.target.value)}
+                className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white appearance-none font-medium"
+                disabled={cargandoSeccionales}
+              >
+                <option value="">{cargandoSeccionales ? '⏳ Cargando seccionales...' : '📍 Seleccione una territorial/seccional'}</option>
+                <option value="Sede Central">🏛️ Sede Central (Bogotá)</option>
+                {seccionalesDisponibles.map((s) => (
+                  <option key={s.id} value={s.nombre}>
+                    📍 {s.nombre} {s.codigo ? `(${s.codigo})` : ''}
+                  </option>
+                ))}
+              </select>
+              <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+            {formData.territorial && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-blue-50 text-blue-800 border-blue-200">
+                  <MapPin className="w-3 h-3" />
+                  {formData.territorial}
+                </span>
+              </div>
+            )}
           </FieldWrapper>
 
           {/* Foco de la Auditoría */}
@@ -1631,6 +1936,225 @@ function Paso2ClasificacionAlcance({ formData, onChange, evaluaciones }: Paso2Pr
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </FieldWrapper>
+
+          {/* Responsable del Área Auditada */}
+          <FieldWrapper
+            label="Responsable del Área Auditada"
+            required
+            helpText={
+              <div className="flex flex-col gap-1.5">
+                <span>Persona del área auditada que recibirá el informe preliminar y accederá al portal del auditado. Búsqueda por nombre, correo o número de identificación.</span>
+                <span className="text-red-600 font-bold flex items-center gap-1.5 p-2 bg-red-50 rounded border border-red-100">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  IMPORTANTE: El responsable NO debe ser un auditor ni personal de la Oficina de Control Interno (OCI).
+                </span>
+              </div>
+            }
+          >
+            {formData.responsableArea ? (
+              <div className="p-4 rounded-lg border-2 border-blue-200 bg-blue-50 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-10 h-10 shrink-0 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
+                    {(formData.responsableArea.nombre || '')
+                      .split(' ')
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((s) => s[0])
+                      .join('')
+                      .toUpperCase() || 'RA'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-gray-900 truncate">
+                      {formData.responsableArea.nombre}
+                    </p>
+                    <p className="text-xs text-gray-700 truncate">
+                      {formData.responsableArea.email}
+                    </p>
+                    {formData.responsableArea.numeroIdentificacion && (
+                      <p className="text-[11px] text-gray-500">
+                        CC {formData.responsableArea.numeroIdentificacion}
+                      </p>
+                    )}
+                    {formData.responsableArea.cargo && (
+                      <p className="text-[11px] text-gray-500">
+                        {formData.responsableArea.cargo}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('responsableArea', undefined);
+                      setBusquedaResponsable('');
+                      setMostrarSugerenciasResponsable(false);
+                    }}
+                    className="shrink-0 text-xs flex items-center gap-1 text-red-600 hover:text-red-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Eliminar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('responsableArea', undefined);
+                      setBusquedaResponsable('');
+                      setMostrarSugerenciasResponsable(true);
+                    }}
+                    className="shrink-0 text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nombre, correo o cédula..."
+                    value={busquedaResponsable}
+                    onChange={(e) => {
+                      setBusquedaResponsable(e.target.value);
+                      setMostrarSugerenciasResponsable(true);
+                    }}
+                    onFocus={() => {
+                      setMostrarSugerenciasResponsable(true);
+                    }}
+                    onBlur={() => setTimeout(() => setMostrarSugerenciasResponsable(false), 200)}
+                    className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    autoComplete="off"
+                  />
+                  {buscandoResponsable ? (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                        className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"
+                      />
+                    </div>
+                  ) : busquedaResponsable.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBusquedaResponsable('');
+                        setMostrarSugerenciasResponsable(true);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  ) : null}
+                </div>
+
+                {mostrarSugerenciasResponsable && (
+                  <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
+                    {/* Header de la lista */}
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        {busquedaResponsable.trim()
+                          ? `${resultadosResponsable.length} resultado(s)`
+                          : `— Seleccione una persona (${resultadosResponsable.length}) —`}
+                      </span>
+                    </div>
+
+                    {!buscandoResponsable && resultadosResponsable.length === 0 && (
+                      <div className="px-3 py-4 text-center">
+                        <User className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">
+                          {busquedaResponsable.trim()
+                            ? 'No se encontraron personas con ese criterio.'
+                            : 'No hay personas disponibles.'}
+                        </p>
+                      </div>
+                    )}
+
+                    {resultadosResponsable.map((p) => {
+                      if (!p) return null;
+                      const isAuditorConfig = (auditoresDisponibles || []).some(a => a && String(a.id) === p.idPersona);
+                      const isAuditor = p.isAuditorBackend || isAuditorConfig;
+
+                      return (
+                        <button
+                          key={p.idPersona}
+                          type="button"
+                          disabled={isAuditor}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (isAuditor) return;
+                            onChange('responsableArea', p);
+                            setBusquedaResponsable('');
+                            setMostrarSugerenciasResponsable(false);
+                          }}
+                          className={`w-full text-left px-3 py-2.5 border-b border-gray-100 last:border-0 transition-colors ${
+                            isAuditor 
+                              ? 'opacity-60 bg-gray-50 cursor-not-allowed' 
+                              : 'hover:bg-blue-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                              isAuditor ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {(p.nombre || '')
+                                .split(' ')
+                                .filter(Boolean)
+                                .slice(0, 2)
+                                .map((s) => s[0])
+                                .join('')
+                                .toUpperCase() || 'P'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className={`text-sm font-medium truncate ${isAuditor ? 'text-gray-500' : 'text-gray-900'}`}>
+                                  {p.nombre}
+                                </p>
+                                {isAuditor && (
+                                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                                    Auditor - No seleccionable
+                                  </span>
+                                )}
+                              </div>
+                              <p className={`text-xs truncate ${isAuditor ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {p.email}
+                                {p.cargo ? ` · ${p.cargo}` : ''}
+                                {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
+                              </p>
+                            </div>
+                            {/* Roles a la derecha */}
+                            <div className="shrink-0 flex flex-col items-end gap-0.5 ml-2">
+                              {p.roles ? (
+                                p.roles.split(', ').slice(0, 2).map((rol: string) => (
+                                  <span
+                                    key={rol}
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold leading-tight ${
+                                      isAuditor
+                                        ? 'bg-red-50 text-red-600 border border-red-200'
+                                        : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    }`}
+                                  >
+                                    {rol}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-50 text-gray-400 border border-gray-200">
+                                  Sin rol
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {mostrarSugerenciasResponsable && (
+                  <div className="h-64 pointer-events-none" />
+                )}
+              </div>
+            )}
+          </FieldWrapper>
         </div>
       </Card>
     </div>
@@ -1770,10 +2294,15 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
   const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
   const ejecucionCompleta = !!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion);
 
+  // Limitar el calendario al año de la vigencia seleccionada
+  const añoVigencia = formData.planAnualAño || new Date().getFullYear();
+  const minDate = `${añoVigencia}-01-01`;
+  const maxDate = `${añoVigencia}-12-31`;
+
   // Calcular días de cada etapa
   const calcularDias = (inicio: string, fin: string) => {
     if (!inicio || !fin) return 0;
-    return Math.ceil((new Date(fin).getTime() - new Date(inicio).getTime()) / (1000 * 60 * 60 * 24));
+    return Math.ceil((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24));
   };
 
   return (
@@ -1839,6 +2368,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
                 onChange('fechaInicio', e.target.value);
               }}
               className="border-gray-300"
+              min={minDate}
+              max={maxDate}
             />
           </FieldWrapper>
 
@@ -1852,7 +2383,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               value={formData.fechaFinPlaneacion || ''}
               onChange={(e) => onChange('fechaFinPlaneacion', e.target.value)}
               className="border-gray-300"
-              min={formData.fechaInicioPlaneacion || undefined}
+              min={formData.fechaInicioPlaneacion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
         </div>
@@ -1898,7 +2430,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               onChange={(e) => onChange('fechaInicioEjecucion', e.target.value)}
               className="border-gray-300"
               disabled={!planeacionCompleta}
-              min={formData.fechaFinPlaneacion || undefined}
+              min={formData.fechaFinPlaneacion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
 
@@ -1913,7 +2446,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               onChange={(e) => onChange('fechaFinEjecucion', e.target.value)}
               className="border-gray-300"
               disabled={!planeacionCompleta}
-              min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || undefined}
+              min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
         </div>
@@ -1959,7 +2493,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               onChange={(e) => onChange('fechaInicioComunicacion', e.target.value)}
               className="border-gray-300"
               disabled={!ejecucionCompleta}
-              min={formData.fechaFinEjecucion || undefined}
+              min={formData.fechaFinEjecucion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
 
@@ -1978,7 +2513,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               }}
               className="border-gray-300"
               disabled={!ejecucionCompleta}
-              min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || undefined}
+              min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
         </div>
@@ -2866,6 +3402,24 @@ function Paso8Hallazgos({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
+  const ctx = usePlanAnualVigenciaContextOptional();
+  
+  // Sincronizar automáticamente el formulario con el plan activo de la cabecera
+  useEffect(() => {
+    if (ctx?.planActivo) {
+      // Solo actualizamos si es diferente para evitar renderizados infinitos
+      if (formData.planAnualId !== ctx.planActivo.id || formData.planAnualAño !== ctx.planActivo.vigencia) {
+        onChange('planAnualId', ctx.planActivo.id);
+        onChange('planAnualAño', ctx.planActivo.vigencia);
+      }
+    }
+  }, [ctx?.planActivo, formData.planAnualId, formData.planAnualAño, onChange]);
+
+  // Texto a mostrar en el input de solo lectura
+  const planDisplay = ctx?.planActivo 
+    ? `${ctx.planActivo.vigencia} - ${ctx.planActivo.estado} (v${ctx.planActivo.version})` 
+    : formData.planAnualAño || '';
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -2896,14 +3450,17 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
           {formData.vinculadaPlanAnual && (
             <div className="space-y-4 pl-8 border-l-4 border-blue-500">
               {/* Año del Plan */}
-              <FieldWrapper label="Año del Plan Anual">
+              <FieldWrapper label="Vigencia plan anual">
                 <Input
-                  type="number"
-                  value={formData.planAnualAño || ''}
-                  onChange={(e) => onChange('planAnualAño', parseInt(e.target.value))}
-                  placeholder="2025"
-                  className="border-gray-300"
+                  type="text"
+                  readOnly
+                  value={planDisplay}
+                  className="border-gray-300 bg-gray-50 cursor-not-allowed font-medium text-blue-900"
+                  title="Tomada del selector Vigencia plan anual de la cabecera"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Definida automáticamente por el plan activo en la cabecera del módulo. Cambie la vigencia allí si necesita otro año.
+                </p>
               </FieldWrapper>
 
               {/* Rol del Decreto 648 */}

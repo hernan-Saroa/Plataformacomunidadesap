@@ -21,10 +21,7 @@ import { User } from './user.entity';
 import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import {
-  AUTH_MANAGE_ROLES,
-  AUTH_READ_ROLES,
-} from '../auth/authorization.constants';
+import { AUTH_MANAGE_ROLES } from '../auth/authorization.constants';
 
 type AuthRequest = Request & {
   user?: {
@@ -84,7 +81,6 @@ export class UsersController {
 
   @Get()
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findAll(
     @Req() req: AuthRequest,
     @Query('page') page: number = 1,
@@ -92,6 +88,8 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('status') status?: 'active' | 'inactive' | 'all',
     @Query('role') role?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
     const pageNum = Number(page);
     const limitNum = Number(limit);
@@ -102,6 +100,8 @@ export class UsersController {
         search,
         status,
         role,
+        sortBy,
+        sortOrder,
       });
 
     return {
@@ -119,9 +119,24 @@ export class UsersController {
     };
   }
 
+  @Get('by-permission')
+  @InternalServiceAccess()
+  async findByPermission(
+    @Req() req: AuthRequest,
+    @Query('code') code: string,
+  ) {
+    const exposeInternalIds = this.isInternalServiceRequest(req);
+    const users = await this.usersService.findUsersByPermissionCode(code);
+
+    return {
+      data: users.map((user) =>
+        this.toPersonResponseDto(user, exposeInternalIds),
+      ),
+    };
+  }
+
   @Get(':id')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findOne(@Req() req: AuthRequest, @Param('id') id: string) {
     const exposeInternalIds = this.isInternalServiceRequest(req);
     const user = await this.usersService.findById(id, {

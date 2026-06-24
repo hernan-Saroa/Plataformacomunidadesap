@@ -13,12 +13,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { controlInternoService } from '../../services/api/controlInternoService';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { controlInternoService } from '@/services/api/controlInternoService';
-import { auditoriaService, mapBackendToUI, type AuditoriaFormData } from '../services/auditoriaService';
+import { useKanbanConfig } from '../context/KanbanConfigContext';
+import { auditoriaService, type AuditoriaFormData } from '../services/auditoriaService';
 import { useCrearNotificacion } from './useCrearNotificacion';
-import type { ProcesoAuditableUI, NivelRiesgo } from './useUniversoAuditableData';
+import type { ProcesoAuditableUI } from './useUniversoAuditableData';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS FRONTEND (usados por el componente UniversoAuditableUnificado)
@@ -60,6 +61,8 @@ export interface AuditoriaProgramadaUI {
   fechaInicioEjecucion?: string;
   fechaFinEjecucion?: string;
   fechaInicioComunicacion?: string;
+  /** Fecha de última modificación del backend (corte de cambio de etapa Kanban) */
+  updatedAt?: string;
 }
 
 export interface Auditor {
@@ -184,7 +187,7 @@ function mapEstadoAuditoria(estado: string, estadoKanban?: string): EstadoAudito
     if (kanbanNorm === 'seguimiento') return 'COMPLETADA';
     if (kanbanNorm === 'finalizada') return 'COMPLETADA'; // Finalizadas mapean a COMPLETADA
   }
-  
+
   // PRIORIDAD 2: usar estado legacy
   const map: Record<string, EstadoAuditoria> = {
     'planeada': 'PROGRAMADA',
@@ -242,9 +245,9 @@ function mapAuditoriaBackendToUI(
 ): AuditoriaProgramadaUI {
   const fechaInicio = auditoria.fechaInicioPlaneada || auditoria.fechaInicio || '';
   const fechaFin = auditoria.fechaFinPlaneada || auditoria.fechaFin || '';
-  
+
   // Buscar proceso en el mapa, o crear uno placeholder
-  const procesoUI = procesosMap.get(auditoria.procesoId) || 
+  const procesoUI = procesosMap.get(auditoria.procesoId) ||
     crearProcesoPlaceholder(
       auditoria.procesoId,
       auditoria.procesoNombre || auditoria.nombre,
@@ -290,8 +293,8 @@ function mapAuditoriaBackendToUI(
   const tipoOperativoNormalizado = tipoOperativoRaw?.toLowerCase();
   const tipoOperativoValido =
     tipoOperativoNormalizado === 'regular' ||
-    tipoOperativoNormalizado === 'territorial' ||
-    tipoOperativoNormalizado === 'especial'
+      tipoOperativoNormalizado === 'territorial' ||
+      tipoOperativoNormalizado === 'especial'
       ? (tipoOperativoNormalizado as 'regular' | 'territorial' | 'especial')
       : undefined;
 
@@ -388,7 +391,7 @@ export function calcularEstadisticas(
     procesosAltos: altos.length,
     procesosMedios: procesosAuditables.filter(p => p.nivelRiesgo === 'Medio').length,
     procesosBajos: procesosAuditables.filter(p => p.nivelRiesgo === 'Bajo').length,
-    
+
     totalProgramadas: auditorias.length,
     completadas: finalizadas,
     enEjecucion,
@@ -397,17 +400,17 @@ export function calcularEstadisticas(
     enPlaneacion,
     enComunicacion,
     enSeguimiento,
-    
+
     coberturaCriticos: criticos.length > 0
       ? Math.round((audCriticosCubiertos / criticos.length) * 100)
       : 0,
     coberturaAltos: altos.length > 0
       ? Math.round((audAltosCubiertos / altos.length) * 100)
       : 0,
-    
+
     horasTotales: auditorias.reduce((sum, a) => sum + a.horasEstimadas, 0),
     horasEjecutadas: auditorias.reduce((sum, a) => sum + a.horasReales, 0),
-    
+
     vinculadasOCI: auditorias.filter(a => a.auditoriaOCIId).length,
     conHallazgos: auditorias.filter(a => a.hallazgosCount > 0).length,
     conPlanesMejoramiento: auditorias.filter(a => a.planMejoramientoId).length,
@@ -432,6 +435,12 @@ export interface AuditoriaCreateData {
   auditorAsignado?: string;
   equipoAuditores?: string[];
   supervisorAsignado?: string;
+  // Responsable del área auditada (auditado). Permite enviar al backend la persona
+  // que recibirá el informe preliminar y entrará al portal del auditado.
+  responsableAreaIdPersona?: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   fechaInicio: string;
   fechaFinPlaneacion?: string; // Fin de Planeación
   fechaInicioEjecucion?: string; // Inicio de Ejecución
@@ -473,6 +482,7 @@ export interface AuditoriaCreateData {
 
 interface UseProgramaAnualDataOptions {
   vigencia?: number;
+  planAnualId?: string;
   procesos?: ProcesoAuditableUI[];
   autoFetch?: boolean;
   showToasts?: boolean;
@@ -482,12 +492,12 @@ interface UseProgramaAnualDataReturn {
   // Data
   auditorias: AuditoriaProgramadaUI[];
   estadisticas: Estadisticas;
-  
+
   // Estado
   loading: boolean;
   error: string | null;
   isOnline: boolean;
-  
+
   // Operaciones CRUD
   agregarAuditoria: (data: AuditoriaCreateData) => Promise<boolean>;
   editarAuditoria: (id: string, data: Partial<AuditoriaCreateData>) => Promise<boolean>;
@@ -499,17 +509,18 @@ interface UseProgramaAnualDataReturn {
 export function useProgramaAnualData(
   options: UseProgramaAnualDataOptions = {}
 ): UseProgramaAnualDataReturn {
-  const { vigencia, procesos = [], autoFetch = true, showToasts = true } = options;
-  
+  const { vigencia, planAnualId, procesos = [], autoFetch = true, showToasts = true } = options;
+
   const [auditorias, setAuditorias] = useState<AuditoriaProgramadaUI[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const fetchedRef = useRef(false);
-
   // Crear mapa de procesos para lookup rápido
   const procesosMap = new Map<string, ProcesoAuditableUI>();
   procesos.forEach(p => procesosMap.set(p.id, p));
+
+  // ✅ Hook para configuración de Kanban
+  const { etapasKanban } = useKanbanConfig();
 
   // ✅ Hook para crear notificaciones
   const { notificarAuditoriaCreada, notificarAccesoRestringido } = useCrearNotificacion();
@@ -522,10 +533,10 @@ export function useProgramaAnualData(
       toast.error('Acceso restringido', {
         description: 'No tienes los permisos necesarios para programar auditorías.'
       });
-      
+
       // Notificar al sistema para que aparezca en la campana
       notificarAccesoRestringido('Programar Auditoría');
-      
+
       return false;
     }
     return true;
@@ -535,13 +546,16 @@ export function useProgramaAnualData(
   const fetchAuditorias = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       let allAuditorias: AuditoriaProgramadaUI[] = [];
-      
+
       // ✅ 1. Cargar auditorías directamente del endpoint /auditorias
       try {
-        const auditoriasDirectas = await auditoriaService.listar();
+        const auditoriasDirectas = await auditoriaService.listar({
+          planAnualVigencia: vigencia,
+          planAnualId: planAnualId || undefined,
+        });
         if (Array.isArray(auditoriasDirectas) && auditoriasDirectas.length > 0) {
           // Convertir AuditoriaUI a AuditoriaProgramadaUI
           const mapped = auditoriasDirectas.map(a => ({
@@ -549,24 +563,24 @@ export function useProgramaAnualData(
             procesoId: a.procesoId || '',
             proceso: {
               id: a.procesoId || a.id,
-              nombre: a.proceso.nombre,
-              tipo: 'Apoyo' as const,
-              descripcion: '',
-              responsable: a.auditorLider,
-              nivelRiesgo: 'Medio' as const,
-              puntajeRiesgo: 50,
-              calificacionDafp: 3,
-              categoria: 'General',
+              nombre: a.proceso?.nombre || a.nombre,
+              tipo: a.proceso?.tipo || 'Apoyo',
+              descripcion: a.proceso?.descripcion || '',
+              responsable: a.proceso?.responsable || a.auditorLider,
+              nivelRiesgo: a.proceso?.nivelRiesgo || 'Medio',
+              puntajeRiesgo: a.proceso?.scoreRiesgo || 50,
+              calificacionDafp: a.proceso?.ponderacionFinalDafp || 3,
+              categoria: a.proceso?.macroproceso || 'General',
               auditable: true,
               frecuenciaAuditoria: 'Anual' as const,
               activo: true,
-              codigo: a.proceso.codigo || '',
-              macroproceso: '',
-              tipoProceso: 'Apoyo' as const,
-              dependenciaResponsable: '',
-              scoreRiesgo: 50,
+              codigo: a.proceso?.codigo || '',
+              macroproceso: a.proceso?.macroproceso || '',
+              tipoProceso: a.proceso?.tipo || 'Apoyo',
+              dependenciaResponsable: a.proceso?.dependencia || '',
+              scoreRiesgo: a.proceso?.scoreRiesgo || 50,
               frecuenciaSugerida: 'Anual',
-              horasEstimadas: a.horasEstimadas,
+              horasEstimadas: a.horasEstimadas || a.proceso?.horasEstimadas || 40,
             },
             tipo: a.tipo,
             // Propagar tipo operativo (Regular / Territorial / Especial) para filtros del cronograma
@@ -590,6 +604,12 @@ export function useProgramaAnualData(
             planMejoramientoId: a.planMejoramientoId,
             hallazgosCount: a.hallazgosCount || 0,
             territorial: a.territorial,
+            fechaFinPlaneacion: a.fechaFinPlaneacion,
+            fechaInicioEjecucion: a.fechaInicioEjecucion,
+            fechaFinEjecucion: a.fechaFinEjecucion,
+            fechaInicioComunicacion: a.fechaInicioComunicacion,
+            // ✅ Fecha de cambio de estado: usada como corte en el cronograma
+            updatedAt: (a as any).updatedAt,
           }));
           allAuditorias.push(...mapped);
           console.log('[useProgramaAnualData] ✅ Cargadas', auditoriasDirectas.length, 'auditorías de /auditorias');
@@ -597,35 +617,41 @@ export function useProgramaAnualData(
       } catch (err) {
         console.warn('[useProgramaAnualData] No se pudieron cargar auditorías directas:', err);
       }
-      
-      // 2. También intentar cargar de programas anuales (si existen)
-      try {
-        const yearStr = vigencia?.toString();
-        const programas = await controlInternoService.getProgramasAnuales(yearStr);
-        
-        if (Array.isArray(programas) && programas.length > 0) {
-          for (const programa of programas) {
-            try {
-              const auds = await controlInternoService.getAuditoriasPrograma(programa.id);
-              if (Array.isArray(auds)) {
-                const mapped = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
-                // Evitar duplicados por ID
-                const idsExistentes = new Set(allAuditorias.map(a => a.id));
-                const novedades = mapped.filter(a => !idsExistentes.has(a.id));
-                allAuditorias.push(...novedades);
+
+      // 2. Solo si /auditorias no devolvió filas, complementar con programas (evita N+1)
+      if (allAuditorias.length === 0) {
+        try {
+          const yearStr = vigencia?.toString();
+          const programas = await controlInternoService.getProgramasAnuales(yearStr);
+
+          if (Array.isArray(programas) && programas.length > 0) {
+            for (const programa of programas) {
+              try {
+                const auds = await controlInternoService.getAuditoriasPrograma(programa.id);
+                if (Array.isArray(auds)) {
+                  const mapped = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
+                  const idsExistentes = new Set(allAuditorias.map(a => a.id));
+                  const novedades = mapped.filter(a => !idsExistentes.has(a.id));
+                  allAuditorias.push(...novedades);
+                }
+              } catch {
+                /* siguiente programa */
               }
-            } catch {
-              // Si falla un programa individual, continuar con los demás
             }
           }
+        } catch {
+          /* sin programas anuales */
         }
-      } catch {
-        // Si no hay programas anuales, continuar con las auditorías directas
       }
-      
+
       setIsOnline(true);
       setAuditorias(allAuditorias);
-      console.log('[useProgramaAnualData] Total auditorías cargadas:', allAuditorias.length);
+      console.log(
+        '[useProgramaAnualData] Auditorías cargadas (filtro back plan anual):',
+        allAuditorias.length,
+        'vigencia',
+        vigencia,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al cargar auditorías';
       console.warn('[useProgramaAnualData] Error al conectar con backend:', msg);
@@ -634,15 +660,13 @@ export function useProgramaAnualData(
     } finally {
       setLoading(false);
     }
-  }, [vigencia]);
+  }, [vigencia, planAnualId]);
 
-  // ── Auto-fetch al montar ──
+  // ── Auto-fetch al montar y al cambiar vigencia ──
   useEffect(() => {
-    if (autoFetch && !fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchAuditorias();
-    }
-  }, [autoFetch, fetchAuditorias]);
+    if (!autoFetch) return;
+    fetchAuditorias();
+  }, [autoFetch, fetchAuditorias, vigencia, planAnualId]);
 
   // ── Calcular estadísticas ──
   const estadisticas = calcularEstadisticas(procesos, auditorias);
@@ -665,6 +689,11 @@ export function useProgramaAnualData(
         equipoAuditores: data.equipoAuditores,
         supervisorAsignado: data.supervisorAsignado,
         responsable: data.auditorLider || 'Por asignar',
+        // Responsable del área auditada (auditado): se envía al servicio para que
+        // viaje al backend y la auditoría quede vinculada a esa persona.
+        responsableAreaNombre: data.responsableAreaNombre,
+        responsableAreaCargo: data.responsableAreaCargo,
+        responsableAreaEmail: data.responsableAreaEmail,
         fechaInicio: data.fechaInicio,
         fechaFinPlaneacion: data.fechaFinPlaneacion,
         fechaInicioEjecucion: data.fechaInicioEjecucion,
@@ -687,13 +716,14 @@ export function useProgramaAnualData(
         planAnualId: data.planAnualId,
         planAnualAño: data.planAnualAño,
         rolDecretoAsociado: data.rolDecretoAsociado,
-        estadoKanban: data.estadoKanban || 'Plan Anual', // Por defecto Plan Anual
+        // Volvemos a 'Programa Anual' fijo inicial por seguridad (para no cruzar etapas de Planes de Mejoramiento)
+        estadoKanban: data.estadoKanban || 'Programa Anual',
       };
 
       console.log('[useProgramaAnualData] Creando auditoría con servicio:', formData);
-      
+
       const auditoriaId = await auditoriaService.crear(formData, showToasts);
-      
+
       if (auditoriaId) {
         // ✅ NOTIFICAR A LOS INVOLUCRADOS
         try {
@@ -784,12 +814,12 @@ export function useProgramaAnualData(
 
   // ── Editar auditoría existente ──
   const editarAuditoria = useCallback(async (
-    id: string, 
+    id: string,
     data: Partial<AuditoriaCreateData>
   ): Promise<boolean> => {
     try {
       const updates: Record<string, unknown> = {};
-      
+
       if (data.titulo) updates.nombre = data.titulo;
       if (data.tipoAuditoria) updates.tipo = data.tipoAuditoria.toLowerCase();
       if (data.descripcion) updates.alcance = data.descripcion;
@@ -799,11 +829,11 @@ export function useProgramaAnualData(
       if (data.auditorLider) updates.auditorLider = data.auditorLider;
       if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo.toLowerCase();
       if (data.territorial) updates.territorial = data.territorial;
-      
+
       console.log('[useProgramaAnualData] Actualizando auditoría:', { id, updates });
-      
+
       const resultado = await controlInternoService.updateAuditoria(id, updates);
-      
+
       if (resultado) {
         if (showToasts) {
           toast.success('Auditoría actualizada');
@@ -826,9 +856,9 @@ export function useProgramaAnualData(
   const eliminarAuditoria = useCallback(async (id: string): Promise<boolean> => {
     try {
       console.log('[useProgramaAnualData] Eliminando auditoría:', id);
-      
+
       await controlInternoService.deleteAuditoria(id);
-      
+
       if (showToasts) {
         toast.success('Auditoría eliminada');
       }

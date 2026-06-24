@@ -10,19 +10,25 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import controlInternoService from '../../../../services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
+import { auditoriaCoincideVigenciaPlan } from './useAuditoriasKanban';
 import { toast } from 'sonner';
+import {
+  PM_MAX_TITULO,
+  textoCampoPlanMejoramiento,
+} from '../../utils/planMejoramientoCampos';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ═══════════════════════════════════════════════════════════════════════════
 
-type EstadoPlan = 'FORMULACION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
+type EstadoPlan = 'FORMULACION' | 'REVISION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
 type SemaforoPlan = 'verde' | 'amarillo' | 'rojo';
 
 export interface PlanMejoramientoKanban {
   id: string;
   codigo: string;
+  titulo?: string;
   auditoria: string;
   auditoriaId?: string;
   area: string;
@@ -46,6 +52,49 @@ export interface PlanMejoramientoKanban {
   ultimaActualizacion: string;
   alertas: number;
   diasRestantes: number;
+  planAnualVigencia?: number;
+  /** Metadatos de la auditoría vinculada (solo para filtro por vigencia) */
+  auditoriaVigencia?: {
+    planAnualVigencia?: number;
+    planAnualAño?: number;
+    vigencia?: number;
+    codigo?: string;
+    fechaInicio?: string;
+  };
+}
+
+export interface PlanesMejoramientoFilters {
+  planAnualVigencia?: number;
+}
+
+/** Filtro estricto por vigencia (cliente, respaldo del backend) */
+export function planCoincideVigenciaPlan(
+  plan: {
+    codigo?: string;
+    planAnualVigencia?: number;
+    fechaInicio?: string;
+    auditoriaVigencia?: {
+      planAnualVigencia?: number;
+      planAnualAño?: number;
+      vigencia?: number;
+      codigo?: string;
+      fechaInicio?: string;
+    };
+  },
+  vigencia: number,
+): boolean {
+  if (plan.planAnualVigencia != null && !Number.isNaN(Number(plan.planAnualVigencia))) {
+    return Number(plan.planAnualVigencia) === vigencia;
+  }
+  if (plan.auditoriaVigencia) {
+    return auditoriaCoincideVigenciaPlan(plan.auditoriaVigencia, vigencia);
+  }
+  if (plan.codigo?.includes(`PM-${vigencia}-`)) return true;
+  if (plan.fechaInicio) {
+    const y = new Date(plan.fechaInicio).getFullYear();
+    if (!Number.isNaN(y) && y === vigencia) return true;
+  }
+  return false;
 }
 
 interface CreatePlanDto {
@@ -77,8 +126,11 @@ function mapearEstado(estado: string): EstadoPlan {
     formulando: 'FORMULACION',
     borrador: 'FORMULACION',
     en_formulacion: 'FORMULACION',
-    revision: 'FORMULACION',
     rechazado: 'FORMULACION',
+    // Revisión OCI (auditado envió, OCI debe revisar)
+    revision: 'REVISION' as EstadoPlan,
+    revision_oci: 'REVISION' as EstadoPlan,
+    en_revision: 'REVISION' as EstadoPlan,
     // Aprobado
     aprobado: 'APROBADO',
     aprobacion: 'APROBADO',
@@ -267,6 +319,17 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
       : auditoriaObj) ||
     'Sin auditoría';
 
+  const planAnualVigenciaRaw =
+    (typeof auditoriaObj === 'object' && auditoriaObj !== null
+      ? auditoriaObj.planAnualVigencia ?? auditoriaObj.plan_anual_vigencia
+      : undefined) ??
+    planBackend.planAnualVigencia ??
+    planBackend.plan_anual_vigencia;
+  const planAnualVigencia =
+    planAnualVigenciaRaw != null && !Number.isNaN(Number(planAnualVigenciaRaw))
+      ? Number(planAnualVigenciaRaw)
+      : undefined;
+
   /**
    * Estado Kanban por acciones y plazo. El backend suele dejar `borrador` aunque ya haya acciones:
    * solo FORMULACION si aún no hay acciones; si hay acciones, se distribuye en Aprobado / Ejecución / etc.
@@ -279,6 +342,7 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
   return {
     id: planBackend.id,
     codigo: planBackend.codigo || `PM-${new Date().getFullYear()}-${planBackend.id?.substring(0, 4) || '001'}`,
+    titulo: planBackend.titulo || planBackend.nombre,
     auditoria: nombreAuditoria,
     auditoriaId: planBackend.auditoriaId || planBackend.auditoria_id || (typeof auditoriaObj === 'object' ? auditoriaObj?.id : undefined),
     area: planBackend.area || planBackend.areaResponsable || '',
@@ -301,7 +365,18 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
     hallazgosLeves,
     ultimaActualizacion: planBackend.updatedAt?.split('T')[0] || planBackend.ultimaActualizacion || '',
     alertas: planBackend.alertas || 0,
-    diasRestantes
+    diasRestantes,
+    planAnualVigencia,
+    auditoriaVigencia:
+      typeof auditoriaObj === 'object' && auditoriaObj !== null
+        ? {
+            planAnualVigencia: auditoriaObj.planAnualVigencia ?? auditoriaObj.plan_anual_vigencia,
+            planAnualAño: auditoriaObj.planAnualAño ?? auditoriaObj.plan_anual_año,
+            vigencia: auditoriaObj.vigencia,
+            codigo: auditoriaObj.codigo,
+            fechaInicio: auditoriaObj.fechaInicio ?? auditoriaObj.fecha_inicio,
+          }
+        : undefined,
   };
 }
 
@@ -309,7 +384,8 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
 // HOOK PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function usePlanesMejoramiento() {
+export function usePlanesMejoramiento(filters?: PlanesMejoramientoFilters) {
+  const vigencia = filters?.planAnualVigencia;
   const [planes, setPlanes] = useState<PlanMejoramientoKanban[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -323,11 +399,18 @@ export function usePlanesMejoramiento() {
       setError(null);
       console.log('🔍 [usePlanesMejoramiento] Cargando planes del backend...');
       
-      const response = await controlInternoService.getPlanesMejoramiento();
+      const response = await controlInternoService.getPlanesMejoramiento(
+        vigencia != null ? { planAnualVigencia: vigencia } : undefined,
+      );
       console.log('📦 [usePlanesMejoramiento] Respuesta:', response);
       
       if (Array.isArray(response)) {
-        const planesTransformados = response.map(transformarPlan);
+        let planesTransformados = response.map(transformarPlan);
+        if (vigencia != null) {
+          planesTransformados = planesTransformados.filter((p) =>
+            planCoincideVigenciaPlan(p, vigencia),
+          );
+        }
         console.log('🔄 [usePlanesMejoramiento] Planes transformados:', planesTransformados);
         setPlanes(planesTransformados);
       } else {
@@ -349,7 +432,7 @@ export function usePlanesMejoramiento() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [vigencia]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Crear plan de mejoramiento
@@ -361,12 +444,19 @@ export function usePlanesMejoramiento() {
       
       // DTO según backend CreatePlanMejoramientoDto
       const planData = {
-        areaResponsable: data.areaResponsable,
-        responsableImplementacion: data.responsableImplementacion,
+        areaResponsable: textoCampoPlanMejoramiento(data.areaResponsable, 'Sin área'),
+        responsableImplementacion: textoCampoPlanMejoramiento(
+          data.responsableImplementacion,
+          'Sin responsable',
+        ),
         fechaLimite: data.fechaLimite, // ISO 8601
         ...(data.auditoriaId && { auditoriaId: data.auditoriaId }),
-        ...(data.titulo && { titulo: data.titulo }),
-        ...(data.descripcion && { descripcion: data.descripcion }),
+        ...(data.titulo && {
+          titulo: textoCampoPlanMejoramiento(data.titulo, 'Plan de Mejoramiento', PM_MAX_TITULO),
+        }),
+        ...(data.descripcion && {
+          descripcion: textoCampoPlanMejoramiento(data.descripcion, '', 2000),
+        }),
         ...(data.objetivos && { objetivos: data.objetivos }),
         ...(data.hallazgoId && { hallazgoId: data.hallazgoId })
       };
@@ -388,7 +478,24 @@ export function usePlanesMejoramiento() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchPlanes]);
+
+  // Helper to map frontend column IDs / states to backend states
+  const mapFrontendToBackendEstado = (estado: string): string => {
+    const map: Record<string, string> = {
+      SUSCRIPCION_Y_FORMULACION: 'revision',
+      EJECUCION_DE_ACCIONES: 'en_ejecucion',
+      VERIFICACION: 'completado',
+      CERRADO: 'completado',
+      REVISION: 'revision',
+      APROBADO: 'aprobado',
+      EN_EJECUCION: 'en_ejecucion',
+      COMPLETADO: 'completado',
+      SUSPENDIDO: 'rechazado',
+      FORMULACION: 'borrador',
+    };
+    return map[estado] ?? estado.toLowerCase();
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // Actualizar estado de un plan
@@ -400,7 +507,8 @@ export function usePlanesMejoramiento() {
     try {
       console.log('🔄 [usePlanesMejoramiento] Actualizando estado:', { planId, nuevoEstado });
       
-      await controlInternoService.updatePlanMejoramiento(planId, { estado: nuevoEstado });
+      const backendEstado = mapFrontendToBackendEstado(nuevoEstado);
+      await controlInternoService.updatePlanMejoramiento(planId, { estado: backendEstado });
       
       // Actualizar localmente
       setPlanes(prev => prev.map(p => 

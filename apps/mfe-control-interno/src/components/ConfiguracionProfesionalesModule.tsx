@@ -515,12 +515,13 @@ function TarjetaProfesional({
               <div className="flex flex-wrap items-center gap-2">
                 {/* Rol OCIG (principal en este módulo) */}
                 <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                  profesional.configuracion.rolOCIG === 'Jefe OCI' ? 'bg-red-100 text-red-700' :
-                  profesional.configuracion.rolOCIG === 'Auditor Sénior' ? 'bg-blue-100 text-blue-700' :
+                  profesional.configuracion.rolOCIG === 'Jefe OCI' || profesional.configuracion.rolOCIG === 'Jefe OCIG' ? 'bg-red-100 text-red-700' :
+                  profesional.configuracion.rolOCIG === 'Auditor Líder' || profesional.configuracion.rolOCIG === 'Auditor Sénior' ? 'bg-blue-100 text-blue-700' :
                   profesional.configuracion.rolOCIG === 'Auditor' ? 'bg-cyan-100 text-cyan-700' :
                   profesional.configuracion.rolOCIG === 'Auditor Júnior' ? 'bg-green-100 text-green-700' :
+                  profesional.configuracion.rolOCIG === 'Profesional OCI' ? 'bg-teal-100 text-teal-700' :
                   profesional.configuracion.rolOCIG === 'Apoyo Técnico' ? 'bg-purple-100 text-purple-700' :
-                  profesional.configuracion.rolOCIG === 'Aprobador PAI' ? 'bg-amber-100 text-amber-700' :
+                  profesional.configuracion.rolOCIG === 'Aprobador PAI' ? 'bg-orange-100 text-orange-700' :
                   'bg-gray-100 text-gray-700'
                 }`}>
                   {profesional.configuracion.rolOCIG || 'Sin rol OCIG'}

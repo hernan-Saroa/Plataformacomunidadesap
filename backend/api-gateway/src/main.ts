@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
@@ -22,6 +23,7 @@ async function bootstrap() {
     'http://localhost:8080',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
     'http://127.0.0.1:8080',
   ];
 
@@ -43,7 +45,7 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token', 'X-User-ID', 'X-User-Roles', 'X-User-Email', 'X-User-Name'],
     credentials: true,
     maxAge: 86400, // 24 hours
   });

@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, User, Mail, Phone, Building2, Shield, Calendar, Clock, MapPin, Globe, 
   Edit2, Save, Eye, Key, Activity, TrendingUp, Award, Zap, LogOut,
   Settings, Bell, Lock, Sparkles, CheckCircle2, BarChart3, Users,
-  Camera, Upload, Link as LinkIcon, MessageSquare, Hash
+  Camera, Upload, Link as LinkIcon, MessageSquare, Hash,
+  AlertTriangle, Loader2, KeyRound
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
@@ -25,6 +26,36 @@ interface ProfileModalProps {
   onLogout?: () => void;
 }
 
+const ROLE_NAME_BY_CODE: Record<string, string> = {
+  SUPER_ADMIN: 'Super Administrador',
+  ADMIN: 'Administrador',
+};
+
+const formatRoleName = (code?: string) => {
+  if (!code) return 'Sin Rol Activo';
+  if (ROLE_NAME_BY_CODE[code]) return ROLE_NAME_BY_CODE[code];
+
+  return code
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+const normalizePermissions = (permissions: any[] = []) =>
+  permissions
+    .filter(Boolean)
+    .map((permission: any) =>
+      typeof permission === 'string'
+        ? { code: permission, name: permission }
+        : {
+            ...permission,
+            code: permission?.code || permission?.id || '',
+            name: permission?.name || permission?.code || permission?.id || 'Permiso',
+          },
+    );
+
 export function ProfileModal({ 
   isOpen, 
   onClose, 
@@ -38,6 +69,9 @@ export function ProfileModal({
   const [activeTab, setActiveTab] = useState('general');
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [viewAllPermissions, setViewAllPermissions] = useState('');
+  const [credentialLoginEnabled, setCredentialLoginEnabled] = useState(true);
+  const [isLoadingLoginSettings, setIsLoadingLoginSettings] = useState(false);
+  const [isSavingLoginSettings, setIsSavingLoginSettings] = useState(false);
   const [formData, setFormData] = useState({
     fullName: userName,
     email: userEmail,
@@ -51,14 +85,31 @@ export function ProfileModal({
 
   // Mock: Roles activos del usuario (basado en sistema Usuario-Persona)
   const userLogged = authService.getCurrentUser();
-  userRole = userLogged?.roles[0].name || userRole;
+  const currentRoles = Array.isArray(userLogged?.roles) ? userLogged.roles : [];
+  const directPermissions = normalizePermissions(
+    Array.isArray(userLogged?.permissions) ? userLogged.permissions : [],
+  );
   // const rolesActivos = ['Super Administrador', 'Administrativo'];
-  const rolesActivos = userLogged?.roles?.map((role: any) => ({
-    code: role.code,
-    name: role.name,
-    permissions: role.permissions || []
-  })) || [{ name: 'Sin Rol Activo', permissions: [], code: '' }];
-  const isSuperAdmin = userLogged?.roles?.some((role: any) => role.code === 'SUPER_ADMIN');
+  const rolesActivos = currentRoles.length > 0
+    ? currentRoles.map((role: any) => {
+        const code = typeof role === 'string' ? role : role?.code || '';
+        const rolePermissions = typeof role === 'string'
+          ? currentRoles.length === 1 ? directPermissions : []
+          : role?.permissions || [];
+
+        return {
+          code,
+          name: typeof role === 'string' ? formatRoleName(code) : role?.name || formatRoleName(code),
+          permissions: normalizePermissions(rolePermissions),
+        };
+      })
+    : [{ name: 'Sin Rol Activo', permissions: [], code: '' }];
+  userRole = rolesActivos[0]?.name || userRole;
+  const isSuperAdmin = currentRoles.some((role: any) =>
+    typeof role === 'string'
+      ? role === 'SUPER_ADMIN'
+      : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+  );
   // Mock: Última sesión
   const lastSession = {
     date: new Date().toLocaleDateString('es-CO'),
@@ -88,6 +139,49 @@ export function ProfileModal({
       description: 'Todos tus cambios se han guardado correctamente',
     });
     setIsEditing(false);
+  };
+
+  // ── Login Settings (solo SuperAdmin) ──
+  useEffect(() => {
+    if (!isSuperAdmin || !isOpen) return;
+    let cancelled = false;
+    const loadSettings = async () => {
+      setIsLoadingLoginSettings(true);
+      try {
+        const settings = await authService.getLoginSettings();
+        if (!cancelled) setCredentialLoginEnabled(settings.credentialLoginEnabled);
+      } catch {
+        // fallback: assume enabled
+      } finally {
+        if (!cancelled) setIsLoadingLoginSettings(false);
+      }
+    };
+    loadSettings();
+    return () => { cancelled = true; };
+  }, [isSuperAdmin, isOpen]);
+
+  const handleToggleCredentialLogin = async () => {
+    const newValue = !credentialLoginEnabled;
+    setIsSavingLoginSettings(true);
+    try {
+      await authService.updateLoginSettings({ credentialLoginEnabled: newValue });
+      setCredentialLoginEnabled(newValue);
+      toast.success(
+        newValue ? 'Login con correo habilitado' : 'Login con correo deshabilitado',
+        {
+          description: newValue
+            ? 'Los usuarios pueden iniciar sesión con correo y contraseña'
+            : 'Solo se permite inicio de sesión con Microsoft (SSO)',
+          duration: 4000,
+        },
+      );
+    } catch (error: any) {
+      toast.error('Error al actualizar configuración', {
+        description: error?.message || 'Intenta nuevamente',
+      });
+    } finally {
+      setIsSavingLoginSettings(false);
+    }
   };
 
   console.log('🟡 ProfileModal render', { isOpen });
@@ -168,9 +262,8 @@ export function ProfileModal({
             <div className="relative p-2.5 md:p-3 pr-[64px] md:pr-[72px]">
               <div className="flex items-center gap-2 md:gap-2.5">
                 <div className="relative group flex-shrink-0">
-                  <Avatar className="w-12 h-12 md:w-14 md:h-14 ring-2 ring-white/40">
-                    <AvatarImage src={`https://ui-avatars.com/api/?name=${userName}&size=80&background=fff&color=1e5da8&bold=true`} />
-                    <AvatarFallback className="bg-white/20 backdrop-blur-md text-white text-base md:text-lg font-black">
+                  <Avatar className="w-12 h-12 md:w-14 md:h-14 ring-2 ring-white/40" style={{ width: '48px', height: '48px', borderRadius: '50%', flexShrink: 0 }}>
+                    <AvatarFallback className="bg-white text-[#1e5da8] text-base md:text-lg font-black" style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {userInitials}
                     </AvatarFallback>
                   </Avatar>
@@ -199,8 +292,8 @@ export function ProfileModal({
           </div>
 
           {/* Tabs - ULTRA COMPACTOS */}
-          <div className="bg-white border-b border-gray-200 flex-shrink-0">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="bg-white border-b border-gray-200 flex-1 flex flex-col overflow-hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
               <div className="px-1.5 py-0.5 overflow-x-auto">
                 <TabsList className="bg-gray-100/80 border border-gray-200/60 h-auto p-0.5 gap-0.5 rounded-md inline-flex">
                   <TabsTrigger 
@@ -233,9 +326,9 @@ export function ProfileModal({
                   </TabsTrigger>
                 </TabsList>
               </div>
-
+ 
               {/* Contenido - ULTRA DENSO */}
-              <div className="flex-1 overflow-y-auto p-1 md:p-1.5 max-h-[calc(100vh-360px)] md:max-h-[calc(100vh-240px)]" style={{ scrollbarGutter: 'stable' }}>
+              <div className="flex-1 overflow-y-auto p-1 md:p-1.5" style={{ scrollbarGutter: 'stable' }}>
                 {/* Tab: General */}
                 <TabsContent value="general" className="mt-0 space-y-1.5">
                   {/* Bio Section */}
@@ -601,6 +694,62 @@ export function ProfileModal({
                       </div>
                     </div>
                   </div>
+
+                  {/* ── SOLO SUPER ADMIN: Configuración del Sistema ── */}
+                  {isSuperAdmin && (
+                    <div className="bg-white rounded-xl border-2 border-orange-200 p-4 md:p-5 mt-4">
+                      <h3 className="font-black text-gray-900 mb-1 flex items-center gap-2 text-sm">
+                        <Shield className="w-4 h-4 text-orange-600" />
+                        Configuración del Sistema
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-4">Solo visible para Super Administrador</p>
+
+                      <div className="space-y-4">
+                        {/* Toggle: Login con Correo+Contraseña */}
+                        <div className={`flex items-start justify-between p-4 rounded-xl border-2 transition-all ${
+                          credentialLoginEnabled
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-red-50 border-red-200'
+                        }`}>
+                          <div className="flex-1 pr-4">
+                            <div className="flex items-center gap-2 mb-1">
+                              <KeyRound className={`w-4 h-4 ${
+                                credentialLoginEnabled ? 'text-green-700' : 'text-red-600'
+                              }`} />
+                              <p className="font-semibold text-gray-900 text-sm">
+                                Login con correo y contraseña
+                              </p>
+                            </div>
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              {credentialLoginEnabled
+                                ? 'Los usuarios pueden iniciar sesión con correo y contraseña, además de Microsoft.'
+                                : 'Solo se muestra el botón de Microsoft (SSO). Reactiva esta opción si el SSO falla.'}
+                            </p>
+                            {!credentialLoginEnabled && (
+                              <div className="flex items-start gap-2 mt-2 p-2 bg-red-100 rounded-lg">
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-[11px] text-red-700 font-medium">
+                                  Solo Microsoft SSO está activo. Si el SSO falla, reactiva esta opción para permitir el acceso con credenciales.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={credentialLoginEnabled}
+                              onChange={handleToggleCredentialLogin}
+                              disabled={isSavingLoginSettings || isLoadingLoginSettings}
+                            />
+                            <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${
+                              isSavingLoginSettings ? 'opacity-50 cursor-wait' : ''
+                            } peer-checked:bg-green-600`}></div>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
               </div>
             </Tabs>

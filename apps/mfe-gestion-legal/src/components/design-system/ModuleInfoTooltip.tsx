@@ -17,6 +17,7 @@ import { Info, X, Lightbulb, AlertCircle, CheckCircle, Sparkles } from 'lucide-r
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
+import { useResponsive } from '@esap-mfe/shared-hooks/useResponsive';
 
 interface InfoSection {
   label: string;
@@ -36,6 +37,7 @@ export function ModuleInfoTooltip({
   variant = 'icon'
 }: ModuleInfoTooltipProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isMobile } = useResponsive();
 
   const getIconForType = (type?: string) => {
     switch (type) {
@@ -73,11 +75,12 @@ export function ModuleInfoTooltip({
       {variant === 'icon' ? (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 transition-colors rounded-md hover:bg-gray-100"
+          className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 hover:text-[#003DA5] transition-all duration-200 rounded-lg shadow-sm hover:shadow active:scale-95"
+          style={{ minHeight: isMobile ? '34px' : '36px' }}
           title="Información del módulo"
         >
           <Info className="w-4 h-4" />
-          <span className="hidden sm:inline">Info</span>
+          <span className="hidden sm:inline">Guía</span>
         </button>
       ) : (
         <Badge

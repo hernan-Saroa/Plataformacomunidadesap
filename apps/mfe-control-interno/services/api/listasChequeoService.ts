@@ -10,14 +10,7 @@ const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '/api/v1';
 const MICROSERVICIO_PORT = 3007; // Puerto del internal-institutional-control-service
 
-/**
- * Detecta si estamos en localhost para hacer peticiones directas al microservicio
- */
-function esLocalhost(): boolean {
-  const hostname = window.location.hostname;
-  const hostnameParts = hostname.split('.');
-  return hostname === 'localhost' || hostname === '127.0.0.1' || (hostnameParts[0] === '192' && hostnameParts[1] === '168');
-}
+
 
 export interface ItemListaChequeo {
   id: string;
@@ -93,9 +86,9 @@ class ListasChequeoAPIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // Si estamos en localhost, ir directo al microservicio (sin prefijos)
+    // Si estamos en direct mode, ir directo al microservicio (sin prefijos)
     let url: string;
-    if (esLocalhost()) {
+    if (API_MODE === 'direct') {
       url = `http://localhost:${MICROSERVICIO_PORT}${endpoint}`;
       console.log(`[ListasChequeo] 🔗 Petición directa a microservicio: ${url}`);
     } else {
@@ -108,13 +101,9 @@ class ListasChequeoAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,

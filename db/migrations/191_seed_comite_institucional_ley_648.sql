@@ -37,42 +37,55 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'rector@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000001-0000-0000-0000-000000000001', 'rector@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000001-0000-0000-0000-000000000001' WHERE username = 'rector@esap.edu.co';
   END IF;
   
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'secretario.general@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000002-0000-0000-0000-000000000002', 'secretario.general@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000002-0000-0000-0000-000000000002' WHERE username = 'secretario.general@esap.edu.co';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'subdirector.academico@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000003-0000-0000-0000-000000000003', 'subdirector.academico@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000003-0000-0000-0000-000000000003' WHERE username = 'subdirector.academico@esap.edu.co';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'subdirector.proyeccion@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000004-0000-0000-0000-000000000004', 'subdirector.proyeccion@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000004-0000-0000-0000-000000000004' WHERE username = 'subdirector.proyeccion@esap.edu.co';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'subdirector.altogobierno@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000005-0000-0000-0000-000000000005', 'subdirector.altogobierno@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000005-0000-0000-0000-000000000005' WHERE username = 'subdirector.altogobierno@esap.edu.co';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'jefe.juridica@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000006-0000-0000-0000-000000000006', 'jefe.juridica@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000006-0000-0000-0000-000000000006' WHERE username = 'jefe.juridica@esap.edu.co';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM auth."user" WHERE username = 'jefe.planeacion@esap.edu.co') THEN
     INSERT INTO auth."user" (id_user, id_person, username, password_hash, is_active)
     VALUES (gen_random_uuid(), 'd0000007-0000-0000-0000-000000000007', 'jefe.planeacion@esap.edu.co', '$2b$10$hNfxyvu9AiB8I95jfyGSae85fpjFgv8msPkS.Gr0nkV9C/cZUnrva', true);
+  ELSE
+    UPDATE auth."user" SET id_person = 'd0000007-0000-0000-0000-000000000007' WHERE username = 'jefe.planeacion@esap.edu.co';
   END IF;
 END $$;
 
--- Si id_user era clave primaria, el ON CONFLICT ON CONSTRAINT no funciona igual, usamos DO NOTHING con una verificación
--- Postgres 15+ admite NULL en ON CONFLICT si manejamos id_user. Ignoraremos conflicto asumiendo un escenario limpio o:
--- (Se usó gen_random_uuid() así que los conflictos solo ocurren mediante lógica manual, usar un bloque DO es más seguro para evitar duplicates):
+-- Enlazar roles de manera segura consultando por username:
+-- Let's define the block properly:
 DO $$
 DECLARE
     r1 UUID; r2 UUID; r3 UUID; r4 UUID; r5 UUID; r6 UUID; r7 UUID;
@@ -86,22 +99,22 @@ BEGIN
     SELECT id INTO r6 FROM auth.role WHERE code = 'JEFE_JURIDICA';
     SELECT id INTO r7 FROM auth.role WHERE code = 'JEFE_PLANEACION';
 
-    SELECT id_user INTO u1 FROM auth."user" WHERE id_person = 'd0000001-0000-0000-0000-000000000001';
-    SELECT id_user INTO u2 FROM auth."user" WHERE id_person = 'd0000002-0000-0000-0000-000000000002';
-    SELECT id_user INTO u3 FROM auth."user" WHERE id_person = 'd0000003-0000-0000-0000-000000000003';
-    SELECT id_user INTO u4 FROM auth."user" WHERE id_person = 'd0000004-0000-0000-0000-000000000004';
-    SELECT id_user INTO u5 FROM auth."user" WHERE id_person = 'd0000005-0000-0000-0000-000000000005';
-    SELECT id_user INTO u6 FROM auth."user" WHERE id_person = 'd0000006-0000-0000-0000-000000000006';
-    SELECT id_user INTO u7 FROM auth."user" WHERE id_person = 'd0000007-0000-0000-0000-000000000007';
+    SELECT id_user INTO u1 FROM auth."user" WHERE username = 'rector@esap.edu.co';
+    SELECT id_user INTO u2 FROM auth."user" WHERE username = 'secretario.general@esap.edu.co';
+    SELECT id_user INTO u3 FROM auth."user" WHERE username = 'subdirector.academico@esap.edu.co';
+    SELECT id_user INTO u4 FROM auth."user" WHERE username = 'subdirector.proyeccion@esap.edu.co';
+    SELECT id_user INTO u5 FROM auth."user" WHERE username = 'subdirector.altogobierno@esap.edu.co';
+    SELECT id_user INTO u6 FROM auth."user" WHERE username = 'jefe.juridica@esap.edu.co';
+    SELECT id_user INTO u7 FROM auth."user" WHERE username = 'jefe.planeacion@esap.edu.co';
 
-    -- ENLAZAR ROLES:
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u1 AND id_rol = r1) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u1, r1); END IF;
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u2 AND id_rol = r2) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u2, r2); END IF;
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u3 AND id_rol = r3) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u3, r3); END IF;
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u4 AND id_rol = r4) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u4, r4); END IF;
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u5 AND id_rol = r5) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u5, r5); END IF;
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u6 AND id_rol = r6) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u6, r6); END IF;
-    IF NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u7 AND id_rol = r7) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u7, r7); END IF;
+    -- ENLAZAR ROLES CON VERIFICACIÓN DE NULOS:
+    IF u1 IS NOT NULL AND r1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u1 AND id_rol = r1) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u1, r1); END IF;
+    IF u2 IS NOT NULL AND r2 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u2 AND id_rol = r2) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u2, r2); END IF;
+    IF u3 IS NOT NULL AND r3 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u3 AND id_rol = r3) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u3, r3); END IF;
+    IF u4 IS NOT NULL AND r4 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u4 AND id_rol = r4) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u4, r4); END IF;
+    IF u5 IS NOT NULL AND r5 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u5 AND id_rol = r5) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u5, r5); END IF;
+    IF u6 IS NOT NULL AND r6 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u6 AND id_rol = r6) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u6, r6); END IF;
+    IF u7 IS NOT NULL AND r7 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.user_roles WHERE id_user = u7 AND id_rol = r7) THEN INSERT INTO auth.user_roles (id_user, id_rol) VALUES (u7, r7); END IF;
 END $$;
 
 

@@ -76,6 +76,7 @@ interface RevisionAprobacionJefeProps {
   onSendJuridica?: (borradorId: string) => void;
   onAprobarReasignacion?: (solicitudId: string, observaciones: string) => void;
   onRechazarReasignacion?: (solicitudId: string, motivoRechazo: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -87,7 +88,8 @@ export function RevisionAprobacionJefe({
   onDevolver,
   onSendJuridica,
   onAprobarReasignacion,
-  onRechazarReasignacion
+  onRechazarReasignacion,
+  onRefresh
 }: RevisionAprobacionJefeProps) {
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudReasignacion | null>(null);
@@ -803,8 +805,14 @@ export function RevisionAprobacionJefe({
                       }
 
                       try {
-                        const userId = authService.getCurrentUser()?.id || '';
-                        await disciplinaryService.sendJuridica(borradorEnvioJuridica.autoId, userId);
+                         const currentUser = authService.getCurrentUser();
+                         const userId = currentUser?.id || '';
+                         await disciplinaryService.sendJuridica(
+                             borradorEnvioJuridica.autoId, 
+                             userId, 
+                             currentUser?.email, 
+                             currentUser?.fullName || currentUser?.firstName
+                         );
 
                         toast.success('Auto enviado a jurídica exitosamente', {
                           description: `El proceso ${borradorEnvioJuridica.numeroProceso} ha sido cerrado y archivado`,
@@ -839,6 +847,7 @@ export function RevisionAprobacionJefe({
             onClose={() => setBorradorSeleccionado(null)}
             onAprobar={handleAprobar}
             onDevolver={handleDevolver}
+            onRefresh={onRefresh}
             mostrarBotonDevolver={true}
             tituloModal="Revisión de Auto"
             descripcionModal={`Sistema Integrado de Gestión Legal (SIGL v5.1) - ${borradorSeleccionado.numeroProceso}`}

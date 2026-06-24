@@ -24,12 +24,14 @@ import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { toast } from 'sonner';
 import { ESAPLogo } from './assets/ESAPLogo';
+import { useIsMobile } from './ui/use-mobile';
 
 interface FooterWorldClassProps {
   variant?: 'light' | 'dark';
 }
 
 export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
+  const isMobile = useIsMobile();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -137,10 +139,19 @@ export function FooterWorldClass({ variant = 'dark' }: FooterWorldClassProps) {
               transition={{ duration: 0.6 }}
               className="flex-shrink-0"
             >
-              <ESAPLogo 
-                variant="white"
-                className="h-20 w-auto object-contain drop-shadow-2xl"
-              />
+              {isMobile ? (
+                <ESAPLogo 
+                  variant="icon"
+                  className="shrink-0 drop-shadow-2xl"
+                  style={{ width: '48px', height: '55px' }}
+                />
+              ) : (
+                <ESAPLogo 
+                  variant="white"
+                  className="shrink-0 drop-shadow-2xl"
+                  style={{ width: '270px', height: '80px' }}
+                />
+              )}
             </motion.div>
 
             {/* Información Institucional */}

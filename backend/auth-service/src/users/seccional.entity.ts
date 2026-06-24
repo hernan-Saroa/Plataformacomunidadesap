@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   JoinColumn,
@@ -9,7 +9,7 @@ import { Geopolitica } from './geopolitica.entity';
 
 @Entity({ name: 'seccionales', schema: 'auth' })
 export class Seccional {
-  @PrimaryGeneratedColumn({ name: 'id_seccional', type: 'bigint' })
+  @PrimaryColumn({ name: 'id_seccional', type: 'bigint' })
   idSeccional: number;
 
   @Column({ name: 'nom_seccional', length: 100 })
@@ -37,7 +37,7 @@ export class Seccional {
   @Column({ name: 'usu_actualizacion', length: 20, nullable: true })
   usuActualizacion: string;
 
-  @Column({ name: 'cod_seccional', length: 5, nullable: true })
+  @Column({ name: 'cod_seccional', length: 20, nullable: true })
   codSeccional: string;
 
   @Column({ name: 'id_empresa', type: 'bigint', nullable: true })

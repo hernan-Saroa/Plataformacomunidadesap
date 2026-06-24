@@ -39,6 +39,37 @@ function getMimeType(filename: string): string {
     return MIME_TYPES[ext] || 'application/octet-stream';
 }
 
+function getHeaderSafeFilename(filename?: string): string {
+    const rawName = filename?.split(/[\\/]/).pop()?.trim() || 'archivo';
+    return rawName.replace(/[\u0000-\u001F\u007F]/g, '') || 'archivo';
+}
+
+function getAsciiFallbackFilename(filename: string): string {
+    const fallback = filename
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\x20-\x7E]/g, '_')
+        .replace(/["\\;]/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return fallback || 'archivo';
+}
+
+function encodeRFC5987Filename(filename: string): string {
+    return encodeURIComponent(filename)
+        .replace(/['()]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+        .replace(/\*/g, '%2A');
+}
+
+function buildContentDisposition(disposition: 'inline' | 'attachment', filename: string): string {
+    const safeFilename = getHeaderSafeFilename(filename);
+    const fallbackFilename = getAsciiFallbackFilename(safeFilename);
+    const encodedFilename = encodeRFC5987Filename(safeFilename);
+
+    return `${disposition}; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
+}
+
 @Controller('files')
 export class FilesController {
     @Get(':filename')
@@ -58,7 +89,7 @@ export class FilesController {
 
         // Para PDFs e imágenes, permitir visualización inline
         if (mimeType.startsWith('image/') || mimeType === 'application/pdf') {
-            res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+            res.setHeader('Content-Disposition', buildContentDisposition('inline', filename));
         }
 
         // Usar stream para mejor rendimiento
@@ -85,7 +116,7 @@ export class FilesController {
         // Headers para forzar descarga
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Length', stats.size);
-        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+        res.setHeader('Content-Disposition', buildContentDisposition('attachment', downloadName));
 
         const stream = createReadStream(filePath);
         stream.pipe(res);

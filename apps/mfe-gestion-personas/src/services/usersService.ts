@@ -73,6 +73,7 @@ export interface CreateUserData {
   roleIds?: string[];
   idSeccional?: number;
   idSede?: number;
+  [key: string]: any; // Allow advanced fields (birth_date, address, etc.)
 }
 
 export interface UpdateUserData extends Partial<CreateUserData> {
@@ -85,6 +86,8 @@ export interface UserFilters {
   search?: string;
   status?: 'active' | 'inactive' | 'all';
   role?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface PaginatedUsersResponse {
@@ -114,6 +117,8 @@ export const usersService = {
     if (filters.search && filters.search.trim()) params.append('search', filters.search.trim());
     if (filters.status && filters.status !== 'all') params.append('status', filters.status);
     if (filters.role && filters.role.trim()) params.append('role', filters.role.trim());
+    if (filters.sortBy) params.append('sortBy', filters.sortBy);
+    if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
     const queryString = params.toString();
     const endpoint = queryString ? `${SERVICE_PREFIX}/users?${queryString}` : `${SERVICE_PREFIX}/users`;
@@ -158,6 +163,14 @@ export const usersService = {
 
   async resetUserPassword(id: string, newPassword: string): Promise<void> {
     return apiClient.put(`${SERVICE_PREFIX}/users/${id}/password`, { new_password: newPassword });
+  },
+
+  /**
+   * Forzar restablecimiento de contraseña por correo OTP
+   * Envía el código de recuperación al correo registrado del usuario
+   */
+  async forcePasswordReset(email: string): Promise<void> {
+    return apiClient.post(`${SERVICE_PREFIX}/forgot-password`, { email });
   },
 
   /**

@@ -29,13 +29,21 @@ export const ETAPAS_PROCESO = {
     icon: FileText,
     orden: 0
   },
+  VALORACION: {
+    id: 'VALORACION',
+    nombre: 'Valoración',
+    descripcion: 'Valoración inicial de la noticia disciplinaria',
+    color: '#06B6D4',
+    icon: Info,
+    orden: 1
+  },
   INDAGACION_PREVIA: {
     id: 'INDAGACION_PREVIA',
     nombre: 'Indagación Previa',
     descripcion: 'Verificación preliminar de los hechos',
     color: '#8B5CF6',
     icon: Info,
-    orden: 1
+    orden: 2
   },
   INDAGACION: {
     id: 'INDAGACION',
@@ -43,7 +51,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Indagación preliminar para determinar si hay mérito para abrir proceso',
     color: '#3B82F6',
     icon: Info,
-    orden: 2
+    orden: 3
   },
   INVESTIGACION: {
     id: 'INVESTIGACION',
@@ -51,7 +59,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se recopilan pruebas y testimonios',
     color: '#2962FF',
     icon: FileCheck,
-    orden: 3
+    orden: 4
   },
   EVALUACION: {
     id: 'EVALUACION',
@@ -59,7 +67,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Evaluación de la investigación',
     color: '#F59E0B',
     icon: Scale,
-    orden: 4
+    orden: 5
   },
   CARGOS: {
     id: 'CARGOS',
@@ -67,7 +75,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se formula el pliego de cargos al investigado',
     color: '#F97316',
     icon: Scale,
-    orden: 5
+    orden: 6
   },
   JUZGAMIENTO: {
     id: 'JUZGAMIENTO',
@@ -75,7 +83,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Diligencias de descargos y práctica de pruebas',
     color: '#DC2626',
     icon: Gavel,
-    orden: 6
+    orden: 7
   },
   FALLO: {
     id: 'FALLO',
@@ -83,7 +91,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se emite la decisión final del proceso',
     color: '#10B981',
     icon: Gavel,
-    orden: 7
+    orden: 8
   },
   SEGUNDA_INSTANCIA: {
     id: 'SEGUNDA_INSTANCIA',
@@ -91,7 +99,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Recurso de apelación',
     color: '#059669',
     icon: FileCheck,
-    orden: 8
+    orden: 9
   },
   ARCHIVO: {
     id: 'ARCHIVO',
@@ -99,7 +107,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Archivos en cualquier etapa del proceso',
     color: '#DC2626',
     icon: Archive,
-    orden: 9
+    orden: 10
   }
 } as const;
 
@@ -355,9 +363,15 @@ export function SeccionPlantillasAutosUnificada({
                   return a.orden - b.orden;
                 })
                 .map((tipo) => {
-                  const etapa = ETAPAS_PROCESO[tipo.etapa];
-                  if (!etapa) return null;
-                  
+                  const etapaKey = tipo.etapa as keyof typeof ETAPAS_PROCESO;
+                  const etapa = ETAPAS_PROCESO[etapaKey] ?? {
+                    nombre: tipo.etapa || 'Sin etapa',
+                    descripcion: '',
+                    color: '#6B7280',
+                    icon: FileText,
+                    orden: 999,
+                  };
+
                   const Icon = etapa.icon;
                   const plantillasActivas = tipo.plantilla ? 1 : 0;
                   const expandido = tipoExpandido === tipo.id;
@@ -611,7 +625,7 @@ export function SeccionPlantillasAutosUnificada({
       {/* Modal Vista Detalles */}
       <AnimatePresence>
         {vistaDetalles && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 1000 }}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -623,7 +637,7 @@ export function SeccionPlantillasAutosUnificada({
                 <div className="flex-1 min-w-0 mr-3">
                   <h3 className="text-lg font-bold text-gray-900 truncate">{vistaDetalles.nombre}</h3>
                   <p className="text-sm text-gray-600 mt-0.5 truncate">
-                    {ETAPAS_PROCESO[vistaDetalles.etapa].nombre}
+                    {(ETAPAS_PROCESO[vistaDetalles.etapa as keyof typeof ETAPAS_PROCESO])?.nombre ?? vistaDetalles.etapa ?? 'Sin etapa'}
                   </p>
                 </div>
                 <button
@@ -716,7 +730,7 @@ export function SeccionPlantillasAutosUnificada({
       {/* Modal Guía */}
       <AnimatePresence>
         {mostrarGuia && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 1000 }}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}

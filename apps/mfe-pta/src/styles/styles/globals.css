@@ -1799,7 +1799,7 @@ button[aria-label="Cerrar"] {
 
 /* El Toaster de sonner tiene su propio styling */
 [data-sonner-toaster] * {
-  font-size: 14px !important;
+  font-size: 12px !important;
 }
 
 /* ===================== OVERRIDE TAILWIND SMALL TEXT CLASSES ===================== */

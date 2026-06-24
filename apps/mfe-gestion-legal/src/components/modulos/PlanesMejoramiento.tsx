@@ -40,6 +40,7 @@ export function PlanesMejoramiento() {
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<'dashboard' | 'kanban' | 'lista'>('dashboard');
+  const [columnasColapsadas, setColumnasColapsadas] = useState<Record<string, boolean>>({});
   const [planes, setPlanes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -237,17 +238,92 @@ export function PlanesMejoramiento() {
       {/* VIEW: KANBAN */}
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
-          <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth">
-            {/* Reusing existing logic for stages */}
-            <KanbanColumns
-              planes={filteredPlanes}
-              abogados={abogados}
-              onDrop={handleDrop}
-              openModal={openModal}
-              setters={{ setShowDetalle, setShowEvidencias, setShowSeguimiento, setShowComentarios }}
-              isMobile={isMobile}
-            />
-          </div>
+          {isMobile ? (
+            /* Vista Adaptativa Mobile - Acordeón de Etapas */
+            <div className="space-y-3 px-1">
+              {(() => {
+                const getEtapa = (plan: any) => {
+                  if (plan.estado === 'CERRADO') return 'CERRADO';
+                  if (plan.estado === 'ABIERTO' && Number(plan.avancePorcentaje) === 0) return 'PLANEACION';
+                  if (Number(plan.avancePorcentaje) > 80) return 'SEGUIMIENTO';
+                  return 'EJECUCION';
+                };
+                const planesPorEtapa = {
+                  PLANEACION: filteredPlanes.filter((p: any) => getEtapa(p) === 'PLANEACION'),
+                  EJECUCION: filteredPlanes.filter((p: any) => getEtapa(p) === 'EJECUCION'),
+                  SEGUIMIENTO: filteredPlanes.filter((p: any) => getEtapa(p) === 'SEGUIMIENTO'),
+                  CERRADO: filteredPlanes.filter((p: any) => getEtapa(p) === 'CERRADO'),
+                };
+                const etapas = [
+                  { nombre: 'Planeación', value: 'PLANEACION', color: '#6B7280', icono: <FileCheck className="w-4 h-4 text-gray-600" />, items: planesPorEtapa.PLANEACION },
+                  { nombre: 'Ejecución', value: 'EJECUCION', color: '#F59E0B', icono: <Target className="w-4 h-4 text-amber-600" />, items: planesPorEtapa.EJECUCION },
+                  { nombre: 'Seguimiento', value: 'SEGUIMIENTO', color: '#3B82F6', icono: <TrendingUp className="w-4 h-4 text-blue-600" />, items: planesPorEtapa.SEGUIMIENTO },
+                  { nombre: 'Cerrado', value: 'CERRADO', color: '#10B981', icono: <CheckCircle className="w-4 h-4 text-green-600" />, items: planesPorEtapa.CERRADO },
+                ];
+                return etapas.map(etapa => {
+                  const estaAbierto = !columnasColapsadas[etapa.value];
+                  return (
+                    <Card key={etapa.value} className="border border-gray-200 overflow-hidden bg-white shadow-sm rounded-xl">
+                      <button
+                        onClick={() => setColumnasColapsadas(prev => ({ ...prev, [etapa.value]: !prev[etapa.value] }))}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100 hover:bg-gray-100/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 flex-shrink-0">
+                            {etapa.icono}
+                          </div>
+                          <span className="font-black text-sm text-gray-800 truncate text-left">
+                            {etapa.nombre}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="font-bold text-xs px-2 py-0.5 bg-[#E0EDFF] text-[#003DA5] border border-blue-200">
+                            {etapa.items.length}
+                          </Badge>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${estaAbierto ? '' : 'rotate-[-90deg]'}`} />
+                        </div>
+                      </button>
+
+                      {estaAbierto && (
+                        <div className="p-3 space-y-3 bg-gray-50/50">
+                          {etapa.items.map((plan: any) => (
+                            <TarjetaPlan
+                              key={plan.id}
+                              plan={plan}
+                              isMobile={isMobile}
+                              onVer={(p: any) => openModal(setShowDetalle, p)}
+                              onEvidencias={(p: any) => openModal(setShowEvidencias, p)}
+                              onSeguimiento={(p: any) => openModal(setShowSeguimiento, p)}
+                              onComentarios={(p: any) => openModal(setShowComentarios, p)}
+                              abogados={abogados}
+                            />
+                          ))}
+                          {etapa.items.length === 0 && (
+                            <div className="text-center py-8 text-gray-400">
+                              <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                              <p className="text-xs font-semibold">Sin planes en esta etapa</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                });
+              })()}
+            </div>
+          ) : (
+            /* Vista Desktop - Kanban tradicional */
+            <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth">
+              <KanbanColumns
+                planes={filteredPlanes}
+                abogados={abogados}
+                onDrop={handleDrop}
+                openModal={openModal}
+                setters={{ setShowDetalle, setShowEvidencias, setShowSeguimiento, setShowComentarios }}
+                isMobile={isMobile}
+              />
+            </div>
+          )}
         </DndProvider>
       )}
 
@@ -497,12 +573,11 @@ function ColumnaKanban({ etapa, isMobile, onVer, onEvidencias, onSeguimiento, on
             <div className="p-2 bg-white rounded-lg border border-gray-200">{etapa.icono}</div>
             <div className="flex-1 min-w-0">
               <h3 className="font-black text-sm text-gray-800">{etapa.nombre}</h3>
-              <p className="text-[10px] text-gray-500">Estimado: {etapa.diasEstimados} días</p>
             </div>
           </div>
           <Badge className="bg-white border border-gray-200 text-gray-700">{etapa.items.length}</Badge>
         </div>
-        <div className="p-3 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+        <div className="p-3 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
           {etapa.items.map((plan: any) => (
             <TarjetaPlan
               key={plan.id}

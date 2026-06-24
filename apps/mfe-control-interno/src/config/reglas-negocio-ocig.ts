@@ -51,47 +51,35 @@ export const REGLAS_NEGOCIO_OCIG = {
 
     /**
      * Valida si es Auditor Líder
-     * Requerimiento: Auditor Líder, Auditor Senior o superior.
+     * Requerimiento: Solo profesionales con rol "Auditor Líder" en Configuraciones > Profesionales OCI.
      */
     esAuditorLider: (cargo: string | undefined | null): boolean => {
       if (!cargo) return false;
       const cargoMin = cargo.toLowerCase();
-      const esLiderOSenior = cargoMin.includes('auditor') && (
+      return cargoMin.includes('auditor') && (
         cargoMin.includes('lider') || 
         cargoMin.includes('líder') || 
-        cargoMin.includes('lìder') || 
-        cargoMin.includes('senior') ||
-        cargoMin.includes('sénior')
+        cargoMin.includes('lìder')
       );
-      const esSuperior = cargoMin.includes('jefe');
-      return esLiderOSenior || esSuperior;
     },
 
     /**
-     * Valida si es parte del equipo auditor (Cualquiera)
-     * Requerimiento: Auditores o cualquiera.
+     * Valida si es parte del equipo auditor adicional.
+     * Todos los profesionales configurados en OCI pueden participar como equipo auditor.
+     * Los que ya están asignados como Jefe OCI o Auditor Líder se excluyen por ID en el componente.
      */
-    esEquipoAuditor: (cargo: string | undefined | null): boolean => {
-      // El requerimiento especifica que puede ser "auditores o cualquiera"
+    esEquipoAuditor: (_cargo: string | undefined | null): boolean => {
       return true;
     }
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 2. REGLAS COMITÉ INSTITUCIONAL DE COORDINACIÓN DE CONTROL INTERNO
-  // Ley 648 de 2017: Define quiénes tienen la potestad de "Aprobador PAI" y
-  // cómo deben ser buscados en el sistema de acuerdo al rol otorgado.
+  // 2. COMITÉ DE APROBACIÓN DEL PAI (Decreto 648 / Ley 648 de 2017)
+  // Los miembros del comité se eligen entre usuarios con permiso
+  // control-interno.plan-anual.approve (ver GET aprobadores-plan-anual).
+  // No se usa el rol OCIG "Aprobador PAI" en configuracion_profesionales_ocig.
   // ──────────────────────────────────────────────────────────────────────────
   COMITE_INSTITUCIONAL: {
-    rolesAutorizados: ['aprobador pai'], // Miembros Decreto 648
-    
-    /**
-     * Identifica si un usuario pertenece al Comité Institucional
-     * y por ende tiene la capacidad de Aprobar el Plan Anual.
-     */
-    esAprobadorComite: (cargo: string | undefined | null): boolean => {
-      if (!cargo) return false;
-      return cargo.toLowerCase().includes('aprobador pai');
-    }
-  }
+    permisoRequerido: 'control-interno.plan-anual.approve',
+  },
 };

@@ -3,7 +3,7 @@
  * ✅ OPTIMIZADO: Lazy Loading para mejorar performance
  */
 
-import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense, type ComponentType } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
 import { PortalDashboard } from '../portal/PortalDashboard';
@@ -74,6 +74,7 @@ function lazyRemote(loader: () => Promise<unknown>, exportNames: string[]) {
 }
 
 // ✅ LAZY LOADING - Módulos cargados bajo demanda
+const DashboardExecutivo = lazy(() => import('./DashboardExecutivo').then(m => ({ default: m.DashboardExecutivo })));
 const UsersPersonsModulePremium = lazyRemote(() => import('gestion_personas/Module'), ['UsersPersonsModulePremium']);
 const CarpetaDigitalModule = lazy(() => import('./CarpetaDigitalModule').then(m => ({ default: m.CarpetaDigitalModule })));
 const ReportsModuleV2 = lazyRemote(() => import('reportes/Module'), ['ReportsModuleV2']);
@@ -177,6 +178,9 @@ const ACADEMIC_ROLE_CODES = new Set(['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIR
 const ACADEMIC_ROLE_LABELS = new Set(['Estudiante', 'Docente', 'Graduado', 'Aspirante']);
 
 function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
+  // Con acceso dual el usuario elige el sistema desde SystemSwitcher; no forzar portal aquí.
+  if (userData?.hasBothSystemsAccess) return false;
+
   const roleCodes = Array.isArray(userData?.roles)
     ? (userData.roles as unknown[]).map((r) => String(r))
     : [];
@@ -395,24 +399,74 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     }
   }, [currentSidebarModule]);
 
-  // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
-  const getInitialCollapsedState = () => {
-    // Verificar si hay un estado guardado en localStorage
+  // 🚀 RESPONSIVE: Reactive viewport breakpoints via matchMedia
+  type ViewportSize = 'mobile' | 'tablet' | 'desktop';
+  const getViewportSize = useCallback((): ViewportSize => {
+    if (typeof window === 'undefined') return 'desktop';
+    const w = window.innerWidth;
+    return w < 768 ? 'mobile' : w < 1024 ? 'tablet' : 'desktop';
+  }, []);
+
+  const [viewportSize, setViewportSize] = useState<ViewportSize>(getViewportSize);
+
+  useEffect(() => {
+    const mql768 = window.matchMedia('(min-width: 768px)');
+    const mql1024 = window.matchMedia('(min-width: 1024px)');
+    const update = () => setViewportSize(getViewportSize());
+    mql768.addEventListener('change', update);
+    mql1024.addEventListener('change', update);
+    return () => {
+      mql768.removeEventListener('change', update);
+      mql1024.removeEventListener('change', update);
+    };
+  }, [getViewportSize]);
+
+  // Sidebar collapse: mobile/tablet = forced collapse, desktop = user preference
+  const forceCollapseSidebar = viewportSize !== 'desktop';
+
+  const [userSidebarCollapsed, setUserSidebarCollapsed] = useState(() => {
     const savedState = localStorage.getItem('esap-sidebar-collapsed');
-    if (savedState !== null) {
-      return savedState === 'true';
-    }
+    if (savedState !== null) return savedState === 'true';
+    return typeof window !== 'undefined' ? window.innerWidth < 1440 : false;
+  });
 
-    // Si no hay estado guardado, auto-colapsar en pantallas < 1440px
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 1440;
-    }
-
-    return false;
+  // Effective collapsed state: forced on mobile/tablet, user choice on desktop
+  const sidebarCollapsed = forceCollapseSidebar || userSidebarCollapsed;
+  const setSidebarCollapsed = (value: boolean | ((prev: boolean) => boolean)) => {
+    setUserSidebarCollapsed(value);
   };
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialCollapsedState);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Auto-close sidebar drawer when switching from mobile to desktop
+  useEffect(() => {
+    if (viewportSize === 'desktop') setSidebarOpen(false);
+  }, [viewportSize]);
+
+    useEffect(() => {
+      const handleSidebarCollapse = (e: Event) => {
+        const customEvent = e as CustomEvent;
+        if (customEvent.detail && typeof customEvent.detail.collapsed === 'boolean') {
+          setSidebarCollapsed(customEvent.detail.collapsed);
+        }
+      };
+
+      const handlePortalViewChange = (e: Event) => {
+        const customEvent = e as CustomEvent;
+        if (customEvent.detail && customEvent.detail.view === 'carpeta-digital') {
+          setCurrentModule('carpeta-digital');
+          setCurrentSidebarModule('carpeta-digital');
+        }
+      };
+
+      window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
+      window.addEventListener('portal-view-change', handlePortalViewChange);
+      return () => {
+        window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
+        window.removeEventListener('portal-view-change', handlePortalViewChange);
+      };
+    }, []);
+
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
@@ -432,6 +486,36 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   };
 
+  const userPermissionsList = (userData?.permissions as string[]) || [];
+
+  // Controla firma-electronica en sidebar según permiso certificate.sign del módulo cert-laborales
+  const computedAssignedModules = (() => {
+    const mods = (userData?.modules as string[]) || [];
+    const roleCodes = ((userData?.roles as string[]) || []).map((role) => String(role).toUpperCase());
+    const email = String(currentUser.email || userData?.email || '').toLowerCase();
+    const isSystemAdmin =
+      roleCodes.some((role) => ['SUPER_ADMIN', 'ADMIN', 'ADMINISTRADOR'].includes(role)) ||
+      email === 'superuser@esap.edu.co' ||
+      email === 'admin@esap.edu.co';
+
+    if (isSystemAdmin) return ['all'];
+
+    const hasCertLaborales = mods.includes('certificados-laborales');
+    const hasSignPerm =
+      userPermissionsList.includes('certificados-laborales.certificate.sign') ||
+      userPermissionsList.includes('cl.certificate.sign');
+
+    if (!hasCertLaborales) return mods;
+
+    if (hasSignPerm && !mods.includes('firma-electronica')) {
+      return [...mods, 'firma-electronica'];
+    }
+    if (!hasSignPerm && mods.includes('firma-electronica')) {
+      return mods.filter((m) => m !== 'firma-electronica');
+    }
+    return mods;
+  })();
+
   // Handlers
   const handleLogout = () => {
     // Llamar al handler de logout del padre (App.tsx) si existe
@@ -447,10 +531,9 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const renderModule = () => {
     switch (currentModule) {
       case 'dashboard':
-        // Redirigir a Estructura Organizacional como vista principal
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <EstructuraOrganizacionalModule />
+            <DashboardExecutivo onNavigateToModule={(sid) => setCurrentModule(sid as ModuleView)} />
           </Suspense>
         );
 
@@ -587,7 +670,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'control-disciplinario':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <ControlDisciplinarioFull />
+            <ControlDisciplinarioFull
+              key={[
+                userData?.personId || currentUser.id || currentUser.email || 'anon',
+                ...(userData?.roles || []),
+                ...(userData?.permissions || []),
+              ].join(':')}
+            />
           </Suspense>
         );
 
@@ -600,32 +689,29 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
       case 'pta':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-6">
-            <aside className="hidden lg:block">
-              <div id="portal-left-sidebar-slot" className="space-y-5" />
-            </aside>
-            <div className="min-w-0">
-              <Suspense fallback={<ModuleLoader />}>
-                <PTAModule
-                  userPersonId={currentUser.personId}
-                  userName={currentUser.name}
-                  userEmail={currentUser.email}
-                  userRoles={userRoles || []}
-                  embedded
-                />
-              </Suspense>
-            </div>
-          </div>
+          <Suspense fallback={<ModuleLoader />}>
+            <PTAModule
+              key="pta-gestion"
+              userPersonId={currentUser.personId}
+              userName={currentUser.name}
+              userEmail={currentUser.email}
+              userRoles={userData?.roles || userRoles || []}
+              userPermissions={userPermissionsList}
+              embedded
+            />
+          </Suspense>
         );
 
       case 'banco-docentes-pta':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <PTAModule
+              key="pta-banco-docentes"
               userPersonId={currentUser.personId}
               userName={currentUser.name}
               userEmail={currentUser.email}
-              userRoles={userRoles || []}
+              userRoles={userData?.roles || userRoles || []}
+              userPermissions={userPermissionsList}
               embedded
               initialView="banco_docentes"
             />
@@ -635,9 +721,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'certificados-laborales':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <CertificadosLaboralesRouter 
+            <CertificadosLaboralesRouter
               userRoles={userRoles || []}
               userEmail={currentUser.email}
+              userPermissions={userPermissionsList}
             />
           </Suspense>
         );
@@ -689,62 +776,65 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   return (
     <NotificationsProvider>
       <TourProvider>
-        {/* ✅ GRID LAYOUT - Mobile First */}
-        <div className="min-h-screen bg-gray-50 grid grid-cols-1 md:grid-cols-[auto_1fr]">
+        {/* ✅ APP LAYOUT - Mobile First */}
+        <div className="backoffice-shell-layout min-h-screen bg-gray-50">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
-            <>
-              {/* Spacer for Fixed Sidebar to prevent content overlap */}
-              <div
-                className={`hidden md:block shrink-0 transition-[width] duration-300 ${sidebarCollapsed
-                    ? 'w-[80px]'
-                    : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
-                  }`}
-              />
-              <SidebarPremium
-                isOpen={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                isCollapsed={sidebarCollapsed}
-                onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-                currentModule={currentModule}
-                currentSidebarModule={currentSidebarModule}
-                onModuleChange={(sidebarModule) => {
-                  const mappedModule = mapSidebarToModule(sidebarModule);
-                  setCurrentSidebarModule(sidebarModule);
-                  setCurrentModule(mappedModule);
-                  setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
-                }}
-                userEmail={currentUser.email}
-                certificatesPendingCount={certificatesPendingCount}
-                assignedModules={userData?.modules}
-                restrictedMode={
-                  userData?.module === 'control-interno'
-                    ? 'control-interno'
-                    : userData?.module === 'control-disciplinario'
-                    ? 'control-disciplinario'
-                    : userData?.module === 'registro-academico'
-                    ? 'registro-academico'
-                    : userData?.module === 'certificados-laborales' 
-                    ? 'certificados-laborales' 
-                    : userData?.module === 'gestion-legal'
-                    ? 'gestion-legal'
-                    : undefined
-                }
-              />
-            </>
+            <SidebarPremium
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+              isCollapsed={sidebarCollapsed}
+              onToggleCollapse={() => setSidebarCollapsed(!userSidebarCollapsed)}
+              forceCollapse={forceCollapseSidebar}
+              currentModule={currentModule}
+              currentSidebarModule={currentSidebarModule}
+              onModuleChange={(sidebarModule) => {
+                const mappedModule = mapSidebarToModule(sidebarModule);
+                setCurrentSidebarModule(sidebarModule);
+                setCurrentModule(mappedModule);
+                setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
+              }}
+              userEmail={currentUser.email}
+              certificatesPendingCount={certificatesPendingCount}
+              assignedModules={computedAssignedModules}
+              userPermissions={userPermissionsList}
+              restrictedMode={
+                userData?.module === 'control-interno'
+                  ? 'control-interno'
+                  : userData?.module === 'control-disciplinario'
+                  ? 'control-disciplinario'
+                  : userData?.module === 'registro-academico'
+                  ? 'registro-academico'
+                  : userData?.module === 'certificados-laborales' 
+                  ? 'certificados-laborales' 
+                  : userData?.module === 'gestion-legal'
+                  ? 'gestion-legal'
+                  : undefined
+              }
+            />
           )}
 
           {/* ✅ MAIN CONTENT - Flexbox Column */}
-          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '70px' : '0'}}>
+          <div
+            className={`backoffice-main-shell flex flex-col h-screen bg-gray-50 overflow-hidden ${
+              sidebarCollapsed ? 'backoffice-main-shell--collapsed' : ''
+            } ${
+              sidebarOpen ? 'backoffice-main-shell--sidebar-open' : ''
+            } ${userData?.module === 'procesos' ? 'backoffice-main-shell--no-sidebar' : ''}`}
+          >
+
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar
                 onToggleSidebar={() => {
-                  // En mobile abre el sidebar, en desktop colapsa/expande
-                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  // Mobile: toggle drawer open/close. Tablet/Desktop: toggle collapse.
+                  if (viewportSize === 'mobile') {
                     setSidebarOpen(!sidebarOpen);
+                  } else if (viewportSize === 'desktop') {
+                    setSidebarCollapsed(!userSidebarCollapsed);
                   } else {
-                    setSidebarCollapsed(!sidebarCollapsed);
+                    // Tablet: open drawer (since sidebar is auto-collapsed to icons)
+                    setSidebarOpen(!sidebarOpen);
                   }
                 }}
                 density={density}
@@ -763,7 +853,11 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
             {/* Module Content - Contenedor con scroll vertical óptimo */}
             <main className={`flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 ${userData?.module === 'procesos' ? '' : ''}`}>
-              <div className={`min-h-full ${userData?.module === 'procesos' ? '' : 'p-3 sm:p-4 md:p-5 lg:p-6'}`}>
+              <div className={`min-h-full ${
+                userData?.module === 'procesos' || ['gestion-legal', 'control-interno', 'control-disciplinario'].includes(currentModule)
+                  ? ''
+                  : 'p-3 sm:p-4 md:p-5 lg:p-6 xl:p-8'
+              }`}>
                 {renderModule()}
               </div>
             </main>

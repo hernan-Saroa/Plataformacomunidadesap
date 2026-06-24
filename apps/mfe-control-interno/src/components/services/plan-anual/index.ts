@@ -87,8 +87,20 @@ export {
   auditoresApi,
   estadisticasApi,
   planAnualService,
+  invalidatePlanAnualListCache,
   
   // APIs de evidencias (Migración 129)
   adjuntosApi,
   actividadesExtendidoApi,
+  normalizarAdjuntosTareaDesdeBackend,
+  resolverUrlAdjuntoTarea,
+  descargarAdjuntoTareaPlanAnual,
+  obtenerBlobPreviewAdjuntoTarea,
+  cargarPreviewEvidenciaPlanAnual,
+  obtenerArrayBufferAdjuntoTarea,
+  tipoPreviewAdjuntoTarea,
 } from './api';
+
+export type { TipoPreviewAdjuntoTarea, ContenidoPreviewEvidencia } from './api';
+
+export type { AdjuntoTareaPersistido, AdjuntoTareaUploadResponse } from './api';

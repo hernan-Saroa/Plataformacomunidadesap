@@ -7,12 +7,23 @@ import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
 
 type TemplateType = 'docente' | 'administrador';
+type TechnicalBonusCategory = string;
+
+type TechnicalBonusRenderItem = {
+  category?: string | null;
+  label?: string | null;
+  percentage: number;
+  value: number;
+  templateText?: string | null;
+  displayOrder?: number;
+};
 
 type PdfOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
   templateType?: TemplateType;
   publicBaseUrl?: string;
+  technicalBonusTemplate?: string;
 };
 
 @Injectable()
@@ -44,6 +55,20 @@ export class LaborCertificatePdfService {
       if (['false', '0', 'no', 'n'].includes(normalized)) return false;
     }
     return fallback;
+  }
+
+  private normalizeTechnicalBonusCategory(
+    value?: string | null,
+  ): TechnicalBonusCategory | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized || null;
+  }
+
+  private resolveTechnicalBonusConcept(category?: string | null): string {
+    const normalized = this.normalizeTechnicalBonusCategory(category);
+    if (normalized === 'COORDINADORES') return 'prima de coordinación';
+    if (normalized === 'DIRECTIVOS') return 'prima técnica';
+    return 'prima técnica y/o coordinación';
   }
 
   async generateCertificatePdf(
@@ -90,6 +115,7 @@ export class LaborCertificatePdfService {
       includeSalary,
       includeTechnicalBonus,
       templateHtml: config?.certificateContentHtml || '',
+      technicalBonusTemplate: options.technicalBonusTemplate,
     });
 
     const verificationCode =
@@ -183,6 +209,140 @@ export class LaborCertificatePdfService {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
+  }
+
+  private getTechnicalBonusSnapshotItems(certificate: Certificate): any[] {
+    const cert = certificate as Certificate & {
+      technical_bonuses?: any[] | null;
+      technicalBonuses?: any[] | null;
+      template_snapshot?: any;
+      templateSnapshot?: any;
+    };
+    const direct = Array.isArray(cert.technical_bonuses)
+      ? cert.technical_bonuses
+      : Array.isArray(cert.technicalBonuses)
+        ? cert.technicalBonuses
+        : null;
+    if (direct?.length) {
+      return direct;
+    }
+
+    const snapshotItems =
+      cert.template_snapshot?.technicalBonuses ||
+      cert.template_snapshot?.technical_bonuses ||
+      cert.templateSnapshot?.technicalBonuses ||
+      cert.templateSnapshot?.technical_bonuses;
+    return Array.isArray(snapshotItems) ? snapshotItems : [];
+  }
+
+  private resolveTechnicalBonusItems(
+    certificate: Certificate,
+    salaryBase: number,
+    fallbackTemplate?: string,
+  ): TechnicalBonusRenderItem[] {
+    const snapshotItems = this.getTechnicalBonusSnapshotItems(certificate);
+
+    const items = snapshotItems
+      .map((item): TechnicalBonusRenderItem | null => {
+        const percentage = this.parseBonusPercentage(item);
+        const value = this.parseBonusValue(item, salaryBase, percentage);
+        if (percentage <= 0 || value <= 0) return null;
+        return {
+          category: item?.category || item?.technical_bonus_category || null,
+          label: item?.label || item?.categoryLabel || null,
+          percentage,
+          value,
+          templateText:
+            item?.template_text ||
+            item?.templateText ||
+            item?.technicalBonusTemplate ||
+            fallbackTemplate ||
+            null,
+          displayOrder: Number(item?.display_order ?? item?.displayOrder ?? 100),
+        };
+      })
+      .filter((item): item is TechnicalBonusRenderItem => Boolean(item))
+      .sort((left, right) => {
+        const leftOrder = Number.isFinite(left.displayOrder || 0)
+          ? Number(left.displayOrder || 0)
+          : 100;
+        const rightOrder = Number.isFinite(right.displayOrder || 0)
+          ? Number(right.displayOrder || 0)
+          : 100;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        const labelCompare = String(left.label || '').localeCompare(
+          String(right.label || ''),
+          'es',
+        );
+        if (labelCompare !== 0) return labelCompare;
+        return String(left.category || '').localeCompare(
+          String(right.category || ''),
+          'es',
+        );
+      });
+
+    if (items.length) {
+      return items;
+    }
+
+    const legacyValue = this.normalizeMoneyValue(certificate.technical_bonus);
+    if (legacyValue <= 0) {
+      return [];
+    }
+
+    const legacyCategory = this.normalizeTechnicalBonusCategory(
+      (certificate as Certificate & {
+        technical_bonus_category?: string | null;
+        request?: { technical_bonus_category?: string | null };
+      }).technical_bonus_category ||
+        (certificate as Certificate & {
+          request?: { technical_bonus_category?: string | null };
+        }).request?.technical_bonus_category,
+    );
+
+    return [
+      {
+        category: legacyCategory,
+        percentage: this.calculateTechnicalBonusPercentage(
+          legacyValue,
+          salaryBase,
+        ),
+        value: legacyValue,
+        templateText: fallbackTemplate || null,
+        displayOrder: 100,
+      },
+    ];
+  }
+
+  private parseBonusPercentage(item: any): number {
+    const raw =
+      item?.percentage ??
+      item?.porcentaje ??
+      item?.technical_bonus_percentage ??
+      item?.technicalBonusPercentage;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Number(parsed.toFixed(2));
+  }
+
+  private parseBonusValue(
+    item: any,
+    salaryBase: number,
+    percentage: number,
+  ): number {
+    const explicitValue =
+      item?.value ??
+      item?.amount ??
+      item?.technical_bonus_value ??
+      item?.technicalBonusValue;
+    const normalizedValue = this.normalizeMoneyValue(explicitValue);
+    if (normalizedValue > 0) {
+      return normalizedValue;
+    }
+    if (salaryBase <= 0 || percentage <= 0) {
+      return 0;
+    }
+    return this.normalizeMoneyValue(salaryBase * (percentage / 100));
   }
 
   private normalizeCodeValue(value?: string | number | null): string {
@@ -440,8 +600,9 @@ export class LaborCertificatePdfService {
     includeSalary: boolean;
     includeTechnicalBonus: boolean;
     templateHtml: string;
+    technicalBonusTemplate?: string;
   }): string {
-    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml } = params;
+    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml, technicalBonusTemplate } = params;
 
     const certificateExtras = certificate as Certificate & {
       cod_cargo?: string;
@@ -592,13 +753,13 @@ export class LaborCertificatePdfService {
     }
 
     if (includeTechnicalBonus) {
-      const bonusBase = this.normalizeMoneyValue(certificate.technical_bonus);
-      if (bonusBase > 0) {
-        const bonusPercentage = this.calculateTechnicalBonusPercentage(
-          bonusBase,
-          salarioBase,
-        );
-        result = this.insertTechnicalBonus(result, bonusBase, bonusPercentage);
+      const bonusItems = this.resolveTechnicalBonusItems(
+        certificate,
+        salarioBase,
+        technicalBonusTemplate,
+      );
+      if (bonusItems.length) {
+        result = this.insertTechnicalBonuses(result, bonusItems);
       }
     }
 
@@ -717,20 +878,21 @@ export class LaborCertificatePdfService {
     return result;
   }
 
-  private insertTechnicalBonus(
+  private insertTechnicalBonuses(
     html: string,
-    bonusValue: number,
-    bonusPercentage: number,
+    bonuses: TechnicalBonusRenderItem[],
   ): string {
-    const bonusValueText = this.numeroALetras(bonusValue);
-    const bonusText = `<p>Percibe una prima técnica en un porcentaje igual al (${this.formatPercentage(
-      bonusPercentage,
-    )}%) sobre la asignación básica mensual de ${bonusValueText} ($${this.formatMoney(
-      bonusValue,
-    )}) pesos m/cte.</p>`;
+    const bonusParagraph = bonuses
+      .map((bonus) => this.renderTechnicalBonusParagraph(bonus))
+      .filter(Boolean)
+      .join('');
+
+    if (!bonusParagraph) {
+      return html;
+    }
 
     const expideRegex = /<(p|div|li)[^>]*>[\s\S]*?se expide[\s\S]*?<\/\1>/i;
-    const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?prima\s+t(?:e|\u00e9)cnica[\s\S]*?<\/\1>/gi;
+    const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?\bprima\b(?=[\s\S]*?(porcentaje|asignaci|mensual|m\/cte|pesos))[\s\S]*?<\/\1>/gi;
     const salaryRegex = /<(p|div|li)[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/\1>/gi;
 
     let result = html;
@@ -738,8 +900,6 @@ export class LaborCertificatePdfService {
     if (existingBonus && existingBonus.length > 0) {
       result = result.replace(bonusRegex, '');
     }
-
-    const bonusParagraph = bonusText;
 
     let lastSalaryMatch: RegExpExecArray | null = null;
     let match: RegExpExecArray | null = null;
@@ -757,6 +917,24 @@ export class LaborCertificatePdfService {
     }
 
     return `${result}${bonusParagraph}`;
+  }
+
+  private renderTechnicalBonusParagraph(bonus: TechnicalBonusRenderItem): string {
+    const bonusValueText = this.numeroALetras(bonus.value);
+    const formattedPercentage = this.formatPercentage(bonus.percentage);
+    const formattedMoney = this.formatMoney(bonus.value);
+    const customTemplate = String(bonus.templateText || '').trim();
+
+    if (customTemplate) {
+      const rendered = customTemplate
+        .replace(/\{porcentaje\}/g, formattedPercentage)
+        .replace(/\{valor_letras\}/g, bonusValueText)
+        .replace(/\{valor_numerico\}/g, formattedMoney);
+      return `<p>${rendered}</p>`;
+    }
+
+    const bonusConcept = this.resolveTechnicalBonusConcept(bonus.category);
+    return `<p>Percibe una ${bonusConcept} en un porcentaje igual al (${formattedPercentage}%) sobre la asignaciÃ³n bÃ¡sica mensual de ${bonusValueText} ($${formattedMoney}) pesos m/cte.</p>`;
   }
 
   private buildHtml(params: {
@@ -939,7 +1117,7 @@ export class LaborCertificatePdfService {
             </div>
             <div class="footer-right">
               ${qrTag}
-              <div>www.esap.edu.co</div>
+              <div style="font-size: 8pt; color: #0066cc; max-width: 99px; line-height: 1.4; text-align: center;">Escanee el código QR para verificar el certificado</div>
             </div>
           </div>
         </body>

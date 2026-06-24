@@ -18,7 +18,7 @@
  * - Headers sticky con métricas
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
@@ -44,9 +44,21 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
+import { useConfiguracionKanban, TipoTablero } from './services/useConfiguracionKanban';
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 
 // Validaciones
 import { validarPlanParaAuditoriaCompleta, mostrarErroresValidacion } from './utils/validaciones';
+import {
+  PM_MAX_TITULO,
+  auditoriaYaTienePlan,
+  indexarAuditoriasConPlan,
+  resolverAreaResponsableDesdeAuditoria,
+  resolverResponsableImplementacionDesdeAuditoria,
+  textoCampoPlanMejoramiento,
+} from '../utils/planMejoramientoCampos';
 
 // ✅ FASE 1 DÍA 2: Componentes responsive
 import { useResponsive } from '@/hooks/useResponsive';
@@ -67,7 +79,7 @@ const Card = ({ className = '', children, ...props }: React.HTMLAttributes<HTMLD
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type EstadoPlan = 'FORMULACION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
+type EstadoPlan = 'FORMULACION' | 'borrador' | 'revision' | 'APROBADO' | 'aprobado' | 'EN_EJECUCION' | 'en_ejecucion' | 'CON_RETRASO' | 'COMPLETADO' | 'completado' | 'SUSPENDIDO' | 'rechazado' | 'RECHAZADO';
 type SemaforoPlan = 'verde' | 'amarillo' | 'rojo';
 
 interface PlanMejoramiento {
@@ -97,277 +109,16 @@ interface PlanMejoramiento {
   diasRestantes: number;
 }
 
-// Datos de ejemplo mejorados con semáforos
-const PLANES_EJEMPLO: PlanMejoramiento[] = [
-  {
-    id: 'plan-1',
-    codigo: 'PM-2024-001',
-    auditoria: 'Auditoría Control Interno - Gestión Documental',
-    area: 'Dirección General',
-    responsable: 'Carlos Méndez',
-    cargoResponsable: 'Director General',
-    fechaCreacion: '2024-01-10',
-    fechaAprobacion: '2024-01-15',
-    fechaInicio: '2024-01-20',
-    fechaFin: '2024-12-30',
-    estado: 'EN_EJECUCION',
-    semaforo: 'verde',
-    totalHallazgos: 8,
-    totalAcciones: 8,
-    accionesCompletadas: 6,
-    accionesEnProceso: 2,
-    accionesPendientes: 0,
-    porcentajeAvance: 75,
-    hallazgosCriticos: 2,
-    hallazgosModerados: 3,
-    hallazgosLeves: 3,
-    ultimaActualizacion: '2024-12-20',
-    alertas: 0,
-    diasRestantes: 10
-  },
-  {
-    id: 'plan-2',
-    codigo: 'PM-2024-002',
-    auditoria: 'Auditoría Contratación - Procesos de Selección',
-    area: 'Subdirección Administrativa',
-    responsable: 'Ana Rodríguez',
-    cargoResponsable: 'Subdirectora Administrativa',
-    fechaCreacion: '2024-02-05',
-    fechaAprobacion: '2024-02-10',
-    fechaInicio: '2024-02-15',
-    fechaFin: '2024-12-25',
-    estado: 'CON_RETRASO',
-    semaforo: 'rojo',
-    totalHallazgos: 12,
-    totalAcciones: 12,
-    accionesCompletadas: 4,
-    accionesEnProceso: 5,
-    accionesPendientes: 3,
-    porcentajeAvance: 33,
-    hallazgosCriticos: 4,
-    hallazgosModerados: 5,
-    hallazgosLeves: 3,
-    ultimaActualizacion: '2024-12-10',
-    alertas: 3,
-    diasRestantes: -5
-  },
-  {
-    id: 'plan-3',
-    codigo: 'PM-2023-015',
-    auditoria: 'Auditoría Financiera - Ejecución Presupuestal',
-    area: 'Dirección Financiera',
-    responsable: 'Luis Gómez',
-    cargoResponsable: 'Director Financiero',
-    fechaCreacion: '2023-11-01',
-    fechaAprobacion: '2023-11-05',
-    fechaInicio: '2023-11-10',
-    fechaFin: '2024-11-10',
-    estado: 'COMPLETADO',
-    semaforo: 'verde',
-    totalHallazgos: 6,
-    totalAcciones: 6,
-    accionesCompletadas: 6,
-    accionesEnProceso: 0,
-    accionesPendientes: 0,
-    porcentajeAvance: 100,
-    hallazgosCriticos: 1,
-    hallazgosModerados: 3,
-    hallazgosLeves: 2,
-    ultimaActualizacion: '2024-11-05',
-    alertas: 0,
-    diasRestantes: 0
-  },
-  {
-    id: 'plan-4',
-    codigo: 'PM-2024-003',
-    auditoria: 'Auditoría Recursos Humanos - Nómina',
-    area: 'Gestión del Talento Humano',
-    responsable: 'María Torres',
-    cargoResponsable: 'Jefe de Talento Humano',
-    fechaCreacion: '2024-02-25',
-    fechaAprobacion: '2024-03-01',
-    fechaInicio: '2024-03-05',
-    fechaFin: '2025-03-05',
-    estado: 'EN_EJECUCION',
-    semaforo: 'amarillo',
-    totalHallazgos: 10,
-    totalAcciones: 10,
-    accionesCompletadas: 5,
-    accionesEnProceso: 4,
-    accionesPendientes: 1,
-    porcentajeAvance: 50,
-    hallazgosCriticos: 2,
-    hallazgosModerados: 4,
-    hallazgosLeves: 4,
-    ultimaActualizacion: '2024-12-22',
-    alertas: 1,
-    diasRestantes: 73
-  },
-  {
-    id: 'plan-5',
-    codigo: 'PM-2024-004',
-    auditoria: 'Auditoría TIC - Seguridad de la Información',
-    area: 'Dirección de Tecnología',
-    responsable: 'Jorge Silva',
-    cargoResponsable: 'Director de TIC',
-    fechaCreacion: '2024-04-10',
-    fechaAprobacion: '2024-04-12',
-    fechaInicio: '2024-04-15',
-    fechaFin: '2025-04-15',
-    estado: 'APROBADO',
-    semaforo: 'verde',
-    totalHallazgos: 15,
-    totalAcciones: 15,
-    accionesCompletadas: 0,
-    accionesEnProceso: 0,
-    accionesPendientes: 15,
-    porcentajeAvance: 0,
-    hallazgosCriticos: 5,
-    hallazgosModerados: 6,
-    hallazgosLeves: 4,
-    ultimaActualizacion: '2024-04-12',
-    alertas: 0,
-    diasRestantes: 114
-  },
-  {
-    id: 'plan-6',
-    codigo: 'PM-2024-005',
-    auditoria: 'Auditoría Académica - Programas de Formación',
-    area: 'Dirección Académica',
-    responsable: 'Patricia Vargas',
-    cargoResponsable: 'Directora Académica',
-    fechaCreacion: '2024-05-15',
-    fechaAprobacion: '2024-05-20',
-    fechaInicio: '2024-05-25',
-    fechaFin: '2024-12-25',
-    estado: 'SUSPENDIDO',
-    semaforo: 'rojo',
-    totalHallazgos: 7,
-    totalAcciones: 7,
-    accionesCompletadas: 2,
-    accionesEnProceso: 0,
-    accionesPendientes: 5,
-    porcentajeAvance: 28,
-    hallazgosCriticos: 1,
-    hallazgosModerados: 2,
-    hallazgosLeves: 4,
-    ultimaActualizacion: '2024-10-15',
-    alertas: 2,
-    diasRestantes: 1
-  },
-  {
-    id: 'plan-7',
-    codigo: 'PM-2024-006',
-    auditoria: 'Auditoría Planeación Estratégica - Indicadores de Gestión',
-    area: 'Oficina de Planeación',
-    responsable: 'Ricardo Mora',
-    cargoResponsable: 'Jefe de Planeación',
-    fechaCreacion: '2024-12-20',
-    fechaFin: '2025-12-20',
-    estado: 'FORMULACION',
-    semaforo: 'amarillo',
-    totalHallazgos: 9,
-    totalAcciones: 0,
-    accionesCompletadas: 0,
-    accionesEnProceso: 0,
-    accionesPendientes: 0,
-    porcentajeAvance: 0,
-    hallazgosCriticos: 3,
-    hallazgosModerados: 4,
-    hallazgosLeves: 2,
-    ultimaActualizacion: '2024-12-20',
-    alertas: 0,
-    diasRestantes: 365
-  },
-  {
-    id: 'plan-8',
-    codigo: 'PM-2024-007',
-    auditoria: 'Auditoría Inventarios - Control de Activos Fijos',
-    area: 'Almacén General',
-    responsable: 'Sandra López',
-    cargoResponsable: 'Jefe de Almacén',
-    fechaCreacion: '2024-11-15',
-    fechaFin: '2025-11-15',
-    estado: 'FORMULACION',
-    semaforo: 'verde',
-    totalHallazgos: 5,
-    totalAcciones: 0,
-    accionesCompletadas: 0,
-    accionesEnProceso: 0,
-    accionesPendientes: 0,
-    porcentajeAvance: 0,
-    hallazgosCriticos: 1,
-    hallazgosModerados: 2,
-    hallazgosLeves: 2,
-    ultimaActualizacion: '2024-11-15',
-    alertas: 0,
-    diasRestantes: 329
-  }
-];
 
-// Configuración de columnas Kanban
-const COLUMNAS_KANBAN = [
-  {
-    id: 'FORMULACION',
-    titulo: 'Formulación',
-    icono: <ClipboardCheck className="w-4 h-4" style={{ color: '#9333ea' }} />,
-    color: '#9333ea',
-    bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-200',
-    diasEstimados: 15
-  },
-  {
-    id: 'APROBADO',
-    titulo: 'Aprobado',
-    icono: <CheckSquare className="w-4 h-4" style={{ color: '#3b82f6' }} />,
-    color: '#3b82f6',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-    diasEstimados: 0
-  },
-  {
-    id: 'EN_EJECUCION',
-    titulo: 'En Ejecución',
-    icono: <PlayCircle className="w-4 h-4" style={{ color: '#10b981' }} />,
-    color: '#10b981',
-    bgColor: 'bg-green-50',
-    borderColor: 'border-green-200',
-    diasEstimados: 180
-  },
-  {
-    id: 'CON_RETRASO',
-    titulo: 'Con Retraso',
-    icono: <AlertOctagon className="w-4 h-4" style={{ color: '#f97316' }} />,
-    color: '#f97316',
-    bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
-    diasEstimados: 0
-  },
-  {
-    id: 'COMPLETADO',
-    titulo: 'Completado',
-    icono: <CheckCircle2 className="w-4 h-4" style={{ color: '#10b981' }} />,
-    color: '#10b981',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    diasEstimados: 0
-  },
-  {
-    id: 'SUSPENDIDO',
-    titulo: 'Suspendido',
-    icono: <PauseCircle className="w-4 h-4" style={{ color: '#6b7280' }} />,
-    color: '#6b7280',
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
-    diasEstimados: 0
-  }
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   // ✅ HOOK DE BACKEND - Planes de mejoramiento
   const {
     planes,
@@ -378,9 +129,12 @@ export function PlanesMejoramientoModuleRediseno() {
     actualizarEstadoPlan,
     aprobarPlan,
     rechazarPlan
-  } = usePlanesMejoramiento();
+  } = usePlanesMejoramiento(
+    vigenciaActiva != null ? { planAnualVigencia: vigenciaActiva } : undefined,
+  );
 
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
+  const [auditoriasElegiblesBackend, setAuditoriasElegiblesBackend] = useState<any[]>([]);
 
 
 
@@ -394,7 +148,9 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriaIdParaVerPlan,
     limpiarVerPlan,
     crearPlan: crearPlanContext,
-    generarExpediente
+    generarExpediente,
+    auditoriaIdFoco,
+    setAuditoriaIdFoco
   } = useIntegracionAuditoriaPlanes();
 
   // Plan a abrir cuando viene de "Ir a ver plan" (plan ya existe)
@@ -406,6 +162,118 @@ export function PlanesMejoramientoModuleRediseno() {
     return plan?.id ?? null;
   }, [auditoriaIdParaVerPlan, planes]);
 
+  const normalizarTexto = (valor: unknown): string =>
+    String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const contarHallazgos = contarHallazgosAuditoria;
+
+  const auditoriasElegiblesParaCrear = useMemo(() => {
+    const fuente = Array.isArray(auditoriasElegiblesBackend) ? auditoriasElegiblesBackend : [];
+    const porId = new Map<string, any>();
+
+    for (const aud of fuente) {
+      if (aud?.id) porId.set(aud.id, aud);
+    }
+
+    for (const aud of auditoriasConHallazgos) {
+      if (aud?.id && !porId.has(aud.id)) porId.set(aud.id, aud);
+    }
+
+    return Array.from(porId.values());
+  }, [auditoriasElegiblesBackend, auditoriasConHallazgos]);
+
+  const cargarAuditoriasElegibles = useCallback(async () => {
+    try {
+      const filtrosVigencia =
+        vigenciaActiva != null
+          ? { planAnualVigencia: vigenciaActiva, year: vigenciaActiva }
+          : undefined;
+      const [auditoriasResp, planesResp] = await Promise.all([
+        controlInternoService.getAuditorias(filtrosVigencia),
+        controlInternoService
+          .getPlanesMejoramiento(
+            vigenciaActiva != null ? { planAnualVigencia: vigenciaActiva } : undefined,
+          )
+          .catch(() => []),
+      ]);
+
+      let auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      if (vigenciaActiva != null) {
+        auditorias = auditorias.filter((a: any) =>
+          auditoriaCoincideVigenciaPlan(a, vigenciaActiva),
+        );
+      }
+      const planesExistentes = Array.isArray(planesResp) ? planesResp : [];
+      const planesParaIndice: unknown[] = [...planesExistentes];
+      for (const p of planes) {
+        const ya = planesParaIndice.some((x: any) => x?.id === p.id);
+        if (!ya) {
+          planesParaIndice.push({
+            id: p.id,
+            auditoriaId: p.auditoriaId,
+            titulo: p.titulo,
+            auditoria: { codigo: p.auditoriaVigencia?.codigo },
+          });
+        }
+      }
+      const indiceConPlan = indexarAuditoriasConPlan(planesParaIndice);
+
+      const elegibles = auditorias
+        .filter((a: any) => {
+          const estado = normalizarTexto(a?.estadoKanban || a?.fase || a?.estado);
+          const enEstadoPermitido =
+            estado === 'comunicacion' || estado === 'seguimiento' || estado === 'finalizada';
+          const hallazgos = contarHallazgos(a);
+          const codigoAud = typeof a?.codigo === 'string' ? a.codigo : undefined;
+          const sinPlan = !auditoriaYaTienePlan(
+            { id: a?.id, codigo: codigoAud },
+            indiceConPlan,
+          );
+          return enEstadoPermitido && hallazgos > 0 && sinPlan;
+        })
+        .map((a: any) => {
+          const fechaFin = String(
+            a?.fechaFinComunicacion || a?.fechaFin || a?.fecha_fin || new Date().toISOString().split('T')[0]
+          );
+          const fechaFinIso = fechaFin.includes('T') ? fechaFin.split('T')[0] : fechaFin;
+          const fechaLimiteObj = new Date(`${fechaFinIso}T00:00:00`);
+          if (!Number.isNaN(fechaLimiteObj.getTime())) fechaLimiteObj.setDate(fechaLimiteObj.getDate() + 30);
+          const fechaLimitePlan = !Number.isNaN(fechaLimiteObj.getTime())
+            ? fechaLimiteObj.toISOString().split('T')[0]
+            : calcularFechaLimite();
+
+          const totalHallazgos = contarHallazgos(a);
+          return {
+            id: a.id,
+            codigo: a.codigo || 'AUD',
+            nombre: a.nombre || a.titulo || a.proceso || 'Auditoría',
+            areaResponsable: a.areaResponsable || a.areaObjetivo || a.proceso || 'N/A',
+            responsable:
+              typeof a.auditorLider === 'string'
+                ? a.auditorLider
+                : a.auditorLider?.nombre || a.responsable || 'N/A',
+            cargo:
+              typeof a.auditorLider === 'object' && a.auditorLider?.cargo ? a.auditorLider.cargo : '',
+            fechaFinalizacion: fechaFinIso,
+            estadoPlan: 'SIN_PLAN' as const,
+            fechaLimitePlan,
+            plazoFormulacion: 30,
+            totalHallazgos,
+            hallazgos: Array.isArray(a.hallazgos) ? a.hallazgos : [],
+          };
+        });
+
+      setAuditoriasElegiblesBackend(elegibles);
+    } catch (err) {
+      console.error('[PlanesMejoramiento] Error cargando auditorias elegibles:', err);
+      setAuditoriasElegiblesBackend([]);
+    }
+  }, [vigenciaActiva, planes]);
+
   // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
     if (auditoriaSeleccionada && navegarAFormulacion && !auditoriaIdParaVerPlan) {
@@ -414,8 +282,48 @@ export function PlanesMejoramientoModuleRediseno() {
     }
   }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion, auditoriaIdParaVerPlan]);
 
+  useEffect(() => {
+    cargarAuditoriasElegibles();
+  }, [cargarAuditoriasElegibles]);
+
+  useEffect(() => {
+    if (planes.length > 0) {
+      cargarAuditoriasElegibles();
+    }
+  }, [planes, cargarAuditoriasElegibles]);
+
   const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
+
+    const indiceConPlan = indexarAuditoriasConPlan([
+      ...planes.map((p) => ({
+        id: p.id,
+        auditoriaId: p.auditoriaId,
+        titulo: p.titulo,
+        auditoria: { codigo: p.auditoriaVigencia?.codigo },
+      })),
+    ]);
+    if (
+      auditoriaYaTienePlan(
+        { id: auditoria.id, codigo: auditoria.codigo },
+        indiceConPlan,
+      )
+    ) {
+      const existente = planes.find(
+        (p) =>
+          p.auditoriaId === auditoria.id ||
+          (auditoria.codigo &&
+            p.auditoriaVigencia?.codigo?.toUpperCase() ===
+              String(auditoria.codigo).toUpperCase()),
+      );
+      toast.warning('Esta auditoría ya tiene un plan de mejoramiento', {
+        description: existente
+          ? `Plan existente: ${existente.codigo}. Use «Formular acciones» en la tarjeta del plan.`
+          : 'No es necesario crear otro plan para la misma auditoría.',
+      });
+      setModalCrearPlanOpen(false);
+      return;
+    }
 
     // ✅ Crear en backend con DTO correcto
     const fechaLimite = auditoria.fechaLimitePlan || calcularFechaLimite();
@@ -427,13 +335,28 @@ export function PlanesMejoramientoModuleRediseno() {
         })()
       : fechaLimite;
 
+    const codigoAud = textoCampoPlanMejoramiento(auditoria.codigo, 'Nuevo', 50);
+    const nombreAud = textoCampoPlanMejoramiento(
+      auditoria.nombre ?? auditoria.titulo,
+      'Auditoría',
+      PM_MAX_TITULO,
+    );
+
     const planCreado = await crearPlanBackend({
-      areaResponsable: auditoria.areaResponsable || auditoria.area || 'Sin área',
-      responsableImplementacion: auditoria.responsable || 'Sin responsable',
+      areaResponsable: resolverAreaResponsableDesdeAuditoria(auditoria),
+      responsableImplementacion: resolverResponsableImplementacionDesdeAuditoria(auditoria),
       fechaLimite: fechaLimiteISO,
       auditoriaId: auditoria.id,
-      titulo: `Plan de Mejoramiento - ${auditoria.codigo || 'Nuevo'}`,
-      descripcion: `Plan de mejoramiento derivado de la auditoría ${auditoria.nombre || auditoria.titulo || ''}`
+      titulo: textoCampoPlanMejoramiento(
+        `Plan de Mejoramiento - ${codigoAud}`,
+        'Plan de Mejoramiento',
+        PM_MAX_TITULO,
+      ),
+      descripcion: textoCampoPlanMejoramiento(
+        `Plan de mejoramiento derivado de la auditoría ${nombreAud}`,
+        '',
+        2000,
+      ),
     });
 
     if (planCreado) {
@@ -574,40 +497,42 @@ export function PlanesMejoramientoModuleRediseno() {
   };
   
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="min-h-screen bg-gray-50">
-        <ModuleHeaderBar
-          title="Planes de Mejoramiento"
-          subtitle="Formulación, seguimiento y cierre de acciones correctivas"
-          icon={<AlertTriangle className="w-5 h-5 text-white" />}
-          color="#EF4444"
-        />
-
-        {/* Contenido Principal */}
-        <SeguimientoView 
-          planes={planes} 
-          onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
-          auditoriasDisponibles={auditoriasConHallazgos}
-          onCompletarPlan={handleCompletarPlan}
-          planIdParaAbrir={planIdParaAbrir}
-          onPlanAbiertoParaVer={limpiarVerPlan}
-          fetchPlanes={fetchPlanes}
-        />
-
-        {/* Modal Crear Plan desde Auditoría */}
-        {modalCrearPlanOpen && (
-          <ModalCrearPlanDesdeAuditoria
-            auditoria={auditoriaSeleccionada}
-            auditoriasDisponibles={auditoriasConHallazgos}
-            onCrear={handleCrearPlanDesdeAuditoria}
-            onCerrar={() => {
-              setModalCrearPlanOpen(false);
-              limpiarSeleccion();
-            }}
+    <>
+      <DndProvider backend={HTML5Backend}>
+        <div className="min-h-screen bg-gray-50">
+          <ModuleHeaderBar
+            title="Planes de Mejoramiento"
+            subtitle={`Formulación, seguimiento y cierre de acciones correctivas${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''}`}
+            icon={<AlertTriangle className="w-5 h-5 text-white" />}
+            color="#EF4444"
           />
-        )}
-      </div>
-    </DndProvider>
+
+          <SeguimientoView
+            planes={planes}
+            onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
+            auditoriasDisponibles={auditoriasElegiblesParaCrear}
+            onCompletarPlan={handleCompletarPlan}
+            planIdParaAbrir={planIdParaAbrir}
+            onPlanAbiertoParaVer={limpiarVerPlan}
+            fetchPlanes={fetchPlanes}
+            actualizarEstadoPlan={actualizarEstadoPlan}
+          />
+        </div>
+      </DndProvider>
+
+      {/* Fuera de DndProvider: evita conflictos del backend HTML5 con portales del Dialog */}
+      {modalCrearPlanOpen && (
+        <ModalCrearPlanDesdeAuditoria
+          auditoria={auditoriaSeleccionada}
+          auditoriasDisponibles={auditoriasElegiblesParaCrear}
+          onCrear={handleCrearPlanDesdeAuditoria}
+          onCerrar={() => {
+            setModalCrearPlanOpen(false);
+            limpiarSeleccion();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -618,13 +543,34 @@ function calcularFechaLimite(): string {
   return fecha.toISOString().split('T')[0];
 }
 
+/** Conteo seguro para UI (evita renderizar objetos/números crudos como hijos de React) */
+function contarHallazgosAuditoria(auditoria: any): number {
+  const h = auditoria?.hallazgos;
+  if (Array.isArray(h)) return h.length;
+  if (typeof h === 'number' && Number.isFinite(h) && h >= 0) return h;
+  const candidatos = [
+    auditoria?.totalHallazgos,
+    auditoria?.total_hallazgos,
+    auditoria?.numeroHallazgos,
+    auditoria?.hallazgosDetectados,
+  ];
+  for (const c of candidatos) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+function textoCampoAuditoria(valor: unknown, fallback = 'N/A'): string {
+  return textoCampoPlanMejoramiento(valor, fallback, 0);
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // VISTA: SEGUIMIENTO
 // ════════════════════════════════════════════════════════════════════════════
 
 interface SeguimientoViewProps {
   planes: PlanMejoramiento[];
-  setPlanes: React.Dispatch<React.SetStateAction<PlanMejoramiento[]>>;
   onAbrirCrearPlan: () => void;
   auditoriasDisponibles: any[];
   onCompletarPlan?: (plan: PlanMejoramiento) => void;
@@ -632,14 +578,60 @@ interface SeguimientoViewProps {
   onPlanAbiertoParaVer?: () => void;
   /** Recarga planes desde API (Kanban/lista tras cerrar modal o actualizar acciones) */
   fetchPlanes?: () => void | Promise<void>;
+  actualizarEstadoPlan: (planId: string, nuevoEstado: EstadoPlan) => Promise<boolean>;
 }
 
-function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan, planIdParaAbrir, onPlanAbiertoParaVer, fetchPlanes }: SeguimientoViewProps) {
-  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista');
+function SeguimientoView({
+  planes,
+  onAbrirCrearPlan,
+  auditoriasDisponibles,
+  onCompletarPlan,
+  planIdParaAbrir,
+  onPlanAbiertoParaVer,
+  fetchPlanes,
+  actualizarEstadoPlan,
+}: SeguimientoViewProps) {
+  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('kanban');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
+  const { auditoriaIdFoco, setAuditoriaIdFoco } = useIntegracionAuditoriaPlanes();
+
+  // ✅ Obtener etapas dinámicas del backend
+  const { etapas, loading: loadingEtapas } = useConfiguracionKanban(TipoTablero.PLANES_MEJORAMIENTO);
+
+  const columnasKanbanDinamicas = useMemo(() => {
+    if (!etapas || etapas.length === 0) return []; // Fallback vacío si no hay etapas
+
+    
+    return etapas
+      .filter(e => e.visible !== false)
+      .sort((a, b) => a.orden - b.orden)
+      .map(etapa => {
+        const nameUpper = etapa.nombre.toUpperCase();
+        let icono = <ClipboardCheck className="w-4 h-4" style={{ color: etapa.color || '#9333ea' }} />;
+        if (nameUpper.includes('APROBAD')) icono = <CheckSquare className="w-4 h-4" style={{ color: etapa.color || '#3b82f6' }} />;
+        else if (nameUpper.includes('EJECUCION')) icono = <PlayCircle className="w-4 h-4" style={{ color: etapa.color || '#10b981' }} />;
+        else if (nameUpper.includes('RETRASO')) icono = <AlertOctagon className="w-4 h-4" style={{ color: etapa.color || '#f97316' }} />;
+        else if (nameUpper.includes('COMPLETAD') || nameUpper.includes('CERRAD')) icono = <CheckCircle2 className="w-4 h-4" style={{ color: etapa.color || '#10b981' }} />;
+        else if (nameUpper.includes('SUSPENDID')) icono = <PauseCircle className="w-4 h-4" style={{ color: etapa.color || '#6b7280' }} />;
+
+        const normalizedId = nameUpper
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, '_');
+
+        return {
+          id: normalizedId,
+          titulo: etapa.nombre,
+          icono,
+          color: etapa.color || '#9333ea',
+          bgColor: 'bg-gray-50',
+          borderColor: 'border-gray-200',
+          diasEstimados: etapa.slaDias || 0
+        };
+      });
+  }, [etapas]);
 
   // Abrir detalle cuando viene de "Ir a ver plan"
   useEffect(() => {
@@ -652,20 +644,47 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
     }
   }, [planIdParaAbrir, planes, onPlanAbiertoParaVer]);
 
+  // ✅ NUEVO: Foco automático desde Notificaciones (Abrir plan)
+  useEffect(() => {
+    if (auditoriaIdFoco && planes.length > 0) {
+      console.log('[PlanesMejoramiento] Detectado foco para plan (vía auditoríaId/planId):', auditoriaIdFoco);
+      // El foco puede ser el ID del plan directamente o el ID de la auditoría asociada
+      const plan = planes.find(
+        (p: any) => 
+          p.id === auditoriaIdFoco || 
+          (p.auditoriaId || p.auditoria_id || p.auditoria?.id) === auditoriaIdFoco
+      );
+      if (plan) {
+        setPlanSeleccionado(plan);
+        setAuditoriaIdFoco(null); // Limpiar foco después de abrir
+      }
+    }
+  }, [auditoriaIdFoco, planes, setAuditoriaIdFoco]);
+
   const planesFiltrados = useMemo(() => {
     let resultado = planes;
     
     if (filtroEstado !== 'TODOS') {
-      resultado = resultado.filter(p => p.estado === filtroEstado);
+      // Agrupar estados del backend a filtros Kanban
+      const estadosDelFiltro: Record<string, string[]> = {
+        REVISION: ['revision', 'REVISION'],
+        APROBADO: ['APROBADO', 'aprobado'],
+        EN_EJECUCION: ['EN_EJECUCION', 'en_ejecucion'],
+        CON_RETRASO: ['CON_RETRASO'],
+        COMPLETADO: ['COMPLETADO', 'completado'],
+        SUSPENDIDO: ['SUSPENDIDO', 'rechazado', 'RECHAZADO'],
+      };
+      const permitidos = estadosDelFiltro[filtroEstado] ?? [filtroEstado];
+      resultado = resultado.filter(p => permitidos.includes(p.estado));
     }
     
     if (busqueda) {
       const search = busqueda.toLowerCase();
-      resultado = resultado.filter(p => 
-        p.codigo.toLowerCase().includes(search) ||
-        p.auditoria.toLowerCase().includes(search) ||
-        p.area.toLowerCase().includes(search) ||
-        p.responsable.toLowerCase().includes(search)
+      resultado = resultado.filter(p =>
+        (p.codigo || '').toLowerCase().includes(search) ||
+        (p.auditoria || '').toLowerCase().includes(search) ||
+        (p.area || '').toLowerCase().includes(search) ||
+        (p.responsable || '').toLowerCase().includes(search)
       );
     }
     
@@ -674,11 +693,11 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
 
   const estadisticas = useMemo(() => {
     const total = planes.length;
-    const formulacion = planes.filter(p => p.estado === 'FORMULACION').length;
-    const aprobados = planes.filter(p => p.estado === 'APROBADO').length;
-    const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION').length;
+    const formulacion = planes.filter(p => p.estado === 'revision' || p.estado === 'REVISION').length;
+    const aprobados = planes.filter(p => p.estado === 'APROBADO' || p.estado === 'aprobado').length;
+    const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION' || p.estado === 'en_ejecucion').length;
     const conRetraso = planes.filter(p => p.estado === 'CON_RETRASO').length;
-    const completados = planes.filter(p => p.estado === 'COMPLETADO').length;
+    const completados = planes.filter(p => p.estado === 'COMPLETADO' || p.estado === 'completado').length;
     const suspendidos = planes.filter(p => p.estado === 'SUSPENDIDO').length;
     
     // Semáforos
@@ -799,9 +818,9 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
                 count={planes.length}
               />
               <FilterButton
-                active={filtroEstado === 'FORMULACION'}
-                onClick={() => setFiltroEstado('FORMULACION')}
-                label="Formulación"
+                active={filtroEstado === 'REVISION'}
+                onClick={() => setFiltroEstado('REVISION')}
+                label="Revisión OCI"
                 count={estadisticas.formulacion}
                 color="purple"
               />
@@ -840,6 +859,7 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
           onCompletarPlan={onCompletarPlan}
           columnasColapsadas={columnasColapsadas}
           onToggleColapso={toggleColapsoColumna}
+          columnasKanban={columnasKanbanDinamicas}
         />
       ) : (
         <VistaLista 
@@ -875,9 +895,10 @@ interface VistaKanbanProps {
   onCompletarPlan?: (plan: PlanMejoramiento) => void;
   columnasColapsadas: Set<string>;
   onToggleColapso: (columnaId: string) => void;
+  columnasKanban: any[];
 }
 
-function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
+function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, columnasColapsadas, onToggleColapso, columnasKanban }: VistaKanbanProps) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
   const scrollLeft = () => {
@@ -894,93 +915,6 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
 
   return (
     <>
-      <style>{`
-        /* Scroll horizontal personalizado ESAP para Planes de Mejoramiento - MEJORADO */
-        .kanban-scroll-container {
-          scrollbar-width: auto;
-          scrollbar-color: #2962FF #E5E7EB;
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar {
-          height: 16px;
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar-track {
-          background: linear-gradient(to bottom, #F9FAFB, #F3F4F6);
-          border-radius: 10px;
-          border: 1px solid #E5E7EB;
-          box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar-thumb {
-          background: linear-gradient(to right, #2962FF, #003DA5);
-          border-radius: 10px;
-          border: 3px solid #F3F4F6;
-          box-shadow: 0 2px 4px rgba(41, 98, 255, 0.2);
-        }
-        
-        .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to right, #003DA5, #002D7A);
-          box-shadow: 0 2px 6px rgba(41, 98, 255, 0.4);
-        }
-
-        .kanban-scroll-container::-webkit-scrollbar-thumb:active {
-          background: linear-gradient(to right, #002D7A, #001F5A);
-        }
-
-        /* Fallback para otros elementos con overflow-x */
-        .overflow-x-auto {
-          scrollbar-width: thin;
-          scrollbar-color: #2962FF #E5E7EB;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar {
-          height: 12px;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar-track {
-          background: #F3F4F6;
-          border-radius: 8px;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar-thumb {
-          background: linear-gradient(to right, #2962FF, #003DA5);
-          border-radius: 8px;
-          border: 2px solid #F3F4F6;
-        }
-        
-        .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to right, #003DA5, #002D7A);
-        }
-
-        /* Scroll vertical personalizado para columnas kanban */
-        .overflow-y-auto {
-          scrollbar-width: thin;
-          scrollbar-color: #2962FF #E5E7EB;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar {
-          width: 8px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-track {
-          background: #F3F4F6;
-          border-radius: 8px;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-thumb {
-          background: linear-gradient(to bottom, #2962FF, #003DA5);
-          border-radius: 8px;
-          border: 2px solid #F3F4F6;
-        }
-        
-        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to bottom, #003DA5, #002D7A);
-        }
-      `}</style>
-      
-      {/* Indicador de scroll horizontal con botones de navegación - Desktop */}
-      
 
       {/* Indicador Mobile - FASE 1 DÍA 2 */}
       <div className="lg:hidden bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 mb-4">
@@ -995,11 +929,37 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-6 px-1 kanban-scroll-container"
         style={{
           flexWrap: 'nowrap',
-          minWidth: 'max-content'
         }}
       >
-        {COLUMNAS_KANBAN.map((columna) => {
-        const planesColumna = planes.filter(p => p.estado === columna.id);
+        {columnasKanban.map((columna) => {
+        // Normalizar estados del backend (minúsculas) a columnas Kanban (MAYÚSCULAS)
+        const estadoToColumna: Record<string, string> = {
+          // BORRADOR y FORMULACION NO aparecen en backoffice (el auditado los maneja en portal)
+          borrador: '__AUDITADO__',
+          FORMULACION: '__AUDITADO__',
+          // Solo REVISION aparece en la primera columna del backoffice
+          revision: 'SUSCRIPCION_Y_FORMULACION',
+          REVISION: 'SUSCRIPCION_Y_FORMULACION',
+          aprobado: 'EJECUCION_DE_ACCIONES',
+          APROBADO: 'EJECUCION_DE_ACCIONES',
+          en_ejecucion: 'EJECUCION_DE_ACCIONES',
+          EN_EJECUCION: 'EJECUCION_DE_ACCIONES',
+          CON_RETRASO: 'EJECUCION_DE_ACCIONES',
+          completado: 'VERIFICACION',
+          COMPLETADO: 'VERIFICACION',
+          rechazado: 'SUSCRIPCION_Y_FORMULACION',
+          RECHAZADO: 'SUSCRIPCION_Y_FORMULACION',
+          SUSPENDIDO: 'SUSCRIPCION_Y_FORMULACION',
+          // Nuevos IDs
+          SUSCRIPCION_Y_FORMULACION: 'SUSCRIPCION_Y_FORMULACION',
+          EJECUCION_DE_ACCIONES: 'EJECUCION_DE_ACCIONES',
+          VERIFICACION: 'VERIFICACION',
+          CERRADO: 'CERRADO',
+        };
+        const planesColumna = planes.filter(p => {
+          const mappedEstado = estadoToColumna[p.estado] ?? p.estado.toUpperCase();
+          return mappedEstado === columna.id || p.estado.toUpperCase() === columna.id;
+        });
         const colapsada = columnasColapsadas.has(columna.id);
         
         return (
@@ -1025,7 +985,7 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ColumnaKanbanProps {
-  columna: typeof COLUMNAS_KANBAN[0];
+  columna: any;
   planes: PlanMejoramiento[];
   onMoverPlan: (planId: string, nuevoEstado: EstadoPlan) => void;
   onAbrirPlan: (plan: PlanMejoramiento) => void;
@@ -1038,7 +998,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'PLAN',
     drop: (item: { planId: string; plan?: PlanMejoramiento }) => {
-      if (columna.id === 'COMPLETADO' && onCompletarPlan && item.plan) {
+      if ((columna.id === 'CERRADO' || columna.id === 'VERIFICACION' || columna.id === 'COMPLETADO') && onCompletarPlan && item.plan) {
         onCompletarPlan(item.plan);
       } else {
         onMoverPlan(item.planId, columna.id as EstadoPlan);
@@ -1059,9 +1019,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
     return (
       <motion.div
         ref={drop}
-        className="w-full lg:w-16 flex-shrink-0 lg:h-full"
-        initial={{ width: '100%' }}
-        animate={{ width: '100%' }}
+        className="w-full lg:w-10 flex-shrink-0 lg:h-full"
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
         <Card 
@@ -1070,7 +1028,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
           }`}
           onClick={onToggleColapso}
         >
-          <div className="flex flex-col items-center py-4 px-2 gap-3">
+          <div className="flex flex-col items-center py-3 px-1 gap-2.5 relative">
             {isOver && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -1080,35 +1038,35 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
             )}
             
             <button
-              className="p-2 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
+              className="p-1.5 rounded-lg bg-gray-50 group-hover:bg-blue-50 transition-colors"
               title={`Expandir ${columna.titulo}`}
             >
-              <Maximize2 className="w-4 h-4 text-gray-600 group-hover:text-[#1e5da8]" />
+              <Maximize2 className="w-3.5 h-3.5 text-gray-600 group-hover:text-[#1e5da8]" />
             </button>
 
-            <div className="p-2 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="p-1 rounded-lg bg-gray-50 border border-gray-200">
               {columna.icono}
             </div>
 
             {/* Indicadores de semáforo */}
             {planes.length > 0 && (
-              <div className="flex flex-col gap-1 py-2">
+              <div className="flex flex-col gap-1 py-1">
                 {planesRojos > 0 && (
                   <div className="flex items-center gap-1" title={`${planesRojos} vencidos`}>
-                    <div className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-xs font-bold text-red-600">{planesRojos}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span className="text-[10px] font-bold text-red-600">{planesRojos}</span>
                   </div>
                 )}
                 {planesAmarillos > 0 && (
                   <div className="flex items-center gap-1" title={`${planesAmarillos} próximos a vencer`}>
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-xs font-bold text-amber-600">{planesAmarillos}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <span className="text-[10px] font-bold text-amber-600">{planesAmarillos}</span>
                   </div>
                 )}
                 {planesVerdes > 0 && (
                   <div className="flex items-center gap-1" title={`${planesVerdes} en término`}>
-                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-xs font-bold text-green-600">{planesVerdes}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    <span className="text-[10px] font-bold text-green-600">{planesVerdes}</span>
                   </div>
                 )}
               </div>
@@ -1116,7 +1074,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
 
             <div className="flex-1 flex items-center justify-center py-4">
               <h3 
-                className="font-black text-xs text-gray-800 whitespace-nowrap"
+                className="font-black text-[10px] text-gray-800 whitespace-nowrap"
                 style={{ 
                   writingMode: 'vertical-rl',
                   textOrientation: 'mixed'
@@ -1126,7 +1084,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
               </h3>
             </div>
 
-            <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-700">
+            <Badge className="font-bold text-[10px] px-1.5 py-0.5 bg-gray-100 border border-gray-200 text-gray-700">
               {planes.length}
             </Badge>
           </div>
@@ -1138,14 +1096,14 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
   // Versión expandida
   return (
     <div 
-      className="w-full flex-shrink-0"
+      className="w-full flex-shrink-0 border border-gray-200 rounded-lg"
       style={{
         minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : undefined,
         width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : '100%'
       }}
     >
       {/* Header Columna */}
-      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl">
+      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl bg-white" style={{backgroundColor: 'white'}}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 flex-1">
             <div className="p-2 rounded-lg bg-white border border-gray-200">
@@ -1211,7 +1169,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
             ? 'bg-gradient-to-b from-blue-100 to-blue-50 border-[#1e5da8] border-dashed shadow-inner' 
             : 'bg-gray-50 border-transparent'
         }`}
-        style={{ minHeight: 'calc(100vh - 200px)', maxHeight: 'calc(100vh - 200px)' }}
+        style={{ minHeight: 'calc(100vh - 180px)', maxHeight: 'calc(100vh - 180px)', backgroundColor: 'white' }}
       >
         {isOver && (
           <motion.div
@@ -1394,7 +1352,7 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
           className="w-full px-3 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] hover:from-[#1557a0] hover:to-[#1e5da8] text-white rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-2"
         >
           <Eye className="w-3.5 h-3.5" />
-          {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+          Ver Detalle
         </button>
       </div>
     </motion.div>
@@ -1609,7 +1567,7 @@ function VistaLista({ planes, onAbrirPlan, onCompletarPlan }: VistaListaProps) {
                       className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
                     >
                       <Eye className="w-4 h-4" />
-                      {plan.estado === 'FORMULACION' ? 'Formular Acciones' : 'Ver Detalle'}
+                      Ver Detalle
                     </button>
                   </div>
                 </div>
@@ -1656,16 +1614,25 @@ function FilterButton({ active, onClick, label, count, color = 'gray' }: FilterB
 }
 
 function EstadoBadge({ estado }: { estado: EstadoPlan }) {
-  const config = {
-    FORMULACION: { label: 'Formulación', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-    APROBADO: { label: 'Aprobado', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-    EN_EJECUCION: { label: 'En Ejecución', bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-    CON_RETRASO: { label: 'Con Retraso', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' },
-    COMPLETADO: { label: 'Completado', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
-    SUSPENDIDO: { label: 'Suspendido', bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300' }
+  // Mapa unificado: backend (minusculas) + legacy (MAYUSCULAS)
+  const configMap: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    borrador:     { label: 'Borrador',      bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300' },
+    revision:     { label: 'En Revision',   bg: 'bg-amber-100',   text: 'text-amber-700',   border: 'border-amber-300' },
+    aprobado:     { label: 'Aprobado',      bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-300' },
+    en_ejecucion: { label: 'En Ejecucion',  bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    completado:   { label: 'Completado',    bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    rechazado:    { label: 'Rechazado',     bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-300' },
+    FORMULACION:  { label: 'Formulacion',  bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border-purple-300' },
+    APROBADO:     { label: 'Aprobado',     bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-300' },
+    EN_EJECUCION: { label: 'En Ejecucion', bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    CON_RETRASO:  { label: 'Con Retraso',  bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-300' },
+    COMPLETADO:   { label: 'Completado',   bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    SUSPENDIDO:   { label: 'Suspendido',   bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300' },
+    RECHAZADO:    { label: 'Rechazado',    bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-300' },
   };
+  const config = configMap[estado] ?? { label: estado, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
 
-  const { label, bg, text, border } = config[estado];
+  const { label, bg, text, border } = config;
 
   return (
     <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${bg} ${text} ${border}`}>
@@ -1704,6 +1671,11 @@ function ModalCrearPlanDesdeAuditoria({
   onCerrar 
 }: ModalCrearPlanDesdeAuditoriaProps) {
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState(auditoria);
+  const listaAuditorias = Array.isArray(auditoriasDisponibles) ? auditoriasDisponibles : [];
+
+  useEffect(() => {
+    setAuditoriaSeleccionada(auditoria ?? null);
+  }, [auditoria]);
 
   return (
     <ModalSIGL isOpen={true} onClose={onCerrar} title="Crear Plan de Mejoramiento" size="large">
@@ -1726,7 +1698,7 @@ function ModalCrearPlanDesdeAuditoria({
         </div>
 
         {/* Lista de Auditorías Disponibles */}
-        {!auditoria && auditoriasDisponibles.length === 0 ? (
+        {!auditoria && listaAuditorias.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-8 h-8 text-gray-400" />
@@ -1744,7 +1716,7 @@ function ModalCrearPlanDesdeAuditoria({
                   Seleccionar Auditoría
                 </label>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {auditoriasDisponibles.map((aud) => (
+                  {listaAuditorias.map((aud) => (
                     <button
                       key={aud.id}
                       onClick={() => setAuditoriaSeleccionada(aud)}
@@ -1757,13 +1729,13 @@ function ModalCrearPlanDesdeAuditoria({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium text-[#1e5da8]">{aud.codigo}</span>
+                            <span className="text-sm font-medium text-[#1e5da8]">{textoCampoAuditoria(aud.codigo, 'AUD')}</span>
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">
-                              {Array.isArray(aud.hallazgos) ? aud.hallazgos.length : (aud.hallazgos || 0)} hallazgos
+                              {contarHallazgosAuditoria(aud)} hallazgos
                             </span>
                           </div>
-                          <p className="text-sm text-gray-900 mb-1">{aud.nombre}</p>
-                          <p className="text-xs text-gray-600">{aud.areaResponsable}</p>
+                          <p className="text-sm text-gray-900 mb-1">{textoCampoAuditoria(aud.nombre, 'Auditoría')}</p>
+                          <p className="text-xs text-gray-600">{textoCampoAuditoria(aud.areaResponsable)}</p>
                         </div>
                         {auditoriaSeleccionada?.id === aud.id && (
                           <CheckCircle2 className="w-5 h-5 text-[#1e5da8]" />
@@ -1784,19 +1756,19 @@ function ModalCrearPlanDesdeAuditoria({
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Código</div>
-                    <div className="text-sm text-gray-900 font-medium">{auditoriaSeleccionada.codigo}</div>
+                    <div className="text-sm text-gray-900 font-medium">{textoCampoAuditoria(auditoriaSeleccionada.codigo)}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Área Responsable</div>
-                    <div className="text-sm text-gray-900">{auditoriaSeleccionada.areaResponsable}</div>
+                    <div className="text-sm text-gray-900">{textoCampoAuditoria(auditoriaSeleccionada.areaResponsable)}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Responsable</div>
-                    <div className="text-sm text-gray-900">{auditoriaSeleccionada.responsable}</div>
+                    <div className="text-sm text-gray-900">{textoCampoAuditoria(auditoriaSeleccionada.responsable)}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Total Hallazgos</div>
-                    <div className="text-sm text-gray-900 font-medium">{Array.isArray(auditoriaSeleccionada.hallazgos) ? auditoriaSeleccionada.hallazgos.length : (auditoriaSeleccionada.hallazgos || 0)}</div>
+                    <div className="text-sm text-gray-900 font-medium">{contarHallazgosAuditoria(auditoriaSeleccionada)}</div>
                   </div>
                 </div>
 
@@ -1835,7 +1807,7 @@ function ModalCrearPlanDesdeAuditoria({
                     </h4>
                     <ul className="text-sm text-purple-700 space-y-1 list-disc list-inside">
                       <li>Se creará un plan de mejoramiento en estado Formulación</li>
-                      <li>Los {Array.isArray(auditoriaSeleccionada.hallazgos) ? auditoriaSeleccionada.hallazgos.length : (auditoriaSeleccionada.hallazgos || 0)} hallazgos quedarán vinculados al plan</li>
+                      <li>Los {contarHallazgosAuditoria(auditoriaSeleccionada)} hallazgos quedarán vinculados al plan</li>
                       <li>Deberás formular acciones correctivas para cada hallazgo</li>
                       <li>El plazo para formular es de 30 días desde la finalización de la auditoría</li>
                     </ul>

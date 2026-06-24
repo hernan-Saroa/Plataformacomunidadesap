@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
@@ -16,6 +16,7 @@ import { PersonaEntity } from './entities/persona.entity';
 import { UsuarioEntity } from './entities/usuario.entity';
 import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './entities/pta-evento.entity';
+import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
 
 type SavePtaInput = Record<string, any>;
 
@@ -29,6 +30,12 @@ function coalesceString(...values: unknown[]): string | null {
 @Injectable()
 export class PtaService {
   private readonly otpStore = new Map<string, { code: string; expiresAt: Date }>();
+  private readonly logger = new Logger(PtaService.name);
+
+  // MOCK de firma OTP: mientras esté activo, cualquier código de 6 dígitos es válido
+  // para avanzar (no se valida contra el código generado). Se desactiva con
+  // PTA_MOCK_FIRMA_OTP=false. Por ahora viene mockeado por defecto para pruebas.
+  private readonly MOCK_FIRMA_OTP = process.env.PTA_MOCK_FIRMA_OTP !== 'false';
 
   constructor(
     @InjectRepository(PlanTrabajoAcademicoEntity)
@@ -57,6 +64,8 @@ export class PtaService {
     private readonly aprobacionJefaturaRepo: Repository<AprobacionJefaturaEntity>,
     @InjectRepository(PtaEventoEntity)
     private readonly eventoRepo: Repository<PtaEventoEntity>,
+    @InjectRepository(PtaComponentApprovalEntity)
+    private readonly ptaComponentApprovalRepo: Repository<PtaComponentApprovalEntity>,
   ) {}
 
   private safeUsuario(usuario: any) {
@@ -65,7 +74,13 @@ export class PtaService {
     return rest;
   }
 
+  private readonly columnCache = new Map<string, boolean>();
+
   private async hasColumn(schema: string, table: string, column: string): Promise<boolean> {
+    const cacheKey = `${schema}.${table}.${column}`;
+    const cached = this.columnCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     const rows = await this.ptaRepo.query(
       `SELECT 1
        FROM information_schema.columns
@@ -75,17 +90,21 @@ export class PtaService {
        LIMIT 1`,
       [schema, table, column],
     );
-    return Array.isArray(rows) && rows.length > 0;
+    const exists = Array.isArray(rows) && rows.length > 0;
+    this.columnCache.set(cacheKey, exists);
+    return exists;
   }
 
   private async fetchAuthDocenteInfo(docenteKey: string, options?: { adminEdit?: boolean }): Promise<{ personId: string, email: string | null, fullName: string }> {
     const key = coalesceString(docenteKey);
     if (!key) throw new BadRequestException('docente_id es requerido');
 
-    const personasHasIdPerson = await this.hasColumn('auth', 'personas', 'id_person');
-    const personasHasIdTercero = await this.hasColumn('auth', 'personas', 'id_tercero');
-    const userHasIdPerson = await this.hasColumn('auth', 'user', 'id_person');
-    const userHasIdTercero = await this.hasColumn('auth', 'user', 'id_tercero');
+    const [personasHasIdPerson, personasHasIdTercero, userHasIdPerson, userHasIdTercero] = await Promise.all([
+      this.hasColumn('auth', 'personas', 'id_person'),
+      this.hasColumn('auth', 'personas', 'id_tercero'),
+      this.hasColumn('auth', 'user', 'id_person'),
+      this.hasColumn('auth', 'user', 'id_tercero'),
+    ]);
 
     let joinUserPersonas: string;
     if (personasHasIdPerson && userHasIdPerson) {
@@ -107,13 +126,15 @@ export class PtaService {
     const roleFilter = options?.adminEdit
       ? ''
       : `JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
-      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true AND r.code = 'DOCENTE'`;
+      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+        AND (UPPER(COALESCE(r.code, '')) = 'DOCENTE' OR UPPER(COALESCE(r.name, '')) = 'DOCENTE')`;
 
     const sql = `
       SELECT
         ${personasHasIdPerson ? 'p.id_person::text' : 'NULL'} as person_id,
         ${personasHasIdTercero ? 'p.id_tercero::text' : 'NULL'} as tercero_id,
         p.dir_email as email,
+        p.nom_largo as nom_largo,
         p.nom_tercero as primer_nombre,
         NULL as segundo_nombre,
         p.pri_apellido as primer_apellido,
@@ -138,12 +159,14 @@ export class PtaService {
 
     const personId = coalesceString(authRow.person_id, authRow.tercero_id) || key;
     const email = coalesceString(authRow.email);
-    const fullName = [
+    // Preferir nom_largo (nombre completo) sobre la concatenación de campos parciales
+    const fullNameFromParts = [
       authRow.primer_nombre,
       authRow.segundo_nombre,
       authRow.primer_apellido,
       authRow.segundo_apellido,
-    ].filter(Boolean).join(' ') || 'Docente ESAP';
+    ].filter(Boolean).join(' ');
+    const fullName = coalesceString(authRow.nom_largo, fullNameFromParts) || 'Docente ESAP';
 
     return { personId, email, fullName };
   }
@@ -162,12 +185,18 @@ export class PtaService {
       const byCorreo = await this.docenteRepo.findOne({ where: { correoInstitucional: email } as any });
       if (byCorreo) return { personId: byCorreo.id, email, fullName };
 
-      // Buscar por email en academic_work_plan."Usuario" → "Persona" → "Docente"
+      // Buscar por email en auth.personas → academic_work_plan."Docente"
       const byUsuarioEmail = await this.docenteRepo
         .createQueryBuilder('d')
-        .innerJoin('d.persona', 'p')
-        .innerJoin('p.usuario', 'u')
-        .where('LOWER(u.email) = LOWER(:email)', { email })
+        .where(
+          `EXISTS (
+            SELECT 1
+            FROM auth.personas p
+            WHERE p.id_person = d."personaId"
+              AND LOWER(p.dir_email) = LOWER(:email)
+          )`,
+          { email },
+        )
         .getOne();
       if (byUsuarioEmail) return { personId: byUsuarioEmail.id, email, fullName };
     }
@@ -182,15 +211,22 @@ export class PtaService {
       if (numId) {
         const byDoc = await this.docenteRepo
           .createQueryBuilder('d')
-          .innerJoin('d.persona', 'p')
-          .where('p.identificacion = :numId', { numId })
+          .where(
+            `EXISTS (
+              SELECT 1
+              FROM academic_work_plan."Persona" p
+              WHERE p.id = d."personaId"::text
+                AND p.identificacion = :numId
+            )`,
+            { numId },
+          )
           .getOne();
         if (byDoc) return { personId: byDoc.id, email, fullName };
       }
     }
 
     // Si no existe, auto-aprovisionamos el docente para no violar la FK al guardar el PTA
-    const fallbackTerritorial = options?.fallbackTerritorial || (await this.ptaRepo.manager.query(`SELECT id FROM academic_work_plan."Territorial" LIMIT 1`))?.[0]?.id;
+    const fallbackTerritorial = options?.fallbackTerritorial || (await this.ptaRepo.manager.query(`SELECT id_seccional::text AS id FROM auth.seccionales LIMIT 1`))?.[0]?.id;
 
     if (fallbackTerritorial) {
       console.warn(`[PTA] Auto-aprovisionando Docente ${personId} en academic_work_plan."Docente" para evitar error de FK.`);
@@ -232,8 +268,21 @@ export class PtaService {
     return { personId, email, fullName };
   }
 
+  // Cache de resolución de docente (TTL 30s) para evitar queries repetidas en la misma sesión
+  private readonly docenteCache = new Map<string, { result: { personId: string; email: string | null; fullName: string }; expiresAt: number }>();
+
+  private async resolveDocenteIdCached(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string; email: string | null; fullName: string }> {
+    const cacheKey = `${docenteKey}:${options?.adminEdit ? 'admin' : 'normal'}`;
+    const cached = this.docenteCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.result;
+
+    const result = await this.resolveDocenteCompleto(docenteKey, options);
+    this.docenteCache.set(cacheKey, { result, expiresAt: Date.now() + 30_000 });
+    return result;
+  }
+
   private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<string> {
-    const res = await this.resolveDocenteCompleto(docenteKey, options);
+    const res = await this.resolveDocenteIdCached(docenteKey, options);
     return res.personId;
   }
 
@@ -312,7 +361,16 @@ export class PtaService {
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    const hExt = extActs.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    // Aplicar multiplicador x2 para capacitación (igual que computeHorasTotales) para mantener consistencia
+    const extActsNorm = extActs.map((a: any) => {
+      const actId = String(a?.actividad_id || a?.id || '');
+      const seccion = String(a?.seccion || '');
+      const esCapacitacion = actId.startsWith('CAP_') || seccion === 'capacitacion';
+      if (!esCapacitacion) return a;
+      const horasEjec = Number(a?.horas_ejecutadas ?? a?.horas ?? 0);
+      return { ...a, horas: horasEjec * 2 };
+    });
+    const hExt = extActsNorm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp + hAcad);
@@ -322,7 +380,7 @@ export class PtaService {
       id: entity.id,
       docente_id: entity.docenteId,
       periodo: entity.periodo,
-      estado: entity.estado,
+      estado: entity.estado === 'BORRADOR' ? 'Borrador' : entity.estado,
       version: entity.version,
       horas_totales: horasTotal,
       // Aliases usados por la tabla del backoffice
@@ -420,15 +478,45 @@ export class PtaService {
       this.historialRepo.find({ where: { ptaId: id }, order: { createdAt: 'DESC' } }),
     ]);
 
+    const dto = this.toPtaDto(pta) as any;
+
+    if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
+      const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
+      if (asigIds.length > 0) {
+        try {
+          const subjects = await this.asignaturaRepo.query(
+            `SELECT a.id, nt.nombre AS nucleo 
+             FROM academic_work_plan.asignatura a
+             LEFT JOIN academic_work_plan.nucleo_tematico nt ON nt.id = a.id_nucleo_tematico
+             WHERE a.id::text IN (${asigIds.map((_, idx) => `$${idx + 1}`).join(', ')})`,
+            asigIds.map(id => String(id))
+          );
+          const subjectMap = new Map(subjects.map((s: any) => [String(s.id), s.nucleo]));
+          dto.asignaturas = dto.asignaturas.map((a: any) => {
+            const nucleoNombre = subjectMap.get(String(a.asignatura_id));
+            if (nucleoNombre) {
+              return {
+                ...a,
+                nucleo_tematico: nucleoNombre,
+              };
+            }
+            return a;
+          });
+        } catch (err) {
+          console.error('[getPTAById] Error resolving nucleo tematico names:', err);
+        }
+      }
+    }
+
     return {
-      ...this.toPtaDto(pta),
+      ...dto,
       evidencias: evidencias.map((e) => this.toEvidenciaDto(e)),
       historialEstados: historial,
     };
   }
 
   async savePTA(input: SavePtaInput) {
-    const id = coalesceString(input?.id);
+    let id = coalesceString(input?.id);
     const docenteKey = coalesceString(
       input?.docente_id,
       input?.docenteId,
@@ -437,7 +525,7 @@ export class PtaService {
     );
     const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
     const isAdminEdit = Boolean(input?._adminEdit);
-    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteCompleto(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
+    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
 
     // Enrich identity if missing
     if (!input.docente_nombre) {
@@ -466,6 +554,7 @@ export class PtaService {
         'Pendiente Jefatura',
         'Pendiente Decanatura',
         'Pendiente Gestión Profesoral',
+        'PENDIENTE_APROBACION',
         'REVISION_DOCENTE_N1',
         'REVISION_DOCENTE_N2',
         'REVISION_DOCENTE_N3',
@@ -479,13 +568,47 @@ export class PtaService {
       });
 
       if (ptaActivo) {
-        const solicitud = await this.solicitudRepo.findOne({
-          where: { docenteId, estado: 'aprobado' } as any,
-          order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
-        });
-        if (!solicitud) {
+        const estadoActivo = String(ptaActivo.estado || '').toLowerCase();
+        // Si el único PTA activo es un BORRADOR, el docente lo está editando/enviando:
+        // reutilizamos su id para ACTUALIZARLO en vez de bloquear (el front a veces no
+        // reenvía el id al guardar). Solo bloqueamos si ya hay un PTA enviado/en proceso.
+        if (estadoActivo === 'borrador') {
+          id = ptaActivo.id;
+        } else {
+          const solicitud = await this.solicitudRepo.findOne({
+            where: { docenteId, estado: 'aprobado' } as any,
+            order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
+          });
+          if (!solicitud) {
+            throw new BadRequestException(
+              'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
+            );
+          }
+        }
+      }
+    }
+
+    // [BR-010] Bloqueo por Modalidad "Por Definir": no se puede concertar asignaturas
+    // que tengan requiere_revision_modalidad = TRUE en la base de datos.
+    const asignaturasInput: any[] = Array.isArray(input?.asignaturas) ? input.asignaturas : [];
+    if (asignaturasInput.length > 0) {
+      const codigosAsignaturas = asignaturasInput
+        .map((a: any) => coalesceString(a?.codigo, a?.codigo_asignatura, a?.asignatura_codigo))
+        .filter(Boolean);
+
+      if (codigosAsignaturas.length > 0) {
+        const placeholders = codigosAsignaturas.map((_: any, i: number) => `$${i + 1}`).join(', ');
+        const bloqueadas = await this.ptaRepo.manager.query(
+          `SELECT codigo, nombre FROM academic_work_plan.asignatura 
+           WHERE codigo IN (${placeholders}) AND requiere_revision_modalidad = TRUE`,
+          codigosAsignaturas,
+        );
+
+        if (bloqueadas.length > 0) {
+          const nombresBloqueadas = bloqueadas.map((b: any) => `${b.codigo} (${b.nombre})`).join(', ');
           throw new BadRequestException(
-            'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
+            `[BR-010] No se puede concertar el PTA: ${bloqueadas.length} asignatura(s) tienen modalidad "Por Definir" pendiente de revisión directiva: ${nombresBloqueadas}. ` +
+            `Contacte al nivel directivo para que defina la modalidad exacta (Presencial, Virtual, etc.) antes de incluirlas en el PTA.`
           );
         }
       }
@@ -631,6 +754,22 @@ export class PtaService {
       nuevoEstado = existing.estado;
     }
 
+    if (nuevoEstado === 'Aprobado' && existing.estado !== 'Aprobado') {
+      const validation = await this.getRUNDDocente(existing.docenteId);
+      const criticos = ['DOCUMENTO_IDENTIDAD', 'VINCULACION', 'DEDICACION', 'ACTO_ADMINISTRATIVO'];
+      const noValidados = validation.validaciones.filter(v =>
+        criticos.includes(v.campo_rund) && v.estado_documento !== 'Aceptado'
+      );
+
+      if (noValidados.length > 0) {
+        const nombresFaltantes = noValidados.map(v => v.campo_rund).join(', ');
+        // Temporarily deactivated - not blocking PTA approval
+        console.warn(
+          `[RUND] Aprobación permitida de forma no bloqueante. Faltan validar soportes críticos: ${nombresFaltantes}`
+        );
+      }
+    }
+
     // ── Lógica multi-jefatura territorial ──────────────────────────────────────
     const a = accion?.toLowerCase() || '';
     if (existing.estado === 'Pendiente Jefatura' && (a === 'aprobar' || a === 'devolver')) {
@@ -734,8 +873,22 @@ export class PtaService {
       }
     }
 
-    // ── Cuando el PTA llega a Pendiente Jefatura, inicializar aprobaciones ──────
-    if (nuevoEstado === 'Pendiente Jefatura' && existing.estado !== 'Pendiente Jefatura') {
+    // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
+    if (nuevoEstado === 'PENDIENTE_APROBACION') {
+      const ds = existing.datosEstructurados as any || {};
+      const tieneTotalidad = Array.isArray(ds.academico_admin) &&
+        ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+      const horasActuales = existing.horasTotales || 0;
+      if (!tieneTotalidad && horasActuales === 0) {
+        throw new BadRequestException(
+          'El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobación.',
+        );
+      }
+    }
+
+    // ── Cuando el PTA llega a Pendiente Jefatura o PENDIENTE_APROBACION, inicializar aprobaciones ──────
+    const estadosQueInicializan = ['Pendiente Jefatura', 'PENDIENTE_APROBACION'];
+    if (estadosQueInicializan.includes(nuevoEstado) && !estadosQueInicializan.includes(existing.estado)) {
       await this.initAprobacionesJefatura(ptaId, existing.datosEstructurados);
     }
 
@@ -801,7 +954,10 @@ export class PtaService {
     if (territorialesIds.length <= 1) return; // Solo multi-territorial requiere registros
 
     for (const tId of territorialesIds) {
-      const territorial = await this.territorialRepo.findOne({ where: { id: tId } as any });
+      const [territorial] = await this.ptaRepo.manager.query(
+        `SELECT nom_seccional AS nombre FROM auth.seccionales WHERE id_seccional::text = $1 LIMIT 1`,
+        [tId],
+      );
       await this.aprobacionJefaturaRepo
         .createQueryBuilder()
         .insert()
@@ -1147,50 +1303,190 @@ export class PtaService {
   // Catálogos (migración legacy)
   // ─────────────────────────────
   async getCatalogoProgramas() {
-    return await this.programaRepo.find({ order: { nombre: 'ASC' } });
+    const progs = await this.programaRepo.find({ order: { nombre: 'ASC' } });
+    const nivelFormacionMap: Record<string, string> = {
+      pregrado: 'Pregrado',
+      especializacion: 'Especialización',
+      maestria: 'Maestría',
+    };
+    return progs.map((p: any) => ({
+      ...p,
+      nivel: nivelFormacionMap[p.tipo] || p.tipo || 'Pregrado',
+    }));
   }
 
   async getCatalogoAsignaturas(query?: any) {
     const q = query || {};
     const programaId = coalesceString(q.programaId, q.programa_id);
     const completo = String(q.completo || '').toLowerCase() === 'true';
-    const where = !completo && programaId ? { programaId } : {};
-    const rows = await this.asignaturaRepo.find({
-      where,
-      relations: { programa: true },
-      order: { nombre: 'ASC' },
-      take: 5000,
-    });
+
+    const params: any[] = [];
+    const where = !completo && programaId
+      ? (() => {
+          params.push(programaId);
+          return `WHERE a.id_programa::text = $1 OR p.id::text = $1 OR p.codigo = $1`;
+        })()
+      : '';
+
+    const rows = await this.asignaturaRepo.query(
+      `
+      SELECT
+        a.id,
+        a.id_programa AS "programaId",
+        a.nombre,
+        a.codigo,
+        a.creditos,
+        a.horas_fijas_pta AS horas,
+        a.id_nucleo_tematico AS "nucleoTematico",
+        nt.nombre AS "nucleoTematicoNombre",
+        a.id_ubicacion_semestral AS semestre_id,
+        us.etiqueta AS semestre_etiqueta,
+        a.modalidad,
+        a.tipo_excepcion AS tipo,
+        a.created_at AS "createdAt",
+        a.updated_at AS "updatedAt",
+        p.id AS programa_real_id,
+        p.codigo AS programa_codigo,
+        p.nombre AS programa_nombre,
+        p.tipo AS programa_nivel,
+        p.activo AS programa_estado,
+        p.id_facultad AS programa_facultad,
+        p.modalidad AS programa_modalidad
+      FROM academic_work_plan.asignatura a
+      LEFT JOIN academic_work_plan.programa p
+        ON p.id = a.id_programa
+      LEFT JOIN academic_work_plan.ubicacion_semestral us
+        ON us.id = a.id_ubicacion_semestral
+      LEFT JOIN academic_work_plan.nucleo_tematico nt
+        ON nt.id = a.id_nucleo_tematico
+      ${where}
+      ORDER BY a.nombre ASC
+      LIMIT 5000
+      `,
+      params,
+    );
 
     return rows.map((a: any) => ({
-      ...a,
-      nucleo: a.nucleoTematico || 'General',
-      programa_id: a.programaId,
+      id: a.id,
+      programaId: a.programaId,
+      programa_id: a.programa_real_id || a.programaId,
+      nombre: a.nombre,
+      codigo: a.codigo,
+      creditos: a.creditos,
+      horas: a.horas,
+      nucleoTematico: a.nucleoTematicoNombre || a.nucleoTematico,
+      nucleo: a.nucleoTematicoNombre || 'General',
+      semestre: a.semestre_etiqueta || a.semestre_id,
+      modalidad: a.modalidad,
+      tipo: a.tipo,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      programa: a.programa_real_id ? {
+        id: a.programa_real_id,
+        codigo: a.programa_codigo,
+        nombre: a.programa_nombre,
+        descripcion: a.programa_descripcion,
+        estado: a.programa_estado,
+        nivel: a.programa_nivel,
+        facultad: a.programa_facultad,
+        modalidad: a.programa_modalidad,
+      } : null,
     }));
   }
 
   async getCatalogoTerritoriales() {
-    return await this.territorialRepo
-      .createQueryBuilder('t')
-      .leftJoinAndSelect('t.sedes', 's')
-      .orderBy('t.nombre', 'ASC')
-      .addOrderBy('s.nombre', 'ASC')
-      .getMany();
+    const rows = await this.ptaRepo.manager.query(`
+      SELECT
+        sec.id_seccional::text AS id,
+        sec.nom_seccional AS nombre,
+        sec.cod_seccional AS codigo,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', sede.id_sede::text,
+              'territorialId', sec.id_seccional::text,
+              'nombre', sede.nom_sede,
+              'municipio', NULL,
+              'codigo', sede.cod_sede
+            )
+            ORDER BY sede.nom_sede
+          ) FILTER (WHERE sede.id_sede IS NOT NULL),
+          '[]'::json
+        ) AS sedes
+      FROM auth.seccionales sec
+      LEFT JOIN auth.sedes sede ON sede.id_seccional = sec.id_seccional
+      GROUP BY sec.id_seccional, sec.nom_seccional, sec.cod_seccional
+      ORDER BY sec.nom_seccional ASC
+    `);
+    return rows;
   }
 
   async getCatalogoCetaps(query?: any) {
     const territorialId = coalesceString(query?.territorial_id, query?.territorialId);
-    const where = territorialId ? { territorialId } : {};
-    return await this.sedeRepo.find({ where, order: { nombre: 'ASC' } });
+    const params: any[] = [];
+    const where = territorialId ? 'WHERE sede.id_seccional::text = $1' : '';
+    if (territorialId) params.push(territorialId);
+    return await this.ptaRepo.manager.query(
+      `
+      SELECT
+        sede.id_sede::text AS id,
+        sede.id_seccional::text AS "territorialId",
+        sede.nom_sede AS nombre,
+        NULL AS municipio,
+        sede.cod_sede AS codigo
+      FROM auth.sedes sede
+      ${where}
+      ORDER BY sede.nom_sede ASC
+      `,
+      params,
+    );
   }
 
   async getDocentesDisponibles(query?: any) {
     const periodo = coalesceString(query?.periodo);
-    const docentes = await this.docenteRepo.find({
-      relations: { persona: { usuario: true }, territorial: true, sede: true },
-      order: { ordenListado: 'ASC' as any, createdAt: 'DESC' as any },
-      take: 5000,
-    });
+    const docentes = await this.ptaRepo.manager.query(`
+      SELECT
+        d.*,
+        json_build_object(
+          'id', p.id_person,
+          'identificacion', p.num_identificacion,
+          'tipo_identificacion', p.tip_identificacion,
+          'primer_nombre', p.nom_tercero,
+          'primer_apellido', p.pri_apellido,
+          'segundo_apellido', p.seg_apellido,
+          'telefono', p.tel_celular,
+          'genero', p.gen_tercero,
+          'fecha_nacimiento', p.fec_nacimiento,
+          'correo_alternativo', NULL,
+          'usuario', json_build_object(
+            'id', u.id_user,
+            'email', u.username,
+            'nombre', p.nom_largo,
+            'activo', u.is_active
+          )
+        ) AS persona,
+        json_build_object(
+          'id', sec.id_seccional::text,
+          'nombre', sec.nom_seccional,
+          'codigo', sec.cod_seccional
+        ) AS territorial,
+        CASE
+          WHEN sede.id_sede IS NULL THEN NULL
+          ELSE json_build_object(
+            'id', sede.id_sede::text,
+            'territorialId', sede.id_seccional::text,
+            'nombre', sede.nom_sede,
+            'codigo', sede.cod_sede
+          )
+        END AS sede
+      FROM academic_work_plan."Docente" d
+      LEFT JOIN auth.personas p ON p.id_person = d."personaId"
+      LEFT JOIN auth."user" u ON u.id_person = p.id_person
+      LEFT JOIN auth.seccionales sec ON sec.id_seccional::text = COALESCE(d."territorialId", p.id_seccional::text)
+      LEFT JOIN auth.sedes sede ON sede.id_sede::text = COALESCE(d."sedeId", p.id_sede::text)
+      ORDER BY d."ordenListado" ASC NULLS LAST, d."createdAt" DESC
+      LIMIT 5000
+    `);
 
     const docenteIds = docentes.map((d) => d.id);
     const ptas = docenteIds.length
@@ -1226,7 +1522,7 @@ export class PtaService {
 
   async getOfertaAcademica(_query?: any) {
     return await this.asignaturaRepo.find({
-      relations: { programa: true },
+      relations: { programaRel: true },
       order: { nombre: 'ASC' },
       take: 5000,
     });
@@ -1244,14 +1540,77 @@ export class PtaService {
 
   async getCatalogoActividadesExtension() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
-    if (rules?.ext_actividades && typeof rules.ext_actividades === 'object') return rules.ext_actividades;
-    return {};
+    if (rules?.ext_actividades && typeof rules.ext_actividades === 'object' && Object.keys(rules.ext_actividades).length > 0) {
+      return rules.ext_actividades;
+    }
+    // Fallback: actividades por defecto idénticas a defaultPTARules
+    return {
+      capacitacion: [
+        { id: 'CAP_01', nombre: 'Orientación de Talleres', max_horas: 16 },
+        { id: 'CAP_02', nombre: 'Orientación de Seminarios', max_horas: 32 },
+        { id: 'CAP_03', nombre: 'Orientación de Cursos', max_horas: 64 },
+        { id: 'CAP_04', nombre: 'Orientación de Diplomados', max_horas: 160 },
+      ],
+      seleccion: [
+        { id: 'SEL_01', nombre: 'Revisión de estructuras de prueba — Capacitación', max_horas: 1 },
+        { id: 'SEL_02', nombre: 'Revisión de estructuras de prueba — Sesión de validación', max_horas: 2 },
+        { id: 'SEL_03', nombre: 'Definición de constructos — Capacitación', max_horas: 1 },
+        { id: 'SEL_04', nombre: 'Definición de constructos — Sesión de validación', max_horas: 2 },
+        { id: 'SEL_05', nombre: 'Construcción de casos — por caso', max_horas: 4 },
+        { id: 'SEL_06', nombre: 'Revisión de casos — por caso', max_horas: 3 },
+        { id: 'SEL_07', nombre: 'Validación de casos — por caso', max_horas: 3 },
+        { id: 'SEL_08', nombre: 'Construcción/Validación de casos — Capacitación', max_horas: 2 },
+        { id: 'SEL_09', nombre: 'Validación de ítems — por ítem', max_horas: 1 },
+        { id: 'SEL_10', nombre: 'Análisis validez / Grupos de discusión — Capacitación', max_horas: 1 },
+        { id: 'SEL_11', nombre: 'Análisis validez / Grupos de discusión — por semana', max_horas: 2 },
+        { id: 'SEL_12', nombre: 'Jurados Tribunales — Capacitación', max_horas: 2 },
+        { id: 'SEL_13', nombre: 'Jurados Tribunales — Prueba escrita', max_horas: 3 },
+        { id: 'SEL_14', nombre: 'Jurados Tribunales — Prueba oral', max_horas: 4 },
+      ],
+      fortalecimiento: [
+        { id: 'FOR_01', nombre: 'Línea temática con municipios', max_horas: 80 },
+        { id: 'FOR_02', nombre: 'Batería de indicadores', max_horas: 80 },
+        { id: 'FOR_03', nombre: 'Planeación y desarrollo', max_horas: 40 },
+        { id: 'FOR_04', nombre: 'Elaboración de instrumentos', max_horas: 40 },
+        { id: 'FOR_05', nombre: 'Análisis y diagnóstico institucional — trabajo de campo', max_horas: 80 },
+        { id: 'FOR_06', nombre: 'Análisis y diagnóstico institucional — externo/interno', max_horas: 80 },
+        { id: 'FOR_07', nombre: 'Análisis y diagnóstico institucional — producción documento', max_horas: 100 },
+        { id: 'FOR_08', nombre: 'Arquitectura institucional', max_horas: 100 },
+        { id: 'FOR_09', nombre: 'Elaboración de actos administrativos', max_horas: 40 },
+      ],
+      laboratorio_innovacion: [
+        { id: 'LAB_01', nombre: 'Componente Fijo — Participación en Laboratorio', max_horas: 120 },
+        { id: 'LAB_02', nombre: 'Componente Fijo — Gestión administrativa del Laboratorio', max_horas: 100 },
+        { id: 'LAB_03', nombre: 'Componente Variable — Diseño e implementación (por actividad)', max_horas: 120 },
+      ],
+      investigacion_aplicada: [
+        { id: 'INV_AP_01', nombre: 'Elaboración de documentos técnicos', max_horas: 60 },
+        { id: 'INV_AP_02', nombre: 'Elaboración de Plan de Trabajo', max_horas: 6 },
+        { id: 'INV_AP_03', nombre: 'Generación de Nuevo Conocimiento / Desarrollo Tecnológico', max_horas: 60 },
+        { id: 'INV_AP_04', nombre: 'Asistencia a eventos de extensión', max_horas: 8 },
+        { id: 'INV_AP_05', nombre: 'Procesos de evaluación de desempeño', max_horas: 4 },
+      ],
+      alto_gobierno: [
+        { id: 'EAG_01', nombre: 'Coaching directivo', max_horas: 200 },
+        { id: 'EAG_02', nombre: 'Formación estratégica', max_horas: 200 },
+        { id: 'EAG_03', nombre: 'Gestión del conocimiento', max_horas: 200 },
+        { id: 'EAG_04', nombre: 'Desarrollo de contenidos', max_horas: 120 },
+      ],
+    };
   }
 
   async getCatalogoSeccionesExtension() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
     if (Array.isArray(rules?.ext_secciones) && rules.ext_secciones.length > 0) return rules.ext_secciones;
-    return [];
+    // Fallback: secciones por defecto idénticas a defaultPTARules
+    return [
+      { key: 'capacitacion', label: 'Capacitación (SNPI)', color: '#059669', orden: 1, multiplicador: 2 },
+      { key: 'seleccion', label: 'Selección (SNPI)', color: '#0284C7', orden: 2, multiplicador: 1 },
+      { key: 'fortalecimiento', label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3, multiplicador: 1 },
+      { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4, multiplicador: 1 },
+      { key: 'investigacion_aplicada', label: 'Investigación Aplicada', color: '#15803D', orden: 5, multiplicador: 1 },
+      { key: 'alto_gobierno', label: 'Alto Gobierno (EAG)', color: '#B45309', orden: 6, multiplicador: 1 },
+    ];
   }
 
   async getCatalogoActividadesInvestigacion() {
@@ -1308,6 +1667,226 @@ export class PtaService {
   // ─────────────────────────────
   // OTP (firma electrónica) — migración legacy
   // ─────────────────────────────
+  private resolveNotificationsBaseUrl(): string {
+    const direct = process.env.NOTIFICATIONS_SERVICE_URL || process.env.NOTIFICATION_SERVICE_URL;
+    if (direct) return direct.replace(/\/$/, '');
+    if ((process.env.NODE_ENV || 'development') !== 'production') return 'http://localhost:3009';
+    return 'http://notifications-service:3009';
+  }
+
+  private maskEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    if (!local || !domain) return email;
+    const visible = local.slice(0, Math.min(2, local.length));
+    return `${visible}${'*'.repeat(Math.max(local.length - visible.length, 3))}@${domain}`;
+  }
+
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private async sendFirmaOtpEmail(input: {
+    to: string;
+    code: string;
+    fullName: string;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+    expiresAt: Date;
+  }): Promise<void> {
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const subject = 'Código de validación - Plan de Trabajo Académico ESAP';
+    const minutes = Math.max(1, Math.round((input.expiresAt.getTime() - Date.now()) / 60000));
+    const fullName = this.escapeHtml(input.fullName || 'docente');
+    const periodo = input.periodo ? this.escapeHtml(input.periodo) : null;
+    const etapaLabel = input.etapaLabel ? this.escapeHtml(input.etapaLabel) : null;
+    const code = this.escapeHtml(input.code);
+    const text = [
+      `Hola ${input.fullName || 'docente'},`,
+      '',
+      `Tu código de validación para firmar el PTA es: ${input.code}`,
+      input.periodo ? `Periodo: ${input.periodo}` : null,
+      input.etapaLabel ? `Proceso: ${input.etapaLabel}` : null,
+      `Este código vence en ${minutes} minutos.`,
+      '',
+      'Si no solicitaste este código, ignora este mensaje.',
+    ].filter(Boolean).join('\n');
+    const html = `
+      <div style="margin:0;padding:32px 16px;background-color:#eef2f7;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+          <tr>
+            <td align="center">
+              <table width="560" cellspacing="0" cellpadding="0" border="0" role="presentation" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #dbe3ef;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="height:6px;background-color:#3b82f6;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td style="background-color:#0f49b5;padding:26px 28px 22px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+                      <tr>
+                        <td>
+                          <div style="font-size:21px;font-weight:800;line-height:1;color:#ffffff;letter-spacing:0.2px;">ESAP</div>
+                          <div style="margin-top:6px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#bfdbfe;">Plan de Trabajo Académico</div>
+                        </td>
+                        <td align="right" style="vertical-align:middle;">
+                          <span style="display:inline-block;padding:5px 14px;border-radius:999px;background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:700;">Firma PTA</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:32px 28px 10px 28px;">
+                    <h1 style="margin:0 0 10px 0;font-size:22px;line-height:1.25;font-weight:800;color:#111827;">Código de validación</h1>
+                    <p style="margin:0 0 26px 0;font-size:14px;line-height:1.65;color:#667085;">
+                      Hola ${fullName}. Ingresa este código para continuar con la firma de tu Plan de Trabajo Académico. Es de un solo uso y tiene vigencia limitada.
+                    </p>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+                      <tr>
+                        <td align="center">
+                          <div style="display:inline-block;min-width:210px;padding:18px 16px;border-radius:9px;border:2px solid #bfdbfe;background-color:#eff6ff;text-align:center;">
+                            <span style="font-size:30px;line-height:1;font-weight:800;letter-spacing:10px;color:#1d4ed8;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;">${code}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation" style="margin-top:24px;margin-bottom:20px;">
+                      ${periodo ? `
+                      <tr>
+                        <td style="padding:4px 0;font-size:14px;line-height:1.5;color:#374151;">
+                          <strong style="color:#111827;">Periodo:</strong> ${periodo}
+                        </td>
+                      </tr>` : ''}
+                      ${etapaLabel ? `
+                      <tr>
+                        <td style="padding:4px 0;font-size:14px;line-height:1.5;color:#374151;">
+                          <strong style="color:#111827;">Proceso:</strong> ${etapaLabel}
+                        </td>
+                      </tr>` : ''}
+                      <tr>
+                        <td style="padding:4px 0;font-size:14px;line-height:1.5;color:#374151;">
+                          <strong style="color:#111827;">Vigencia:</strong> ${minutes} minutos
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation" style="margin:0 0 24px 0;background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;">
+                      <tr>
+                        <td style="padding:12px 16px;font-size:13px;line-height:1.5;color:#92400e;">
+                          <strong>Importante:</strong> Si no solicitaste este código, puedes ignorar este mensaje con seguridad.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                    <p style="margin:0;font-size:12px;line-height:1.5;color:#98a2b3;">ESAP — Escuela Superior de Administración Pública</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: input.to, subject, text, html }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`notifications-service ${response.status}: ${body}`);
+      }
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      this.logger.warn(`No se pudo enviar OTP de firma PTA a ${input.to}: ${message}`);
+      throw new InternalServerErrorException('No se pudo enviar el código de validación al correo registrado.');
+    }
+  }
+
+  private buildFirmaOtpKey(input: { verificationId?: string | null; ptaId?: string | null; docenteId?: string | null }): string {
+    const verificationId = coalesceString(input.verificationId);
+    if (verificationId) return verificationId;
+
+    const ptaId = coalesceString(input.ptaId);
+    if (ptaId) return `pta:${ptaId}`;
+
+    const docenteId = coalesceString(input.docenteId);
+    if (docenteId) return `docente:${docenteId}`;
+
+    throw new BadRequestException('Se requiere ptaId o docenteId para generar el código de firma.');
+  }
+
+  async requestFirmaDocenteOtp(payload: {
+    ptaId?: string | null;
+    docenteId?: string | null;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+  }) {
+    const docenteId = coalesceString(payload?.docenteId);
+    if (!docenteId) throw new BadRequestException('docenteId es requerido para enviar el código de firma.');
+
+    const docente = await this.fetchAuthDocenteInfo(docenteId);
+    if (!docente.email && !this.MOCK_FIRMA_OTP) {
+      throw new BadRequestException('El docente no tiene correo registrado para enviar el código de validación.');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const verificationId = this.buildFirmaOtpKey({ ptaId: payload?.ptaId, docenteId });
+
+    this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
+
+    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
+    if (!this.MOCK_FIRMA_OTP && docente.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: docente.email,
+          code,
+          fullName: docente.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP falló — código OTP para ${docente.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
+      }
+    }
+
+    this.otpStore.set(verificationId, { code, expiresAt });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
+      devCode: code,
+    };
+  }
+
+  verifyFirmaDocenteOtp(payload: { verificationId?: string | null; code?: string | null }) {
+    const verificationId = coalesceString(payload?.verificationId);
+    if (!verificationId) throw new BadRequestException('verificationId es requerido.');
+    this.verifyOtp(verificationId, String(payload?.code || ''), { consume: true });
+    return { verified: true };
+  }
+
   generateOtp(ptaId: string) {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -1321,6 +1900,15 @@ export class PtaService {
   verifyOtp(ptaId: string, otp: string, { consume }: { consume: boolean }) {
     if (!otp || String(otp).length !== 6) {
       throw new Error('OTP inválido. Debe tener 6 dígitos.');
+    }
+
+    // MOCK: cualquier código de 6 dígitos avanza el flujo. No se valida contra
+    // el código generado ni la expiración. Útil para pruebas mientras el envío
+    // real de correo no esté disponible.
+    if (this.MOCK_FIRMA_OTP) {
+      this.logger.warn(`[MOCK-OTP] Validación de firma mockeada para "${ptaId}" — cualquier código de 6 dígitos es aceptado.`);
+      if (consume) this.otpStore.delete(ptaId);
+      return true;
     }
 
     const stored = this.otpStore.get(ptaId);
@@ -1345,7 +1933,7 @@ export class PtaService {
     const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existing) throw new NotFoundException('PTA no encontrado');
 
-    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'Pendiente Jefatura';
+    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'PENDIENTE_APROBACION';
     const updated = await this.updatePTAStatus(ptaId, { estado: estadoDestino, actorId: existing.docenteId, actorRol: 'Docente' });
 
     const certNumber =
@@ -1356,5 +1944,364 @@ export class PtaService {
       certificado: certNumber,
       signedAt: new Date().toISOString(),
     };
+  }
+
+  async getComponentesAprobacion(ptaId: string) {
+    const list = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+
+    // Fetch PTA content to determine which components have hours
+    const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    const ds = (ptaEntity?.datosEstructurados as any) || {};
+
+    const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
+    const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
+    const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
+    const comp: any[] = Array.isArray(ds.complementarias) ? ds.complementarias : [];
+    const acadAdmin: any[] = Array.isArray(ds.academico_admin) ? ds.academico_admin : [];
+
+    const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+      invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
+    const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+
+    const extBySeccion = (seccion: string) =>
+      extActs
+        .filter((a: any) => String(a?.seccion || '') === seccion)
+        .reduce((s: number, a: any) => {
+          const h = seccion === 'capacitacion'
+            ? Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * 2
+            : Number(a?.horas ?? 0);
+          return s + h;
+        }, 0);
+
+    const horasPorComponente: Record<string, number> = {
+      academica: hDocencia,
+      investigacion: hInv,
+      ext_capacitacion: extBySeccion('capacitacion'),
+      ext_procesos: extBySeccion('procesos_seleccion'),
+      ext_fortalecimiento: extBySeccion('fortalecimiento'),
+      ext_gobierno: extBySeccion('gobierno_territorial'),
+      ext_secciones: extBySeccion('otras_secciones'),
+      complementarias: hComp,
+      academicas_admin: hAcad,
+    };
+
+    const todosComponentes = Object.keys(horasPorComponente);
+
+    // Si todos los arrays están vacíos, probablemente hay un problema de datos
+    // (e.g. actividades filtradas incorrectamente al guardar). No auto-aprobar nada.
+    const totalActividades =
+      asignaturas.length + invActs.length + extActs.length + comp.length + acadAdmin.length;
+    const hayActividades = totalActividades > 0;
+
+    if (list.length === 0) {
+      // Auto-aprobar componentes con 0h SOLO si el PTA tiene datos estructurados.
+      // Si todos los arrays están vacíos, dejar todo como 'pendiente' para revisión manual.
+      const items = todosComponentes.map(c => {
+        const tieneHoras = horasPorComponente[c] > 0;
+        const autoAprobar = hayActividades && !tieneHoras;
+        return this.ptaComponentApprovalRepo.create({
+          ptaId,
+          componente: c,
+          estado: autoAprobar ? 'aprobado' : 'pendiente',
+          ...(autoAprobar ? {
+            aprobadorNombre: 'Sistema',
+            comentarios: 'Sin actividades — aprobación automática',
+            fechaAprobacion: new Date(),
+          } : {}),
+        });
+      });
+      await this.ptaComponentApprovalRepo.save(items);
+      return items;
+    }
+
+    return list;
+  }
+
+  async aprobarComponente(ptaId: string, body: any) {
+    const componente = coalesceString(body?.componente);
+    const estado = coalesceString(body?.estado); // 'aprobado' o 'devuelto'
+    if (!componente || !estado) {
+      throw new BadRequestException('Componente y estado son requeridos');
+    }
+
+    const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!existingPta) {
+      throw new NotFoundException('PTA no encontrado');
+    }
+
+    let approval = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });
+    if (!approval) {
+      approval = this.ptaComponentApprovalRepo.create({
+        ptaId,
+        componente,
+        estado: 'pendiente',
+      });
+    }
+
+    approval.estado = estado;
+    approval.aprobadorId = coalesceString(body?.aprobadorId, body?.aprobador_id);
+    approval.aprobadorNombre = coalesceString(body?.aprobadorNombre, body?.aprobador_nombre);
+    approval.aprobadorRol = coalesceString(body?.aprobadorRol, body?.aprobador_rol);
+    approval.comentarios = coalesceString(body?.comentarios, body?.observaciones);
+    approval.scope = coalesceString(body?.scope);
+    approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
+    approval.fechaAprobacion = new Date();
+
+    await this.ptaComponentApprovalRepo.save(approval);
+
+    // Recalcular estado consolidado del PTA
+    const todosComponentes = await this.getComponentesAprobacion(ptaId);
+    
+    let nuevoEstadoPta = 'PENDIENTE_APROBACION';
+    const hayDevueltos = todosComponentes.some(c => c.estado === 'devuelto');
+    const todosAprobados = todosComponentes.every(c => c.estado === 'aprobado');
+
+    if (hayDevueltos) {
+      nuevoEstadoPta = 'Devuelto'; // que agrupa a revisión docente en Kanban
+    } else if (todosAprobados) {
+      nuevoEstadoPta = 'Aprobado';
+    }
+
+    if (existingPta.estado !== nuevoEstadoPta) {
+      const estadoAnterior = existingPta.estado;
+      existingPta.estado = nuevoEstadoPta;
+      existingPta.version = (existingPta.version || 1) + 1;
+      
+      if (nuevoEstadoPta === 'Devuelto') {
+        existingPta.motivoDevolucion = `Componente ${componente} devuelto: ${approval.comentarios || 'Sin comentarios'}`;
+      }
+
+      await this.ptaRepo.save(existingPta);
+
+      // Registrar historial de estados
+      await this.historialRepo.save(
+        this.historialRepo.create({
+          ptaId,
+          estadoAnterior,
+          estadoNuevo: nuevoEstadoPta,
+          actorId: approval.aprobadorId || 'sistema',
+          actorRol: approval.aprobadorRol || 'Aprobador',
+          tipoAccion: estado === 'aprobado' ? 'APROBACION_COMPONENTE' : 'DEVOLUCION_COMPONENTE',
+          comentarios: approval.comentarios,
+          snapshotPta: existingPta.datosEstructurados ?? null,
+          version: existingPta.version,
+        }),
+      );
+
+      // Registrar evento realtime
+      const ds = existingPta.datosEstructurados as any;
+      await this.logEvento({
+        ptaId,
+        tipo: 'cambio_estado',
+        docenteId: existingPta.docenteId,
+        docenteNombre: coalesceString(ds?.docente_nombre),
+        estadoAnterior,
+        estadoNuevo: nuevoEstadoPta,
+        actor: approval.aprobadorId,
+        actorRol: approval.aprobadorRol,
+        sistemaOrigen: 'backoffice',
+        mensaje: `Componente ${componente} ${estado}. Estado general: ${nuevoEstadoPta}`,
+        metadata: { componente, estado, comentarios: approval.comentarios },
+      });
+    } else {
+      // Registrar evento de actualización de componente sin cambiar estado global
+      const ds = existingPta.datosEstructurados as any;
+      await this.logEvento({
+        ptaId,
+        tipo: 'actualizacion_componente',
+        docenteId: existingPta.docenteId,
+        docenteNombre: coalesceString(ds?.docente_nombre),
+        estadoAnterior: existingPta.estado,
+        estadoNuevo: existingPta.estado,
+        actor: approval.aprobadorId,
+        actorRol: approval.aprobadorRol,
+        sistemaOrigen: 'backoffice',
+        mensaje: `Componente ${componente} actualizado a ${estado}`,
+        metadata: { componente, estado, comentarios: approval.comentarios },
+      });
+    }
+
+    return {
+      approval,
+      estadoGeneral: nuevoEstadoPta,
+    };
+  }
+
+  async getRUNDDocente(docenteId: string) {
+    let docente = await this.docenteRepo.findOne({
+      where: [{ id: docenteId }, { personaId: docenteId }]
+    });
+
+    if (!docente) {
+      try {
+        const info = await this.fetchAuthDocenteInfo(docenteId, { adminEdit: true });
+        if (info && info.personId) {
+          docente = await this.docenteRepo.findOne({
+            where: [{ id: info.personId }, { personaId: info.personId }]
+          });
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    if (!docente) {
+      throw new NotFoundException(`Docente ${docenteId} no encontrado`);
+    }
+
+    const valRows = await this.ptaRepo.manager.query(
+      `SELECT * FROM academic_work_plan.validacion_documental WHERE docente_id = $1`,
+      [docente.id]
+    );
+
+    if (valRows.length === 0) {
+      const camposSoporte = [
+        { campo: 'DOCUMENTO_IDENTIDAD', tipo: 'IDENTIDAD' },
+        { campo: 'TIPO_DOCUMENTO', tipo: 'IDENTIDAD' },
+        { campo: 'NOMBRE_COMPLETO', tipo: 'IDENTIDAD' },
+        { campo: 'FECHA_NACIMIENTO', tipo: 'IDENTIDAD' },
+        { campo: 'GENERO', tipo: 'IDENTIDAD' },
+        { campo: 'CORREO_INSTITUCIONAL', tipo: 'CONTACTO' },
+        { campo: 'VINCULACION', tipo: 'VINCULACION' },
+        { campo: 'TERRITORIAL', tipo: 'VINCULACION' },
+        { campo: 'DEDICACION', tipo: 'VINCULACION' },
+        { campo: 'CATEGORIA_ESCALAFON', tipo: 'ESCALAFON' },
+        { campo: 'INICIO_VINCULACION', tipo: 'VINCULACION' },
+        { campo: 'FIN_VINCULACION', tipo: 'VINCULACION' },
+        { campo: 'ACTO_ADMINISTRATIVO', tipo: 'VINCULACION' },
+        { campo: 'PUNTAJE_SALARIAL', tipo: 'ESCALAFON' },
+        { campo: 'SITUACION_ADMINISTRATIVA', tipo: 'SITUACION' },
+        { campo: 'NIVEL_FORMACION', tipo: 'FORMACION' },
+        { campo: 'TITULO_PREGRADO', tipo: 'FORMACION' },
+        { campo: 'TITULO_ESPECIALIZACION', tipo: 'FORMACION' },
+        { campo: 'TITULO_MAESTRIA', tipo: 'FORMACION' },
+        { campo: 'TITULO_DOCTORADO', tipo: 'FORMACION' },
+        { campo: 'TITULO_POSDOCTORADO', tipo: 'FORMACION' },
+        { campo: 'NUCLEO_TEMATICO', tipo: 'VINCULACION' },
+        { campo: 'PERFIL_ACADEMICO', tipo: 'FORMACION' },
+        { campo: 'ULTIMA_EVALUACION', tipo: 'EVALUACION' }
+      ];
+
+      for (const item of camposSoporte) {
+        await this.ptaRepo.manager.query(
+          `INSERT INTO academic_work_plan.validacion_documental (docente_id, campo_rund, tipo_documento_soporte, estado_documento)
+           VALUES ($1, $2, $3, 'Sin cargar')
+           ON CONFLICT (docente_id, campo_rund) DO NOTHING`,
+          [docente.id, item.campo, item.tipo]
+        );
+      }
+
+      const reQuery = await this.ptaRepo.manager.query(
+        `SELECT * FROM academic_work_plan.validacion_documental WHERE docente_id = $1`,
+        [docente.id]
+      );
+      valRows.push(...reQuery);
+    }
+
+    const total = valRows.length;
+    const aceptados = valRows.filter((r: any) => r.estado_documento === 'Aceptado').length;
+    const completitud = total > 0 ? Math.round((aceptados / total) * 100) : 0;
+
+    return {
+      docenteId: docente.id,
+      personaId: docente.personaId,
+      completitud,
+      validaciones: valRows.map((r: any) => ({
+        id: r.id,
+        campo_rund: r.campo_rund,
+        tipo_documento_soporte: r.tipo_documento_soporte,
+        estado_documento: r.estado_documento,
+        fecha_carga: r.fecha_carga,
+        fecha_validacion: r.fecha_validacion,
+        validado_por: r.validado_por,
+        observacion: r.observacion
+      }))
+    };
+  }
+
+  async syncRUNDDocuments(docenteId: string, documentos: any[]) {
+    let docente = await this.docenteRepo.findOne({
+      where: [{ id: docenteId }, { personaId: docenteId }]
+    });
+
+    if (!docente) {
+      try {
+        const info = await this.fetchAuthDocenteInfo(docenteId, { adminEdit: true });
+        if (info && info.personId) {
+          docente = await this.docenteRepo.findOne({
+            where: [{ id: info.personId }, { personaId: info.personId }]
+          });
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    if (!docente) {
+      throw new NotFoundException(`Docente ${docenteId} no encontrado`);
+    }
+
+    await this.getRUNDDocente(docente.id);
+
+    const catMap: Record<string, string> = {
+      personal: 'IDENTIDAD',
+      contacto: 'CONTACTO',
+      academico: 'FORMACION',
+      formacion: 'FORMACION',
+      laboral: 'VINCULACION',
+      vinculacion: 'VINCULACION',
+      certificados: 'ESCALAFON',
+      escalafon: 'ESCALAFON',
+      administrativo: 'SITUACION',
+      situacion: 'SITUACION',
+      otros: 'EVALUACION',
+      evaluacion: 'EVALUACION'
+    };
+
+    const stateMap: Record<string, string> = {
+      validado: 'Aceptado',
+      aprobado: 'Aceptado',
+      aceptado: 'Aceptado',
+      pendiente: 'Pendiente',
+      rechazado: 'Rechazado',
+      vencido: 'Rechazado',
+      'sin cargar': 'Sin cargar',
+      'no aplica': 'No aplica'
+    };
+
+    for (const doc of documentos) {
+      const cat = String(doc.categoria || '').toLowerCase().trim();
+      const rawState = String(doc.estado || '').toLowerCase().trim();
+      const targetSupportType = catMap[cat];
+      const targetState = stateMap[rawState] || 'Sin cargar';
+
+      if (targetSupportType) {
+        await this.ptaRepo.manager.query(
+          `UPDATE academic_work_plan.validacion_documental
+           SET estado_documento = $1,
+               id_documento_carpeta = $2,
+               fecha_carga = COALESCE($3, fecha_carga),
+               fecha_validacion = COALESCE($4, fecha_validacion),
+               validado_por = COALESCE($5, validado_por),
+               observacion = COALESCE($6, observacion),
+               updated_at = now()
+           WHERE docente_id = $7 AND tipo_documento_soporte = $8`,
+          [
+            targetState,
+            doc.id || null,
+            doc.fecha_subida || new Date().toISOString(),
+            doc.fecha_validacion || (targetState === 'Aceptado' ? new Date().toISOString() : null),
+            doc.validado_por || null,
+            doc.comentarios || null,
+            docente.id,
+            targetSupportType
+          ]
+        );
+      }
+    }
+
+    return this.getRUNDDocente(docente.id);
   }
 }

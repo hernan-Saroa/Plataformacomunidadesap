@@ -44,6 +44,21 @@ export interface GraduadoData {
   updatedAt?: string;
 }
 
+export interface BulkCreateGraduadosError {
+  rowNumber: number;
+  idNumber?: string;
+  programName?: string;
+  message: string;
+}
+
+export interface BulkCreateGraduadosResponse {
+  total: number;
+  createdCount: number;
+  failedCount: number;
+  created: GraduadoData[];
+  errors: BulkCreateGraduadosError[];
+}
+
 /**
  * Interface: Solicitud de certificado de graduado
  */
@@ -111,8 +126,6 @@ export interface CertificadoGraduado {
   status: "VALID" | "REVOKED" | "EXPIRED";
   issueDate: string;
   expiryDate?: string;
-  revocationDate?: string;
-  revocationReason?: string;
 }
 
 export interface UpdateCertificadoPayload extends Partial<CertificadoGraduado> {
@@ -229,14 +242,6 @@ export interface ValidacionCertificado {
   userAgent?: string;
   location?: string;
   result: string;
-}
-
-export interface DescargaCertificado {
-  id: string;
-  certificateId: string;
-  downloadDate: string;
-  ipAddress?: string;
-  userAgent?: string;
 }
 
 export interface GraduationCertificateTemplateTexts {
@@ -482,27 +487,6 @@ const graduadosService = {
     },
   },
 
-  descargas: {
-    listar: async (certificateId?: string): Promise<DescargaCertificado[]> => {
-      const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/descargas`,
-        certificateId ? { certificateId } : undefined,
-      );
-      return response;
-    },
-    registrar: async (
-      certificateId: string,
-      options?: ApiRequestOptions,
-    ): Promise<{ mensaje: string }> => {
-      const response = await apiClient.post(
-        `${SERVICE_PREFIX}/certificates/descargas`,
-        { certificateId },
-        { ...options, skipAuth: options?.skipAuth ?? true },
-      );
-      return response;
-    },
-  },
-
   /**
    * Administración de solicitudes (requiere autenticación)
    */
@@ -526,9 +510,12 @@ const graduadosService = {
       return response;
     },
 
-    contarAprobacionPendiente: async (): Promise<{ count: number }> => {
+    contarAprobacionPendiente: async (
+      stage?: "approver" | "head",
+    ): Promise<{ count: number }> => {
+      const query = stage ? `?stage=${encodeURIComponent(stage)}` : "";
       const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count`,
+        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count${query}`,
       );
       return response;
     },
@@ -749,6 +736,20 @@ const graduadosService = {
     },
 
     /**
+     * Crear graduados masivamente
+     */
+    crearMasivo: async (
+      graduados: Partial<GraduadoData>[],
+      createdBy = "bulk_upload",
+    ): Promise<BulkCreateGraduadosResponse> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/graduates/bulk`,
+        { graduates: graduados, createdBy },
+      );
+      return response;
+    },
+
+    /**
      * Actualizar un graduado
      */
     actualizar: async (
@@ -758,6 +759,16 @@ const graduadosService = {
       const response = await apiClient.put(
         `${SERVICE_PREFIX}/graduates/${id}`,
         graduado,
+      );
+      return response;
+    },
+
+    /**
+     * Eliminar un graduado creado por solicitud o carga masiva
+     */
+    eliminar: async (id: string): Promise<{ mensaje: string }> => {
+      const response = await apiClient.delete(
+        `${SERVICE_PREFIX}/graduates/${id}`,
       );
       return response;
     },

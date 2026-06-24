@@ -4,7 +4,7 @@
  * - Formato de TABLA con columnas igual a Casos Pendientes
  */
 
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -26,7 +26,14 @@ import {
   X,
   MoreVertical,
   Copy,
-  Shield
+  Shield,
+  ClipboardCheck,
+  UploadCloud,
+  Paperclip,
+  Trash2,
+  FileCheck2,
+  Download,
+  BarChart3
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -38,9 +45,47 @@ import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
+import { programasService } from '../../services/api/programas.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import type { Seccional, Sede } from '../../services/api/types';
+
+const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
+const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
+const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const getPeriodCode = (period: any) =>
+  String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
+const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
+  // El periodo ACTIVO (en_curso) es el autoritativo para los consumidores:
+  // sus territoriales/sedes/programas son los "correctos". Solo si no hay ninguno
+  // en curso se respeta el último seleccionado y, como último recurso, el más reciente.
+  const activo = periods.find((period) => period?.estado === 'en_curso');
+  if (activo) return activo;
+  const savedPeriodCode = localStorage.getItem(storageKey) || '';
+  return (
+    periods.find((period) => getPeriodCode(period) === savedPeriodCode) ||
+    periods[0] ||
+    null
+  );
+};
+const getPeriodCreationTime = (period: any) => {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const sortPeriodsByCreation = (periods: any[]) =>
+  [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
 
 type ApprovalForm = {
   fullName: string;
@@ -55,9 +100,25 @@ type ApprovalForm = {
   numLibro: string;
 };
 
-export function ReviewRequestsModule() {
+type ReviewSupportPreview = {
+  url: string;
+  name: string;
+  fileType: 'pdf' | 'image' | 'other';
+};
+
+type ReviewRequestsScope = 'all' | 'mine';
+type MyReviewView = 'pending' | 'reviewed';
+
+interface ReviewRequestsModuleProps {
+  scope?: ReviewRequestsScope;
+}
+
+export function ReviewRequestsModule({
+  scope = 'all',
+}: ReviewRequestsModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [myReviewView, setMyReviewView] = useState<MyReviewView>('pending');
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -82,7 +143,16 @@ export function ReviewRequestsModule() {
     numFolio: '',
     numLibro: '',
   });
+  const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
+  const [programasOptions, setProgramasOptions] = useState<string[]>([]);
+  // Programas que llegan por integración (graduados creados por ese medio en
+  // Registro Académico). Son la fuente del select de programa de este modal.
+  const [integrationProgramOptions, setIntegrationProgramOptions] = useState<string[]>([]);
+  const [isLoadingIntegrationPrograms, setIsLoadingIntegrationPrograms] = useState(true);
+  const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
+  const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
+  const [isApprovalFileDragActive, setIsApprovalFileDragActive] = useState(false);
   const [existingApprovalFiles, setExistingApprovalFiles] = useState<
     NonNullable<ReviewRequest['reviewFiles']>
   >([]);
@@ -93,9 +163,12 @@ export function ReviewRequestsModule() {
     currentFilePercent: 0,
     overallPercent: 0,
   });
-  const [sedesOptions, setSedesOptions] = useState<string[]>([]);
+  const [reviewSupportPreview, setReviewSupportPreview] =
+    useState<ReviewSupportPreview | null>(null);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
   const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
+  const [sedesBySeccional, setSedesBySeccional] = useState<Record<string, string[]>>({});
+  const [structureCatalogNotice, setStructureCatalogNotice] = useState('');
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -147,16 +220,35 @@ export function ReviewRequestsModule() {
     const personEmail = typeof user?.person?.email === 'string' ? user.person.email.trim() : '';
     return personEmail || undefined;
   };
+  const normalizeIdentityValue = (value?: string | null) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
   const reviewerName = resolveReviewerName(currentUser);
   const reviewerId = resolveReviewerId(currentUser);
   const reviewerEmail = resolveReviewerEmail(currentUser);
+  const currentReviewerIdentity = useMemo(
+    () => ({
+      ids: new Set(
+        [reviewerId].map(normalizeIdentityValue).filter(Boolean),
+      ),
+      emails: new Set(
+        [reviewerEmail].map(normalizeIdentityValue).filter(Boolean),
+      ),
+      names: new Set(
+        [reviewerName].map(normalizeIdentityValue).filter(Boolean),
+      ),
+    }),
+    [reviewerEmail, reviewerId, reviewerName],
+  );
   const canManageApprovalConcepts = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_APROBAR,
   );
-  const canWorkReviewRequests =
-    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) ||
-    canManageApprovalConcepts ||
-    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_RECHAZAR);
+  const canWorkReviewRequests = authService.hasPermission(
+    Permissions.GRADUATES_SOLICITUDE_REVIEW,
+  );
   const isReviewWorkLocked = (request: ReviewRequest) =>
     [
       'PENDING_APPROVAL',
@@ -170,31 +262,24 @@ export function ReviewRequestsModule() {
     !isReviewWorkLocked(request) &&
     (request.approvalStatus !== 'HEAD_OBSERVATION' ||
       canManageApprovalConcepts);
-  const PROGRAMAS_ESAP = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
+  const isMyReviewsScope = scope === 'mine';
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
-  const PERSON_NAME_MAX_LENGTH = 100;
+  const REVIEW_NOTES_MIN_LENGTH = 10;
+  const REVIEW_NOTES_MAX_LENGTH = 4000;
+  const PERSON_NAME_MIN_LENGTH = 5;
+  const PERSON_NAME_MAX_LENGTH = 150;
   const DOCUMENT_MIN_LENGTH = 5;
-  const DOCUMENT_MAX_LENGTH = 10;
+  const DOCUMENT_MAX_LENGTH = 20;
+  const EMAIL_MIN_LENGTH = 5;
   const EMAIL_MAX_LENGTH = 254;
-  const REGISTRY_FIELD_MAX_LENGTH = 10;
-  const REVIEW_NOTES_MAX_LENGTH = 1000;
+  const REGISTRY_NUMBER_MAX_LENGTH = 20;
+  const FOLIO_BOOK_MAX_LENGTH = 10;
   const MIN_GRADUATION_YEAR = 1900;
   const MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS = 15;
-  const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
+  const PERSON_NAME_ALLOWED_REGEX = /^[\p{L}\s'’-]+$/u;
+  const DOCUMENT_ALLOWED_REGEX = /^[A-Za-z0-9]+$/;
 
   const normalizeKey = (value?: string) =>
     (value || '')
@@ -203,9 +288,65 @@ export function ReviewRequestsModule() {
       .toLowerCase()
       .trim();
 
+  const hasCatalogKey = <T,>(catalog: Record<string, T>, key: string) =>
+    Object.prototype.hasOwnProperty.call(catalog, key);
+
+  const normalizeComparableProgram = (value?: string | null) =>
+    (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const programAlreadyExistsForGraduate = (programName: string) => {
+    const normalizedProgramName = normalizeComparableProgram(programName);
+    if (!normalizedProgramName) {
+      return false;
+    }
+
+    return existingGraduatePrograms.some(
+      (program) => normalizeComparableProgram(program) === normalizedProgramName,
+    );
+  };
+
   const normalizeName = (value?: string) => {
     const normalized = (value || '').trim();
     return normalized || '';
+  };
+
+  const isUnavailableCatalogValue = (value?: string | null) => {
+    const normalized = normalizeKey(value || '');
+    return (
+      !normalized ||
+      normalized === 'no disponible' ||
+      normalized === 'no especificado' ||
+      normalized === 'sin programa'
+    );
+  };
+
+  // Un graduado proviene de la integración cuando no fue creado manualmente ni
+  // por carga masiva ni por una solicitud de revisión. normalizeKey ya quita los
+  // acentos, así que basta comparar contra las variantes sin tilde.
+  const isIntegrationSource = (createdBy?: string | null) => {
+    const normalized = normalizeKey(createdBy || '');
+    if (
+      normalized.startsWith('bulk_upload') ||
+      normalized.includes('manual_review') ||
+      normalized.includes('revision') ||
+      normalized.includes('manual')
+    ) {
+      return false;
+    }
+    return (
+      !normalized ||
+      normalized === 'system' ||
+      normalized === 'sistema' ||
+      normalized === 'registro academico' ||
+      normalized.includes('integracion') ||
+      normalized.includes('integration')
+    );
   };
 
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
@@ -213,11 +354,11 @@ export function ReviewRequestsModule() {
   const sanitizeDigits = (value: string, maxLength: number) =>
     value.replace(/\D+/g, '').slice(0, maxLength);
 
+  const sanitizeAlphanumeric = (value: string, maxLength: number) =>
+    value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
+
   const sanitizePersonName = (value: string) =>
-    value
-      .replace(/[0-9]/g, '')
-      .replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]/g, '')
-      .slice(0, PERSON_NAME_MAX_LENGTH);
+    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
 
   const getPersonNameValidationError = (value: string, fieldLabel: string) => {
     const normalized = normalizeSpaces(value);
@@ -226,8 +367,8 @@ export function ReviewRequestsModule() {
       return `${fieldLabel} es obligatorio`;
     }
 
-    if (normalized.length < 2) {
-      return `${fieldLabel} debe tener al menos 2 caracteres`;
+    if (normalized.length < PERSON_NAME_MIN_LENGTH) {
+      return `${fieldLabel} debe tener al menos ${PERSON_NAME_MIN_LENGTH} caracteres`;
     }
 
     if (normalized.length > PERSON_NAME_MAX_LENGTH) {
@@ -254,28 +395,52 @@ export function ReviewRequestsModule() {
   };
 
   const parseEstructuraCatalog = (source: unknown): { sedes: Sede[]; seccionales: Seccional[] } => {
-    if (!source || typeof source !== 'object') {
-      return { sedes: [], seccionales: [] };
-    }
+    let current: unknown = source;
 
-    const root = source as {
-      sedes?: unknown;
-      seccionales?: unknown;
-      data?: {
+    for (let depth = 0; depth < 5; depth += 1) {
+      if (!current || typeof current !== 'object') break;
+      const root = current as {
         sedes?: unknown;
         seccionales?: unknown;
+        data?: unknown;
       };
-    };
+      const sedes = getArrayFromUnknown<Sede>(root.sedes);
+      const seccionales = getArrayFromUnknown<Seccional>(root.seccionales);
 
-    const directSedes = getArrayFromUnknown<Sede>(root.sedes);
-    const directSeccionales = getArrayFromUnknown<Seccional>(root.seccionales);
-    const nestedSedes = getArrayFromUnknown<Sede>(root.data?.sedes);
-    const nestedSeccionales = getArrayFromUnknown<Seccional>(root.data?.seccionales);
+      if (sedes.length > 0 || seccionales.length > 0) {
+        return { sedes, seccionales };
+      }
+      current = root.data;
+    }
 
-    return {
-      sedes: directSedes.length ? directSedes : nestedSedes,
-      seccionales: directSeccionales.length ? directSeccionales : nestedSeccionales,
-    };
+    return { sedes: [], seccionales: [] };
+  };
+
+  const parseSedePeriodStatus = (source: unknown): {
+    idSedesActivas: number[];
+    available: boolean;
+  } => {
+    let current: unknown = source;
+
+    for (let depth = 0; depth < 5; depth += 1) {
+      if (!current || typeof current !== 'object') break;
+      const root = current as {
+        idSedesActivas?: unknown;
+        data?: unknown;
+      };
+
+      if (Array.isArray(root.idSedesActivas)) {
+        return {
+          idSedesActivas: root.idSedesActivas
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id)),
+          available: true,
+        };
+      }
+      current = root.data;
+    }
+
+    return { idSedesActivas: [], available: false };
   };
 
   // Funciones auxiliares
@@ -512,6 +677,72 @@ export function ReviewRequestsModule() {
     }
   };
 
+  const getRequesterSupportFileType = (
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ): ReviewSupportPreview['fileType'] => {
+    const name = (file.originalName || '').toLowerCase();
+    const mimeType = (file.mimeType || '').toLowerCase();
+    if (name.endsWith('.pdf') || mimeType.includes('pdf')) return 'pdf';
+    if (mimeType.startsWith('image/')) return 'image';
+    return 'other';
+  };
+
+  const handleDownloadRequesterSupportFile = async (
+    request: ReviewRequest,
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ) => {
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(request.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.originalName || 'soporte-solicitud.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error('No se pudo descargar el soporte', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  const handlePreviewRequesterSupportFile = async (
+    request: ReviewRequest,
+    file: NonNullable<ReviewRequest['requesterSupportFile']>,
+  ) => {
+    const fileType = getRequesterSupportFileType(file);
+    if (fileType === 'other') {
+      toast.info('Este archivo no tiene vista previa disponible', {
+        description: 'Puedes descargarlo para abrirlo en tu equipo.',
+      });
+      return;
+    }
+
+    try {
+      const blob = await graduadosService.solicitudes.descargarSoporteSolicitante(request.id);
+      const url = URL.createObjectURL(blob);
+      setReviewSupportPreview({
+        url,
+        name: file.originalName || 'Soporte de solicitud',
+        fileType,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo visualizar el soporte', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (reviewSupportPreview?.url) {
+        URL.revokeObjectURL(reviewSupportPreview.url);
+      }
+    };
+  }, [reviewSupportPreview?.url]);
+
   const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
   const allowedFileMimeTypes = new Set([
     'application/pdf',
@@ -523,17 +754,24 @@ export function ReviewRequestsModule() {
     'image/jpeg',
     'image/webp',
   ]);
-  const getApprovalFileChipClass = (file: File) => {
-    const name = file.name.toLowerCase();
-    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
-    if (ext === 'pdf') return 'border-red-200 bg-red-50 text-red-700';
-    if (ext === 'doc' || ext === 'docx') return 'border-blue-200 bg-blue-50 text-blue-700';
-    if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
-      return 'border-gray-300 bg-gray-100 text-gray-700';
-    }
-    return 'border-gray-300 bg-gray-100 text-gray-700';
+  const getApprovalFileExtension = (fileName: string) => {
+    const normalizedName = fileName.toLowerCase();
+    return normalizedName.includes('.')
+      ? normalizedName.slice(normalizedName.lastIndexOf('.') + 1)
+      : 'file';
   };
+  const getApprovalFileToneClass = (fileName: string) => {
+    const ext = getApprovalFileExtension(fileName);
+    if (ext === 'pdf') return 'border-red-100 bg-red-50 text-red-700';
+    if (ext === 'doc' || ext === 'docx') return 'border-blue-100 bg-blue-50 text-blue-700';
+    if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-100 bg-emerald-50 text-emerald-700';
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+    }
+    return 'border-gray-200 bg-gray-50 text-gray-700';
+  };
+  const getApprovalFileKey = (file: File) =>
+    `${file.name.toLowerCase()}-${file.size}-${file.lastModified}`;
   const isAllowedFile = (file: File) => {
     const lowerName = file.name.toLowerCase();
     const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
@@ -555,6 +793,62 @@ export function ReviewRequestsModule() {
     const message = responseMessage || normalizedError?.message || '';
     const statusCode = normalizedError?.statusCode ?? normalizedError?.response?.status;
     return statusCode === 413 || /413|request entity too large|payload too large/i.test(message);
+  };
+  const addApprovalFiles = (files: File[] | FileList) => {
+    const selected = Array.from(files);
+    if (!selected.length || isLoadingApprovalData) {
+      return;
+    }
+
+    const selectedKeys = new Set(approvalFiles.map(getApprovalFileKey));
+    const uniqueFiles = selected.filter((file) => {
+      const key = getApprovalFileKey(file);
+      if (selectedKeys.has(key)) {
+        return false;
+      }
+      selectedKeys.add(key);
+      return true;
+    });
+
+    if (uniqueFiles.length !== selected.length) {
+      toast.info('Se omitieron archivos duplicados');
+    }
+
+    if (!uniqueFiles.length) {
+      return;
+    }
+
+    const currentTotal = existingApprovalFiles.length + approvalFiles.length;
+    const availableSlots = MAX_APPROVAL_FILES - currentTotal;
+    if (availableSlots <= 0) {
+      toast.error(`Ya alcanzaste el máximo de ${MAX_APPROVAL_FILES} archivos`);
+      return;
+    }
+
+    if (uniqueFiles.length > availableSlots) {
+      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) más`, {
+        description: `La solicitud admite máximo ${MAX_APPROVAL_FILES} archivos en total.`,
+      });
+      return;
+    }
+
+    const invalidFile = uniqueFiles.find((file) => !isAllowedFile(file));
+    if (invalidFile) {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes', {
+        description: invalidFile.name,
+      });
+      return;
+    }
+
+    const oversizedFile = uniqueFiles.find((file) => file.size > MAX_APPROVAL_FILE_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+      });
+      return;
+    }
+
+    setApprovalFiles((prev) => [...prev, ...uniqueFiles]);
   };
   const handleApprovalFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files || []);
@@ -584,6 +878,28 @@ export function ReviewRequestsModule() {
     }
     setApprovalFiles(nextFiles);
     event.target.value = '';
+  };
+  const handleApprovalFilesInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    addApprovalFiles(event.target.files || []);
+    event.target.value = '';
+  };
+  const handleApprovalFilesDragOver = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    if (!isLoadingApprovalData && existingApprovalFiles.length + approvalFiles.length < MAX_APPROVAL_FILES) {
+      setIsApprovalFileDragActive(true);
+    }
+  };
+  const handleApprovalFilesDragLeave = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsApprovalFileDragActive(false);
+  };
+  const handleApprovalFilesDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsApprovalFileDragActive(false);
+    if (isLoadingApprovalData || existingApprovalFiles.length + approvalFiles.length >= MAX_APPROVAL_FILES) {
+      return;
+    }
+    addApprovalFiles(event.dataTransfer.files);
   };
   const handleRemoveApprovalFile = (index: number) => {
     setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
@@ -683,6 +999,7 @@ export function ReviewRequestsModule() {
       reviewRecommendationReason: request.reviewRecommendationReason,
       reviewPayload: request.reviewPayload,
       reviewSubmittedAt: request.reviewSubmittedAt,
+      reviewSubmittedBy: request.reviewSubmittedBy,
       reviewSubmittedByName: request.reviewSubmittedByName,
       approverDecision: request.approverDecision,
       approverNotes: request.approverNotes,
@@ -694,6 +1011,7 @@ export function ReviewRequestsModule() {
       headReviewerName: request.headReviewerName,
       reviewTimeline: request.reviewTimeline || [],
       reviewFiles: request.reviewFiles || [],
+      requesterSupportFile: request.requesterSupportFile || null,
       updatedAt: request.updatedAt,
     };
   };
@@ -780,6 +1098,50 @@ export function ReviewRequestsModule() {
     loadRequests();
   }, []);
 
+  // Carga los programas que traen los graduados integrados desde Registro
+  // Académico, sin repetidos, para ofrecerlos en el select de programa.
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadIntegrationPrograms = async () => {
+      setIsLoadingIntegrationPrograms(true);
+      try {
+        const graduados =
+          await graduadosService.graduados.listarRegistroAcademico();
+        if (!isMounted) return;
+
+        const programas = (graduados || [])
+          .filter((graduado) => isIntegrationSource(graduado?.createdBy))
+          .map((graduado) =>
+            normalizeName(graduado?.programName || graduado?.degreeTitle),
+          )
+          .filter((programa) => !!programa && !isUnavailableCatalogValue(programa));
+
+        const unicos = Array.from(
+          new Map(
+            programas.map((programa) => [normalizeKey(programa), programa]),
+          ).values(),
+        ).sort((a, b) => a.localeCompare(b, 'es'));
+
+        setIntegrationProgramOptions(unicos);
+      } catch (error) {
+        console.warn(
+          'No se pudieron cargar los programas de los graduados integrados:',
+          error,
+        );
+        if (isMounted) setIntegrationProgramOptions([]);
+      } finally {
+        if (isMounted) setIsLoadingIntegrationPrograms(false);
+      }
+    };
+
+    loadIntegrationPrograms();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [catalogRefreshToken]);
+
   useEffect(() => {
     const intervalId = setInterval(() => {
       setTimeNow(Date.now());
@@ -794,30 +1156,130 @@ export function ReviewRequestsModule() {
     let isMounted = true;
 
     const loadCatalogs = async () => {
+      setIsLoadingCatalogs(true);
+      setProgramasOptions([]);
+      setStructureCatalogNotice('');
       try {
-        const estructuraResponse = await estructuraService.obtenerEstructura().catch(() => null);
+        const [estructuraResponse, periodosResponse] = await Promise.all([
+          estructuraService.obtenerEstructura().catch(() => null),
+          estructuraService.obtenerPeriodosAcademicos().catch(() => []),
+        ]);
 
         if (!isMounted) return;
 
-        let { sedes, seccionales } = parseEstructuraCatalog(estructuraResponse);
+        const { sedes: sedesMaestras, seccionales: seccionalesMaestras } =
+          parseEstructuraCatalog(estructuraResponse);
+        const periodos = Array.isArray(periodosResponse)
+          ? sortPeriodsByCreation(periodosResponse)
+          : [];
+        const periodoEstructura = resolveCatalogPeriod(
+          periodos,
+          ESTRUCTURA_PERIOD_STORAGE_KEY,
+        );
+        const periodoProgramas = resolveCatalogPeriod(
+          periodos,
+          PROGRAMAS_PERIOD_STORAGE_KEY,
+        );
+        const codigoPeriodoEstructura = getPeriodCode(periodoEstructura);
+        const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
 
-        if (!sedes.length || !seccionales.length) {
-          const [sedesResponse, seccionalesResponse] = await Promise.all([
-            estructuraService.listarSedes().catch(() => null),
-            estructuraService.listarSeccionales().catch(() => null),
-          ]);
+        const loadProgramCatalog = async () => {
+          if (!codigoPeriodoProgramas) return [];
+          const pageSize = 200;
+          const firstPage = await programasService.listar({
+            page: 1,
+            limit: pageSize,
+            periodoAcademico: codigoPeriodoProgramas,
+          });
+          const totalPages = Math.max(
+            1,
+            Math.ceil(Number(firstPage?.total || firstPage?.data?.length || 0) / pageSize),
+          );
+          const extraPages =
+            totalPages > 1
+              ? await Promise.all(
+                  Array.from({ length: totalPages - 1 }, (_, index) =>
+                    programasService
+                      .listar({
+                        page: index + 2,
+                        limit: pageSize,
+                        periodoAcademico: codigoPeriodoProgramas,
+                      })
+                      .catch((error) => {
+                        console.warn(
+                          'No se pudo cargar una página del catálogo de programas:',
+                          error,
+                        );
+                        return null;
+                      }),
+                  ),
+                )
+              : [];
+          return [firstPage, ...extraPages]
+            .flatMap((page) => page?.data || [])
+            .map((programa) => normalizeName(programa?.nombre))
+            .filter(Boolean);
+        };
 
-          if (!sedes.length) {
-            sedes = getArrayFromUnknown<Sede>(sedesResponse);
-          }
-          if (!seccionales.length) {
-            seccionales = getArrayFromUnknown<Seccional>(seccionalesResponse);
-          }
+        const estadoEstructuraPromise: Promise<{
+          value: unknown;
+          error: unknown;
+        }> = codigoPeriodoEstructura
+          ? estructuraService
+              .obtenerEstadoSedesPeriodo(codigoPeriodoEstructura)
+              .then((value) => ({ value, error: null }))
+              .catch((error) => ({ value: null, error }))
+          : Promise.resolve({ value: null, error: null });
+
+        const [estadoEstructuraResult, programasCatalog] = await Promise.all([
+          estadoEstructuraPromise,
+          loadProgramCatalog().catch((error) => {
+            console.error('Error cargando programas del periodo:', error);
+            return [];
+          }),
+        ]);
+
+        const estadoSedes = parseSedePeriodStatus(estadoEstructuraResult.value);
+        const idsSedesActivas = new Set<number>(
+          estadoSedes.idSedesActivas,
+        );
+
+        const useMasterCatalogFallback =
+          !!periodoEstructura && !estadoSedes.available;
+        const sedes = !periodoEstructura
+          ? []
+          : useMasterCatalogFallback
+            ? sedesMaestras
+            : sedesMaestras.filter(
+                (sede) => idsSedesActivas.has(Number(sede?.idSede)),
+              );
+        const idsSeccionales = new Set(
+          sedes
+            .map((sede) => Number(sede.idSeccional))
+            .filter((id) => Number.isFinite(id)),
+        );
+        const seccionales = !periodoEstructura
+          ? []
+          : useMasterCatalogFallback
+            ? seccionalesMaestras
+            : seccionalesMaestras.filter(
+                (seccional) => idsSeccionales.has(Number(seccional.idSeccional)),
+              );
+
+        if (useMasterCatalogFallback) {
+          console.warn(
+            `No se pudo consultar la activación de sedes para ${codigoPeriodoEstructura}; se usará el catálogo maestro de Estructura Organizacional.`,
+            estadoEstructuraResult.error,
+          );
+          setStructureCatalogNotice(
+            `No fue posible consultar la activación del periodo ${codigoPeriodoEstructura}. Se muestra temporalmente el catálogo maestro de Estructura Organizacional.`,
+          );
+        } else if (periodoEstructura && sedes.length === 0) {
+          setStructureCatalogNotice(
+            `El periodo ${codigoPeriodoEstructura} no tiene territoriales o sedes activas en Estructura Organizacional.`,
+          );
         }
 
-        const sedesList = sedes
-          .map((sede) => normalizeName(sede?.nomSede))
-          .filter(Boolean);
         const seccionalesList = seccionales
           .map((seccional) => normalizeName(seccional?.nomSeccional))
           .filter(Boolean);
@@ -827,28 +1289,64 @@ export function ReviewRequestsModule() {
           if (!seccional?.idSeccional) return;
           const name = normalizeName(seccional.nomSeccional);
           if (name) {
-            seccionalNameById.set(seccional.idSeccional, name);
+            seccionalNameById.set(Number(seccional.idSeccional), name);
           }
         });
 
         const territorialMap: Record<string, string> = {};
+        const sedesBySeccionalMap: Record<string, Set<string>> = {};
+        seccionales.forEach((seccional) => {
+          const seccionalName = normalizeName(seccional?.nomSeccional);
+          if (seccionalName) {
+            sedesBySeccionalMap[normalizeKey(seccionalName)] = new Set<string>();
+          }
+        });
+
         sedes.forEach((sede) => {
           const sedeName = normalizeName(sede?.nomSede);
           if (!sedeName) return;
           const seccionalName =
             normalizeName(sede?.seccional?.nomSeccional) ||
-            (sede?.idSeccional ? seccionalNameById.get(sede.idSeccional) || '' : '');
+            (sede?.idSeccional
+              ? seccionalNameById.get(Number(sede.idSeccional)) || ''
+              : '');
           if (seccionalName) {
             territorialMap[normalizeKey(sedeName)] = seccionalName;
+            const seccionalKey = normalizeKey(seccionalName);
+            if (!sedesBySeccionalMap[seccionalKey]) {
+              sedesBySeccionalMap[seccionalKey] = new Set<string>();
+            }
+            sedesBySeccionalMap[seccionalKey].add(sedeName);
           }
         });
 
-        setSedesOptions(Array.from(new Set(sedesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        const sedesBySeccionalCatalog: Record<string, string[]> = {};
+        Object.entries(sedesBySeccionalMap).forEach(([seccionalKey, sedesSet]) => {
+          sedesBySeccionalCatalog[seccionalKey] = Array.from(sedesSet).sort((a, b) =>
+            a.localeCompare(b, 'es'),
+          );
+        });
+
+        if (!isMounted) return;
+
         setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
         setSeccionalBySede(territorialMap);
+        setSedesBySeccional(sedesBySeccionalCatalog);
+        setProgramasOptions(
+          Array.from(new Set(programasCatalog)).sort((a, b) => a.localeCompare(b, 'es')),
+        );
 
       } catch (error) {
-        console.error('Error cargando catalogos de aprobacion:', error);
+        console.error('Error cargando catálogos de aprobación:', error);
+        if (isMounted) {
+          setStructureCatalogNotice(
+            'No se pudo actualizar el catálogo de Estructura Organizacional. Se conserva el último catálogo cargado; intenta nuevamente.',
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingCatalogs(false);
+        }
       }
     };
 
@@ -857,17 +1355,77 @@ export function ReviewRequestsModule() {
     return () => {
       isMounted = false;
     };
+  }, [catalogRefreshToken]);
+
+  useEffect(() => {
+    const refreshCatalogs = () => {
+      setCatalogRefreshToken((current) => current + 1);
+    };
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === ESTRUCTURA_PERIOD_STORAGE_KEY ||
+        event.key === PROGRAMAS_PERIOD_STORAGE_KEY
+      ) {
+        refreshCatalogs();
+      }
+    };
+
+    window.addEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
-  const programNameOptions = useMemo(() => PROGRAMAS_ESAP, []);
+  const programNameOptions = useMemo(
+    () => {
+      const currentProgram = isUnavailableCatalogValue(approvalForm.programName)
+        ? ''
+        : normalizeName(approvalForm.programName);
+
+      return Array.from(
+        new Set(
+          [currentProgram, ...integrationProgramOptions]
+            .map((programa) => normalizeName(programa))
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b, 'es'));
+    },
+    [approvalForm.programName, integrationProgramOptions],
+  );
+  const selectedProgramIsInCurrentCatalog = useMemo(() => {
+    if (!approvalForm.programName || programasOptions.length === 0) {
+      return false;
+    }
+
+    return programasOptions.some(
+      (programa) => normalizeKey(programa) === normalizeKey(approvalForm.programName),
+    );
+  }, [approvalForm.programName, programasOptions]);
+  const selectedProgramAlreadyExists = useMemo(
+    () => programAlreadyExistsForGraduate(approvalForm.programName),
+    [approvalForm.programName, existingGraduatePrograms],
+  );
+  const duplicateProgramMessage =
+    'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.';
 
   const campusOptions = useMemo(() => {
-    const options = new Set<string>(sedesOptions);
-    if (approvalForm.campus) {
-      options.add(approvalForm.campus);
-    }
-    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [approvalForm.campus, sedesOptions]);
+    const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+    const hasSelectedSeccionalCatalog =
+      !!selectedSeccionalKey && hasCatalogKey(sedesBySeccional, selectedSeccionalKey);
+    const baseOptions = hasSelectedSeccionalCatalog
+      ? sedesBySeccional[selectedSeccionalKey]
+      : [];
+    return Array.from(
+      new Set([approvalForm.campus, ...baseOptions].map(normalizeName).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [
+    approvalForm.campus,
+    approvalForm.seccionalName,
+    sedesBySeccional,
+  ]);
 
   const seccionalSelectOptions = useMemo(() => {
     const options = new Set<string>(seccionalesOptions);
@@ -888,6 +1446,11 @@ export function ReviewRequestsModule() {
     }
     return ordered;
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede, seccionalesOptions]);
+
+  const approvalFileSlotsUsed = existingApprovalFiles.length + approvalFiles.length;
+  const approvalFileSlotsRemaining = Math.max(0, MAX_APPROVAL_FILES - approvalFileSlotsUsed);
+  const isApprovalFilePickerDisabled =
+    isLoadingApprovalData || approvalFileSlotsRemaining <= 0;
 
   useEffect(() => {
     if (!approvalForm.campus || approvalForm.seccionalName) {
@@ -937,10 +1500,145 @@ export function ReviewRequestsModule() {
     [requests],
   );
 
+  const isReviewTimelineEvent = (
+    event: NonNullable<ReviewRequest['reviewTimeline']>[number],
+  ) =>
+    event.type === 'review_started' ||
+    event.type === 'review_decision_submitted' ||
+    event.type === 'review_files_uploaded' ||
+    event.type.startsWith('review_');
+
+  const hasCurrentReviewerIdentity =
+    currentReviewerIdentity.ids.size > 0 ||
+    currentReviewerIdentity.emails.size > 0 ||
+    currentReviewerIdentity.names.size > 0;
+
+  const requestBelongsToCurrentReviewer = (request: ReviewRequest) => {
+    if (!hasCurrentReviewerIdentity) {
+      return false;
+    }
+
+    const reviewEvents = (request.reviewTimeline || []).filter(isReviewTimelineEvent);
+    const matchesAny = (
+      values: Array<string | null | undefined>,
+      identitySet: Set<string>,
+    ) =>
+      values
+        .map(normalizeIdentityValue)
+        .filter(Boolean)
+        .some((value) => identitySet.has(value));
+
+    if (
+      matchesAny(
+        [
+          request.reviewedBy,
+          request.reviewSubmittedBy,
+          ...reviewEvents.map((event) => event.actorId),
+        ],
+        currentReviewerIdentity.ids,
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      matchesAny(
+        reviewEvents.map((event) => event.actorEmail),
+        currentReviewerIdentity.emails,
+      )
+    ) {
+      return true;
+    }
+
+    return matchesAny(
+      [
+        request.reviewerName,
+        request.reviewSubmittedByName,
+        ...reviewEvents.map((event) => event.actorName),
+      ],
+      currentReviewerIdentity.names,
+    );
+  };
+
+  const requestNeedsReviewerWork = (request: ReviewRequest) =>
+    requestBelongsToCurrentReviewer(request) &&
+    request.status === 'under_review' &&
+    !isReviewWorkLocked(request) &&
+    request.approvalStatus !== 'HEAD_OBSERVATION';
+
+  const myRequests = useMemo(
+    () => orderedRequests.filter(requestBelongsToCurrentReviewer),
+    [orderedRequests, currentReviewerIdentity],
+  );
+
+  const myPendingRequests = useMemo(
+    () => myRequests.filter(requestNeedsReviewerWork),
+    [myRequests, currentReviewerIdentity],
+  );
+
+  const myReviewedRequests = useMemo(
+    () => myRequests.filter((request) => !requestNeedsReviewerWork(request)),
+    [myRequests, currentReviewerIdentity],
+  );
+
+  const scopedRequests = useMemo(
+    () =>
+      isMyReviewsScope
+        ? myReviewView === 'pending'
+          ? myPendingRequests
+          : myReviewedRequests
+        : orderedRequests,
+    [
+      isMyReviewsScope,
+      myPendingRequests,
+      myReviewView,
+      myReviewedRequests,
+      orderedRequests,
+    ],
+  );
+
+  const displayStats = useMemo(
+    () => (isMyReviewsScope ? calculateStats(myRequests) : stats),
+    [isMyReviewsScope, myRequests, stats],
+  );
+
+  const myReturnedCount = useMemo(
+    () =>
+      myPendingRequests.filter(
+        (request) => request.approvalStatus === 'OBSERVATION',
+      ).length,
+    [myPendingRequests],
+  );
+
+  const mySubmittedCount = useMemo(
+    () =>
+      myReviewedRequests.filter((request) =>
+        [
+          'PENDING_APPROVAL',
+          'PENDING_HEAD_APPROVAL',
+          'HEAD_OBSERVATION',
+        ].includes(request.approvalStatus || ''),
+      ).length,
+    [myReviewedRequests],
+  );
+
+  const myClosedCount = useMemo(
+    () =>
+      myReviewedRequests.filter(
+        (request) =>
+          ['APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+            request.approvalStatus || '',
+          ) ||
+          request.status === 'approved' ||
+          request.status === 'rejected',
+      ).length,
+    [myReviewedRequests],
+  );
+
   // Filtros
   const filteredRequests = useMemo(
     () =>
-      orderedRequests.filter((request) => {
+      scopedRequests.filter((request) => {
         const matchesSearch =
           request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
           request.graduateDocumentNumber.includes(searchQuery) ||
@@ -954,12 +1652,12 @@ export function ReviewRequestsModule() {
 
         return matchesSearch && matchesStatus;
       }),
-    [orderedRequests, searchQuery, statusFilter],
+    [scopedRequests, searchQuery, statusFilter],
   );
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter]);
+  }, [myReviewView, scope, searchQuery, statusFilter]);
 
   // Paginación
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
@@ -989,38 +1687,46 @@ export function ReviewRequestsModule() {
   const mergeSavedReviewPayload = (
     baseForm: ApprovalForm,
     payload: Record<string, unknown>,
-  ): ApprovalForm => ({
-    fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
-    idNumber:
-      sanitizeDigits(
-        getPayloadText(payload, 'idNumber') || baseForm.idNumber,
-        DOCUMENT_MAX_LENGTH,
-      ) || baseForm.idNumber,
-    email: getPayloadText(payload, 'email') || baseForm.email,
-    programName:
-      getPayloadText(payload, 'programName') || baseForm.programName,
-    graduationDate:
-      toDateInputValue(getPayloadText(payload, 'graduationDate')) ||
-      baseForm.graduationDate,
-    campus: getPayloadText(payload, 'campus') || baseForm.campus,
-    seccionalName:
-      getPayloadText(payload, 'seccionalName') || baseForm.seccionalName,
-    numRegistro:
-      sanitizeDigits(
-        getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
-        REGISTRY_FIELD_MAX_LENGTH,
-      ) || baseForm.numRegistro,
-    numFolio:
-      sanitizeDigits(
-        getPayloadText(payload, 'numFolio') || baseForm.numFolio,
-        REGISTRY_FIELD_MAX_LENGTH,
-      ) || baseForm.numFolio,
-    numLibro:
-      sanitizeDigits(
-        getPayloadText(payload, 'numLibro') || baseForm.numLibro,
-        REGISTRY_FIELD_MAX_LENGTH,
-      ) || baseForm.numLibro,
-  });
+  ): ApprovalForm => {
+    const savedProgram = getPayloadText(payload, 'programName');
+    const baseProgram = isUnavailableCatalogValue(baseForm.programName)
+      ? ''
+      : baseForm.programName;
+
+    return {
+      fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
+      idNumber:
+        sanitizeAlphanumeric(
+          getPayloadText(payload, 'idNumber') || baseForm.idNumber,
+          DOCUMENT_MAX_LENGTH,
+        ) || baseForm.idNumber,
+      email: getPayloadText(payload, 'email') || baseForm.email,
+      programName: isUnavailableCatalogValue(savedProgram)
+        ? baseProgram
+        : savedProgram,
+      graduationDate:
+        toDateInputValue(getPayloadText(payload, 'graduationDate')) ||
+        baseForm.graduationDate,
+      campus: getPayloadText(payload, 'campus') || baseForm.campus,
+      seccionalName:
+        getPayloadText(payload, 'seccionalName') || baseForm.seccionalName,
+      numRegistro:
+        sanitizeDigits(
+          getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
+          REGISTRY_NUMBER_MAX_LENGTH,
+        ) || baseForm.numRegistro,
+      numFolio:
+        sanitizeDigits(
+          getPayloadText(payload, 'numFolio') || baseForm.numFolio,
+          FOLIO_BOOK_MAX_LENGTH,
+        ) || baseForm.numFolio,
+      numLibro:
+        sanitizeDigits(
+          getPayloadText(payload, 'numLibro') || baseForm.numLibro,
+          FOLIO_BOOK_MAX_LENGTH,
+        ) || baseForm.numLibro,
+    };
+  };
 
   const handleOpenReviewModal = async (
     request: ReviewRequest,
@@ -1036,16 +1742,50 @@ export function ReviewRequestsModule() {
     setShowReviewModal(true);
     setApprovalFiles([]);
     setExistingApprovalFiles(action === 'approve' ? request.reviewFiles || [] : []);
+    setExistingGraduatePrograms([]);
     resetApprovalUploadProgress();
 
     if (action !== 'approve') {
       return;
     }
 
+    const initialForm: ApprovalForm = {
+      fullName:
+        (request.graduateLastName || '').trim() ||
+        (request.requester.type === 'graduado' ? request.requester.name.trim() : ''),
+      idNumber: sanitizeAlphanumeric(
+        request.graduateDocumentNumber,
+        DOCUMENT_MAX_LENGTH,
+      ),
+      email:
+        (request.graduateEmail || '').trim() ||
+        (request.requester.type === 'graduado' ? request.requester.email.trim() : ''),
+      programName: '',
+      graduationDate: toDateInputValue(request.graduationDate),
+      campus: '',
+      seccionalName: '',
+      numRegistro: '',
+      numFolio: '',
+      numLibro: '',
+    };
+    const initialSavedPayload =
+      request.reviewPayload && typeof request.reviewPayload === 'object'
+        ? (request.reviewPayload as Record<string, unknown>)
+        : {};
+    setApprovalForm(mergeSavedReviewPayload(initialForm, initialSavedPayload));
+
     setIsLoadingApprovalData(true);
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
       setExistingApprovalFiles(detail.reviewFiles || request.reviewFiles || []);
+      const existingProgramsByKey = new Map<string, string>();
+      const rememberExistingProgram = (programName?: string | null) => {
+        const trimmedProgramName = (programName || '').trim();
+        const normalizedProgramName = normalizeComparableProgram(trimmedProgramName);
+        if (trimmedProgramName && normalizedProgramName) {
+          existingProgramsByKey.set(normalizedProgramName, trimmedProgramName);
+        }
+      };
       const graduationDate = toDateInputValue(
         detail.graduationDate || request.graduationDate
       );
@@ -1083,16 +1823,35 @@ export function ReviewRequestsModule() {
           .map((value) => (value || '').trim())
           .find((value) => value.length > 0) || '';
 
+      try {
+        const documentForExistingPrograms = sanitizeAlphanumeric(
+          detail.idNumber || request.graduateDocumentNumber,
+          DOCUMENT_MAX_LENGTH,
+        );
+        if (documentForExistingPrograms) {
+          const existingTitles =
+            await graduadosService.graduados.listarTitulosPorCedula(
+              documentForExistingPrograms,
+            );
+          existingTitles.forEach((title) => {
+            rememberExistingProgram(title.programName);
+            rememberExistingProgram(title.degreeTitle);
+          });
+        }
+      } catch (error) {
+        console.warn('No se pudieron cargar los títulos existentes:', error);
+      }
+
       let nextForm: ApprovalForm = {
         fullName: resolvedFullName,
-        idNumber: sanitizeDigits(
+        idNumber: sanitizeAlphanumeric(
           detail.idNumber || request.graduateDocumentNumber,
           DOCUMENT_MAX_LENGTH,
         ),
         email: resolvedEmail,
-        programName: PROGRAMAS_ESAP.includes((detail.programName || '').trim())
-          ? (detail.programName || '').trim()
-          : '',
+        programName: isUnavailableCatalogValue(detail.programName)
+          ? ''
+          : (detail.programName || '').trim(),
         graduationDate,
         campus: detailData.campus || detailData.graduate?.campus || '',
         seccionalName: detailData.seccionalName || detailData.graduate?.seccionalName || '',
@@ -1104,17 +1863,23 @@ export function ReviewRequestsModule() {
       if (detail.graduateId) {
         try {
           const graduate = await graduadosService.graduados.obtenerPorId(detail.graduateId);
+          rememberExistingProgram(graduate.programName);
+          rememberExistingProgram(graduate.degreeTitle);
           nextForm = {
             ...nextForm,
             fullName: graduate.fullName || nextForm.fullName,
-            idNumber: sanitizeDigits(
+            idNumber: sanitizeAlphanumeric(
               graduate.idNumber || nextForm.idNumber,
               DOCUMENT_MAX_LENGTH,
             ),
-            email: graduate.email || nextForm.email,
-            programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
-              ? (graduate.programName || '').trim()
-              : nextForm.programName,
+            email: isCompanyRequester
+              ? graduate.email || nextForm.email
+              : nextForm.email || graduate.email,
+            programName: isUnavailableCatalogValue(
+              graduate.programName || graduate.degreeTitle,
+            )
+              ? nextForm.programName
+              : (graduate.programName || graduate.degreeTitle || '').trim(),
             graduationDate:
               toDateInputValue(graduate.graduationDate) || nextForm.graduationDate,
             campus: graduate.campus || nextForm.campus,
@@ -1127,6 +1892,8 @@ export function ReviewRequestsModule() {
           console.error('Error cargando graduado asociado:', error);
         }
       }
+
+      setExistingGraduatePrograms(Array.from(existingProgramsByKey.values()));
 
       const savedPayload =
         detail.reviewPayload && typeof detail.reviewPayload === 'object'
@@ -1157,28 +1924,48 @@ export function ReviewRequestsModule() {
     if (!trimmedReviewNotes) {
       toast.error(
         reviewAction === 'approve'
-          ? 'Por favor ingresa notas de revision'
-          : 'Por favor ingresa la descripcion del rechazo',
+          ? 'Por favor ingresa notas de revisión'
+          : 'Por favor ingresa la descripción del rechazo',
+      );
+      return;
+    }
+    if (trimmedReviewNotes.length < REVIEW_NOTES_MIN_LENGTH) {
+      toast.error(
+        `Las notas de revisión deben tener al menos ${REVIEW_NOTES_MIN_LENGTH} caracteres`,
       );
       return;
     }
     if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
-      toast.error(`Las notas de revision no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
+      toast.error(`Las notas de revisión no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
       return;
     }
 
     let approvalDetails: ApprovalForm | undefined;
     if (reviewAction === 'approve') {
       const trimmedFullName = normalizeSpaces(approvalForm.fullName);
-      const trimmedIdNumber = sanitizeDigits(
+      const trimmedIdNumber = sanitizeAlphanumeric(
         approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || '',
         DOCUMENT_MAX_LENGTH,
       );
       const trimmedEmail = approvalForm.email.trim();
-      const trimmedRegistro = sanitizeDigits(approvalForm.numRegistro, REGISTRY_FIELD_MAX_LENGTH);
-      const trimmedFolio = sanitizeDigits(approvalForm.numFolio, REGISTRY_FIELD_MAX_LENGTH);
-      const trimmedLibro = sanitizeDigits(approvalForm.numLibro, REGISTRY_FIELD_MAX_LENGTH);
-      const digitsOnly = new RegExp(`^\\d{1,${REGISTRY_FIELD_MAX_LENGTH}}$`);
+      const trimmedRegistro = sanitizeDigits(
+        approvalForm.numRegistro,
+        REGISTRY_NUMBER_MAX_LENGTH,
+      );
+      const trimmedFolio = sanitizeDigits(
+        approvalForm.numFolio,
+        FOLIO_BOOK_MAX_LENGTH,
+      );
+      const trimmedLibro = sanitizeDigits(
+        approvalForm.numLibro,
+        FOLIO_BOOK_MAX_LENGTH,
+      );
+      const registryDigitsOnly = new RegExp(
+        `^\\d{1,${REGISTRY_NUMBER_MAX_LENGTH}}$`,
+      );
+      const folioBookDigitsOnly = new RegExp(
+        `^\\d{1,${FOLIO_BOOK_MAX_LENGTH}}$`,
+      );
       const nameValidationError = getPersonNameValidationError(
         approvalForm.fullName,
         'El nombre del graduado',
@@ -1194,9 +1981,12 @@ export function ReviewRequestsModule() {
       if (
         !trimmedIdNumber ||
         trimmedIdNumber.length < DOCUMENT_MIN_LENGTH ||
-        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH
+        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH ||
+        !DOCUMENT_ALLOWED_REGEX.test(trimmedIdNumber)
       ) {
-        toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
+        toast.error(
+          `El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres, solo letras y números`,
+        );
         return;
       }
       if (!trimmedEmail) {
@@ -1204,28 +1994,36 @@ export function ReviewRequestsModule() {
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (trimmedEmail.length > EMAIL_MAX_LENGTH || !emailRegex.test(trimmedEmail)) {
-        toast.error('El email no tiene un formato valido');
+      if (
+        trimmedEmail.length < EMAIL_MIN_LENGTH ||
+        trimmedEmail.length > EMAIL_MAX_LENGTH ||
+        !emailRegex.test(trimmedEmail)
+      ) {
+        toast.error('El email no tiene un formato válido');
         return;
       }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
         return;
       }
+      if (selectedProgramAlreadyExists) {
+        toast.error(duplicateProgramMessage);
+        return;
+      }
       if (!approvalForm.graduationDate) {
-        toast.error('Selecciona la fecha de graduacion');
+        toast.error('Selecciona la fecha de graduación');
         return;
       }
       if (!graduationDate) {
-        toast.error('La fecha de graduacion no tiene un formato valido');
+        toast.error('La fecha de graduación no tiene un formato válido');
         return;
       }
       if (graduationDate.getFullYear() < MIN_GRADUATION_YEAR) {
-        toast.error(`La fecha de graduacion no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
+        toast.error(`La fecha de graduación no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
         return;
       }
       if (graduationDate.getTime() > today.getTime()) {
-        toast.error('La fecha de graduacion no puede ser futura');
+        toast.error('La fecha de graduación no puede ser futura');
         return;
       }
       if (!approvalForm.campus) {
@@ -1233,19 +2031,43 @@ export function ReviewRequestsModule() {
         return;
       }
       if (!approvalForm.seccionalName) {
-        toast.error('Selecciona la seccional');
+        toast.error('Selecciona la territorial');
         return;
       }
-      if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
-        toast.error('El numero de registro es obligatorio y debe tener maximo 10 digitos');
+      const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
+      const selectedSeccionalHasCatalog = hasCatalogKey(
+        sedesBySeccional,
+        selectedSeccionalKey,
+      );
+      const sedesForSelectedSeccional = selectedSeccionalHasCatalog
+        ? sedesBySeccional[selectedSeccionalKey]
+        : [];
+      if (
+        selectedSeccionalHasCatalog &&
+        sedesForSelectedSeccional.length > 0 &&
+        !sedesForSelectedSeccional.some(
+          (sede) => normalizeKey(sede) === normalizeKey(approvalForm.campus),
+        )
+      ) {
+        toast.error('La sede seleccionada no pertenece a la territorial indicada');
         return;
       }
-      if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
-        toast.error('El numero de folio es obligatorio y debe tener maximo 10 digitos');
+      if (!trimmedRegistro || !registryDigitsOnly.test(trimmedRegistro)) {
+        toast.error(
+          `El número de registro es obligatorio y debe tener máximo ${REGISTRY_NUMBER_MAX_LENGTH} dígitos`,
+        );
         return;
       }
-      if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
-        toast.error('El numero de libro es obligatorio y debe tener maximo 10 digitos');
+      if (!trimmedFolio || !folioBookDigitsOnly.test(trimmedFolio)) {
+        toast.error(
+          `El número de folio es obligatorio y debe tener máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos`,
+        );
+        return;
+      }
+      if (!trimmedLibro || !folioBookDigitsOnly.test(trimmedLibro)) {
+        toast.error(
+          `El número de libro es obligatorio y debe tener máximo ${FOLIO_BOOK_MAX_LENGTH} dígitos`,
+        );
         return;
       }
 
@@ -1287,9 +2109,9 @@ export function ReviewRequestsModule() {
           reviewerId,
           reviewerEmail,
         );
-        toast.success('Solicitud marcada como en revision', {
+        toast.success('Revisión iniciada', {
           description:
-            'Se envio un correo de actualizacion sobre el proceso al solicitante.',
+            'Se envió un correo al solicitante informando que la revisión fue iniciada.',
         });
       } else if (
         confirmAction.type === 'approve' ||
@@ -1329,7 +2151,7 @@ export function ReviewRequestsModule() {
                 },
               );
             } catch (uploadError: any) {
-              console.error('Error subiendo archivo de revision:', uploadError);
+              console.error('Error subiendo archivo de revisión:', uploadError);
               if (isPayloadTooLargeError(uploadError)) {
                 toast.error('El archivo es muy pesado', {
                   description: `El archivo "${file.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
@@ -1354,17 +2176,17 @@ export function ReviewRequestsModule() {
           confirmAction.request.id,
           {
             decision: confirmAction.type === 'approve' ? 'APPROVED' : 'REJECTED',
-            reason: confirmAction.notes || 'Concepto registrado por revision manual',
-            reviewNotes: confirmAction.notes || 'Concepto registrado por revision manual',
+            reason: confirmAction.notes || 'Concepto registrado por revisión manual',
+            reviewNotes: confirmAction.notes || 'Concepto registrado por revisión manual',
             reviewerName,
             reviewerId,
             reviewerEmail,
             ...(confirmAction.approvalDetails || {}),
           },
         );
-        toast.success('Concepto enviado a aprobacion final', {
+        toast.success('Concepto enviado a aprobación final', {
           description:
-            'El aprobador definira la respuesta definitiva antes de enviar correos o certificados.',
+            'El aprobador definirá la respuesta definitiva antes de enviar correos o certificados.',
         });
       }
 
@@ -1396,14 +2218,26 @@ export function ReviewRequestsModule() {
 
   const reviewActionLabel =
     reviewAction === 'approve'
-      ? 'Cargar informacion revisada'
+      ? 'Cargar información revisada'
       : 'Registrar novedad de rechazo';
   const confirmActionLabel =
     confirmAction?.type === 'start_review'
-      ? 'Enviar a revisión'
+      ? 'Iniciar revisión'
       : confirmAction?.type === 'approve'
-        ? 'Cargar informacion revisada'
+        ? 'Cargar información revisada'
         : 'Registrar novedad de rechazo';
+  const confirmDialogTitle =
+    confirmAction?.type === 'start_review'
+      ? 'Iniciar revisión'
+      : 'Confirmar Acción';
+  const confirmDialogDescription =
+    confirmAction?.type === 'start_review'
+      ? 'Confirma que deseas iniciar la revisión. El solicitante recibirá una notificación por correo.'
+      : 'Verifica que deseas continuar con esta acción.';
+  const confirmButtonLabel =
+    confirmAction?.type === 'start_review'
+      ? 'Iniciar revisión'
+      : 'Confirmar';
 
   const formatTimelineActor = (
     actorName?: string,
@@ -1478,7 +2312,7 @@ export function ReviewRequestsModule() {
   const reviewDecisionLabel = (decision?: string | null) => {
     if (decision === 'APPROVED') return 'Aprobar';
     if (decision === 'REJECTED') return 'Rechazar';
-    if (decision === 'OBSERVATION') return 'Observacion';
+    if (decision === 'OBSERVATION') return 'Observación';
     return 'Sin concepto';
   };
 
@@ -1493,141 +2327,176 @@ export function ReviewRequestsModule() {
         ].includes(event.type),
       );
 
+  const requestMetricCards = [
+    {
+      id: 'total',
+      label: 'Total',
+      value: displayStats.total,
+      subtitle: isMyReviewsScope ? 'Mis revisiones' : 'Solicitudes',
+      color: '#64748B',
+    },
+    {
+      id: 'pending',
+      label: isMyReviewsScope ? 'Por revisar' : 'Pendientes',
+      value: isMyReviewsScope ? myPendingRequests.length : displayStats.pending,
+      subtitle: isMyReviewsScope ? 'Pendientes y devueltas' : 'Sin revisar',
+      color: '#D97706',
+    },
+    {
+      id: 'under-review',
+      label: isMyReviewsScope ? 'Devueltas' : 'En Revisión',
+      value: isMyReviewsScope ? myReturnedCount : displayStats.underReview,
+      subtitle: isMyReviewsScope ? 'Con observación' : 'En proceso',
+      color: isMyReviewsScope ? '#D97706' : '#2563EB',
+    },
+    {
+      id: 'approved',
+      label: isMyReviewsScope ? 'Enviadas' : 'Aprobadas',
+      value: isMyReviewsScope ? mySubmittedCount : displayStats.approved,
+      subtitle: isMyReviewsScope ? 'Esperando validación' : 'Resueltas',
+      color: '#059669',
+    },
+    {
+      id: 'rejected',
+      label: isMyReviewsScope ? 'Cerradas' : 'Rechazadas',
+      value: isMyReviewsScope ? myClosedCount : displayStats.rejected,
+      subtitle: isMyReviewsScope ? 'Finalizadas' : 'No aprobadas',
+      color: isMyReviewsScope ? '#475569' : '#DC2626',
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Banner informativo de solicitudes */}
+      {/* Indicadores de solicitudes */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
+        className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4"
       >
-        {/* Card 1: Total */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Total
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.total}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Solicitudes
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)' }}
-              >
-                <FileText className="w-7 h-7 text-white" />
-              </div>
+        <div className="mb-3 flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <BarChart3 className="mt-0.5 h-4 w-4 text-[#003DA5]" />
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide text-slate-900">
+                Indicadores:
+              </p>
+              <p className="text-xs font-medium text-slate-500">
+                Vista rápida del estado de las solicitudes
+              </p>
             </div>
           </div>
-        </Card>
+          <span className="text-xs font-semibold text-slate-500">
+            Resumen actual
+          </span>
+        </div>
 
-        {/* Card 2: Pendientes */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Pendientes
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.pending}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Sin revisar
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
-              >
-                <Clock className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 3: En Revisión */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  En Revisión
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.underReview}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  En proceso
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {requestMetricCards.map((metric) => (
+            <Card
+              key={metric.id}
+              aria-label={`${metric.label}: ${metric.value} ${metric.subtitle}`}
+              className="gap-0 rounded-lg border border-l-4 border-slate-200 bg-white shadow-none cursor-default select-none"
+              style={{ borderLeftColor: metric.color }}
+            >
+              <div className="flex min-h-[92px] items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-600">
+                    {metric.label}
+                  </p>
+                  <p className="mt-2 truncate text-xs text-slate-500">
+                    {metric.subtitle}
+                  </p>
+                </div>
+                <p className="shrink-0 text-3xl font-semibold leading-none text-slate-900 tabular-nums">
+                  {metric.value}
                 </p>
               </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)' }}
-              >
-                <RefreshCw className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 4: Aprobadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Aprobadas
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.approved}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Resueltas
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-              >
-                <CheckCircle className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Card 5: Rechazadas */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Rechazadas
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.rejected}
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  No aprobadas
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' }}
-              >
-                <XCircle className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
-
+            </Card>
+          ))}
+        </div>
       </motion.div>
+
+      {isMyReviewsScope && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05 }}
+          className="bg-white rounded-xl border-2 p-2"
+          style={{ borderColor: '#E5E7EB' }}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              {
+                id: 'pending' as const,
+                label: 'Por revisar',
+                subtitle: 'Pendientes y devueltas',
+                count: myPendingRequests.length,
+                color: '#F59E0B',
+                Icon: RefreshCw,
+              },
+              {
+                id: 'reviewed' as const,
+                label: 'Revisadas',
+                subtitle: 'Enviadas o finalizadas',
+                count: myReviewedRequests.length,
+                color: '#10B981',
+                Icon: ClipboardCheck,
+              },
+            ].map((view) => {
+              const isActive = myReviewView === view.id;
+              const Icon = view.Icon;
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => setMyReviewView(view.id)}
+                  className="rounded-lg border-2 px-4 py-3 text-left transition-all"
+                  style={{
+                    borderColor: isActive ? view.color : '#E5E7EB',
+                    background: isActive ? `${view.color}0F` : '#FFFFFF',
+                    boxShadow: isActive ? `0 0 0 3px ${view.color}1F` : 'none',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg"
+                      style={{ background: isActive ? view.color : '#F3F4F6' }}
+                    >
+                      <Icon
+                        className="h-5 w-5"
+                        style={{ color: isActive ? '#FFFFFF' : '#6B7280' }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: isActive ? view.color : '#1F2937' }}
+                        >
+                          {view.label}
+                        </p>
+                        <span
+                          className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold"
+                          style={{
+                            background: isActive ? view.color : '#E5E7EB',
+                            color: isActive ? '#FFFFFF' : '#374151',
+                          }}
+                        >
+                          {view.count}
+                        </span>
+                      </div>
+                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                        {view.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Filtros y Búsqueda */}
       <motion.div
@@ -1764,12 +2633,20 @@ export function ReviewRequestsModule() {
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
             <AlertCircle className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
             <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
-              No se encontraron solicitudes
+              {isMyReviewsScope
+                ? myReviewView === 'pending'
+                  ? 'No tienes revisiones pendientes'
+                  : 'No tienes revisiones revisadas'
+                : 'No se encontraron solicitudes'}
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
               {hasActiveFilters
                 ? 'Intenta ajustar los filtros de búsqueda'
-                : 'No hay solicitudes en este momento'}
+                : isMyReviewsScope
+                  ? myReviewView === 'pending'
+                    ? 'No hay solicitudes propias por revisar o corregir en este momento'
+                    : 'Todavía no tienes solicitudes propias enviadas o cerradas'
+                  : 'No hay solicitudes en este momento'}
             </p>
             {hasActiveFilters && (
               <button
@@ -1900,12 +2777,12 @@ export function ReviewRequestsModule() {
                         )}
                         {request.approvalStatus === 'OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Observacion aprobador
+                            Observación aprobador
                           </Badge>
                         )}
                         {request.approvalStatus === 'HEAD_OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Observacion jefe
+                            Observación jefe
                           </Badge>
                         )}
                       </div>
@@ -1967,7 +2844,7 @@ export function ReviewRequestsModule() {
                             <>
                               <DropdownMenuItem onClick={() => handleStartReview(request)}>
                                 <RefreshCw className="w-4 h-4 mr-2" />
-                                Enviar a Revisión
+                                Iniciar revisión
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -1976,7 +2853,7 @@ export function ReviewRequestsModule() {
                             <>
                               <DropdownMenuItem disabled>
                                 <Clock className="w-4 h-4 mr-2" />
-                                Pendiente de validacion
+                                Pendiente de validación
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
@@ -1985,7 +2862,7 @@ export function ReviewRequestsModule() {
                             <>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
-                                Cargar informacion revisada
+                                Cargar información revisada
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'reject')}>
                                 <XCircle className="w-4 h-4 mr-2" />
@@ -2049,7 +2926,7 @@ export function ReviewRequestsModule() {
                               <div className="flex items-start gap-2">
                                 <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
-                                  <p className="text-xs text-gray-600">Apellido</p>
+                                  <p className="text-xs text-gray-600">Nombre completo</p>
                                   <p className="font-semibold text-gray-900">
                                     {request.graduateLastName || 'Sin registrar'}
                                   </p>
@@ -2139,6 +3016,75 @@ export function ReviewRequestsModule() {
                           </div>
                         </div>
 
+                        <div className="bg-white border border-amber-200 rounded-lg p-4">
+                          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                              <Paperclip className="w-4 h-4 text-amber-600" />
+                              Soporte del solicitante
+                            </h4>
+                            <Badge className="w-fit border border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                              {request.requesterSupportFile ? '1 archivo' : 'Sin adjunto'}
+                            </Badge>
+                          </div>
+
+                          {request.requesterSupportFile ? (
+                            <div className="max-w-2xl">
+                              {(() => {
+                                const file = request.requesterSupportFile;
+                                const fileType = getRequesterSupportFileType(file);
+                                return (
+                                  <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                                        <FileText className="h-5 w-5" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-gray-900">
+                                          {file.originalName || 'Soporte de solicitud'}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                          {formatBytes(file.sizeBytes)}
+                                          {file.uploadedAt
+                                            ? ` - ${formatDate(file.uploadedAt)}`
+                                            : ''}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-shrink-0 items-center gap-1">
+                                      {fileType !== 'other' && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handlePreviewRequesterSupportFile(request, file)
+                                          }
+                                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                          title="Visualizar soporte"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDownloadRequesterSupportFile(request, file)
+                                        }
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                        title="Descargar soporte"
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                              Esta solicitud no tiene soporte adjunto del solicitante.
+                            </div>
+                          )}
+                        </div>
+
                         {/* Botones de Acción Rápida */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <h4 className="text-sm font-semibold text-gray-900 mb-3">
@@ -2161,7 +3107,7 @@ export function ReviewRequestsModule() {
                                 }}
                               >
                                 <Eye className="w-4 h-4" />
-                                Revisar Solicitud
+                                Iniciar revisión
                               </button>
                             )}
                             <button
@@ -2415,7 +3361,7 @@ export function ReviewRequestsModule() {
         </motion.div>
       )}
 
-      {/* Modal: Revisar Solicitud */}
+      {/* Modal: Gestionar solicitud */}
       <Dialog
         open={showReviewModal}
         onOpenChange={(open) => {
@@ -2436,7 +3382,7 @@ export function ReviewRequestsModule() {
               {reviewActionLabel}
             </DialogTitle>
             <DialogDescription>
-              Registra el concepto del revisor para que el aprobador tome la decision final
+              Registra el concepto del revisor para que el aprobador tome la decisión final
             </DialogDescription>
           </DialogHeader>
 
@@ -2483,8 +3429,8 @@ export function ReviewRequestsModule() {
                     <div className="text-sm">
                       <p className="font-semibold text-amber-900">
                         {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
-                          ? 'Observacion del jefe'
-                          : 'Observacion del aprobador'}
+                          ? 'Observación del jefe'
+                          : 'Observación del aprobador'}
                       </p>
                       <p className="mt-1 text-amber-800">
                         {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
@@ -2508,22 +3454,33 @@ export function ReviewRequestsModule() {
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
+                onBlur={() => setReviewNotes((value) => value.trim())}
                 placeholder={
                   reviewAction === 'approve'
-                    ? 'Describe la informacion revisada y los soportes cargados...'
+                    ? 'Describe la información revisada y los soportes cargados...'
                     : 'Describe la novedad encontrada para que el aprobador la evalúe...'
                 }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
+                minLength={REVIEW_NOTES_MIN_LENGTH}
                 maxLength={REVIEW_NOTES_MAX_LENGTH}
               />
+              <div className="mt-1 flex items-start justify-between gap-3 text-xs text-gray-500">
+                <span>
+                  Texto libre, incluidos signos de puntuación, caracteres especiales y saltos de línea.
+                  Mínimo {REVIEW_NOTES_MIN_LENGTH} caracteres.
+                </span>
+                <span className="whitespace-nowrap">
+                  {reviewNotes.length}/{REVIEW_NOTES_MAX_LENGTH}
+                </span>
+              </div>
             </div>
 
             {reviewAction === 'approve' && (
               <div className="review-approval-card space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-900">Datos del graduado</p>
-                  <span className="text-xs text-gray-500">Acta y diploma se generan automaticamente</span>
+                  <span className="text-xs text-gray-500">Acta y diploma se generan automáticamente</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -2541,8 +3498,13 @@ export function ReviewRequestsModule() {
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="Nombre completo"
                       disabled={isLoadingApprovalData}
+                      minLength={PERSON_NAME_MIN_LENGTH}
                       maxLength={PERSON_NAME_MAX_LENGTH}
                     />
+                    <p className="text-xs text-gray-500">
+                      Entre {PERSON_NAME_MIN_LENGTH} y {PERSON_NAME_MAX_LENGTH} caracteres.
+                      Solo letras, espacios, apóstrofes y guiones.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -2553,14 +3515,19 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          idNumber: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                          idNumber: sanitizeAlphanumeric(e.target.value, DOCUMENT_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      inputMode="numeric"
+                      inputMode="text"
+                      minLength={DOCUMENT_MIN_LENGTH}
                       maxLength={DOCUMENT_MAX_LENGTH}
                       disabled
                     />
+                    <p className="text-xs text-gray-500">
+                      Entre {DOCUMENT_MIN_LENGTH} y {DOCUMENT_MAX_LENGTH} caracteres,
+                      únicamente letras y números.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -2575,16 +3542,23 @@ export function ReviewRequestsModule() {
                           email: e.target.value.slice(0, EMAIL_MAX_LENGTH),
                         })
                       }
+                      onBlur={() =>
+                        setApprovalForm((current) => ({
+                          ...current,
+                          email: current.email.trim(),
+                        }))
+                      }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
+                      minLength={EMAIL_MIN_LENGTH}
                       maxLength={EMAIL_MAX_LENGTH}
                       required
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de registro<span className="text-red-500"> *</span>
+                      Número de registro<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2592,7 +3566,10 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numRegistro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numRegistro: sanitizeDigits(
+                            e.target.value,
+                            REGISTRY_NUMBER_MAX_LENGTH,
+                          ),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -2600,13 +3577,17 @@ export function ReviewRequestsModule() {
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={REGISTRY_NUMBER_MAX_LENGTH}
                       required
                     />
+                    <p className="text-xs text-gray-500">
+                      Solo números, máximo {REGISTRY_NUMBER_MAX_LENGTH} dígitos.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de folio<span className="text-red-500"> *</span>
+                      Número de folio<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2614,7 +3595,7 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numFolio: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numFolio: sanitizeDigits(e.target.value, FOLIO_BOOK_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -2622,13 +3603,14 @@ export function ReviewRequestsModule() {
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={FOLIO_BOOK_MAX_LENGTH}
                       required
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Numero de libro<span className="text-red-500"> *</span>
+                      Número de libro<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="text"
@@ -2636,7 +3618,7 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numLibro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
+                          numLibro: sanitizeDigits(e.target.value, FOLIO_BOOK_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -2644,7 +3626,8 @@ export function ReviewRequestsModule() {
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
+                      minLength={1}
+                      maxLength={FOLIO_BOOK_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -2655,20 +3638,46 @@ export function ReviewRequestsModule() {
                     <select
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
-                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
+                      className={`review-approval-input w-full rounded-lg border-2 px-3 py-2 text-sm ${
+                        selectedProgramAlreadyExists
+                          ? 'border-red-300 bg-red-50 focus:border-red-500'
+                          : 'border-gray-300'
+                      }`}
+                      disabled={isLoadingApprovalData || isLoadingIntegrationPrograms}
                     >
-                      <option value="">Seleccionar programa</option>
-                      {programNameOptions.map((programa) => (
-                        <option key={programa} value={programa}>
+                      <option value="">
+                        {isLoadingIntegrationPrograms ? 'Cargando programas...' : 'Seleccionar programa'}
+                      </option>
+                      {programNameOptions.map((programa) => {
+                        const alreadyExists = programAlreadyExistsForGraduate(programa);
+                        return (
+                        <option
+                          key={programa}
+                          value={programa}
+                          disabled={alreadyExists}
+                        >
                           {programa}
+                          {alreadyExists ? ' (ya existe)' : ''}
                         </option>
-                      ))}
+                        );
+                      })}
                     </select>
+                    {selectedProgramAlreadyExists && (
+                      <p className="text-xs font-semibold leading-5 text-red-600">
+                        {duplicateProgramMessage}
+                      </p>
+                    )}
+                    {!!approvalForm.programName &&
+                      programasOptions.length > 0 &&
+                      !selectedProgramIsInCurrentCatalog && (
+                        <p className="text-xs leading-5 text-blue-700">
+                          Este programa proviene de una integración y puede conservarse sin reemplazarlo.
+                        </p>
+                      )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Fecha de graduacion<span className="text-red-500"> *</span>
+                      Fecha de graduación<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="date"
@@ -2682,7 +3691,54 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Sede<span className="text-red-500"> *</span>
+                      Territorial<span className="text-red-500"> *</span>
+                    </label>
+                    <select
+                      value={approvalForm.seccionalName}
+                      onChange={(e) => {
+                        const nextSeccional = e.target.value;
+                        const nextSeccionalKey = normalizeKey(nextSeccional);
+                        const sedesForSeccional =
+                          nextSeccionalKey && hasCatalogKey(sedesBySeccional, nextSeccionalKey)
+                            ? sedesBySeccional[nextSeccionalKey]
+                            : null;
+
+                        setApprovalForm((prev) => {
+                          const keepCampus =
+                            !nextSeccional ||
+                            !prev.campus ||
+                            !sedesForSeccional ||
+                            sedesForSeccional.some(
+                              (sede) => normalizeKey(sede) === normalizeKey(prev.campus),
+                            );
+
+                          return {
+                            ...prev,
+                            seccionalName: nextSeccional,
+                            campus: keepCampus ? prev.campus : '',
+                          };
+                        });
+                      }}
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      disabled={isLoadingApprovalData || isLoadingCatalogs}
+                    >
+                      <option value="">
+                        {isLoadingCatalogs
+                          ? 'Cargando territoriales...'
+                          : seccionalSelectOptions.length > 0
+                            ? 'Seleccionar territorial'
+                            : 'No hay territoriales disponibles'}
+                      </option>
+                      {seccionalSelectOptions.map((seccional) => (
+                        <option key={seccional} value={seccional}>
+                          {seccional}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Sede (CETAP)<span className="text-red-500"> *</span>
                     </label>
                     <select
                       value={approvalForm.campus}
@@ -2696,14 +3752,26 @@ export function ReviewRequestsModule() {
                           ...prev,
                           campus: nextCampus,
                           seccionalName: nextCampus
-                            ? mappedSeccional || ''
-                            : '',
+                            ? mappedSeccional || prev.seccionalName
+                            : prev.seccionalName,
                         }));
                       }}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
+                      disabled={
+                        isLoadingApprovalData ||
+                        isLoadingCatalogs ||
+                        !approvalForm.seccionalName
+                      }
                     >
-                      <option value="">Seleccionar sede</option>
+                      <option value="">
+                        {isLoadingCatalogs
+                          ? 'Cargando sedes...'
+                          : approvalForm.seccionalName
+                            ? campusOptions.length > 0
+                              ? 'Seleccionar sede'
+                              : 'No hay sedes para esta territorial'
+                            : 'Selecciona primero una territorial'}
+                      </option>
                       {campusOptions.map((sede) => (
                         <option key={sede} value={sede}>
                           {sede}
@@ -2711,43 +3779,24 @@ export function ReviewRequestsModule() {
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
-                      Territorial<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.seccionalName}
-                      onChange={(e) =>
-                        setApprovalForm({ ...approvalForm, seccionalName: e.target.value })
-                      }
-                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar seccional</option>
-                      {seccionalSelectOptions.map((seccional) => (
-                        <option key={seccional} value={seccional}>
-                          {seccional}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {structureCatalogNotice && (
+                    <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                      {structureCatalogNotice}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2 border-t border-dashed border-gray-200 pt-3">
-                  <div className="review-approval-file-header flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-3 border-t border-dashed border-gray-200 pt-3">
+                  <div className="sr-only">
                     <div className="review-approval-file-picker flex items-center gap-2">
                       <input
                         id="approval-files-input"
                         type="file"
                         multiple
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
-                        onChange={handleApprovalFilesChange}
+                        onChange={handleApprovalFilesInputChange}
                         className="sr-only"
-                        disabled={
-                          isLoadingApprovalData ||
-                          existingApprovalFiles.length + approvalFiles.length >=
-                            MAX_APPROVAL_FILES
-                        }
+                        disabled={isApprovalFilePickerDisabled}
                       />
                       <label
                         htmlFor="approval-files-input"
@@ -2769,6 +3818,52 @@ export function ReviewRequestsModule() {
                     </div>
                     <label className="text-xs font-medium text-gray-700">
                       {`Archivos del título (opcional, máx. ${MAX_APPROVAL_FILES}, ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo)`}
+                    </label>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                          <Paperclip className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            Soportes de revisión
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            PDF, Word, Excel o imágenes hasta {MAX_APPROVAL_FILE_SIZE_LABEL}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700">
+                        {approvalFileSlotsUsed}/{MAX_APPROVAL_FILES} archivos
+                      </span>
+                    </div>
+                    <label
+                      htmlFor="approval-files-input"
+                      onDragOver={handleApprovalFilesDragOver}
+                      onDragLeave={handleApprovalFilesDragLeave}
+                      onDrop={handleApprovalFilesDrop}
+                      aria-disabled={isApprovalFilePickerDisabled}
+                      className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
+                        isApprovalFilePickerDisabled
+                          ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                          : isApprovalFileDragActive
+                            ? 'border-[#003DA5] bg-blue-50 text-[#003DA5]'
+                            : 'border-gray-300 bg-gray-50 text-gray-700 hover:border-[#003DA5] hover:bg-blue-50'
+                      }`}
+                    >
+                      <UploadCloud className="mb-2 h-7 w-7" />
+                      <span className="text-sm font-semibold">
+                        {isApprovalFilePickerDisabled
+                          ? 'Límite de archivos alcanzado'
+                          : 'Seleccionar o soltar archivos'}
+                      </span>
+                      <span className="mt-1 text-xs">
+                        {approvalFileSlotsRemaining > 0
+                          ? `${approvalFileSlotsRemaining} cupo(s) disponible(s)`
+                          : 'Quita un archivo para adjuntar otro'}
+                      </span>
                     </label>
                   </div>
                   {existingApprovalFiles.length > 0 && (
@@ -2798,15 +3893,15 @@ export function ReviewRequestsModule() {
                               onClick={() => handleRemoveExistingApprovalFile(file.id)}
                               className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <Trash2 className="h-3.5 w-3.5" />
                               Quitar
                             </button>
                           </div>
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-blue-800">
-                        Si un archivo estaba mal, quitalo y adjunta la version
-                        corregida. Los demas se conservaran.
+                        Si un archivo estaba mal, quítalo y adjunta la versión
+                        corregida. Los demás se conservarán.
                       </p>
                     </div>
                   )}
@@ -2815,17 +3910,28 @@ export function ReviewRequestsModule() {
                       <p className="text-xs text-gray-600">
                         Archivos seleccionados: <span className="font-semibold">{approvalFiles.length}</span>
                       </p>
-                      <div className="review-approval-files flex flex-wrap gap-2">
+                      <div className="grid gap-2">
                         {approvalFiles.map((file, index) => (
                           <div
                             key={`${file.name}-${index}`}
-                            className={`review-approval-chip flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${getApprovalFileChipClass(file)}`}
+                            className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm"
                           >
-                            <span className="review-approval-chip__name">{file.name}</span>
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getApprovalFileToneClass(file.name)}`}>
+                                <FileCheck2 className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate font-semibold text-gray-900">{file.name}</p>
+                                <p className="text-gray-500">
+                                  {getApprovalFileExtension(file.name).toUpperCase()} - {formatBytes(file.size)}
+                                </p>
+                              </div>
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleRemoveApprovalFile(index)}
-                              className="text-gray-400 hover:text-red-500"
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
+                              aria-label={`Quitar ${file.name}`}
                             >
                               ×
                             </button>
@@ -2848,9 +3954,9 @@ export function ReviewRequestsModule() {
                 <div className="text-xs text-amber-800">
                   <p className="font-semibold mb-1">Al enviar el concepto:</p>
                   <ul className="list-disc list-inside space-y-0.5">
-                    <li>No se genera certificado ni correo final todavia</li>
-                    <li>La solicitud queda pendiente de aprobacion final</li>
-                    <li>Esta accion queda registrada en la linea de tiempo</li>
+                    <li>No se genera certificado ni correo final todavía</li>
+                    <li>La solicitud queda pendiente de aprobación final</li>
+                    <li>Esta acción queda registrada en la línea de tiempo</li>
                   </ul>
                 </div>
               </div>
@@ -2882,6 +3988,80 @@ export function ReviewRequestsModule() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={Boolean(reviewSupportPreview)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReviewSupportPreview(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="flex flex-col gap-0 overflow-hidden rounded-xl border-0 p-0 shadow-2xl"
+          style={{
+            width: 'min(92vw, 860px)',
+            height: 'min(88vh, 900px)',
+            maxWidth: 'none',
+          }}
+        >
+          <div className="flex-shrink-0 bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white/20">
+                  <FileText className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="truncate text-lg font-semibold text-white">
+                    Vista previa - Soporte
+                  </DialogTitle>
+                  <DialogDescription className="truncate text-sm text-blue-100">
+                    {reviewSupportPreview?.name}
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1">
+                {reviewSupportPreview?.url && (
+                  <a
+                    href={reviewSupportPreview.url}
+                    download={reviewSupportPreview.name || 'soporte-solicitud.pdf'}
+                    className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+                    title="Descargar soporte"
+                  >
+                    <Download className="h-5 w-5" />
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setReviewSupportPreview(null)}
+                  className="rounded-lg p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
+                  title="Cerrar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden bg-gray-100">
+            {reviewSupportPreview?.fileType === 'pdf' && (
+              <iframe
+                src={`${reviewSupportPreview.url}#navpanes=0&zoom=page-width`}
+                title={reviewSupportPreview.name}
+                className="h-full w-full border-0"
+              />
+            )}
+            {reviewSupportPreview?.fileType === 'image' && (
+              <div className="flex h-full items-center justify-center p-4">
+                <img
+                  src={reviewSupportPreview.url}
+                  alt={reviewSupportPreview.name}
+                  className="max-h-full max-w-full rounded-lg object-contain shadow"
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal: Confirmar Cambio de Estado */}
       <Dialog
         open={showConfirmModal}
@@ -2896,7 +4076,13 @@ export function ReviewRequestsModule() {
         }}
       >
         <DialogContent
-          className="w-[92vw] max-w-lg"
+          className="top-1/2 -translate-y-1/2"
+          style={{
+            width: 'min(360px, calc(100vw - 2rem), calc(100vh - 2rem))',
+            height: 'min(360px, calc(100vw - 2rem), calc(100vh - 2rem))',
+            maxWidth: 'none',
+            gridTemplateRows: 'auto 1fr auto',
+          }}
           onEscapeKeyDown={(event) => {
             if (isUpdating) {
               event.preventDefault();
@@ -2911,15 +4097,15 @@ export function ReviewRequestsModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />
-              Confirmar Acción
+              {confirmDialogTitle}
             </DialogTitle>
             <DialogDescription>
-              Verifica que deseas continuar con esta acción.
+              {confirmDialogDescription}
             </DialogDescription>
           </DialogHeader>
 
           {confirmAction && (
-            <div className="py-4 space-y-4">
+            <div className="flex flex-col justify-center py-2 space-y-4">
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
                 <p className="font-semibold text-gray-900 mb-1">{confirmActionLabel}</p>
                 <p>
@@ -2978,7 +4164,7 @@ export function ReviewRequestsModule() {
               disabled={isUpdating}
             >
               <CheckCircle className="w-4 h-4" />
-              {isUpdating ? 'Procesando...' : 'Confirmar'}
+              {isUpdating ? 'Procesando...' : confirmButtonLabel}
             </button>
           </DialogFooter>
         </DialogContent>

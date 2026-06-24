@@ -10,6 +10,15 @@ import { ListaChequeo } from './entities/lista-chequeo.entity';
 import { ItemListaChequeo } from './entities/item-lista-chequeo.entity';
 import { CreateListaChequeoDto } from './dto/create-lista-chequeo.dto';
 import { UpdateListaChequeoDto } from './dto/update-lista-chequeo.dto';
+import { Auditoria, EstadoKanban } from '../auditorias/entities/auditoria.entity';
+import { EtapaKanban } from '../tableros-kanban/entities/etapa-kanban.entity';
+
+/** Etapas del ciclo en las que aplica una lista de chequeo (alineado con Kanban OCI) */
+const ETAPAS_LISTA_CHEQUEO_KANBAN: EstadoKanban[] = [
+  EstadoKanban.PLANEACION,
+  EstadoKanban.EJECUCION,
+  EstadoKanban.COMUNICACION,
+];
 
 @Injectable()
 export class ListasChequeoService {
@@ -18,12 +27,108 @@ export class ListasChequeoService {
     private readonly listaChequeoRepository: Repository<ListaChequeo>,
     @InjectRepository(ItemListaChequeo)
     private readonly itemRepository: Repository<ItemListaChequeo>,
+    @InjectRepository(Auditoria)
+    private readonly auditoriaRepository: Repository<Auditoria>,
+    @InjectRepository(EtapaKanban)
+    private readonly etapaKanbanRepository: Repository<EtapaKanban>,
   ) {}
+
+  private normalizarNombreEtapa(s: string): string {
+    return (s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  private nombresEtapaEquivalentes(a: string, b: string): boolean {
+    return this.normalizarNombreEtapa(a) === this.normalizarNombreEtapa(b);
+  }
+
+  /** La auditoría debe estar en Planeación, Ejecución o Comunicación para registrar lista */
+  private esEstadoAuditoriaPermitidoParaLista(estadoKanban?: EstadoKanban | string): boolean {
+    if (!estadoKanban) return false;
+    const s = String(estadoKanban);
+    return ETAPAS_LISTA_CHEQUEO_KANBAN.some((perm) =>
+      this.nombresEtapaEquivalentes(s, perm),
+    );
+  }
+
+  /**
+   * Valida auditoría y etapa Kanban indicada (sin exigir que coincida con la fase actual del tablero).
+   */
+  private async validarVinculacionAuditoriaEtapa(
+    auditoriaId: string | undefined,
+    etapaKanbanId: string | undefined,
+    etapaNombreKanban: string | undefined,
+  ): Promise<void> {
+    if (!auditoriaId) {
+      return;
+    }
+
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+    if (!aud) {
+      throw new NotFoundException(`Auditoría con id ${auditoriaId} no encontrada`);
+    }
+
+    const estadoActual = aud.estadoKanban;
+    if (!this.esEstadoAuditoriaPermitidoParaLista(estadoActual)) {
+      throw new BadRequestException(
+        'Solo se pueden registrar listas de chequeo cuando la auditoría está en etapa Planeación, Ejecución o Comunicación (fase actual del Kanban de Auditorías OCI).',
+      );
+    }
+
+    let nombreEtapaLista = etapaNombreKanban;
+    if (etapaKanbanId) {
+      const etapa = await this.etapaKanbanRepository.findOne({
+        where: { id: etapaKanbanId },
+      });
+      if (!etapa) {
+        throw new BadRequestException('La etapa Kanban indicada no existe.');
+      }
+      nombreEtapaLista = etapa.nombre;
+    }
+
+    if (!nombreEtapaLista) {
+      throw new BadRequestException(
+        'Debe indicar la etapa Kanban (etapaKanbanId / etapaNombreKanban).',
+      );
+    }
+  }
+
+  private async resolverPlanAnualLista(
+    auditoriaId: string | undefined,
+    planAnualVigencia?: number,
+    planAnualId?: string,
+  ): Promise<{ planAnualVigencia?: number; planAnualId?: string }> {
+    if (planAnualVigencia != null && planAnualId) {
+      return { planAnualVigencia, planAnualId };
+    }
+    if (!auditoriaId) {
+      return { planAnualVigencia, planAnualId };
+    }
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      select: ['id', 'planAnualVigencia', 'planAnualId'],
+    });
+    if (!aud) {
+      return { planAnualVigencia, planAnualId };
+    }
+    return {
+      planAnualVigencia: planAnualVigencia ?? aud.planAnualVigencia ?? undefined,
+      planAnualId: planAnualId ?? aud.planAnualId ?? undefined,
+    };
+  }
 
   /**
    * Obtener todas las listas de chequeo (excluyendo eliminadas)
    */
-  async findAll(includeInactive: boolean = false): Promise<ListaChequeo[]> {
+  async findAll(
+    includeInactive: boolean = false,
+    filters?: { planAnualVigencia?: number; planAnualId?: string },
+  ): Promise<ListaChequeo[]> {
     try {
       const queryBuilder = this.listaChequeoRepository
         .createQueryBuilder('lista')
@@ -34,6 +139,18 @@ export class ListasChequeoService {
         queryBuilder.andWhere('lista.activa = :activa', { activa: true });
       }
 
+      if (filters?.planAnualId) {
+        queryBuilder.andWhere('lista.planAnualId = :planAnualId', {
+          planAnualId: filters.planAnualId,
+        });
+      } else if (filters?.planAnualVigencia != null) {
+        queryBuilder
+          .andWhere('lista.planAnualVigencia IS NOT NULL')
+          .andWhere('lista.planAnualVigencia = :planAnualVigencia', {
+            planAnualVigencia: filters.planAnualVigencia,
+          });
+      }
+
       queryBuilder
         .orderBy('lista.created_at', 'DESC')
         .addOrderBy('items.orden', 'ASC');
@@ -41,15 +158,23 @@ export class ListasChequeoService {
       return await queryBuilder.getMany();
     } catch (error) {
       console.error('Error en findAll listas-chequeo:', error);
-      // Intento fallback sin relaciones
-      const where: any = {};
+      const qb = this.listaChequeoRepository
+        .createQueryBuilder('lista')
+        .where('lista.deleted_at IS NULL');
       if (!includeInactive) {
-        where.activa = true;
+        qb.andWhere('lista.activa = :activa', { activa: true });
       }
-      return this.listaChequeoRepository.find({
-        where,
-        order: { createdAt: 'DESC' },
-      });
+      if (filters?.planAnualId) {
+        qb.andWhere('lista.planAnualId = :planAnualId', {
+          planAnualId: filters.planAnualId,
+        });
+      } else if (filters?.planAnualVigencia != null) {
+        qb.andWhere('lista.planAnualVigencia IS NOT NULL').andWhere(
+          'lista.planAnualVigencia = :planAnualVigencia',
+          { planAnualVigencia: filters.planAnualVigencia },
+        );
+      }
+      return qb.orderBy('lista.created_at', 'DESC').getMany();
     }
   }
 
@@ -118,6 +243,18 @@ export class ListasChequeoService {
       );
     }
 
+    await this.validarVinculacionAuditoriaEtapa(
+      createDto.auditoriaId,
+      createDto.etapaKanbanId,
+      createDto.etapaNombreKanban,
+    );
+
+    const planResuelto = await this.resolverPlanAnualLista(
+      createDto.auditoriaId,
+      createDto.planAnualVigencia,
+      createDto.planAnualId,
+    );
+
     // Crear la lista con valores por defecto para campos requeridos
     const lista = this.listaChequeoRepository.create({
       codigo: createDto.codigo.toUpperCase(),
@@ -151,6 +288,8 @@ export class ListasChequeoService {
       // ✅ VINCULACIÓN CON ETAPA KANBAN DINÁMICA
       etapaKanbanId: createDto.etapaKanbanId,
       etapaNombreKanban: createDto.etapaNombreKanban,
+      planAnualVigencia: planResuelto.planAnualVigencia,
+      planAnualId: planResuelto.planAnualId,
     });
 
     const listaGuardada = await this.listaChequeoRepository.save(lista);
@@ -179,6 +318,23 @@ export class ListasChequeoService {
    */
   async update(id: string, updateDto: UpdateListaChequeoDto): Promise<ListaChequeo> {
     const lista = await this.findOne(id);
+
+    const auditoriaIdResultado =
+      updateDto.auditoriaId !== undefined ? updateDto.auditoriaId : lista.auditoriaId;
+    const etapaIdResultado =
+      updateDto.etapaKanbanId !== undefined
+        ? updateDto.etapaKanbanId
+        : lista.etapaKanbanId;
+    const etapaNombreResultado =
+      updateDto.etapaNombreKanban !== undefined
+        ? updateDto.etapaNombreKanban
+        : lista.etapaNombreKanban;
+
+    await this.validarVinculacionAuditoriaEtapa(
+      auditoriaIdResultado || undefined,
+      etapaIdResultado || undefined,
+      etapaNombreResultado || undefined,
+    );
 
     // Si se actualiza el código, verificar que no exista otro con ese código
     if (updateDto.codigo && updateDto.codigo !== lista.codigo) {
@@ -249,14 +405,7 @@ export class ListasChequeoService {
   async remove(id: string): Promise<void> {
     const lista = await this.findOne(id);
 
-    // Verificar que no tenga usos programados
-    if (lista.usosProgramados > 0) {
-      throw new BadRequestException(
-        `No se puede eliminar la lista de chequeo porque tiene ${lista.usosProgramados} usos programados`,
-      );
-    }
-
-    // Soft delete
+    // Soft delete — se permite eliminar sin importar los usos programados
     lista.deletedAt = new Date();
     await this.listaChequeoRepository.save(lista);
   }

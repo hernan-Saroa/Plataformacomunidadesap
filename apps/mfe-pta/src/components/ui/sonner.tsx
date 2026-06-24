@@ -1,5 +1,6 @@
 "use client";
 
+import "sonner/dist/styles.css";
 import { Toaster as Sonner, ToasterProps } from "sonner";
 
 const Toaster = ({ ...props }: ToasterProps) => {
@@ -7,7 +8,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme="light"
       className="toaster group"
-      position="top-right"
+      position="bottom-right"
       toastOptions={{
         style: {
           background: 'white',

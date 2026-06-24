@@ -83,9 +83,43 @@ export const estructuraService = {
 
   /**
    * Obtener toda la estructura organizacional (seccionales y sedes)
+   * @param periodo - Código del periodo académico (ej: "2025-2"). Si no se pasa, trae todos.
    */
-  async obtenerEstructura(): Promise<EstructuraOrganizacionalResponse> {
-    return apiClient.get<EstructuraOrganizacionalResponse>(`${SERVICE_PREFIX}/estructura-organizacional`);
+  async obtenerEstructura(periodo?: string): Promise<EstructuraOrganizacionalResponse> {
+    const url = periodo
+      ? `${SERVICE_PREFIX}/estructura-organizacional?periodo=${encodeURIComponent(periodo)}`
+      : `${SERVICE_PREFIX}/estructura-organizacional`;
+    return apiClient.get<EstructuraOrganizacionalResponse>(url);
+  },
+
+  /**
+   * Obtener periodos académicos disponibles desde el servicio PTA
+   */
+  async obtenerPeriodosAcademicos(): Promise<any[]> {
+    try {
+      const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+      return Array.isArray(res) ? res : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async obtenerDetallePeriodo(id: string): Promise<any> {
+    return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
+  },
+
+  async obtenerEstadoSedesPeriodo(periodoCodigo: string): Promise<{
+    data: {
+      periodoCodigo: string;
+      idSedesActivas: number[];
+      totalActivas: number;
+    };
+  }> {
+    return apiClient.get(
+      `${SERVICE_PREFIX}/estructura-organizacional/periodo/${encodeURIComponent(periodoCodigo)}/sedes-estado`,
+      undefined,
+      { retries: 0 },
+    );
   },
 
   // ============================================
@@ -221,6 +255,32 @@ export const estructuraService = {
    */
   async eliminarSede(id: number): Promise<{ message: string }> {
     return apiClient.delete<{ message: string }>(`${SERVICE_PREFIX}/estructura-organizacional/sedes/${id}`);
+  },
+
+  // ============================================
+  // IMPORTACIÓN MASIVA
+  // ============================================
+
+  /**
+   * Importar estructura organizacional desde archivo Excel
+   */
+  async importarEstructura(file: File, periodo?: string, dryRun = false): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const qs = new URLSearchParams();
+    if (dryRun) qs.append('dry_run', 'true');
+    if (periodo) qs.append('periodo', periodo);
+
+    const url = `${SERVICE_PREFIX}/estructura-import/upload-geografico${qs.toString() ? '?' + qs.toString() : ''}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(body.message || `Error ${response.status}`);
+    }
+    return response.json();
   },
 
   // ============================================

@@ -12,11 +12,14 @@ import { UsersService } from './users.service';
 import { RolesService } from './roles.service';
 import { ModulesService } from './modules.service';
 import { EstructuraOrganizacionalService } from './estructura-organizacional.service';
+import { BackofficeDashboardService } from './backoffice-dashboard.service';
 import { UsersController } from './users.controller';
 import { RolesController } from './roles.controller';
 import { ModulesController } from './modules.controller';
 import { EstructuraOrganizacionalController } from './estructura-organizacional.controller';
+import { BackofficeDashboardController } from './backoffice-dashboard.controller';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { DatosMaestrosModule } from './datos-maestros.module';
 
 @NestModule({
   imports: [
@@ -30,13 +33,15 @@ import { RolesGuard } from '../auth/guards/roles.guard';
       Sede,
       Seccional,
     ]),
+    DatosMaestrosModule,
   ],
-  providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard],
+  providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard, BackofficeDashboardService],
   controllers: [
     RolesController,
     UsersController,
     ModulesController,
     EstructuraOrganizacionalController,
+    BackofficeDashboardController,
   ],
   exports: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService],
 })

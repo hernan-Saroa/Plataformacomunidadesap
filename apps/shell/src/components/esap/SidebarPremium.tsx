@@ -61,6 +61,7 @@ interface SidebarProps {
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
   restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
   assignedModules?: string[]; // Códigos de módulos asignados al rol/usuario (puede incluir 'all')
+  userPermissions?: string[]; // Permisos del usuario
 }
 
 const STORAGE_KEY = 'esap-sidebar-collapsed';
@@ -79,7 +80,7 @@ const contentTransition = {
   ease: [0.4, 0, 0.2, 1] // easing personalizado
 };
 
-export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [] }: SidebarProps) {
+export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], userPermissions = [] }: SidebarProps) {
   const hasAllModules = assignedModules.includes('all');
   const graduates = assignedModules.includes('graduates');
   if (graduates && !assignedModules.includes('graduates-verification')) {
@@ -91,6 +92,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     // En desarrollo, si no viene la lista de módulos (por ejemplo, sesión mock),
     // mostramos el menú completo para no bloquear navegación.
     if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) return true;
+
+    // Segmentación del RUND según nuevos permisos
+    if (module === 'banco-docentes-pta') {
+      return userPermissions.some(p => p.startsWith('banco-docentes.rund.'));
+    }
+
     if (!assignedModules || assignedModules.length === 0) return false;
     return assignedModules.includes(module);
   };
@@ -124,8 +131,10 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
   const hasArquitectura = canShowModule('arquitectura-empresarial');
 
-  // Determinar si el sidebar debe estar colapsado (manual o forzado)
-  const effectiveCollapsed = isCollapsed || forceCollapse;
+  // Determinar si el sidebar debe estar colapsado
+  // When the drawer is open (mobile/tablet), show expanded sidebar with text.
+  // When closed on tablet, show collapsed icons. Desktop follows user preference.
+  const effectiveCollapsed = isOpen ? false : (isCollapsed || forceCollapse);
 
   // Estado para controlar qué menús padre están expandidos
   let moduleGraduate = false
@@ -211,6 +220,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       return (
         <AnimatePresence mode="wait">
           <motion.div
+            key={`header-collapsed-${sectionId}`}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
@@ -228,23 +238,27 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
     return (
       <motion.button
+        key={`header-expanded-${sectionId}`}
         onClick={() => toggleSectionExpansion(sectionId)}
-        className={`w-full flex items-center gap-2 px-2 py-2.5 mb-2 transition-all group relative rounded-lg ${isExpanded ? 'text-white bg-white/8' : 'text-white/80 hover:text-white hover:bg-white/5'
+        className={`w-full flex items-center gap-2 px-2 py-2.5 mb-2 transition-colors group relative rounded-lg ${isExpanded ? 'text-white bg-white/8' : 'text-white/80 hover:text-white hover:bg-white/5'
           }`}
         whileHover={{ x: 1 }}
         whileTap={{ scale: 0.99 }}
         transition={springTransition}
       >
         {/* Indicador visual de expansión (borde izquierdo MÁS GRUESO) */}
-        {isExpanded && (
-          <motion.div
-            initial={{ scaleY: 0, opacity: 0 }}
-            animate={{ scaleY: 1, opacity: 1 }}
-            exit={{ scaleY: 0, opacity: 0 }}
-            className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-300 to-blue-500 rounded-r-full"
-            style={{ boxShadow: '0 0 8px rgba(96, 165, 250, 0.5)' }}
-          />
-        )}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              key={`indicator-${sectionId}`}
+              initial={{ scaleY: 0, opacity: 0 }}
+              animate={{ scaleY: 1, opacity: 1 }}
+              exit={{ scaleY: 0, opacity: 0 }}
+              className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-300 to-blue-500 rounded-r-full"
+              style={{ boxShadow: '0 0 8px rgba(96, 165, 250, 0.5)' }}
+            />
+          )}
+        </AnimatePresence>
 
         <div className="flex-shrink-0">
           {icon}
@@ -279,7 +293,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     const buttonContent = (
       <motion.button
         onClick={() => handleModuleClick(module)}
-        className={`w-full flex items-center gap-2 px-2 md:px-2.5 py-1.5 md:py-2 rounded-xl mb-1.5 transition-all duration-200 relative overflow-hidden group ${isActive
+        className={`w-full flex items-center gap-2 px-2 md:px-2.5 py-1.5 md:py-2 rounded-xl mb-1.5 transition-colors duration-200 relative overflow-hidden group ${isActive
             ? 'text-white font-semibold shadow-lg'
             : 'text-white/80 hover:text-white'
           } ${effectiveCollapsed ? 'justify-center px-2' : ''}`}
@@ -437,7 +451,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           <TooltipTrigger asChild>
             <motion.button
               onClick={() => handleModuleClick(module)}
-              className={`w-full flex items-center justify-center px-2 py-2.5 rounded-xl mb-1.5 transition-all duration-200 relative overflow-hidden ${isActive
+              className={`w-full flex items-center justify-center px-2 py-2.5 rounded-xl mb-1.5 transition-colors duration-200 relative overflow-hidden ${isActive
                   ? 'text-white font-semibold'
                   : 'text-white/80 hover:bg-white/8 hover:text-white'
                 }`}
@@ -533,7 +547,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
         <div className="relative flex items-stretch gap-0.5">
           <motion.button
             onClick={() => handleModuleClick(module)}
-            className={`flex-1 flex items-center gap-3 px-3 py-2.5 transition-all duration-200 relative overflow-hidden group ${currentModule === module
+            className={`flex-1 flex items-center gap-3 px-3 py-2.5 transition-colors duration-200 relative overflow-hidden group ${currentModule === module
                 ? 'text-white font-semibold'
                 : 'text-white/80 hover:text-white'
               } ${hasSubmenu ? 'rounded-l-xl' : 'rounded-xl'}`}
@@ -584,7 +598,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {hasSubmenu && (
             <motion.button
               onClick={() => toggleMenuExpansion(menuId)}
-              className={`flex-shrink-0 px-2.5 transition-all duration-200 rounded-r-xl ${isActive
+              className={`flex-shrink-0 px-2.5 transition-colors duration-200 rounded-r-xl ${isActive
                   ? 'text-white bg-white/8'
                   : 'text-white/70 hover:bg-white/8 hover:text-white'
                 }`}
@@ -620,7 +634,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     <motion.button
                       key={idx}
                       onClick={() => handleModuleClick(item.module)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 relative group ${isSubmenuActive
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-200 relative group ${isSubmenuActive
                           ? 'text-white font-semibold bg-white/8'
                           : 'text-white/70 hover:text-white'
                         }`}
@@ -681,13 +695,21 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
   return (
     <>
-
+      {/* Backdrop para móviles */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-[998] lg:hidden transition-opacity duration-300"
+          onClick={onClose}
+        />
+      )}
 
       {/* Sidebar */}
       <aside
         id="sidebar-navigation"
-        className={`fixed left-0 top-0 h-screen z-[100] transition-all duration-300 flex flex-col translate-x-0 ${
-          effectiveCollapsed ? 'w-[80px]' : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
+        className={`fixed left-0 top-0 h-screen transition-all duration-300 flex flex-col ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 ${
+          effectiveCollapsed ? 'w-[80px]' : 'w-[280px] lg:w-[260px]'
         }`}
         style={{
           background: 'linear-gradient(to bottom, #1e5da8 0%, #154a85 100%)',
@@ -699,6 +721,17 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       >
         {/* Header */}
         <div className="border-b border-white/10 p-3 relative flex-shrink-0">
+          {/* Botón Cerrar en Mobile */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="absolute right-3 top-3 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 lg:hidden z-20"
+              aria-label="Cerrar menú"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+
           <motion.div 
             className="flex flex-col items-center gap-2"
             animate={{ gap: effectiveCollapsed ? 0 : 8 }}
@@ -717,12 +750,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={springTransition}
-                    className="w-14 h-14 flex items-center justify-center"
+                    className="w-14 h-14 flex items-center justify-center shrink-0"
                   >
                     {/* Isotipo oficial ESAP */}
                     <ESAPLogo 
                       variant="icon"
-                      className="w-10 h-10 object-contain drop-shadow-lg filter brightness-0"
+                      className="shrink-0 object-contain drop-shadow-lg"
+                      style={{ width: '35px', height: '40px' }}
                     />
                   </motion.div>
                 ) : (
@@ -732,10 +766,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     transition={springTransition}
+                    className="w-full flex justify-center shrink-0 px-2"
                   >
                     <ESAPLogo 
                       variant="white"
-                      className="h-10 w-auto mx-auto object-contain drop-shadow-lg"
+                      className="shrink-0 object-contain drop-shadow-lg"
+                      style={{ width: '135px', height: '40px' }}
                     />
                   </motion.div>
                 )}
@@ -743,23 +779,24 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             </motion.div>
           </motion.div>
           
-          {/* Botón Toggle Premium */}
+          {/* Botón Toggle Premium - SIEMPRE visible en md+ */}
           <motion.button
             onClick={onToggleCollapse}
-            className="flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
-            style={{ top: '50%', transform: 'translateY(-50%)', color: '#1e5da8' }}
+            className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8]"
+            style={{ zIndex: 1001, color: '#1e5da8' }}
             whileHover={{ 
               scale: 1.15,
               boxShadow: '0 8px 24px rgba(30, 93, 168, 0.4)'
             }}
             whileTap={{ scale: 0.9 }}
             transition={springTransition}
+            title={isCollapsed ? 'Expandir menú (Ctrl+B)' : 'Contraer menú (Ctrl+B)'}
           >
             {/* Gradient background en hover */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-white opacity-0 hover:opacity-100 transition-opacity" />
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-50 to-white opacity-0 hover:opacity-100 transition-opacity" />
             
             <motion.div
-              animate={{ rotate: isCollapsed ? 0 : 180 }}
+              animate={{ rotate: isCollapsed ? 180 : 0 }}
               transition={springTransition}
               className="relative z-10"
             >
@@ -781,13 +818,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 
                 <AnimatePresence>
                   {(effectiveCollapsed || expandedSections['estructura-org']) && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                      className="overflow-hidden"
-                    >
+                <motion.div
+                  key="estructura-org-content"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
                       {/* Gestión de usuarios */}
                       {renderMenuItem(
                         'users-management',
@@ -799,7 +837,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       {renderMenuItem(
                         'banco-docentes-pta',
                         <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Banco de Docentes',
+                        'Registro Único Nacional Docente (RUND)',
                         'Gestión y carga masiva'
                       )}
                       {/* Documentos del usuario */}
@@ -1047,6 +1085,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             <AnimatePresence>
               {(effectiveCollapsed || expandedSections['estructura-org']) && (
                 <motion.div
+                  key="estructura-org-content-2"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
@@ -1064,7 +1103,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   {renderMenuItem(
                     'banco-docentes-pta',
                     <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Banco de Docentes',
+                    'Registro Único Nacional Docente (RUND)',
                     'Gestión y carga masiva'
                   )}
                   {/* Documentos del usuario */}
@@ -1127,6 +1166,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             <AnimatePresence>
               {(effectiveCollapsed || expandedSections['gestion-usuarios']) && (
                 <motion.div
+                  key="gestion-usuarios-content"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
@@ -1167,9 +1207,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
                   {renderMenuItem(
                     'pta',
-                    <FileText className="w-5 h-5" strokeWidth={2} />,
-                    'PTA',
-                    'Plan de Trabajo Académico'
+                    <Briefcase className="w-5 h-5" strokeWidth={2} />,
+                    'Plan de Trabajo Académico',
+                    'Gestión y aprobación de PTAs'
                   )}
 
                   {renderMenuItem(
@@ -1249,9 +1289,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               {/* COPYRIGHT FOOTER ESAP - SIMPLIFICADO */}
               <div className="text-center">
                 <p className="text-[10px] text-white/70 leading-relaxed">
-                  @Esap 2026 - Todos los derechos reservados
+                  © 2026 Esap - Todos los derechos reservados
                 </p>
-              </div>
+                <p className="text-[9px] text-white/70 leading-relaxed">
+                  Última actualización: {__ESAP_BUILD_DATE__}
+                </p>
+              </div> 
             </motion.div>
           ) : (
             <motion.div
@@ -1262,8 +1305,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               transition={contentTransition}
               className="p-2 flex items-center justify-center"
             >
-              <div className="w-8 h-8" title="@Esap 2026 - Todos los derechos reservados">
-                <ESAPLogo variant="white" className="w-full h-full object-contain drop-shadow-lg" />
+              <div className="w-8 h-8 flex items-center justify-center" title="@Esap 2026 - Todos los derechos reservados">
+                <ESAPLogo variant="icon" className="drop-shadow-lg" style={{ width: '28px', height: '32px' }} />
               </div>
             </motion.div>
           )}

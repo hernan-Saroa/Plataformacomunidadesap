@@ -147,28 +147,35 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
     }
   };
 
-  // Descargar código QR
-  const descargarQR = async () => {
-    if (!qrDataUrl) return;
+// Descargar código QR
+const descargarQR = async () => {
+  if (!qrDataUrl) return;
+  
+  try {
+    const link = document.createElement('a');
+    link.href = qrDataUrl;
+    link.download = `QR_${expediente.radicado}.png`;
+    // This helps with cross-origin downloads in some browsers
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
     
-    try {
-      const response = await fetch(qrDataUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `QR_${expediente.radicado}.png`;
-      document.body.appendChild(link);
+    // For Firefox
+    if (document.createEvent) {
+      const event = document.createEvent('MouseEvents');
+      event.initEvent('click', true, true);
+      link.dispatchEvent(event);
+    } else {
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('QR descargado correctamente');
-    } catch (error) {
-      console.error('Error al descargar QR:', error);
-      toast.error('Error al descargar QR');
     }
-  };
+    
+    document.body.removeChild(link);
+    toast.success('QR descargado correctamente');
+  } catch (error) {
+    console.error('Error al descargar QR:', error);
+    toast.error('Error al descargar QR');
+  }
+};
 
   // Copiar link al portapapeles
   const copiarLink = async () => {

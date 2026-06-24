@@ -7,7 +7,7 @@
 export type NivelRiesgo = 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO' | 'MUY BAJO';
 export type ResultadoAuditoria = 'Adecuado' | 'Inadecuado' | 'Sin auditoría previa';
 export type DecisionRotacion = 'Incluir' | 'No Incluir';
-export type DecisionFinal = 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR';
+export type DecisionFinal = 'INCLUIR_PLAN_ANUAL' | 'INCLUIR_AUDITORIA_POSTERIOR';
 
 // ════════════════════════════════════════════════════════════════════════════
 // MATRIZ DE ROTACIÓN DAFP
@@ -91,7 +91,7 @@ export function calcularDecisionFinal(
   // REGLA 1: Requerimiento de Comité (J = TRUE) → Prioridad 1
   if (requerimientoComite) {
     return {
-      decision: 'INCLUIR PLAN ANUAL',
+      decision: 'INCLUIR_PLAN_ANUAL',
       motivo: 'Requerimiento de Comité (Prioridad 1)',
       prioridad: 1
     };
@@ -100,7 +100,7 @@ export function calcularDecisionFinal(
   // REGLA 2: Ponderación EXTREMO o ALTO (I12) → Prioridad 2
   if (ponderacion === 'EXTREMO' || ponderacion === 'ALTO') {
     return {
-      decision: 'INCLUIR PLAN ANUAL',
+      decision: 'INCLUIR_PLAN_ANUAL',
       motivo: `Ponderación de Riesgo: ${ponderacion} (Prioridad 2)`,
       prioridad: 2
     };
@@ -109,7 +109,7 @@ export function calcularDecisionFinal(
   // REGLA 3: Requerimiento de Entes Reguladores (K = TRUE) → Prioridad 3
   if (requerimientoEntesReg) {
     return {
-      decision: 'INCLUIR PLAN ANUAL',
+      decision: 'INCLUIR_PLAN_ANUAL',
       motivo: 'Requerimiento de Entes Reguladores (Prioridad 3)',
       prioridad: 3
     };
@@ -118,7 +118,7 @@ export function calcularDecisionFinal(
   // REGLA 4: Decisión por Rotación (Q12 = "Incluir") → Prioridad 4
   if (decisionRotacion === 'Incluir') {
     return {
-      decision: 'INCLUIR PLAN ANUAL',
+      decision: 'INCLUIR_PLAN_ANUAL',
       motivo: 'Cumple criterio de rotación (Prioridad 4)',
       prioridad: 4
     };

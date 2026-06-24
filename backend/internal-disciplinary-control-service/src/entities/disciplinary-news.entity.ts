@@ -65,7 +65,7 @@ export class DisciplinaryNews {
   radicado: string; // ND-2025-001
 
 
-  @CreateDateColumn()
+  @Column({ type: 'timestamp' })
   fechaRecepcion: Date;
 
   @Column({ type: 'timestamp', nullable: true })
@@ -110,6 +110,9 @@ export class DisciplinaryNews {
 
   @Column({ type: 'uuid', nullable: true })
   kanbanStage: string | null;
+
+  @CreateDateColumn({ name: 'created_at', nullable: true })
+  createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;

@@ -4,6 +4,7 @@ x-frontend-build-args: &frontend-build-args
   VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
   VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
   VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
+  ESAP_BUILD_DATE: ${ESAP_BUILD_DATE:-}
 
 x-frontend-service: &frontend-service
   networks:
@@ -198,10 +199,11 @@ services:
   frontend-mfe-pta:
     build:
       context: .
-      dockerfile: Dockerfile.frontend.app
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
       args:
         <<: *frontend-build-args
         FRONTEND_APP_DIR: mfe-pta
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-pta
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-pta
     container_name: superapp-mfe-pta${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service

@@ -41,11 +41,10 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = sessionStorage.getItem('esap_auth_token');
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options?.headers,
       },
       ...options,
@@ -174,6 +173,45 @@ export const auditoriasApi = {
    */
   getPersonasDisponibles: async (): Promise<ApiResponse<any[]>> => {
     return apiRequest<any[]>('/auditorias/personas/disponibles');
+  },
+
+  /**
+   * Búsqueda libre de personas (auth.personas) por nombre, email o identificación.
+   * Devuelve { idPersona, id, nombre, email, numeroIdentificacion, ... }.
+   * Pensado para autocompletar selectores del formulario.
+   */
+  searchPersonas: async (q: string): Promise<ApiResponse<any[]>> => {
+    if (!q || q.trim().length < 2) {
+      return { success: true, data: [] } as ApiResponse<any[]>;
+    }
+    return apiRequest<any[]>(`/auditorias/personas/search?q=${encodeURIComponent(q.trim())}`);
+  },
+
+  /**
+   * Obtiene todas las personas de auth.personas (máx N, por defecto 50).
+   * Usada para precargar el selector de responsable del área auditada sin escribir.
+   */
+  getAllPersonas: async (limit = 50): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/personas/all?limit=${limit}`);
+  },
+
+  /**
+   * Búsqueda libre EXCLUSIVA para Responsable del Área Auditada.
+   * Excluye usuarios que tengan roles operativos de OCI en la BD (Gestión Personas).
+   */
+  searchAuditados: async (q: string): Promise<ApiResponse<any[]>> => {
+    if (!q || q.trim().length < 2) {
+      return { success: true, data: [] } as ApiResponse<any[]>;
+    }
+    return apiRequest<any[]>(`/auditorias/personas/search?q=${encodeURIComponent(q.trim())}`);
+  },
+
+  /**
+   * Obtiene todas las personas EXCLUSIVAS para Responsable del Área Auditada.
+   * Excluye usuarios que tengan roles operativos de OCI en la BD (Gestión Personas).
+   */
+  getAllAuditados: async (limit = 50): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/personas/all?limit=${limit}`);
   },
 
   /**
@@ -675,7 +713,7 @@ export const informesLeyApi = {
 export interface ConfiguracionProfesionalOCI {
   id: string;
   idTercero: string;
-  rolOcig: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  rolOcig: 'Jefe OCIG' | 'Auditor Líder' | 'Auditor' | 'Auditor Júnior' | 'Profesional OCI' | 'Apoyo Técnico' | 'Aprobador PAI';
   /** @deprecated use rolOcig */ rolOCI?: string;
   especialidades: string[];
   capacidadMaximaAuditorias: number;
@@ -767,6 +805,14 @@ export const configuracionesProfesionalesOCIApi = {
   },
 
   /**
+   * Comité de aprobación del PAI: usuarios con permiso control-interno.plan-anual.approve
+   */
+  getAprobadoresPlanAnual: async (busqueda?: string): Promise<ApiResponse<any[]>> => {
+    const params = busqueda ? `?busqueda=${encodeURIComponent(busqueda)}` : '';
+    return apiRequest<any[]>(`/configuraciones/profesionales-ocig/aprobadores-plan-anual${params}`);
+  },
+
+  /**
    * Crear configuración de profesional OCI
    */
   create: async (data: CreateConfiguracionProfesionalOCIDto): Promise<ApiResponse<ConfiguracionProfesionalOCI>> => {
@@ -815,6 +861,63 @@ export const configuracionesProfesionalesOCIApi = {
   },
 };
 
+// ==================== NOTIFICACIONES ====================
+
+export const notificacionesApi = {
+  /**
+   * Obtener notificaciones por usuario
+   */
+  obtenerPorUsuario: async (usuarioId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/notificaciones/usuario/${usuarioId}`);
+  },
+
+  /**
+   * Marcar notificación como leída
+   */
+  marcarLeida: async (id: string, usuarioId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/${id}/leida`, {
+      method: 'PUT',
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /**
+   * Marcar todas las notificaciones como leídas
+   */
+  marcarTodasLeidas: async (usuarioId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {
+      method: 'PUT',
+    });
+  },
+
+  /**
+   * Eliminar notificación
+   */
+  eliminar: async (id: string, usuarioId: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/notificaciones/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /**
+   * Obtener preferencias de notificación
+   */
+  getPreferencias: async (usuarioId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/preferencias/${usuarioId}`);
+  },
+
+  /**
+   * Guardar preferencias de notificación
+   */
+  updatePreferencias: async (usuarioId: string, preferencias: any): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/preferencias/${usuarioId}`, {
+      method: 'PUT',
+      body: JSON.stringify(preferencias),
+    });
+  },
+};
+
 // Compatibilidad con imports previos que usan la sigla OCIG.
 export const configuracionesProfesionalesOCIGApi = configuracionesProfesionalesOCIApi;
 
@@ -829,4 +932,5 @@ export const controlInternoApi = {
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
   configuracionesProfesionalesOCI: configuracionesProfesionalesOCIApi,
+  notificaciones: notificacionesApi,
 };

@@ -75,6 +75,7 @@ export interface LoadLogsParams {
   endDate?: string;
   ipAddress?: string;
   modules?: string[];
+  search?: string;
   limit?: number;
   offset?: number;
 }
@@ -87,14 +88,15 @@ export interface LoadLogsResult {
 export const loadAuditLogs = async (params: LoadLogsParams): Promise<LoadLogsResult> => {
   try {
     const queryParams: any = { 
-      limit: params.limit || 1000, 
-      offset: params.offset || 0 
+      limit: params.limit ?? 10, 
+      offset: params.offset ?? 0 
     };
     
     if (params.startDate) queryParams.startDate = params.startDate;
     if (params.endDate) queryParams.endDate = params.endDate;
     if (params.ipAddress) queryParams.ipAddress = params.ipAddress;
     if (params.modules && params.modules.length > 0) queryParams.module = params.modules[0];
+    if (params.search) queryParams.search = params.search;
 
     const response = await auditService.getLogs(queryParams);
     
@@ -107,7 +109,8 @@ export const loadAuditLogs = async (params: LoadLogsParams): Promise<LoadLogsRes
       total: typeof response.total === 'number' ? response.total : 0,
     };
   } catch (error) {
-    console.error('Error in loadAuditLogs:', error);
+    // Silenciar error en consola si falla el fetch por CORS o backend no disponible
+    // console.error('Error in loadAuditLogs:', error);
     return { logs: [], total: 0 };
   }
 };
@@ -116,7 +119,7 @@ export const loadAvailableModules = async (): Promise<string[]> => {
   try {
     return await auditService.getModules();
   } catch (error) {
-    console.error('Error loading modules:', error);
+    // console.error('Error loading modules:', error);
     return [];
   }
 };

@@ -120,7 +120,7 @@ export function ModalHeaderClean({
   const isBadgeConfigArray = Array.isArray(badges) && badges.length > 0 && badges[0] && typeof badges[0] === 'object' && 'texto' in badges[0];
 
   return (
-    <div className="px-6 py-5 bg-white border-b flex-shrink-0">
+    <div className="px-6 py-3 bg-white border-b flex-shrink-0">
       {/* Ocultar el botón X automático del DialogContent */}
       <style>{`
         .config-dialog-close {
@@ -131,25 +131,25 @@ export function ModalHeaderClean({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4 flex-1">
           {/* Icono */}
-          <div className={`p-3 rounded-xl ${tema.bgIcon} border-2 ${tema.borderIcon} flex-shrink-0`}>
-            <Icono className={`w-6 h-6 ${tema.colorIcon}`} />
+          <div className={`p-1.5 rounded-xl ${tema.bgIcon} border ${tema.borderIcon} flex-shrink-0`}>
+            <Icono className={`w-5 h-5 ${tema.colorIcon}`} />
           </div>
 
           {/* Título y Badges */}
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-black text-gray-900">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+              <h2 className="text-xl font-black text-gray-900 break-all sm:break-words">
                 {titulo}
               </h2>
               {badgePrincipal && (
-                <span className={`inline-flex items-center rounded-md px-2 py-0.5 ${tema.bgBadge} ${tema.textBadge} ${tema.borderBadge} font-bold text-xs border`}>
+                <span className={`inline-flex items-center rounded-md px-2 py-0.5 ${tema.bgBadge} ${tema.textBadge} ${tema.borderBadge} font-bold text-xs border flex-shrink-0`}>
                   {badgePrincipal}
                 </span>
               )}
             </div>
 
             {subtitulo && (
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="text-xs text-gray-600 mb-1">
                 {subtitulo}
               </p>
             )}
@@ -173,8 +173,14 @@ export function ModalHeaderClean({
             </div>
           )}
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+            }}
             className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Cerrar modal"
           >
             <X className="w-7 h-7" />
           </button>

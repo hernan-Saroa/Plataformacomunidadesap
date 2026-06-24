@@ -145,7 +145,7 @@ export function TestE2E_FlujoPTA() {
       docente_id: `test-e2e-${ts}`,
       docente_nombre: `Docente Test E2E (${selectedScenario})`,
       dedicacion: 'Tiempo Completo',
-      periodo: '2026-1',
+      periodo: '2025-2',
       territorial_id: 'ter-01',
       programa_id: 'ap-diurno',
       asignaturas: [
@@ -162,7 +162,7 @@ export function TestE2E_FlujoPTA() {
       docente_id: `test-e2e-${ts}`,
       docente_nombre: `Docente Test E2E (${selectedScenario})`,
       dedicacion: 'Tiempo Completo',
-      periodo: '2026-1',
+      periodo: '2025-2',
       territorial_id: 'ter-01',
       estado: 'Borrador',
     });

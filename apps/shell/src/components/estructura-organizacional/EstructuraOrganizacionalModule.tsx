@@ -31,6 +31,11 @@ export function EstructuraOrganizacionalModule() {
   const [estadisticas, setEstadisticas] = useState<EstadisticasEstructuraOrganizacional | null>(null);
   const [vistaActual, setVistaActual] = useState<'lista' | 'arbol'>('arbol');
 
+  // ─── Periodo Académico ───
+  const [periodos, setPeriodos] = useState<any[]>([]);
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState<string>('');
+  const [showPeriodoDropdown, setShowPeriodoDropdown] = useState(false);
+
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>('sede');
@@ -39,16 +44,43 @@ export function EstructuraOrganizacionalModule() {
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
 
-  // Cargar datos al montar el componente
+  // Determinar si el periodo seleccionado es el activo
+  const periodoActivo = periodos.find((p: any) => p.estado === 'ACTIVO' || p.estado === 'activo');
+  const periodoActivoCodigo = periodoActivo?.codigo || periodoActivo?.periodo || '2025-2';
+  const esPeriodoActivo = !periodoSeleccionado || periodoSeleccionado === periodoActivoCodigo;
+  const puedeEditar = esPeriodoActivo && isSuperAdmin;
+
+  // Cargar periodos al montar
   useEffect(() => {
-    cargarDatos();
+    const cargarPeriodos = async () => {
+      try {
+        const data = await estructuraService.obtenerPeriodosAcademicos();
+        setPeriodos(data);
+        // Seleccionar el periodo activo por defecto
+        const activo = data.find((p: any) => p.estado === 'ACTIVO' || p.estado === 'activo');
+        if (activo) {
+          setPeriodoSeleccionado(activo.codigo || activo.periodo || `${activo.anio}-${activo.semestre}`);
+        }
+      } catch (error) {
+        console.error('Error cargando periodos:', error);
+        setPeriodoSeleccionado('2025-2');
+      }
+    };
+    cargarPeriodos();
   }, []);
+
+  // Cargar datos al cambiar periodo
+  useEffect(() => {
+    if (periodoSeleccionado) {
+      cargarDatos();
+    }
+  }, [periodoSeleccionado]);
 
   const cargarDatos = async () => {
     try {
       setLoading(true);
       const [estructuraResponse, statsResponse] = await Promise.all([
-        estructuraService.obtenerEstructura(),
+        estructuraService.obtenerEstructura(periodoSeleccionado),
         estructuraService.obtenerEstadisticas(),
       ]);
       setSeccionales(estructuraResponse.data.seccionales);
@@ -117,7 +149,27 @@ export function EstructuraOrganizacionalModule() {
   };
 
   const handleImportar = () => {
-    toast.info('Importacion masiva en desarrollo');
+    if (!esPeriodoActivo) {
+      toast.error('Solo puede importar en el periodo activo');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls,.csv';
+    input.onchange = async (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      try {
+        toast.info(`Importando ${file.name}...`);
+        const result = await estructuraService.importarEstructura(file, periodoSeleccionado);
+        toast.success(result.message || `Importación completada: ${result.seccionales_creadas ?? 0} seccionales, ${result.sedes_creadas ?? 0} sedes creadas`);
+        cargarDatos();
+      } catch (error: any) {
+        console.error('Error importando estructura:', error);
+        toast.error(error.message || 'Error al importar la estructura organizacional');
+      }
+    };
+    input.click();
   };
 
   const handleCloseModal = () => {
@@ -125,84 +177,172 @@ export function EstructuraOrganizacionalModule() {
     setEditItem(null);
   };
 
+  const getPeriodoLabel = (p: any) => {
+    const codigo = p.codigo || p.periodo || `${p.anio}-${p.semestre}`;
+    const esActivo = p.estado === 'ACTIVO' || p.estado === 'activo';
+    return { codigo, esActivo, label: `${codigo}${esActivo ? ' (Actual)' : ''}` };
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                Estructura Organizacional
-              </h1>
-              <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
-                Gestion de seccionales y sedes ESAP
-              </p>
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
+      {/* Header - World Class Design */}
+      <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-3 md:gap-4">
+              <div 
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#EBF0FA' }}
+              >
+                <Building2 className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
+                  Estructura Organizacional
+                </h1>
+
+                {/* Selector de Periodo Académico */}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PERIODO:</span>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowPeriodoDropdown(!showPeriodoDropdown)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
+                    >
+                      {periodoSeleccionado || '2025-2'}
+                      {esPeriodoActivo && (
+                        <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
+                      )}
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+
+                    {showPeriodoDropdown && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowPeriodoDropdown(false)}
+                        />
+                        <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20 overflow-hidden">
+                          <div className="px-3 py-2 border-b border-gray-100">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
+                          </div>
+                          {periodos.length > 0 ? periodos.map((p: any, idx: number) => {
+                            const { codigo, esActivo, label } = getPeriodoLabel(p);
+                            const isSelected = codigo === periodoSeleccionado;
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => { setPeriodoSeleccionado(codigo); setShowPeriodoDropdown(false); }}
+                                className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                                  isSelected ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                <span>{label}</span>
+                                <div className="flex items-center gap-1.5">
+                                  {esActivo && (
+                                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                                  )}
+                                  {!esActivo && (
+                                    <span className="text-[10px] text-gray-400">Historial</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          }) : (
+                            <div className="px-3 py-3 text-sm text-gray-500">
+                              <button
+                                onClick={() => { setPeriodoSeleccionado('2025-2'); setShowPeriodoDropdown(false); }}
+                                className="w-full text-left hover:bg-gray-50 px-2 py-1 rounded"
+                              >
+                                2025-2 (Actual)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
+                  Gestión de seccionales y sedes ESAP
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleImportar}
-            className="gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Importar</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportar}
-            className="gap-2"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar</span>
-          </Button>
+          {/* Actions */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0">
+            {/* Banner solo lectura si periodo NO es activo */}
+            {!esPeriodoActivo && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Solo lectura (historial)
+              </span>
+            )}
 
-          {/* Dropdown para crear */}
-          {isSuperAdmin && (
-            <div className="relative">
-              <Button
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="gap-2 bg-[#003DA5] hover:bg-[#002d7a]"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo
-                <ChevronDown className="w-4 h-4" />
-              </Button>
+            {esPeriodoActivo && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImportar}
+                  className="gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">Importación Masiva</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportar}
+                  className="gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Exportar Catálogo</span>
+                </Button>
+              </>
+            )}
 
-              {showDropdown && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setShowDropdown(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                    <button
-                      onClick={() => handleCrear('seccional')}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      Nueva Seccional
-                    </button>
-                    <button
-                      onClick={() => handleCrear('sede')}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-orange-500" />
-                      Nueva Sede
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+            {/* Dropdown para crear - Solo en periodo activo */}
+            {puedeEditar && (
+              <div className="relative">
+                <Button
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  className="gap-2 bg-[#003DA5] hover:bg-[#002d7a]"
+                >
+                  <Plus className="w-4 h-4" />
+                  Crear Nuevo
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+
+                {showDropdown && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowDropdown(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                      <button
+                        onClick={() => handleCrear('seccional')}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                        Nueva Seccional
+                      </button>
+                      <button
+                        onClick={() => handleCrear('sede')}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-orange-500" />
+                        Nueva Sede
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -221,7 +361,7 @@ export function EstructuraOrganizacionalModule() {
             </div>
           </div>
           
-          {/* ✅ NUEVO: Toggle de Vistas */}
+          {/* ✅ Toggle de Vistas */}
           <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setVistaActual('lista')}

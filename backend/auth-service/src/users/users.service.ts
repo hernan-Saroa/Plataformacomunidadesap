@@ -51,6 +51,13 @@ export class UsersService {
     });
   }
 
+  async findAuthUserById(userId: string): Promise<User | null> {
+    return this.userRepo.findOne({
+      where: { id_user: userId },
+      relations: ['person', 'roles', 'roles.permissions'],
+    });
+  }
+
   private get schemaName(): string {
     return process.env.DB_SCHEMA || 'auth';
   }
@@ -157,63 +164,67 @@ export class UsersService {
 
     const cargo = this.resolveDisciplinaryCargo(qualifyingRoles);
 
-    if (previousEmail && previousEmail !== currentEmail) {
-      await manager.query(
-        `
-          UPDATE ${this.disciplinaryProfessionalTableRef}
-          SET
-            email = $1,
-            nombre_completo = $2,
-            telefono = $3,
-            cargo = $4,
-            especialidad = NULL,
-            tipo_contrato = NULL,
-            territorial = NULL,
-            capacidad_maxima = 10,
-            estado = 'ACTIVO',
-            updated_at = NOW()
-          WHERE email = $5
-        `,
-        [
-          currentEmail,
-          user.person.full_name,
-          user.person.phone || null,
-          cargo,
-          previousEmail,
-        ],
-      );
-    }
+     if (previousEmail && previousEmail !== currentEmail) {
+       await manager.query(
+         `
+           UPDATE ${this.disciplinaryProfessionalTableRef}
+           SET
+             email = $1,
+             nombre_completo = $2,
+             telefono = $3,
+             cargo = $4,
+             especialidad = NULL,
+             tipo_contrato = NULL,
+             territorial = NULL,
+             capacidad_maxima = 10,
+             estado = 'ACTIVO',
+             updated_at = NOW(),
+             id_user = $5
+           WHERE email = $6
+         `,
+         [
+           currentEmail,
+           user.person.full_name,
+           user.person.phone || null,
+           cargo,
+           user.id_user,
+           previousEmail,
+         ],
+       );
+     }
 
-    await manager.query(
-      `
-        INSERT INTO ${this.disciplinaryProfessionalTableRef} (
-          nombre_completo,
-          email,
-          telefono,
-          cargo,
-          especialidad,
-          tipo_contrato,
-          territorial,
-          capacidad_maxima,
-          estado,
-          created_at,
-          updated_at
-        )
-        VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 10, 'ACTIVO', NOW(), NOW())
-        ON CONFLICT (email) DO UPDATE
-        SET
-          nombre_completo = EXCLUDED.nombre_completo,
-          telefono = EXCLUDED.telefono,
-          cargo = EXCLUDED.cargo,
-          especialidad = NULL,
-          tipo_contrato = NULL,
-          territorial = NULL,
-          capacidad_maxima = 10,
-          estado = 'ACTIVO',
-          updated_at = NOW()
-      `,
-      [user.person.full_name, currentEmail, user.person.phone || null, cargo],
-    );
+     await manager.query(
+       `
+         INSERT INTO ${this.disciplinaryProfessionalTableRef} (
+           nombre_completo,
+           email,
+           telefono,
+           cargo,
+           especialidad,
+           tipo_contrato,
+           territorial,
+           capacidad_maxima,
+           estado,
+           created_at,
+           updated_at,
+           id_user
+         )
+         VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 10, 'ACTIVO', NOW(), NOW(), $5)
+         ON CONFLICT (email) DO UPDATE
+         SET
+           nombre_completo = EXCLUDED.nombre_completo,
+           telefono = EXCLUDED.telefono,
+           cargo = EXCLUDED.cargo,
+           especialidad = NULL,
+           tipo_contrato = NULL,
+           territorial = NULL,
+           capacidad_maxima = 10,
+           estado = 'ACTIVO',
+           updated_at = NOW(),
+           id_user = EXCLUDED.id_user
+       `,
+       [user.person.full_name, currentEmail, user.person.phone || null, cargo, user.id_user],
+     );
   }
 
   private normalizeEmail(value: unknown): string {
@@ -704,7 +715,7 @@ export class UsersService {
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,
-    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string } = {},
+    filters: { search?: string; status?: 'active' | 'inactive' | 'all'; role?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; } = {},
   ): Promise<{
     users: User[];
     total: number;
@@ -745,11 +756,35 @@ export class UsersService {
       baseQuery.andWhere('roles.id = :id', { id: filters.role });
     }
 
-    const pagedQuery = baseQuery
-      .clone()
-      .orderBy('user.created_at', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+    const pagedQuery = baseQuery.clone();
+    
+    if (filters.sortBy) {
+      let sortColumn = 'user.created_at';
+      switch(filters.sortBy) {
+        case 'usuario':
+          sortColumn = 'person.first_name';
+          break;
+        case 'territorial':
+          sortColumn = 'seccional.nomSeccional';
+          break;
+        case 'cetap':
+          sortColumn = 'sede.nomSede';
+          break;
+        case 'estado':
+          sortColumn = 'user.is_active';
+          break;
+        case 'actividad':
+          sortColumn = 'user.updated_at';
+          break;
+      }
+      // Add secondary sort by ID to ensure deterministic ordering
+      pagedQuery.orderBy(sortColumn, filters.sortOrder === 'desc' ? 'DESC' : 'ASC')
+                .addOrderBy('user.id_user', 'ASC');
+    } else {
+      pagedQuery.orderBy('user.created_at', 'DESC');
+    }
+
+    pagedQuery.skip((page - 1) * limit).take(limit);
 
     const [users, total] = await pagedQuery.getManyAndCount();
 
@@ -764,6 +799,41 @@ export class UsersService {
       .getCount();
 
     return { users, total, totalActive, totalBlocked };
+  }
+
+  /**
+   * Devuelve los usuarios activos que tienen al menos un rol que incluya el
+   * permiso indicado (por su code). Se usa, por ejemplo, para listar quién
+   * puede ser responsable de una actuación en Gestión Legal.
+   */
+  async findUsersByPermissionCode(code: string): Promise<User[]> {
+    if (!code?.trim()) {
+      return [];
+    }
+
+    return this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.person', 'person')
+      .leftJoinAndSelect('user.roles', 'roles')
+      .where('user.is_active = :active', { active: true })
+      .andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM auth.user_roles ur
+          INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+          INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
+          WHERE ur.id_user = "user".id_user
+            AND COALESCE(ur.is_active, true) = true
+            AND COALESCE(rp.is_active, true) = true
+            AND p.is_active = true
+            AND p.code = :permissionCode
+        )`,
+        { permissionCode: code.trim() },
+      )
+      .distinct(true)
+      .orderBy('person.first_name', 'ASC')
+      .addOrderBy('person.last_name', 'ASC')
+      .getMany();
   }
 
   async findById(

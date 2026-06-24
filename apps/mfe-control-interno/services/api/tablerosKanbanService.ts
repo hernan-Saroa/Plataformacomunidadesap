@@ -10,14 +10,7 @@ const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '/api/v1';
 const MICROSERVICIO_PORT = 3007; // Puerto del internal-institutional-control-service
 
-/**
- * Detecta si estamos en localhost para hacer peticiones directas al microservicio
- */
-function esLocalhost(): boolean {
-  const hostname = window.location.hostname;
-  const hostnameParts = hostname.split('.');
-  return hostname === 'localhost' || hostname === '127.0.0.1' || (hostnameParts[0] === '192' && hostnameParts[1] === '168');
-}
+
 
 export enum TipoTablero {
   AUDITORIAS = 'auditorias',
@@ -97,10 +90,10 @@ class TablerosKanbanAPIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // En localhost, ir directo al microservicio sin prefijo /api/v1
-    // En otros entornos, usar el gateway con el prefijo
+    // En direct mode, ir directo al microservicio sin prefijo /api/v1
+    // En gateway mode, usar el gateway con el prefijo
     let url: string;
-    if (esLocalhost()) {
+    if (API_MODE === 'direct') {
       url = `http://localhost:${MICROSERVICIO_PORT}${endpoint}`;
     } else {
       url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
@@ -111,13 +104,9 @@ class TablerosKanbanAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,

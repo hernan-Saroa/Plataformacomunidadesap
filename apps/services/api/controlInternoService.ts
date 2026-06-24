@@ -188,7 +188,7 @@ export interface AuditoriaProgramada {
 export interface Hallazgo {
   id: string;
   codigo: string;
-  categoria: 'critico' | 'controversia' | 'borrador';
+  categoria: 'critico' | 'grave' | 'moderado' | 'leve' | 'borrador' | 'controversia';
   estado: string;
   area: string;
   auditoria: string;
@@ -348,14 +348,9 @@ class ControlInternoAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    // Agregar token si existe
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,
@@ -418,17 +413,12 @@ class ControlInternoAPIClient {
     onProgress?: (progress: number) => void
   ): Promise<T> {
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
-    
-    // Agregar token si existe
     const headers: HeadersInit = {};
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      xhr.withCredentials = true;
 
       // Manejar progreso
       if (onProgress) {
@@ -497,6 +487,13 @@ class ControlInternoService {
   // UNIVERSO DE AUDITORÍAS
   // ==========================================================================
   
+  /**
+   * Obtiene la lista de IDs de usuarios con roles de Jefe OCI o Administrador
+   */
+  async getJefesControlInterno(): Promise<string[]> {
+    return client.get<string[]>('/auditorias/jefes-control-interno');
+  }
+
   /**
    * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
@@ -926,11 +923,20 @@ class ControlInternoService {
   /**
    * Obtiene todas las listas de chequeo
    */
-  async getListasChequeo(params?: { tipo?: string; categoria?: string }): Promise<ListaChequeo[]> {
+  async getListasChequeo(params?: {
+    tipo?: string;
+    categoria?: string;
+    planAnualVigencia?: number;
+    planAnualId?: string;
+  }): Promise<ListaChequeo[]> {
     const queryParams = new URLSearchParams();
     if (params?.tipo) queryParams.append('tipo', params.tipo);
     if (params?.categoria) queryParams.append('categoria', params.categoria);
-    
+    if (params?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(params.planAnualVigencia));
+    }
+    if (params?.planAnualId) queryParams.append('planAnualId', params.planAnualId);
+
     const query = queryParams.toString();
     return client.get<ListaChequeo[]>(`/listas-chequeo${query ? `?${query}` : ''}`);
   }
@@ -1248,10 +1254,17 @@ class ControlInternoService {
   /**
    * Obtiene todos los planes de mejoramiento
    */
-  async getPlanesMejoramiento(params?: { estado?: string; area?: string }): Promise<any[]> {
+  async getPlanesMejoramiento(params?: {
+    estado?: string;
+    area?: string;
+    planAnualVigencia?: number;
+  }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.estado) queryParams.append('estado', params.estado);
     if (params?.area) queryParams.append('area', params.area);
+    if (params?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(params.planAnualVigencia));
+    }
     const query = queryParams.toString();
     return client.get<any[]>(`/planes-mejoramiento${query ? `?${query}` : ''}`);
   }
@@ -1445,10 +1458,8 @@ class ControlInternoService {
    */
   async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
-    const token = sessionStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      credentials: 'include',
     });
     
     if (!response.ok) {
@@ -1613,12 +1624,25 @@ class ControlInternoService {
   /**
    * Obtiene todos los documentos
    */
-  async getDocumentos(params?: { auditoriaId?: string; etapa?: string; tipo?: string; tipoDocumento?: string }): Promise<any[]> {
+  async getDocumentos(params?: {
+    auditoriaId?: string;
+    etapa?: string;
+    tipo?: string;
+    tipoDocumento?: string;
+    planAnualVigencia?: number;
+    planAnualId?: string;
+    bibliotecaOnly?: boolean;
+  }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
     if (params?.etapa) queryParams.append('etapa', params.etapa);
     const tipo = params?.tipoDocumento || params?.tipo;
     if (tipo) queryParams.append('tipoDocumento', tipo);
+    if (params?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(params.planAnualVigencia));
+    }
+    if (params?.planAnualId) queryParams.append('planAnualId', params.planAnualId);
+    if (params?.bibliotecaOnly) queryParams.append('bibliotecaOnly', 'true');
     const query = queryParams.toString();
     return client.get<any[]>(`/documentos${query ? `?${query}` : ''}`);
   }
@@ -1672,6 +1696,8 @@ class ControlInternoService {
       documentoBibliotecaId?: string;
       visibleAuditoriaId?: string;
       subidoPor?: string;
+      planAnualVigencia?: number;
+      planAnualId?: string;
     },
     onProgress?: (progress: number) => void
   ): Promise<any> {
@@ -1689,6 +1715,10 @@ class ControlInternoService {
     if (metadata.documentoBibliotecaId) formData.append('documentoBibliotecaId', metadata.documentoBibliotecaId);
     if (metadata.visibleAuditoriaId) formData.append('visibleAuditoriaId', metadata.visibleAuditoriaId);
     if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
+    if (metadata.planAnualVigencia != null) {
+      formData.append('planAnualVigencia', String(metadata.planAnualVigencia));
+    }
+    if (metadata.planAnualId) formData.append('planAnualId', metadata.planAnualId);
 
     return client.upload<any>('/documentos', formData, onProgress);
   }
@@ -1796,12 +1826,8 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = sessionStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-      },
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -1924,6 +1950,12 @@ class ControlInternoService {
     search?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    planAnualId?: string;
+    planAnualVigencia?: number;
+    year?: number;
+    light?: boolean;
+    activasOnly?: boolean;
+    vinculadaPlanAnual?: boolean;
   }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (filters?.tipo) queryParams.append('tipo', filters.tipo);
@@ -1933,7 +1965,15 @@ class ControlInternoService {
     if (filters?.search) queryParams.append('search', filters.search);
     if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
     if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
-    
+    if (filters?.planAnualId) queryParams.append('planAnualId', filters.planAnualId);
+    if (filters?.planAnualVigencia != null) {
+      queryParams.append('planAnualVigencia', String(filters.planAnualVigencia));
+    }
+    if (filters?.year != null) queryParams.append('year', String(filters.year));
+    if (filters?.light !== false) queryParams.append('light', 'true');
+    if (filters?.activasOnly !== false) queryParams.append('activasOnly', 'true');
+    if (filters?.vinculadaPlanAnual) queryParams.append('vinculadaPlanAnual', 'true');
+
     const query = queryParams.toString();
     return client.get<any[]>(`/auditorias${query ? `?${query}` : ''}`);
   }

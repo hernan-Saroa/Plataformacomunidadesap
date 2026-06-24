@@ -94,4 +94,9 @@ export class NotificationsController {
   trackEmailClick(@Param('id') id: string) {
     return this.service.trackEmailClick(id);
   }
+
+  @Post('notifications/:id/favorite')
+  async toggleFavorite(@Param('id') id: string) {
+    return this.service.toggleFavorite(id);
+  }
 }

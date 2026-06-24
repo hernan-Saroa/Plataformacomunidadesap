@@ -1,6 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Expediente } from './expediente.entity';
-import { Abogado } from './abogado.entity';
 
 @Entity('tareas_expediente', { schema: 'legal_management' })
 export class TareaExpediente {
@@ -14,7 +13,7 @@ export class TareaExpediente {
     @JoinColumn({ name: 'expediente_id' })
     expediente: Expediente;
 
-    @Column()
+    @Column({ nullable: true })
     titulo: string;
 
     @Column({ type: 'text', nullable: true })
@@ -29,12 +28,8 @@ export class TareaExpediente {
     @Column({ default: 'pendiente' })
     estado: string; // pendiente, en_proceso, completada, cancelada
 
-    @Column({ name: 'responsable_id', nullable: true })
-    responsableId: string;
-
-    @ManyToOne(() => Abogado, { nullable: true })
-    @JoinColumn({ name: 'responsable_id' })
-    responsable: Abogado;
+    @Column({ name: 'responsable_id', type: 'uuid', nullable: true })
+    responsableId: string | null;
 
     @Column({ name: 'responsable_nombre', nullable: true })
     responsableNombre: string;

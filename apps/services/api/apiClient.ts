@@ -2,13 +2,13 @@
  * Cliente API Base
  *
  * Maneja todas las requests HTTP al backend con:
- * - Autenticación automática
+ * - Autenticaci�n autom�tica
  * - Refresh de tokens
  * - Manejo de errores
  * - Retry logic
  * - Request/Response interceptors
  *
- * MODOS DE CONEXIÓN:
+ * MODOS DE CONEXI�N:
  * - Gateway Mode: Todas las requests van a http://localhost:3000/{service}/api/v1/{path}
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipAuthRefresh?: boolean;
   retries?: number;
 }
 
@@ -57,7 +58,7 @@ export class ApiClient {
   private refreshSubscribers: Array<(token: string) => void> = [];
 
   constructor(baseURL?: string) {
-    // Usar la URL base del API Gateway desde la configuración de entorno
+    // Usar la URL base del API Gateway desde la configuraci�n de entorno
     this.baseURL = baseURL || config.API_BASE_URL;
     this.timeout = config.API_TIMEOUT;
     this.retryConfig = {
@@ -68,7 +69,7 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // MÉTODOS PÚBLICOS
+  // M�TODOS P�BLICOS
   // ==========================================================================
 
   /**
@@ -95,10 +96,11 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       ...fetchConfig
     } = customConfig || {};
 
-    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
   }
 
   /**
@@ -188,7 +190,7 @@ export class ApiClient {
       timeoutMs,
     } = resolvedOptions;
 
-    // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
+    // Para upload, no enviamos Content-Type header (el browser lo setea autom�ticamente con boundary)
     const headers = getDefaultHeaders(true);
     delete (headers as any)['Content-Type'];
 
@@ -256,6 +258,11 @@ export class ApiClient {
 
       xhr.open('POST', url);
 
+      // El JWT viaja como cookie HttpOnly (OTIC-001); withCredentials es
+      // imprescindible para que el navegador la envíe en el XHR de upload.
+      // Sin esto el backend responde 401 Unauthorized (cross-origin en local).
+      xhr.withCredentials = true;
+
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
         xhr.setRequestHeader(key, value as string);
@@ -278,7 +285,7 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // MÉTODOS PRIVADOS
+  // M�TODOS PRIVADOS
   // ==========================================================================
 
   /**
@@ -291,6 +298,7 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -300,7 +308,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -311,6 +319,7 @@ export class ApiClient {
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
+          !error.status ||        // Error de red: servicio no disponible
           attempt > retries
         ) {
           throw error;
@@ -359,19 +368,26 @@ export class ApiClient {
 
       clearTimeout(timeoutId);
 
-      // Token expirado: refrescar y reintentar UNA sola vez conservando método y body.
+      // Token expirado: refrescar y reintentar UNA sola vez conservando m�todo y body.
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       // Manejo de respuesta
       return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
     } catch (error: any) {
-      console.log('🔴 Error en request:', error);
       clearTimeout(timeoutId);
+      if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+        console.warn('?? Servicio no disponible:', url);
+      } else if (!url.includes(':3009/') && !url.includes('/notificaciones/')) {
+        console.log('?? Error en request:', error);
+      }
 
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');
@@ -421,6 +437,9 @@ export class ApiClient {
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       if (!response.ok) {
@@ -499,7 +518,7 @@ export class ApiClient {
       if (response.ok) {
         data = {} as any; // For 200 OK with empty body
       } else {
-        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        const emptyError: any = new Error('Error en la petici�n (sin detalles)');
         emptyError.status = response.status;
         emptyError.response = { status: response.status, data: null };
         throw emptyError;
@@ -548,7 +567,7 @@ export class ApiClient {
           errorMessage = errObj.message.join(', ');
         }
       }
-      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raíz
+      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la ra�z
         errorMessage = (data as any).message;
         details = (data as any).message;
       }
@@ -572,7 +591,7 @@ export class ApiClient {
 
     // Fallback for when response is not OK but data structure is unexpected
     if (!response.ok) {
-      let errorMessage = 'Error en la petición';
+      let errorMessage = 'Error en la petici�n';
       if ('message' in data) {
         if (typeof (data as any).message === 'string') {
           errorMessage = (data as any).message;
@@ -586,72 +605,40 @@ export class ApiClient {
       throw error;
     }
 
-    throw new Error('Respuesta inválida del servidor');
+    throw new Error('Respuesta inv�lida del servidor');
   }
 
   /**
-   * Refresh del access token
+   * Refresh del access token.
+   * El token viaja como cookie HttpOnly: el frontend no lo lee ni lo guarda.
    */
   private async refreshAccessToken(): Promise<string | null> {
-    // Si ya está refrescando, esperar
     if (this.isRefreshing) {
       return new Promise((resolve) => {
-        this.refreshSubscribers.push((token: string) => {
-          resolve(token);
-        });
+        this.refreshSubscribers.push((token: string) => resolve(token || null));
       });
     }
 
     this.isRefreshing = true;
 
     try {
-      const refreshToken = sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-
-      if (!refreshToken) {
-        // Hacer logout automático cuando no hay refresh token
-        console.warn('No refresh token available - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // 🔄 Nuevo endpoint versionado para refresh
-      const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
+      const response = await fetch(this.buildURL(API_ENDPOINTS.AUTH.REFRESH), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
         ...CORS_CONFIG,
       });
 
       if (!response.ok) {
-        // Hacer logout automático cuando el refresh falla
-        console.warn('Token refresh failed with status:', response.status, '- logging out');
-        this.handleLogout();
+        console.warn('Token refresh failed with status:', response.status);
+        this.resolveRefreshSubscribers(null);
         return null;
       }
 
-      const data = await response.json();
-
-      // El backend expone el token en data.data.accessToken (contrato NestJS)
-      const newToken = data?.data?.accessToken || data?.accessToken;
-
-      if (!newToken) {
-        console.warn('Refresh response without accessToken - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // Guardar nuevo token
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
-      sessionStorage.setItem('esap_access_token', newToken);
-
-      // Notificar a todos los subscribers
-      this.refreshSubscribers.forEach((callback) => callback(newToken));
-      this.refreshSubscribers = [];
-
-      return newToken;
+      this.resolveRefreshSubscribers('cookie-refreshed');
+      return 'cookie-refreshed';
     } catch (error) {
-      console.warn('Token refresh error:', error, '- logging out');
-      this.handleLogout();
+      console.warn('Token refresh error:', error);
+      this.resolveRefreshSubscribers(null);
       return null;
     } finally {
       this.isRefreshing = false;
@@ -659,32 +646,22 @@ export class ApiClient {
   }
 
   /**
-   * Logout y limpiar datos
+   * Resuelve las solicitudes que esperaban el refresh sin exponer tokens al frontend.
    */
-  private handleLogout(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
-
-    toast.error('Sesión expirada', {
-      description: 'Por favor, inicia sesión nuevamente',
-    });
-
-    // Redirigir a login
-    window.location.href = '/login';
+  private resolveRefreshSubscribers(token: string | null): void {
+    this.refreshSubscribers.forEach((callback) => callback(token || ''));
+    this.refreshSubscribers = [];
   }
-
   /**
-   * Muestra toast de error según el código HTTP
+   * Muestra toast de error seg�n el c�digo HTTP
    */
   private showErrorToast(status: number, message: string): void {
     const errorMessages: Record<number, string> = {
-      400: 'Solicitud inválida',
+      400: 'Solicitud inv�lida',
       401: 'No autorizado',
       403: 'Acceso denegado',
       404: 'Recurso no encontrado',
-      422: 'Error de validación',
+      422: 'Error de validaci�n',
       429: 'Demasiadas solicitudes',
       500: 'Error interno del servidor',
       502: 'Gateway no disponible',
@@ -700,7 +677,7 @@ export class ApiClient {
   }
 
   /**
-   * Construye URL completa con parámetros
+   * Construye URL completa con par�metros
    *
    * En modo 'gateway': /auth/api/v1/login -> http://localhost:3000/auth/api/v1/login
    * En modo 'direct':  /auth/api/v1/login -> http://localhost:3002/login
@@ -728,7 +705,7 @@ export class ApiClient {
           fullUrl = `${serviceUrl}${path}`;
         } else {
           // Servicio no encontrado, usar baseURL normal
-          console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
+          console.warn(`?? Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
           fullUrl = `${this.baseURL}${endpoint}`;
         }
       } else {
@@ -746,7 +723,7 @@ export class ApiClient {
       }
     }
 
-    // Agregar parámetros de query
+    // Agregar par�metros de query
     if (params && Object.keys(params).length > 0) {
       const url = new URL(fullUrl);
       Object.entries(params).forEach(([key, value]) => {
@@ -772,7 +749,7 @@ export class ApiClient {
   }
 
   /**
-   * Limpia cache (si está habilitado)
+   * Limpia cache (si est� habilitado)
    */
   public clearCache(): void {
     if (config.FEATURES.enableCache) {

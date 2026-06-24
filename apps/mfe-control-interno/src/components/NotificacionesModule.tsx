@@ -44,7 +44,9 @@ import {
   History, TrendingUp, MessageSquare, Calendar, Sparkles, Loader2, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
+import { notificationsService } from '../../../services/api/notificationsService';
+import { rolesService, SystemRole } from '../../../services/api/roles.service';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -72,25 +74,16 @@ interface NotificacionEnviada {
   titulo: string;
   mensaje: string;
   destinatario: string;
-  canal: 'sistema' | 'email';
+  canal: 'sistema' | 'email' | 'ambos';
   fechaEnvio: string;
   leida: boolean;
   accion?: {
-    texto: string;
     url: string;
   };
 }
 
-// Roles del sistema
-const ROLES_SISTEMA = [
-  'Jefe OCIG',
-  'Auditor Líder',
-  'Auditor Equipo',
-  'Auditado',
-  'Jefe Dependencia',
-  'Responsable Plan Mejoramiento',
-  'Administrador Sistema'
-];
+// Roles dinámicos se cargarán desde la BD
+// Se elimina ROLES_SISTEMA hardcodeado
 
 // Categorías disponibles
 const CATEGORIAS_DISPONIBLES = [
@@ -102,233 +95,38 @@ const CATEGORIAS_DISPONIBLES = [
   'Personalizada'
 ] as const;
 
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK - CONFIGURACIÓN DE EVENTOS NOTIFICABLES
-// ════════════════════════════════════════════════════════════════════════════
+// Condiciones de disparo comunes
+const CONDICIONES_DISPARO = [
+  'Inmediato',
+  'Al asignar auditor',
+  'Al finalizar auditoría',
+  'Al cambiar de estado Kanban',
+  '7 días antes del vencimiento',
+  '5 días antes del vencimiento',
+  '3 días antes del vencimiento',
+  '1 día antes del vencimiento',
+  'Al solicitar aprobación de plan',
+  'Al aprobar plan de mejoramiento',
+  'Al rechazar plan de mejoramiento',
+  'Personalizado (Vía API)'
+] as const;
 
-const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
-  // KANBAN
-  {
-    id: 'EVT-KANBAN-001',
-    categoria: 'Kanban',
-    nombre: 'Auditoría movida de etapa',
-    descripcion: 'Notifica cuando una auditoría cambia de etapa en el Kanban',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
-    condicion: 'Al mover tarjeta entre columnas'
-  },
-  {
-    id: 'EVT-KANBAN-002',
-    categoria: 'Kanban',
-    nombre: 'SLA próximo a vencer',
-    descripcion: 'Alerta cuando una auditoría está por vencer su SLA en la etapa actual',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
-    condicion: '3 días antes del vencimiento',
-    plantillaEmail: 'La auditoría [NOMBRE] vence en [DÍAS] días en etapa [ETAPA]'
-  },
-  {
-    id: 'EVT-KANBAN-003',
-    categoria: 'Kanban',
-    nombre: 'SLA vencido',
-    descripcion: 'Notifica cuando una auditoría supera el SLA de su etapa',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
-    condicion: 'Al vencer el SLA'
-  },
-  {
-    id: 'EVT-KANBAN-004',
-    categoria: 'Kanban',
-    nombre: 'Límite WIP alcanzado',
-    descripcion: 'Alerta cuando una columna alcanza su límite de trabajo en progreso',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Jefe OCIG'],
-    condicion: 'Al alcanzar límite WIP'
-  },
-
-  // AUDITORÍAS
-  {
-    id: 'EVT-AUD-001',
-    categoria: 'Auditorías',
-    nombre: 'Nueva auditoría asignada',
-    descripcion: 'Notifica al auditor cuando se le asigna una nueva auditoría',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Auditor Equipo'],
-    condicion: 'Al asignar auditor',
-    plantillaEmail: 'Has sido asignado a la auditoría [NOMBRE] con rol de [ROL]'
-  },
-  {
-    id: 'EVT-AUD-002',
-    categoria: 'Auditorías',
-    nombre: 'Reunión de apertura programada',
-    descripcion: 'Recordatorio de reunión de apertura',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Auditor Equipo', 'Auditado', 'Jefe Dependencia'],
-    condicion: '1 día antes de la reunión'
-  },
-  {
-    id: 'EVT-AUD-003',
-    categoria: 'Auditorías',
-    nombre: 'Plazo de respuesta próximo',
-    descripcion: 'Alerta al auditado sobre plazo de respuesta',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditado', 'Jefe Dependencia'],
-    condicion: '5 días antes del vencimiento'
-  },
-  {
-    id: 'EVT-AUD-004',
-    categoria: 'Auditorías',
-    nombre: 'Auditoría finalizada',
-    descripcion: 'Notifica cuando una auditoría se completa',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG', 'Auditado'],
-    condicion: 'Al marcar como finalizada'
-  },
-
-  // PLANES DE MEJORAMIENTO
-  {
-    id: 'EVT-PM-001',
-    categoria: 'Planes Mejoramiento',
-    nombre: 'Seguimiento trimestral próximo',
-    descripcion: 'Recordatorio de seguimiento trimestral del plan de mejoramiento',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe OCIG'],
-    condicion: '7 días antes del seguimiento',
-    plantillaEmail: 'El seguimiento trimestral del PM [CÓDIGO] vence el [FECHA]'
-  },
-  {
-    id: 'EVT-PM-002',
-    categoria: 'Planes Mejoramiento',
-    nombre: 'Evidencia rechazada',
-    descripcion: 'Notifica cuando se rechaza una evidencia cargada',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento'],
-    condicion: 'Al rechazar evidencia'
-  },
-  {
-    id: 'EVT-PM-003',
-    categoria: 'Planes Mejoramiento',
-    nombre: 'Acción vencida sin cumplir',
-    descripcion: 'Alerta cuando una acción supera su fecha de cumplimiento',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe Dependencia', 'Jefe OCIG'],
-    condicion: 'Al día siguiente del vencimiento'
-  },
-
-  // APROBACIONES
-  {
-    id: 'EVT-APR-001',
-    categoria: 'Aprobaciones',
-    nombre: 'Documento aprobado',
-    descripcion: 'Notifica cuando un documento es aprobado',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Auditor Líder'],
-    condicion: 'Al aprobar documento'
-  },
-  {
-    id: 'EVT-APR-002',
-    categoria: 'Aprobaciones',
-    nombre: 'Documento rechazado',
-    descripcion: 'Notifica cuando un documento es rechazado con observaciones',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder'],
-    condicion: 'Al rechazar documento',
-    plantillaEmail: 'El documento [NOMBRE] fue rechazado. Motivo: [MOTIVO]'
-  },
-
-  // SISTEMA
-  {
-    id: 'EVT-SYS-001',
-    categoria: 'Sistema',
-    nombre: 'Carga de trabajo alta',
-    descripcion: 'Alerta cuando un auditor supera 90% de su capacidad',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Jefe OCIG'],
-    condicion: 'Al superar 90% de capacidad'
-  },
-  {
-    id: 'EVT-SYS-002',
-    categoria: 'Sistema',
-    nombre: 'Nuevo documento en repositorio',
-    descripcion: 'Notifica cuando se sube un nuevo documento compartido',
-    activo: false,
-    canal: 'sistema',
-    destinatarios: ['Todos'],
-    condicion: 'Al cargar documento'
+// Utilidad para decodificar nombres de roles con caracteres especiales
+const decodeRoleName = (str: string) => {
+  if (!str) return str;
+  try {
+    return decodeURIComponent(escape(str));
+  } catch (e) {
+    return str;
   }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// MOCK - HISTORIAL DE NOTIFICACIONES ENVIADAS
-// ════════════════════════════════════════════════════════════════════════════
-
-const NOTIFICACIONES_ENVIADAS_MOCK: NotificacionEnviada[] = [
-  {
-    id: 'N-001',
-    eventoId: 'EVT-PM-001',
-    titulo: 'Seguimiento Trimestral Próximo',
-    mensaje: 'El seguimiento trimestral del Plan de Mejoramiento PM-2025-005 vence en 7 días (15 de Octubre).',
-    destinatario: 'Mario Oswaldo Bernal Rodríguez',
-    canal: 'sistema',
-    fechaEnvio: '2025-10-08T09:00:00',
-    leida: false,
-    accion: {
-      texto: 'Ir al Seguimiento',
-      url: '/seguimiento-plan/PM-2025-005'
-    }
-  },
-  {
-    id: 'N-002',
-    eventoId: 'EVT-APR-001',
-    titulo: 'Informe Aprobado',
-    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCIG.',
-    destinatario: 'Ana María López Gómez',
-    canal: 'sistema',
-    fechaEnvio: '2025-09-30T14:22:00',
-    leida: true
-  },
-  {
-    id: 'N-003',
-    eventoId: 'EVT-AUD-003',
-    titulo: 'Plazo de Respuesta Próximo',
-    mensaje: 'El plazo de respuesta para la auditoría AUD-2025-008 vence en 5 días.',
-    destinatario: 'Carlos Andrés Mendoza Silva',
-    canal: 'email',
-    fechaEnvio: '2025-10-05T10:15:00',
-    leida: true
-  },
-  {
-    id: 'N-004',
-    eventoId: 'EVT-KANBAN-002',
-    titulo: 'SLA Próximo a Vencer',
-    mensaje: 'La auditoría AUD-2025-010 en etapa "Ejecución" vence en 3 días.',
-    destinatario: 'Ana María López Gómez',
-    canal: 'sistema',
-    fechaEnvio: '2025-10-07T08:00:00',
-    leida: false
-  }
-];
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function NotificacionesModule() {
-  const [eventos, setEventos] = useState<EventoNotificable[]>(EVENTOS_NOTIFICABLES_MOCK);
+  const [eventos, setEventos] = useState<EventoNotificable[]>([]);
   const [historial, setHistorial] = useState<NotificacionEnviada[]>([]);
   const [tabActiva, setTabActiva] = useState<'configuracion' | 'historial'>('configuracion');
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('Todas');
@@ -339,45 +137,31 @@ export function NotificacionesModule() {
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rolesDb, setRolesDb] = useState<SystemRole[]>([]);
+  const [condicionesDb, setCondicionesDb] = useState<string[]>([]);
   const yaCargadoRef = useRef(false); // ✅ Ref para evitar múltiples cargas (no causa re-render)
 
-  // ✅ Obtener el usuarioId del localStorage
+  // ✅ Obtener el usuarioId desde el cache de autenticación en memoria
   const getUsuarioId = useCallback(() => {
     try {
-      // Intentar con la key principal: esap_user_data
-      let userStr = sessionStorage.getItem('esap_user_data');
-      console.log('[NotificacionesModule] sessionStorage esap_user_data:', userStr?.slice(0, 200));
-      
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        console.log('[NotificacionesModule] User object parsed:', user);
-        // Buscar en diferentes propiedades donde puede estar el ID
-        const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
-        console.log('[NotificacionesModule] UserId extraído:', userId, '| tipo:', typeof userId);
-        if (userId) return String(userId);
-      }
-      
-      // Fallback: esap_auth_user (legacy)
-      userStr = localStorage.getItem('esap_auth_user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
+      const user = (window as any).__esap_auth_cache;
+      if (user) {
         const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
         if (userId) return String(userId);
       }
     } catch (e) {
-      console.error('[NotificacionesModule] Error parsing localStorage:', e);
+      console.error('[NotificacionesModule] Error leyendo usuario:', e);
     }
-    console.log('[NotificacionesModule] Usando fallback admin');
     return 'admin';
   }, []);
 
-  // ✅ Cargar configuración desde el backend
+  // ✅ Cargar configuración desde el backend (Global para el módulo)
   const cargarConfiguracion = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
-      const usuarioId = getUsuarioId();
-      console.log('[NotificacionesModule] Cargando configuración para usuario:', usuarioId);
+      const usuarioId = 'GLOBAL_CONFIG';
+      console.log('[NotificacionesModule] Guardando configuración GLOBAL...');
       
       // Cargar preferencias de notificación
       const preferencias = await controlInternoService.getPreferenciasNotificacion(usuarioId);
@@ -386,37 +170,45 @@ export function NotificacionesModule() {
       // Mapear preferencias del backend a eventos del frontend
       if (preferencias?.tiposNotificacion) {
         const tiposBackend = preferencias.tiposNotificacion;
-        
-        // ✅ Crear nuevos eventos actualizados directamente desde el MOCK
-        const eventosActualizados = EVENTOS_NOTIFICABLES_MOCK.map(evento => {
-          const configBackend = tiposBackend[evento.id];
-          if (configBackend) {
-            const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
-                              configBackend.email ? 'email' as const : 'sistema' as const;
-            console.log(`[NotificacionesModule] Aplicando config backend para ${evento.id}: activo=${configBackend.activo}, canal=${nuevoCanal}`);
-            return {
-              ...evento,
-              activo: configBackend.activo === true || configBackend.activo === 'true',
-              canal: nuevoCanal
-            };
-          }
-          console.log(`[NotificacionesModule] Sin config backend para ${evento.id}, usando default`);
-          return evento;
+        const eventosFinales: EventoNotificable[] = [];
+
+        Object.keys(tiposBackend).forEach(id => {
+          const configBackend = tiposBackend[id];
+          const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
+                            configBackend.email ? 'email' as const : 'sistema' as const;
+
+          eventosFinales.push({
+            id: id,
+            categoria: configBackend.categoria || 'Personalizada',
+            nombre: configBackend.nombre || 'Notificación Personalizada',
+            descripcion: configBackend.descripcion || '',
+            activo: configBackend.activo === true || configBackend.activo === 'true',
+            canal: nuevoCanal,
+            destinatarios: configBackend.roles || [],
+            condicion: configBackend.condicion || '',
+            plantillaEmail: configBackend.plantillaEmail || '',
+            esPersonalizada: configBackend.esPersonalizada || false
+          });
         });
-        
-        console.log('[NotificacionesModule] Eventos actualizados:', 
-          eventosActualizados.map(e => ({ id: e.id, activo: e.activo, canal: e.canal }))
-        );
-        
-        // Actualizar estado con los nuevos eventos
-        setEventos(eventosActualizados);
+
+        setEventos(eventosFinales);
       }
 
-      // Cargar historial de notificaciones
+      // Cargar historial de notificaciones (TODAS las del sistema para visibilidad completa)
       try {
-        console.log('[NotificacionesModule] Solicitando notificaciones para usuario:', usuarioId);
-        const notificaciones = await controlInternoService.getNotificacionesUsuario(usuarioId);
-        console.log('[NotificacionesModule] Notificaciones recibidas:', notificaciones?.length || 0, 'items');
+        console.log('[NotificacionesModule] Solicitando historial de notificaciones...');
+        // Intentar cargar TODAS las notificaciones del sistema (para Jefe OCI / Admin)
+        // Si falla, cargar solo las del usuario actual
+        let notificaciones: any[] = [];
+        try {
+          notificaciones = await controlInternoService.getTodasNotificaciones();
+          console.log('[NotificacionesModule] Notificaciones del sistema recibidas:', notificaciones?.length || 0);
+        } catch {
+          // Fallback: cargar solo las del usuario actual
+          notificaciones = await controlInternoService.getNotificacionesUsuario(usuarioId);
+          console.log('[NotificacionesModule] Notificaciones del usuario recibidas:', notificaciones?.length || 0);
+        }
+        
         console.log('[NotificacionesModule] Respuesta completa:', JSON.stringify(notificaciones)?.slice(0, 500));
         if (Array.isArray(notificaciones)) {
           const historialMapeado = notificaciones.map((n: any) => ({
@@ -424,8 +216,10 @@ export function NotificacionesModule() {
             eventoId: n.tipoNotificacion || n.tipo || 'EVT-SISTEMA',
             titulo: n.titulo,
             mensaje: n.mensaje,
-            destinatario: n.nombreUsuario || usuarioId,
-            canal: n.canal?.toLowerCase() === 'email' ? 'email' : 'sistema',
+            destinatario: n.nombreUsuario || n.usuarioId || usuarioId,
+            // Mapear canal correctamente: 'email' | 'sistema' | 'ambos'
+            canal: n.canal === 'email' ? 'email' as const : 
+                   n.canal === 'ambos' ? 'ambos' as const : 'sistema' as const,
             fechaEnvio: n.createdAt || n.fechaCreacion,
             leida: n.leida ?? false,
             accion: n.accionUrl ? { texto: 'Ver', url: n.accionUrl } : undefined
@@ -434,7 +228,29 @@ export function NotificacionesModule() {
           setHistorial(historialMapeado);
         }
       } catch (histErr) {
-        console.warn('[NotificacionesModule] Error cargando historial (no crítico):', histErr);
+        console.warn('[NotificacionesModule] Error cargando historial:', histErr);
+        // No bloquear por error del historial - mostrar vacío
+        setHistorial([]);
+      }
+      
+      // Cargar roles desde base de datos
+      try {
+        const rolesRes = await rolesService.getRoles({ limit: 100 });
+        if (rolesRes && rolesRes.roles) {
+          setRolesDb(rolesRes.roles);
+        }
+      } catch (rolesErr) {
+        console.error('[NotificacionesModule] Error cargando roles:', rolesErr);
+      }
+
+      // Cargar condiciones de disparo desde base de datos
+      try {
+        const condsRes = await controlInternoService.getCondicionesDisparo();
+        if (Array.isArray(condsRes) && condsRes.length > 0) {
+          setCondicionesDb(condsRes.map(c => c.nombre));
+        }
+      } catch (condsErr) {
+        console.error('[NotificacionesModule] Error cargando condiciones de disparo:', condsErr);
       }
       
     } catch (err: any) {
@@ -452,19 +268,30 @@ export function NotificacionesModule() {
   const guardarConfiguracionBackend = useCallback(async (eventosActualizados: EventoNotificable[]) => {
     setGuardando(true);
     try {
-      const usuarioId = getUsuarioId();
+      const usuarioId = 'GLOBAL_CONFIG';
+      console.log('[NotificacionesModule] Guardando configuración GLOBAL...');
       
       // Convertir eventos a formato de preferencias del backend
-      const tiposNotificacion: Record<string, { email: boolean; sistema: boolean; activo: boolean }> = {};
+      const tiposNotificacion: Record<string, any> = {};
       eventosActualizados.forEach(evento => {
         tiposNotificacion[evento.id] = {
           email: evento.canal === 'email' || evento.canal === 'ambos',
           sistema: evento.canal === 'sistema' || evento.canal === 'ambos',
-          activo: evento.activo
+          canal: evento.canal, // Guardar explícitamente el canal
+          activo: Boolean(evento.activo), // Asegurar booleano real
+          roles: evento.destinatarios, // Guardar roles (role_ids)
+          nombre: evento.nombre, // Guardar metadatos para recuperarlos después
+          titulo: evento.nombre, // Para el trigger del backend
+          descripcion: evento.descripcion,
+          mensaje: evento.descripcion, // Para el trigger del backend
+          categoria: evento.categoria,
+          condicion: evento.condicion || '',
+          plantillaEmail: evento.plantillaEmail || '',
+          esPersonalizada: evento.esPersonalizada || false
         };
       });
 
-      await controlInternoService.updatePreferenciasNotificacion(usuarioId, {
+      await controlInternoService.updatePreferenciasNotificacion('GLOBAL_CONFIG', {
         tiposNotificacion,
         recibirEmail: eventosActualizados.some(e => e.activo && (e.canal === 'email' || e.canal === 'ambos')),
         recibirSistema: eventosActualizados.some(e => e.activo && (e.canal === 'sistema' || e.canal === 'ambos'))
@@ -564,7 +391,8 @@ export function NotificacionesModule() {
       activo: true,
       canal: 'sistema',
       destinatarios: [],
-      esPersonalizada: true
+      esPersonalizada: true,
+      plantillaEmail: 'Hola [NOMBRE],\n\nTienes una nueva notificación en el sistema de Control Interno de Gestión de la ESAP relacionada con el caso/actividad [CODIGO].\n\nDetalles de la notificación:\n- Etapa: [ETAPA]\n- Motivo: [MOTIVO]\n- Rol: [ROL]\n- Fecha límite: [FECHA]\n\nPor favor, ingresa a la plataforma para revisar y gestionar esta actividad a tiempo.\n\nAtentamente,\nOficina de Control Interno'
     };
     setEventoEditando(nuevoEvento);
     setMostrarModal(true);
@@ -616,6 +444,27 @@ export function NotificacionesModule() {
     toast.success('🗑️ Notificación personalizada eliminada');
   };
 
+  // ✅ Ejecutar job de notificaciones automáticas manualmente
+  const handleEjecutarJob = useCallback(async () => {
+    try {
+      toast.loading('⚙️ Ejecutando job de notificaciones...', { id: 'job-notif' });
+      const resultado = await controlInternoService.ejecutarJobNotificaciones();
+      toast.dismiss('job-notif');
+      if (resultado?.success !== false) {
+        const enviadas = resultado?.resultado?.notificacionesEnviadas ?? resultado?.notificacionesEnviadas ?? '?';
+        toast.success(`✅ Job ejecutado: ${enviadas} notificaciones generadas`);
+        // Recargar historial después de ejecutar el job
+        await cargarConfiguracion();
+      } else {
+        toast.error(`❌ Error al ejecutar job: ${resultado?.message || 'Error desconocido'}`);
+      }
+    } catch (err: any) {
+      toast.dismiss('job-notif');
+      toast.error(`❌ Error al ejecutar job: ${err?.message || 'Error de red'}`);
+      console.error('[NotificacionesModule] Error ejecutando job:', err);
+    }
+  }, [cargarConfiguracion]);
+
   return (
     <div className="p-3 w-full">
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -665,11 +514,6 @@ export function NotificacionesModule() {
         titulo="Configuración de Notificaciones"
         subtitulo="Configura qué eventos del sistema generan notificaciones automáticas"
       />
-
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* ESTADÍSTICAS */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* TABS */}
@@ -729,12 +573,16 @@ export function NotificacionesModule() {
             onEditar={handleEditarEvento}
             onCrear={handleCrearNueva}
             onEliminar={handleEliminarEvento}
+            rolesDb={rolesDb}
           />
         )}
         {tabActiva === 'historial' && (
           <TabHistorial
             key="historial"
             historial={historial}
+            eventos={eventos}
+            onEjecutarJob={handleEjecutarJob}
+            onRecargar={cargarConfiguracion}
           />
         )}
       </AnimatePresence>
@@ -750,6 +598,8 @@ export function NotificacionesModule() {
             setMostrarModal(false);
             setEventoEditando(null);
           }}
+          rolesDb={rolesDb}
+          condicionesDisparo={condicionesDb.length > 0 ? condicionesDb : CONDICIONES_DISPARO}
         />
       )}
     </div>
@@ -768,6 +618,7 @@ interface TabConfiguracionProps {
   onEditar: (evento: EventoNotificable) => void;
   onCrear: () => void;
   onEliminar: (id: string) => void;
+  rolesDb: SystemRole[];
 }
 
 function TabConfiguracion({
@@ -777,7 +628,8 @@ function TabConfiguracion({
   onToggle,
   onEditar,
   onCrear,
-  onEliminar
+  onEliminar,
+  rolesDb
 }: TabConfiguracionProps) {
   const categorias = ['Todas', 'Kanban', 'Auditorías', 'Planes Mejoramiento', 'Aprobaciones', 'Sistema', 'Personalizada'];
 
@@ -820,6 +672,7 @@ function TabConfiguracion({
             onToggle={onToggle}
             onEditar={onEditar}
             onEliminar={onEliminar}
+            rolesDb={rolesDb}
           />
         ))}
       </div>
@@ -845,9 +698,27 @@ interface TarjetaEventoProps {
   onToggle: (id: string) => void;
   onEditar: (evento: EventoNotificable) => void;
   onEliminar: (id: string) => void;
+  rolesDb: SystemRole[];
 }
 
-function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEventoProps) {
+// Helper robusto para encontrar roles ignorando acentos, mayúsculas o códigos antiguos
+const findRole = (rolesDb: SystemRole[], idOrName: string) => {
+  if (!idOrName) return null;
+  // Búsqueda exacta primero
+  let found = rolesDb.find(r => r.id === idOrName || r.code === idOrName || r.name === idOrName);
+  if (found) return found;
+
+  // Búsqueda aproximada (sin acentos, mayúsculas)
+  const normalize = (str: string) => (str || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const nVal = normalize(idOrName);
+  
+  // Mapeos especiales antiguos
+  if (nVal === 'JEFE_OCIG') return rolesDb.find(r => normalize(r.name) === 'JEFE OCI' || normalize(r.code || '') === 'JEFE_OCI');
+
+  return rolesDb.find(r => normalize(r.name) === nVal || normalize(r.code || '') === nVal) || null;
+};
+
+function TarjetaEvento({ evento, onToggle, onEditar, onEliminar, rolesDb }: TarjetaEventoProps) {
   const getCategoriaHex = (categoria: string) => {
     switch (categoria) {
       case 'Kanban': return '#2962FF';
@@ -938,7 +809,7 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
             <div className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
               <div className="text-[10px] font-medium text-gray-400 mb-0.5">Destinatarios</div>
               <div className="text-xs font-bold text-gray-700">
-                {evento.destinatarios.length} rol(es)
+                {evento.destinatarios.map(r => findRole(rolesDb, r)).filter(Boolean).length} rol(es)
               </div>
             </div>
 
@@ -953,11 +824,15 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
           {/* Destinatarios */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <Users className="w-4 h-4 text-gray-500" />
-            {evento.destinatarios.map((rol, idx) => (
-              <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
-                {rol}
-              </span>
-            ))}
+            {evento.destinatarios.map((rolId, idx) => {
+              const rolObj = findRole(rolesDb, rolId);
+              if (!rolObj) return null; // No mostrar roles inválidos o eliminados
+              return (
+                <span key={`rol-${idx}-${rolObj.id}`} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                  {decodeRoleName(rolObj.name)}
+                </span>
+              );
+            })}
           </div>
 
           {/* Botones editar y eliminar */}
@@ -991,9 +866,20 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
 
 interface TabHistorialProps {
   historial: NotificacionEnviada[];
+  eventos: EventoNotificable[];
+  onEjecutarJob: () => void;
+  onRecargar: () => void;
 }
 
-function TabHistorial({ historial }: TabHistorialProps) {
+function TabHistorial({ historial, eventos, onEjecutarJob, onRecargar }: TabHistorialProps) {
+  const [ejecutandoJob, setEjecutandoJob] = useState(false);
+
+  const handleEjecutar = async () => {
+    setEjecutandoJob(true);
+    await onEjecutarJob();
+    setTimeout(() => setEjecutandoJob(false), 2000);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1001,20 +887,48 @@ function TabHistorial({ historial }: TabHistorialProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-3"
     >
+      {/* Cabecera informativa + acciones */}
       <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-4">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-900">
-            <strong>Historial de notificaciones enviadas</strong>
-            <p className="mt-1">
-              Aquí se muestran las notificaciones que el sistema ha generado y enviado
-              en los últimos 30 días según las reglas configuradas.
-            </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-900">
+              <strong>Historial de notificaciones enviadas</strong>
+              <p className="mt-1">
+                Aquí se muestran las notificaciones que el sistema ha generado y enviado
+                según las reglas configuradas. Total: <strong>{historial.length}</strong> registro(s).
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={onRecargar}
+              className="px-3 py-1.5 bg-white border border-blue-300 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-all"
+              title="Recargar historial"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Recargar
+            </button>
+            <button
+              onClick={handleEjecutar}
+              disabled={ejecutandoJob}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-all"
+              title="Ejecutar job de notificaciones ahora"
+            >
+              {ejecutandoJob ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5" />
+              )}
+              Ejecutar Job
+            </button>
           </div>
         </div>
       </div>
 
-      {historial.map((notif) => (
+      {historial.map((notif) => {
+        const eventoBase = eventos.find(e => e.id === notif.eventoId);
+        return (
         <div
           key={notif.id}
           className={`bg-white rounded-xl border-2 p-4 hover:shadow-md transition-all ${
@@ -1022,13 +936,17 @@ function TabHistorial({ historial }: TabHistorialProps) {
           }`}
         >
           <div className="flex items-start gap-4">
+            {/* Ícono de canal */}
             <div className={`p-3 rounded-xl flex-shrink-0 ${
-              notif.canal === 'sistema' ? 'bg-blue-600' : 'bg-purple-600'
+              notif.canal === 'ambos' ? 'bg-green-600' :
+              notif.canal === 'email' ? 'bg-purple-600' : 'bg-blue-600'
             }`}>
-              {notif.canal === 'sistema' ? (
-                <Bell className="w-5 h-5 text-white" />
-              ) : (
+              {notif.canal === 'ambos' ? (
+                <Zap className="w-5 h-5 text-white" />
+              ) : notif.canal === 'email' ? (
                 <Mail className="w-5 h-5 text-white" />
+              ) : (
+                <Bell className="w-5 h-5 text-white" />
               )}
             </div>
 
@@ -1046,32 +964,60 @@ function TabHistorial({ historial }: TabHistorialProps) {
               <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  {new Date(notif.fechaEnvio).toLocaleString()}
+                  {notif.fechaEnvio ? new Date(notif.fechaEnvio).toLocaleString('es-CO') : 'Sin fecha'}
                 </span>
                 <span className="flex items-center gap-1">
                   <Users className="w-3 h-3" />
                   {notif.destinatario}
                 </span>
                 <span className={`px-2 py-1 rounded font-semibold ${
-                  notif.canal === 'sistema'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-purple-100 text-purple-700'
+                  notif.canal === 'ambos'
+                    ? 'bg-green-100 text-green-700'
+                    : notif.canal === 'email'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-blue-100 text-blue-700'
                 }`}>
-                  {notif.canal === 'sistema' ? 'Sistema' : 'Email'}
+                  {notif.canal === 'ambos' ? '📨 Email + Sistema' :
+                   notif.canal === 'email' ? '✉️ Email' : '🔔 Sistema'}
+                </span>
+                {notif.leida && (
+                  <span className="flex items-center gap-1 text-green-600">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Leída
+                  </span>
+                )}
+                <span className="flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono text-[10px] border border-gray-200 uppercase">
+                  <Settings className="w-3 h-3" />
+                  {eventoBase ? `${notif.eventoId} (${eventoBase.categoria})` : notif.eventoId}
                 </span>
               </div>
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {historial.length === 0 && (
         <div className="bg-white rounded-xl border-2 border-gray-200 p-12 text-center">
           <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <p className="text-lg font-bold text-gray-500">No hay notificaciones en el historial</p>
-          <p className="text-sm text-gray-400 mt-2">
-            Las notificaciones enviadas aparecerán aquí
+          <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto">
+            Las notificaciones se generan automáticamente cuando ocurren eventos del sistema
+            (auditorías, planes de mejoramiento, aprobaciones). Puede ejecutar el job manual
+            usando el botón <strong>&quot;Ejecutar Job&quot;</strong> para generar notificaciones de vencimientos ahora.
           </p>
+          <button
+            onClick={handleEjecutar}
+            disabled={ejecutandoJob}
+            className="mt-6 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl font-semibold text-sm flex items-center gap-2 mx-auto transition-all"
+          >
+            {ejecutandoJob ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            Ejecutar Job de Notificaciones
+          </button>
         </div>
       )}
     </motion.div>
@@ -1086,10 +1032,31 @@ interface ModalEditarEventoProps {
   evento: EventoNotificable;
   onGuardar: (evento: EventoNotificable) => void;
   onCerrar: () => void;
+  rolesDb: SystemRole[];
+  condicionesDisparo: readonly string[];
 }
 
-function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoProps) {
-  const [form, setForm] = useState(evento);
+function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb, condicionesDisparo }: ModalEditarEventoProps) {
+  // ✅ BUG 4 FIX: Asegurar que destinatarios sea siempre un array al inicializar
+  // y normalizarlos a IDs reales de la base de datos
+  const destinatariosIniciales = Array.isArray(evento.destinatarios)
+    ? evento.destinatarios.map(d => findRole(rolesDb, d)?.id).filter(Boolean) as string[]
+    : [];
+
+  // Eliminar duplicados si los hay
+  const destinatariosUnicos = Array.from(new Set(destinatariosIniciales));
+
+  // ✅ BUG 3 FIX: Guardar el nombre original del evento padre para el subtítulo
+  // para que no cambie mientras el usuario edita el campo "Nombre"
+  const nombreEventoPadre = evento.nombre || 'Nueva notificación personalizada';
+
+  const plantillaEmailDefault = 'Hola [NOMBRE],\n\nTienes una nueva notificación en el sistema de Control Interno de Gestión de la ESAP relacionada con el caso/actividad [CODIGO].\n\nDetalles de la notificación:\n- Etapa: [ETAPA]\n- Motivo: [MOTIVO]\n- Rol: [ROL]\n- Fecha límite: [FECHA]\n\nPor favor, ingresa a la plataforma para revisar y gestionar esta actividad a tiempo.\n\nAtentamente,\nOficina de Control Interno';
+
+  const [form, setForm] = useState({
+    ...evento,
+    destinatarios: destinatariosUnicos,
+    plantillaEmail: evento.plantillaEmail || plantillaEmailDefault
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1131,7 +1098,7 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-black">Configurar Notificación</h2>
-                <p className="text-sm text-blue-100 mt-1">{evento.nombre}</p>
+                <p className="text-sm text-blue-100 mt-1">Evento: {nombreEventoPadre}</p>
               </div>
               <button
                 type="button"
@@ -1148,6 +1115,22 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
             {/* Nombre y Descripción (solo para nuevas) */}
             {evento.esPersonalizada && (
               <>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">
+                    Identificador Único (ID) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.id}
+                    onChange={(e) => setForm({ ...form, id: e.target.value.replace(/\s+/g, '-').toUpperCase() })}
+                    placeholder="Ej: EVT-CUSTOM-001"
+                    disabled={evento.nombre !== ''}
+                    className={`w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-mono text-sm ${evento.nombre !== '' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Identificador usado en el historial y campanita para reconocer la regla.</p>
+                </div>
+                
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-2">
                     Nombre de la Notificación <span className="text-red-600">*</span>
@@ -1224,31 +1207,40 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
                 Destinatarios (Roles)
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {ROLES_SISTEMA.map(rol => (
-                  <button
-                    key={rol}
-                    type="button"
-                    onClick={() => toggleDestinatario(rol)}
-                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all border-2 text-left ${
-                      form.destinatarios.includes(rol)
-                        ? 'bg-blue-100 text-blue-700 border-blue-400'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-400'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                        form.destinatarios.includes(rol)
-                          ? 'bg-blue-600 border-blue-600'
-                          : 'border-gray-400'
-                      }`}>
-                        {form.destinatarios.includes(rol) && (
-                          <CheckCircle2 className="w-3 h-3 text-white" />
-                        )}
-                      </div>
-                      <span>{rol}</span>
-                    </div>
-                  </button>
-                ))}
+                {rolesDb.length > 0 ? (
+                  rolesDb.map(rol => {
+                    const isSelected = form.destinatarios.includes(rol.id);
+                    return (
+                      <button
+                        key={rol.id}
+                        type="button"
+                        onClick={() => toggleDestinatario(rol.id)}
+                        className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all border-2 text-left ${
+                          isSelected
+                            ? 'bg-blue-100 text-blue-700 border-blue-400'
+                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-600'
+                              : 'border-gray-400'
+                          }`}>
+                            {isSelected && (
+                              <CheckCircle2 className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                          <span>{decodeRoleName(rol.name)}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="col-span-2 text-sm text-gray-500 py-2">
+                    Cargando roles o no hay roles disponibles...
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1257,13 +1249,16 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
               <label className="block text-sm font-bold text-gray-900 mb-2">
                 Condición de Disparo
               </label>
-              <input
-                type="text"
+              <select
                 value={form.condicion || ''}
                 onChange={(e) => setForm({ ...form, condicion: e.target.value })}
-                placeholder="Ej: 5 días antes del vencimiento"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              />
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white font-semibold"
+              >
+                <option value="" disabled>Selecciona una condición</option>
+                {condicionesDisparo.map(cond => (
+                  <option key={cond} value={cond}>{cond}</option>
+                ))}
+              </select>
             </div>
 
             {/* Plantilla Email (si canal incluye email) */}

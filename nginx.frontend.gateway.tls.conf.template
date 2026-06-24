@@ -2,12 +2,14 @@ server {
     listen 80;
     server_name ${TLS_SERVER_NAME};
     server_tokens off;
+    add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
 
     location = /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 
@@ -25,7 +27,7 @@ server {
     listen 443 ssl;
     server_name ${TLS_SERVER_NAME};
     server_tokens off;
-    set $esap_csp "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'self' blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: ws: wss:; frame-src 'self' blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob: https:; form-action 'self'; manifest-src 'self';";
+    set $esap_csp "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; script-src 'self'; style-src 'self' 'nonce-$request_id'; style-src-elem 'self' 'nonce-$request_id'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://unpkg.com https://images.unsplash.com https://ui-avatars.com https://api.dicebear.com https://api.qrserver.com; font-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://login.microsoft.com; frame-src 'self' blob: https://login.microsoftonline.com; object-src 'none'; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob:; manifest-src 'self';";
 
     ssl_certificate ${TLS_CERT_PATH};
     ssl_certificate_key ${TLS_KEY_PATH};
@@ -52,11 +54,12 @@ server {
         expires 30d;
         add_header Cache-Control "public";
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 
     location ^~ /services/ {
-        client_max_body_size 60m;
+        client_max_body_size 5g;
         proxy_pass http://api-gateway:3000/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -191,7 +194,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_hide_header X-Powered-By;
-    }
+     }
 
     location ^~ /remotes/mfe-pta/ {
         proxy_pass http://frontend-mfe-pta:80/;
@@ -202,7 +205,6 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_hide_header X-Powered-By;
     }
-
     location / {
         proxy_pass http://frontend-shell:80;
         proxy_http_version 1.1;
@@ -210,14 +212,16 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Accept-Encoding "";
         proxy_hide_header X-Powered-By;
         proxy_hide_header X-Frame-Options;
-        proxy_hide_header Content-Security-Policy;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
-        add_header Content-Security-Policy $esap_csp always;
+        # El frontend-shell ya reemplaza __ESAP_CSP_NONCE__ y emite la CSP
+        # con el mismo nonce. Si el gateway genera otro nonce, el HTML y el
+        # header quedan desalineados y el navegador bloquea estilos dinamicos.
     }
 
     location /health {
@@ -225,6 +229,7 @@ server {
         return 200 "healthy\n";
         add_header Content-Type text/plain;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 }

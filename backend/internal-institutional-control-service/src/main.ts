@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as bodyParser from 'body-parser';
 import { join } from 'path';
+import { CleanUploadFileNameInterceptor } from './common/interceptors/clean-upload-filename.interceptor';
 
 async function bootstrap() {
   try {
@@ -76,9 +77,12 @@ async function bootstrap() {
       allowedHeaders: [
         'Content-Type', 'Authorization', 'Accept', 'Accept-Charset',
         'x-user-id', 'x-user-username', 'x-user-roles',
+        'x-user-email', 'x-user-name',
+        'X-User-Id', 'X-User-Email', 'X-User-Name', 'X-User-Roles',
         'X-Client-Version', 'X-Client-Platform', 'X-Access-Token',
-      'x-client-platform',
-      'X-Client-Platform'],
+        'x-client-platform', 'x-client-version',
+        'X-Client-Platform', 'X-Client-Version',
+      ],
     });
 
     // Aumentar límite de body-parser para archivos grandes (base64)
@@ -102,6 +106,9 @@ async function bootstrap() {
       };
       next();
     });
+
+    // Interceptor global para limpiar nombres de archivos subidos
+    app.useGlobalInterceptors(new CleanUploadFileNameInterceptor());
 
     // Validación global
     app.useGlobalPipes(

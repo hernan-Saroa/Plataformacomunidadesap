@@ -24,17 +24,18 @@
  * 7. Detalles del Proceso
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 // @ts-ignore
 import { toast } from 'sonner';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { estructuraService } from '../../../../services/api/estructura.service';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 import {
   Scale, FileText, Users, Building2, User, MapPin, Calendar,
   ChevronRight, ChevronLeft, Plus, Trash2, Check, AlertCircle,
   DollarSign, Clock, Star, Info, Sparkles, Save, X, CheckCircle,
-  Shield, Zap
+  Zap, Upload, Download
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -111,7 +112,9 @@ export interface NuevaDemandaData {
   juzgadoTribunal: string;
   departamento: string;
   ciudad: string;
-  tipoPlazo: 'Dias Habiles' | 'Dias Calendario';
+  territorial: string;
+  dependencia: string;
+  tipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas';
   termino: number;
   fechaNotificacion: string;
   fechaVencimiento: string;
@@ -119,6 +122,11 @@ export interface NuevaDemandaData {
   pretensiones: string;
   hechos: string;
   observaciones: string;
+  esDelitoAdminPublica: boolean;
+  esConductaPatrimonioPublico: boolean;
+  esOtroDelitoPenal: boolean;
+  otroDelitoPenalDescripcion: string;
+  camposAdicionales?: Record<string, any>;
 }
 
 interface ModalNuevaDemandaRESTAURADOProps {
@@ -126,7 +134,23 @@ interface ModalNuevaDemandaRESTAURADOProps {
   onClose: () => void;
   onSave: (data: NuevaDemandaData, isEdit?: boolean, originalId?: string) => void;
   expedienteEdit?: ExpedienteJudicial;
+  tableroSeleccionado?: string;
 }
+
+// ==================== DEMANDADO POR DEFECTO (ESAP) ====================
+// El primer demandado se pre-rellena con la información de la ESAP.
+// Los datos quedan editables y el demandado puede eliminarse manualmente.
+const crearDemandadoESAPPorDefecto = (): Demandado => ({
+  id: 'DEMA-ESAP-DEFAULT',
+  tipoPersona: 'Juridica',
+  cedula: '899999054-9',
+  nombreCompleto: 'Escuela Superior de Administración Pública - ESAP',
+  cargoFuncion: '',
+  telefono: '6012202790',
+  correo: 'ventanillaunica@esap.gov.co',
+  direccion: 'Calle 44 N.º 53-37, CAN, Bogotá D.C.',
+  tieneApoderado: false
+});
 
 // ==================== DATOS PARAMETRIZABLES ====================
 // MEDIOS_CONTROL, TIPOS_PROCESO y ETAPAS_PROCESALES ahora se obtienen
@@ -141,7 +165,32 @@ const soloDigitos = (v: string) => v.replace(/[^0-9]/g, '');
 const soloLetrasEspacios = (v: string) => v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
 const nitFormato = (v: string) => v.replace(/[^0-9.\-]/g, '');
 
-// Abogados se cargan dinámicamente desde legal_management.abogados
+/**
+ * Formatea una fecha local (datetime-local YYYY-MM-DDTHH:mm o ISO) al formato visual: DD/MM/YYYY hh:mm a. m. / p. m.
+ */
+function formatFechaLocal(fechaStr: string): string {
+  if (!fechaStr) return '';
+  try {
+    const normalizada = fechaStr.includes('T') ? fechaStr : fechaStr.replace(' ', 'T');
+    const fecha = new Date(normalizada);
+    if (isNaN(fecha.getTime())) return fechaStr;
+    
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dia = pad(fecha.getDate());
+    const mes = pad(fecha.getMonth() + 1);
+    const anio = fecha.getFullYear();
+    
+    let horas = fecha.getHours();
+    const minutos = pad(fecha.getMinutes());
+    const ampm = horas >= 12 ? 'p. m.' : 'a. m.';
+    horas = horas % 12;
+    horas = horas ? horas : 12;
+    
+    return `${dia}/${mes}/${anio} ${pad(horas)}:${minutos} ${ampm}`;
+  } catch (e) {
+    return fechaStr;
+  }
+}
 
 // ==================== FUNCIONES DE CÁLCULO ====================
 
@@ -218,14 +267,31 @@ function toLocalISO(d: Date): string {
 function calcularFechaVencimiento(
   fechaNotificacion: string,
   termino: number,
-  tipoPlazo: 'Dias Habiles' | 'Dias Calendario'
+  tipoPlazo: 'Dias Habiles' | 'Dias Calendario',
+  horaEspecial?: string,
+  unidadTermino: 'dias' | 'horas' = 'dias'
 ): string {
   if (!fechaNotificacion || !termino) return '';
 
   const fecha = new Date(fechaNotificacion);
 
+  if (unidadTermino === 'horas') {
+    fecha.setHours(fecha.getHours() + termino);
+    return toLocalISO(fecha);
+  }
+  
+  // Parsear hora especial (ej: "14:30") o usar 17:00 por defecto
+  let horas = 17;
+  let minutos = 0;
+  if (horaEspecial && horaEspecial.includes(':')) {
+    const parts = horaEspecial.split(':');
+    horas = parseInt(parts[0], 10) || 17;
+    minutos = parseInt(parts[1], 10) || 0;
+  }
+
   if (tipoPlazo === 'Dias Calendario') {
     fecha.setDate(fecha.getDate() + termino);
+    fecha.setHours(horas, minutos, 0, 0);
   } else {
     // Días Hábiles: contar solo lun-vie (el día de notificación cuenta como día 1)
     let diasAgregados = 1;
@@ -235,8 +301,7 @@ function calcularFechaVencimiento(
         diasAgregados++;
       }
     }
-    // Siempre vence a las 5:00 PM para días hábiles
-    fecha.setHours(17, 0, 0, 0);
+    fecha.setHours(horas, minutos, 0, 0);
   }
 
   return toLocalISO(fecha);
@@ -244,12 +309,26 @@ function calcularFechaVencimiento(
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit }: ModalNuevaDemandaRESTAURADOProps) {
+export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit, tableroSeleccionado }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
-  const { mediosControlActivos, tiposProcesosActivos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
+  const { mediosControlActivos, tiposProcesosActivos: allTiposProcesos, estadosActivos, dependenciasActivas } = useConfiguracionModulo('defensa-judicial');
+
+  // Filtrar tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
+  const tiposProcesosActivos = useMemo(() => {
+    const porRol = (allTiposProcesos || []).filter((tp: any) => {
+      if (!tp.rolAsociado) return true;
+      return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
+    });
+    // Si hay un tablero seleccionado, mostrar solo ese tipo de proceso en el dropdown
+    if (tableroSeleccionado) {
+      const solo = porRol.filter((tp: any) => tp.id === tableroSeleccionado);
+      if (solo.length > 0) return solo;
+    }
+    return porRol;
+  }, [allTiposProcesos, tableroSeleccionado]);
 
   const [pasoActual, setPasoActual] = useState(1);
-  const totalPasos = 7;
+  const lastTipoProcesoRef = useRef<string>('');
 
   const [formData, setFormData] = useState<NuevaDemandaData>({
     numeroRadicado: '',
@@ -267,6 +346,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     juzgadoTribunal: '',
     departamento: '',
     ciudad: '',
+    territorial: '',
+    dependencia: '',
     tipoPlazo: 'Dias Habiles',
     termino: 30,
     fechaNotificacion: '',
@@ -274,19 +355,458 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     abogadoResponsable: '',
     pretensiones: '',
     hechos: '',
-    observaciones: ''
+    observaciones: '',
+    esDelitoAdminPublica: false,
+    esConductaPatrimonioPublico: false,
+    esOtroDelitoPenal: false,
+    otroDelitoPenalDescripcion: '',
+    camposAdicionales: {}
   });
+
+  const activeTipoProceso = tiposProcesosActivos.find(tp => tp.nombre === formData.tipoProcesoJudicial);
+  const etapasDelProceso = (activeTipoProceso?.estados && activeTipoProceso.estados.length > 0)
+    ? activeTipoProceso.estados.filter((e: any) => e.activo).sort((a: any, b: any) => a.orden - b.orden)
+    : estadosActivos;
+
+  const isFieldVisible = (fieldName: string, defaultVisible: boolean): boolean => {
+    if (activeTipoProceso && activeTipoProceso.camposVisibles) {
+      const configured = activeTipoProceso.camposVisibles[fieldName];
+      if (configured !== undefined) return configured;
+    }
+    return defaultVisible;
+  };
+
+  const isFieldRequired = (fieldName: string, defaultRequired: boolean): boolean => {
+    if (!isFieldVisible(fieldName, true)) return false;
+
+    if (activeTipoProceso && activeTipoProceso.camposObligatorios) {
+      const configured = activeTipoProceso.camposObligatorios[fieldName];
+      if (configured !== undefined) return configured;
+    }
+    return defaultRequired;
+  };
+
+  // ¿El paso tiene al menos un campo adicional configurado?
+  const pasoTieneCamposAdicionales = (stepNum: number): boolean =>
+    !!activeTipoProceso?.camposAdicionalesConfig?.some(c => (c.paso || 1) === stepNum);
+
+  // Determina si un paso del wizard tiene contenido visible. Los pasos 5 (Juzgado)
+  // y 7 (Detalles) solo contienen campos del sistema configurables; si todos se
+  // ocultan desde configuración (y no hay campos adicionales en ese paso), el paso
+  // debe omitirse por completo del flujo en lugar de mostrar un espacio vacío.
+  const pasoTieneContenido = (stepNum: number): boolean => {
+    switch (stepNum) {
+      case 5:
+        return isFieldVisible('juzgadoTribunal', true)
+          || isFieldVisible('departamentoCiudad', true)
+          || pasoTieneCamposAdicionales(5);
+      case 7:
+        return isFieldVisible('pretensiones', true)
+          || isFieldVisible('hechos', true)
+          || isFieldVisible('observaciones', true)
+          || pasoTieneCamposAdicionales(7);
+      default:
+        // Pasos 1-4 y 6 siempre tienen campos fijos o gestión de actores.
+        return true;
+    }
+  };
+
+  // Lista ordenada de los pasos realmente visibles en el flujo actual. La navegación,
+  // el breadcrumb, el progreso y la numeración se calculan sobre esta lista para que
+  // los pasos ocultos desaparezcan por completo y los activos se reorganicen de forma continua.
+  const pasosActivos = [1, 2, 3, 4, 5, 6, 7].filter(pasoTieneContenido);
+  const totalPasosActivos = pasosActivos.length;
+  const indicePasoActual = pasosActivos.indexOf(pasoActual);
+  const esPrimerPaso = indicePasoActual <= 0;
+  const esUltimoPaso = indicePasoActual === totalPasosActivos - 1;
+
+  // Etiquetas cortas para el breadcrumb, indexadas por número de paso.
+  const ETIQUETAS_PASO: Record<number, string> = {
+    1: 'Proceso',
+    2: 'Demandantes',
+    3: 'Demandados',
+    4: 'Otros',
+    5: 'Juzgado',
+    6: 'Fechas',
+    7: 'Detalles',
+  };
+
+  const renderCamposAdicionales = (stepNum: number) => {
+    if (!activeTipoProceso?.camposAdicionalesConfig) return null;
+    const campos = activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === stepNum);
+    if (campos.length === 0) return null;
+
+    return (
+      <Card className="p-4 sm:p-6 border border-blue-100 bg-gradient-to-br from-blue-50/20 to-white shadow-sm mt-6">
+        <div className="flex items-center gap-2 mb-4 border-b border-blue-50 pb-2">
+          <Sparkles className="w-4 h-4 text-blue-600" />
+          <h3 className="text-sm font-bold text-gray-900">Información Específica del Proceso</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {campos.map((c) => {
+            const fieldId = c.id;
+            const currentVal = formData.camposAdicionales?.[fieldId] ?? '';
+
+            const handleValueChange = (val: any) => {
+              setFormData(prev => ({
+                ...prev,
+                camposAdicionales: {
+                  ...(prev.camposAdicionales || {}),
+                  [fieldId]: val
+                }
+              }));
+            };
+
+            return (
+              <div key={fieldId} className={`space-y-2 ${c.tipo === 'opciones-multiple' ? 'md:col-span-2' : ''}`}>
+                <Label htmlFor={fieldId} className={`text-sm font-bold flex items-center ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>
+                  {c.nombre}
+                  {c.obligatorio && <span className="text-red-500 ml-1">*</span>}
+                </Label>
+
+                {(c.tipo === 'texto' || c.tipo === 'alfanumerico' || c.tipo === 'unico') && (
+                  <div className="space-y-1 w-full">
+                    <Input
+                      id={fieldId}
+                      type="text"
+                      placeholder={`Ingrese ${c.nombre.toLowerCase()}...`}
+                      value={currentVal}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value);
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(prev => {
+                            const copy = { ...prev };
+                            delete copy[fieldId];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={`bg-white ${erroresCampos[fieldId] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                    {c.tipo === 'alfanumerico' && !erroresCampos[fieldId] && (
+                      <p className="text-[10px] text-gray-400 font-medium ml-1">Solo se permiten letras y números.</p>
+                    )}
+                    {c.tipo === 'unico' && !erroresCampos[fieldId] && (
+                      <p className="text-[10px] text-gray-400 font-medium ml-1">Este valor debe ser único en el sistema.</p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'numero' && (
+                  <div className="space-y-1 w-full">
+                    <Input
+                      id={fieldId}
+                      type="number"
+                      placeholder="0"
+                      value={currentVal}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value === '' ? '' : Number(e.target.value));
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(prev => {
+                            const copy = { ...prev };
+                            delete copy[fieldId];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={`bg-white ${erroresCampos[fieldId] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'fecha' && (
+                  <div className="space-y-1 w-full">
+                    <Input
+                      id={fieldId}
+                      type="date"
+                      value={currentVal}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value);
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(prev => {
+                            const copy = { ...prev };
+                            delete copy[fieldId];
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={`bg-white ${erroresCampos[fieldId] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'booleano' && (
+                  <div className="space-y-1 w-full">
+                    <div className="flex items-center gap-2 pt-2 h-[38px]">
+                      <input
+                        id={fieldId}
+                        type="checkbox"
+                        checked={!!currentVal}
+                        onChange={(e) => {
+                          handleValueChange(e.target.checked);
+                          if (erroresCampos[fieldId]) {
+                            setErroresCampos(prev => {
+                              const copy = { ...prev };
+                              delete copy[fieldId];
+                              return copy;
+                            });
+                          }
+                        }}
+                        className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer ${erroresCampos[fieldId] ? 'border-red-500' : ''}`}
+                      />
+                      <label htmlFor={fieldId} className={`text-xs font-medium cursor-pointer select-none ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-600'}`}>
+                        {c.nombre}
+                      </label>
+                    </div>
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'opciones-multiple' && (
+                  <div className={`space-y-2 w-full ${(c.opciones || []).length > 2 ? 'md:col-span-2' : ''}`}>
+                    <div className="flex flex-col gap-2">
+                      {(c.opciones || []).map((opcion, optIdx) => {
+                        const selected: string[] = Array.isArray(currentVal) ? currentVal : [];
+                        const isChecked = selected.includes(opcion);
+                        return (
+                          <label key={optIdx} className="flex items-center gap-2.5 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const prev: string[] = Array.isArray(formData.camposAdicionales?.[fieldId]) ? [...(formData.camposAdicionales![fieldId] as string[])] : [];
+                                const next = e.target.checked ? [...prev, opcion] : prev.filter(o => o !== opcion);
+                                handleValueChange(next);
+                                if (erroresCampos[fieldId]) {
+                                  setErroresCampos(p => { const cp = { ...p }; delete cp[fieldId]; return cp; });
+                                }
+                              }}
+                              className={`w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer ${erroresCampos[fieldId] ? 'border-red-500' : ''}`}
+                            />
+                            <span className={`text-sm font-medium group-hover:text-blue-700 ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>{opcion}</span>
+                          </label>
+                        );
+                      })}
+                      {(c.opciones || []).length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Sin opciones configuradas.</p>
+                      )}
+                    </div>
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'lista' && (
+                  <div className="space-y-1 w-full">
+                    <select
+                      id={fieldId}
+                      value={typeof currentVal === 'string' ? currentVal : ''}
+                      onChange={(e) => {
+                        handleValueChange(e.target.value);
+                        if (erroresCampos[fieldId]) {
+                          setErroresCampos(p => { const cp = { ...p }; delete cp[fieldId]; return cp; });
+                        }
+                      }}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800 ${erroresCampos[fieldId] ? 'border-red-500' : 'border-gray-300'}`}
+                    >
+                      <option value="">Seleccione una opción...</option>
+                      {(c.opciones || []).map((opcion, optIdx) => (
+                        <option key={optIdx} value={opcion}>{opcion}</option>
+                      ))}
+                    </select>
+                    {erroresCampos[fieldId] && (
+                      <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {erroresCampos[fieldId]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'documento' && (() => {
+                  const docArray: any[] = Array.isArray(currentVal)
+                    ? currentVal
+                    : (currentVal && typeof currentVal === 'object' && currentVal.nombre ? [currentVal] : []);
+                  return (
+                    <div className="space-y-2 w-full">
+                      {docArray.length > 0 && (
+                        <div className="space-y-1.5">
+                          {docArray.map((doc: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-blue-200 bg-blue-50/30">
+                              <div className="flex items-center gap-2 overflow-hidden mr-2">
+                                <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                                <div className="text-xs truncate">
+                                  <span className="font-semibold text-gray-800 block truncate" title={doc.nombre}>
+                                    {doc.nombre}
+                                  </span>
+                                  {doc.tamano && (
+                                    <span className="text-gray-500 text-[10px]">
+                                      {(doc.tamano / 1024).toFixed(1)} KB
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {doc.base64 && (
+                                  <a
+                                    href={doc.base64}
+                                    download={doc.nombre}
+                                    className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100/50 rounded transition-colors"
+                                    title="Descargar documento"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newArr = docArray.filter((_: any, i: number) => i !== idx);
+                                    handleValueChange(newArr.length > 0 ? newArr : null);
+                                    if (erroresCampos[fieldId] && newArr.length > 0) {
+                                      setErroresCampos(prev => {
+                                        const copy = { ...prev };
+                                        delete copy[fieldId];
+                                        return copy;
+                                      });
+                                    }
+                                  }}
+                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100/50 rounded transition-colors"
+                                  title="Eliminar documento"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="w-full">
+                        <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-xl bg-white hover:bg-blue-50/10 hover:border-blue-300 transition-all cursor-pointer group ${erroresCampos[fieldId] ? 'border-red-500 bg-red-50/10' : 'border-gray-300'}`}>
+                          <div className="flex flex-col items-center justify-center pt-4 pb-5 px-4 text-center">
+                            <Upload className={`w-7 h-7 group-hover:text-blue-500 transition-colors mb-1.5 ${erroresCampos[fieldId] ? 'text-red-500' : 'text-gray-400'}`} />
+                            <p className={`text-xs font-bold group-hover:text-blue-600 transition-colors ${erroresCampos[fieldId] ? 'text-red-600' : 'text-gray-700'}`}>
+                              {docArray.length > 0 ? 'Agregar otro documento' : 'Haga clic para cargar documento'}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                              {c.tiposDocumento && c.tiposDocumento.length > 0
+                                ? `Formatos permitidos: ${c.tiposDocumento.map(ext => ext.toUpperCase()).join(', ')}`
+                                : 'Cualquier formato de archivo permitido'}
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept={c.tiposDocumento && c.tiposDocumento.length > 0 ? c.tiposDocumento.join(',') : '*'}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+
+                              if (c.tiposDocumento && c.tiposDocumento.length > 0) {
+                                const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+                                if (!c.tiposDocumento.includes(ext)) {
+                                  toast.error('⚠️ Archivo no permitido', {
+                                    description: `El tipo de archivo "${ext}" no está permitido. Formatos admitidos: ${c.tiposDocumento.join(', ')}`
+                                  });
+                                  e.target.value = '';
+                                  return;
+                                }
+                              }
+
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                const newDoc = {
+                                  nombre: file.name,
+                                  base64: reader.result as string,
+                                  tamano: file.size,
+                                  tipoMime: file.type,
+                                  esNuevo: true
+                                };
+                                handleValueChange([...docArray, newDoc]);
+                                if (erroresCampos[fieldId]) {
+                                  setErroresCampos(prev => {
+                                    const copy = { ...prev };
+                                    delete copy[fieldId];
+                                    return copy;
+                                  });
+                                }
+                              };
+                              reader.onerror = () => {
+                                toast.error('Error al leer el archivo');
+                              };
+                              reader.readAsDataURL(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {erroresCampos[fieldId] && (
+                        <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {erroresCampos[fieldId]}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  };
 
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
   const [departamentosAPI, setDepartamentosAPI] = useState<{ id: number; nombre: string }[]>([]);
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
+  const [seccionales, setSeccionales] = useState<{ idSeccional: number; nomSeccional: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
+  const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
 
   // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
     if (isOpen) {
+      setErroresCampos({});
+      // Cargar expedientes para validación de campos únicos
+      legalService.getExpedientes()
+        .then(res => {
+          console.log('🔍 [DEBUG] todosLosExpedientes cargados para validación única:', res ? res.length : 0, res);
+          setTodosLosExpedientes(res || []);
+        })
+        .catch(err => {
+          console.error('Error al cargar expedientes para validación única:', err);
+        });
+
       if (expedienteEdit) {
         setPasoActual(1);
 
@@ -345,26 +865,50 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           juzgadoTribunal: expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '',
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
-          tipoPlazo: expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
-          termino: expedienteEdit.diasTotales || 30,
+          territorial: (expedienteEdit as any).territorial || '',
+          dependencia: (expedienteEdit as any).dependencia || '',
+          tipoPlazo: expedienteEdit.tipoConteoTermino === 'HORAS' ? 'Horas' : expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
+          termino: expedienteEdit.terminoProcesalDias || expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
           fechaNotificacion: expedienteEdit.fechaNotificacion ?
             (typeof expedienteEdit.fechaNotificacion === 'string' ? new Date(expedienteEdit.fechaNotificacion).toISOString().slice(0, 16) :
               toLocalISO(expedienteEdit.fechaNotificacion)) : '',
           fechaVencimiento: expedienteEdit.fechaVencimientoTerminos ?
             (typeof expedienteEdit.fechaVencimientoTerminos === 'string' ? new Date(expedienteEdit.fechaVencimientoTerminos).toISOString().slice(0, 16) :
               toLocalISO(expedienteEdit.fechaVencimientoTerminos)) : '',
-          abogadoResponsable: expedienteEdit.abogadoAsignado || '',
+          abogadoResponsable: expedienteEdit.abogadoSustanciador || expedienteEdit.abogadoAsignado || '',
           pretensiones: expedienteEdit.pretensiones || '',
           hechos: expedienteEdit.hechos || '',
-          observaciones: ''
+          observaciones: '',
+          esDelitoAdminPublica: (expedienteEdit as any).esDelitoAdminPublica || false,
+          esConductaPatrimonioPublico: (expedienteEdit as any).esConductaPatrimonioPublico || false,
+          esOtroDelitoPenal: (expedienteEdit as any).esOtroDelitoPenal || false,
+          otroDelitoPenalDescripcion: (expedienteEdit as any).otroDelitoPenalDescripcion || '',
+          camposAdicionales: expedienteEdit.camposAdicionales || {}
         });
         setCiudadesDisponibles([]);
       } else {
         setPasoActual(1);
+        lastTipoProcesoRef.current = '';
+
+        let defaultTipoProceso = '';
+        let defaultTipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas' = 'Dias Habiles';
+        let defaultTermino = 30;
+
+        if (tableroSeleccionado) {
+          const tp = allTiposProcesos?.find((t: any) => t.id === tableroSeleccionado);
+          if (tp) {
+            defaultTipoProceso = tp.nombre;
+            defaultTipoPlazo = 'Dias Habiles';
+            if (tp.unidadTermino === 'Horas' || tp.unidadTermino === 'horas') defaultTipoPlazo = 'Horas';
+            else if (tp.unidadTermino === 'Dias Calendario') defaultTipoPlazo = 'Dias Calendario';
+            defaultTermino = tp.plazo ?? 30;
+          }
+        }
+
         setFormData({
           numeroRadicado: '',
           medioControl: '',
-          tipoProcesoJudicial: '',
+          tipoProcesoJudicial: defaultTipoProceso,
           etapaProcesal: '',
           cuantia: 0,
           nivelRiesgo: '',
@@ -372,36 +916,85 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           fechaEstimacionProvision: '',
           observacionesProvision: '',
           demandantes: [],
-          demandados: [],
+          demandados: [crearDemandadoESAPPorDefecto()],
           otrosActores: [],
           juzgadoTribunal: '',
           departamento: '',
           ciudad: '',
-          tipoPlazo: 'Dias Habiles',
-          termino: 30,
+          territorial: '',
+          dependencia: '',
+          tipoPlazo: defaultTipoPlazo,
+          termino: defaultTermino,
           fechaNotificacion: '',
           fechaVencimiento: '',
           abogadoResponsable: '',
           pretensiones: '',
           hechos: '',
-          observaciones: ''
+          observaciones: '',
+          esDelitoAdminPublica: false,
+          esConductaPatrimonioPublico: false,
+          esOtroDelitoPenal: false,
+          otroDelitoPenalDescripcion: '',
+          camposAdicionales: {}
         });
         setCiudadesDisponibles([]);
       }
     }
   }, [isOpen, expedienteEdit]);
 
+  // Auto-poblar termino y etapa inicial desde el plazo configurado al seleccionar tipo de proceso (solo en creación)
+  useEffect(() => {
+    if (expedienteEdit) return;
+    if (!formData.tipoProcesoJudicial) {
+      lastTipoProcesoRef.current = '';
+      return;
+    }
+
+    // Solo auto-poblar si el tipo de proceso realmente cambió
+    if (formData.tipoProcesoJudicial === lastTipoProcesoRef.current) {
+      return;
+    }
+    lastTipoProcesoRef.current = formData.tipoProcesoJudicial;
+
+    const tp = tiposProcesosActivos.find(t => t.nombre === formData.tipoProcesoJudicial);
+    if (tp) {
+      const customStages = (tp.estados && tp.estados.length > 0)
+        ? tp.estados.filter((e: any) => e.activo).sort((a: any, b: any) => a.orden - b.orden)
+        : estadosActivos;
+      const firstStage = customStages.length > 0 ? customStages[0].id : 'RADICACION';
+
+      setFormData(prev => {
+        const newTermino = tp.plazo ?? 30;
+        let newTipoPlazo = 'Dias Habiles';
+        if (tp.unidadTermino === 'Horas' || tp.unidadTermino === 'horas') newTipoPlazo = 'Horas';
+        else if (tp.unidadTermino === 'Dias Calendario') newTipoPlazo = 'Dias Calendario';
+        return {
+          ...prev,
+          termino: newTermino,
+          tipoPlazo: newTipoPlazo as any,
+          etapaProcesal: firstStage
+        };
+      });
+    }
+  }, [formData.tipoProcesoJudicial, tiposProcesosActivos, estadosActivos, expedienteEdit]);
+
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
     if (formData.fechaNotificacion && formData.termino) {
+      const activeTipo = tiposProcesosActivos.find(t => t.nombre === formData.tipoProcesoJudicial);
       const fechaVenc = calcularFechaVencimiento(
         formData.fechaNotificacion,
         formData.termino,
-        formData.tipoPlazo
+        formData.tipoPlazo === 'Horas' ? 'Dias Calendario' : formData.tipoPlazo,
+        activeTipo?.horaEspecial,
+        formData.tipoPlazo === 'Horas' ? 'horas' : 'dias'
       );
-      setFormData(prev => ({ ...prev, fechaVencimiento: fechaVenc }));
+      setFormData(prev => {
+        if (prev.fechaVencimiento === fechaVenc) return prev;
+        return { ...prev, fechaVencimiento: fechaVenc };
+      });
     }
-  }, [formData.fechaNotificacion, formData.termino, formData.tipoPlazo]);
+  }, [formData.fechaNotificacion, formData.termino, formData.tipoPlazo, formData.tipoProcesoJudicial, tiposProcesosActivos]);
 
   // Cargar departamentos desde auth.geopolitica al montar
   useEffect(() => {
@@ -416,6 +1009,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       .catch(() => {
         // Fallback silencioso: se queda con array vacío
       });
+  }, []);
+
+  // Cargar territoriales (seccionales) desde estructura organizacional
+  useEffect(() => {
+    estructuraService.seccionales.listar()
+      .then(res => {
+        setSeccionales((res.data || []).map((s: any) => ({
+          idSeccional: s.idSeccional,
+          nomSeccional: s.nomSeccional,
+        })));
+      })
+      .catch(() => {});
   }, []);
 
   // Cargar abogados con rol resuelve desde el servicio de auth
@@ -568,39 +1173,207 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   // ==================== VALIDACIONES POR PASO ====================
 
   const validarPasoActual = (): boolean => {
-    switch (pasoActual) {
-      case 1:
-        if (!formData.numeroRadicado || !formData.medioControl || !formData.tipoProcesoJudicial || !formData.etapaProcesal) {
-          toast.error('⚠️ Campos incompletos', {
-            description: 'Complete todos los campos obligatorios del proceso judicial'
-          });
-          return false;
-        }
-        if (formData.numeroRadicado.length !== 23) {
-          toast.error('⚠️ Radicado inválido', {
-            description: 'El número de radicado debe tener exactamente 23 dígitos'
-          });
-          return false;
-        }
-        return true;
+    // Validar campos adicionales dinámicos para el paso actual
+    if (activeTipoProceso?.camposAdicionalesConfig) {
+      const camposDelPaso = activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === pasoActual);
+      
+      // Clear previous custom errors for this step
+      setErroresCampos(prev => {
+        const copy = { ...prev };
+        camposDelPaso.forEach(c => {
+          delete copy[c.id];
+        });
+        return copy;
+      });
 
-      case 2:
+      let hasCustomError = false;
+      const newCustomErrors: Record<string, string> = {};
+
+      for (const campo of camposDelPaso) {
+        const val = formData.camposAdicionales?.[campo.id];
+        
+        // 1. Validar obligatoriedad
+        if (campo.obligatorio) {
+          if (val === undefined || val === null || val === '' || val === false || (Array.isArray(val) && val.length === 0)) {
+            newCustomErrors[campo.id] = `El campo "${campo.nombre}" es obligatorio.`;
+            hasCustomError = true;
+          }
+        }
+
+        // 2. Validar formato alfanumérico (solo si hay un valor ingresado)
+        if (campo.tipo === 'alfanumerico' && val && !newCustomErrors[campo.id]) {
+          const alphanumericRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s]*$/;
+          if (!alphanumericRegex.test(String(val))) {
+            newCustomErrors[campo.id] = `El campo "${campo.nombre}" debe ser alfanumérico (solo letras y números).`;
+            hasCustomError = true;
+          }
+        }
+
+        // 3. Validar valor único (solo si hay un valor ingresado)
+        if (campo.tipo === 'unico' && val && !newCustomErrors[campo.id]) {
+          const isEdit = !!expedienteEdit;
+          const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
+          const duplicado = todosLosExpedientes.some(exp => {
+            const expId = exp.uuid || exp.id;
+            if (isEdit && expId === currentId) return false;
+            
+            const expCampos = exp.camposAdicionales || {};
+            return String(expCampos[campo.id]).trim().toLowerCase() === String(val).trim().toLowerCase();
+          });
+          if (duplicado) {
+            newCustomErrors[campo.id] = `El valor "${val}" ya existe para el campo único "${campo.nombre}".`;
+            hasCustomError = true;
+          }
+        }
+      }
+
+      if (hasCustomError) {
+        setErroresCampos(prev => ({ ...prev, ...newCustomErrors }));
+        toast.error('⚠️ Campos obligatorios o incorrectos', {
+          description: 'Por favor complete y verifique los campos dinámicos marcados en rojo.'
+        });
+        return false;
+      }
+    }
+
+    switch (pasoActual) {
+      case 1: {
+        const medioControlReq = isFieldRequired('medioControl', true);
+        const cuantiaReq = isFieldRequired('cuantia', false);
+
+        // Reset anterior de errores para este paso
+        setErroresCampos(prev => {
+          const copy = { ...prev };
+          delete copy.numeroRadicado;
+          delete copy.medioControl;
+          delete copy.tipoProcesoJudicial;
+          delete copy.etapaProcesal;
+          delete copy.cuantia;
+          return copy;
+        });
+
+        let hasError = false;
+        const newErrors: Record<string, string> = {};
+
+        if (!formData.numeroRadicado) {
+          newErrors.numeroRadicado = 'El número de radicado es obligatorio';
+          hasError = true;
+        } else if (formData.numeroRadicado.length < 11 || formData.numeroRadicado.length > 23) {
+          newErrors.numeroRadicado = 'El radicado debe tener entre 11 y 23 dígitos';
+          hasError = true;
+        }
+
+        if (medioControlReq && !formData.medioControl) {
+          newErrors.medioControl = 'El medio de control es obligatorio';
+          hasError = true;
+        }
+
+        if (!formData.tipoProcesoJudicial) {
+          newErrors.tipoProcesoJudicial = 'El tipo de proceso es obligatorio';
+          hasError = true;
+        }
+
+        if (!formData.etapaProcesal) {
+          newErrors.etapaProcesal = 'La etapa procesal es obligatoria';
+          hasError = true;
+        }
+
+        if (cuantiaReq && (formData.cuantia === undefined || formData.cuantia === null || formData.cuantia === 0)) {
+          newErrors.cuantia = 'La cuantía es obligatoria y debe ser mayor a 0';
+          hasError = true;
+        }
+
+        // Validar campos adicionales obligatorios del paso 1
+        if (activeTipoProceso?.camposAdicionalesConfig) {
+          for (const campo of activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === 1 && c.obligatorio)) {
+            const val = formData.camposAdicionales?.[campo.id];
+            const isEmpty = campo.tipo === 'opciones-multiple'
+              ? !Array.isArray(val) || (val as string[]).length === 0
+              : campo.tipo === 'booleano'
+                ? false
+                : val === undefined || val === null || val === '';
+            if (isEmpty) {
+              newErrors[campo.id] = `${campo.nombre} es obligatorio`;
+              hasError = true;
+            }
+          }
+        }
+
+        if (hasError) {
+          setErroresCampos(prev => ({ ...prev, ...newErrors }));
+          toast.error('⚠️ Campos obligatorios incompletos', {
+            description: 'Por favor complete y verifique los campos marcados en rojo.'
+          });
+          return false;
+        }
+
+        // Validar si el radicado ya existe en la plataforma (evitar duplicados antes de avanzar en el wizard)
+        const isEdit = !!expedienteEdit;
+        const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
+        const radicadoDuplicado = todosLosExpedientes.some(exp => {
+          const expId = exp.uuid || exp.id;
+          if (isEdit && expId === currentId) return false;
+          
+          const expRadicado = exp.radicado || exp.numeroRadicado || exp.id;
+          return expRadicado && String(expRadicado).trim().toLowerCase() === String(formData.numeroRadicado).trim().toLowerCase();
+        });
+
+        console.log('🔍 [DEBUG] validarPasoActual Case 1:', {
+          numeroRadicado: formData.numeroRadicado,
+          totalExpedientes: todosLosExpedientes.length,
+          isEdit,
+          currentId,
+          radicadoDuplicado
+        });
+
+        if (radicadoDuplicado) {
+          setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
+          toast.error('⚠️ Radicado duplicado', {
+            description: `El número de radicado "${formData.numeroRadicado}" ya está registrado en la plataforma. Use un número único.`
+          });
+          return false;
+        }
+
+        return true;
+      }
+
+      case 2: {
         if (formData.demandantes.length === 0) {
           toast.error('⚠️ Demandantes requeridos', {
             description: 'Debe agregar al menos un demandante'
           });
           return false;
         }
+
+        const demTipoPersonaReq = isFieldRequired('demandanteTipoPersona', true);
+        const demIdentificacionReq = isFieldRequired('demandanteIdentificacion', true);
+        const demNombreReq = isFieldRequired('demandanteNombre', true);
+        const demTelefonoReq = isFieldRequired('demandanteTelefono', false);
+        const demCorreoReq = isFieldRequired('demandanteCorreo', true);
+        const demDireccionReq = isFieldRequired('demandanteDireccion', false);
+
         for (const dem of formData.demandantes) {
-          if (!dem.nombreCompleto) {
-            toast.error('⚠️ Información incompleta', {
-              description: 'El nombre completo es obligatorio para los demandantes'
+          if (demTipoPersonaReq && !dem.tipoPersona) {
+            toast.error('⚠️ Tipo de persona obligatorio', {
+              description: 'El tipo de persona es obligatorio para todos los demandantes.'
             });
             return false;
           }
-          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
-            toast.error('⚠️ Correo inválido', {
-              description: `El correo "${dem.correo}" del demandante ${dem.nombreCompleto || ''} no es válido`
+          if (demIdentificacionReq && !dem.cedula) {
+            toast.error('⚠️ Identificación obligatoria', {
+              description: `La identificación es obligatoria para el demandante ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (demNombreReq && !dem.nombreCompleto) {
+            toast.error('⚠️ Nombre obligatorio', {
+              description: 'El nombre o razón social es obligatorio para todos los demandantes.'
+            });
+            return false;
+          }
+          if (demTelefonoReq && !dem.telefono) {
+            toast.error('⚠️ Teléfono obligatorio', {
+              description: `El teléfono es obligatorio para el demandante ${dem.nombreCompleto || ''}.`
             });
             return false;
           }
@@ -610,26 +1383,79 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             });
             return false;
           }
+          if (demCorreoReq && !dem.correo) {
+            toast.error('⚠️ Correo obligatorio', {
+              description: `El correo electrónico es obligatorio para el demandante ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${dem.correo}" del demandante ${dem.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (demDireccionReq && !dem.direccion) {
+            toast.error('⚠️ Dirección obligatoria', {
+              description: `La dirección es obligatoria para el demandante ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
         }
         return true;
+      }
 
-      case 3:
+      case 3: {
+        if (!formData.territorial) {
+          toast.error('⚠️ Territorial requerida', {
+            description: 'Debe seleccionar la territorial del proceso'
+          });
+          return false;
+        }
+
         if (formData.demandados.length === 0) {
           toast.error('⚠️ Demandados requeridos', {
             description: 'Debe agregar al menos un demandado'
           });
           return false;
         }
+
+        const ddTipoPersonaReq = isFieldRequired('demandadoTipoPersona', true);
+        const ddIdentificacionReq = isFieldRequired('demandadoIdentificacion', true);
+        const ddNombreReq = isFieldRequired('demandadoNombre', true);
+        const ddCargoReq = isFieldRequired('demandadoCargo', false);
+        const ddTelefonoReq = isFieldRequired('demandadoTelefono', false);
+        const ddCorreoReq = isFieldRequired('demandadoCorreo', true);
+        const ddDireccionReq = isFieldRequired('demandadoDireccion', false);
+
         for (const dem of formData.demandados) {
-          if (!dem.nombreCompleto) {
-            toast.error('⚠️ Información incompleta', {
-              description: 'El nombre completo es obligatorio para los demandados'
+          if (ddTipoPersonaReq && !dem.tipoPersona) {
+            toast.error('⚠️ Tipo de persona obligatorio', {
+              description: 'El tipo de persona es obligatorio para todos los demandados.'
             });
             return false;
           }
-          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
-            toast.error('⚠️ Correo inválido', {
-              description: `El correo "${dem.correo}" del demandado ${dem.nombreCompleto || ''} no es válido`
+          if (ddIdentificacionReq && !dem.cedula) {
+            toast.error('⚠️ Identificación obligatoria', {
+              description: `La identificación es obligatoria para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (ddNombreReq && !dem.nombreCompleto) {
+            toast.error('⚠️ Nombre obligatorio', {
+              description: 'El nombre o razón social es obligatorio para todos los demandados.'
+            });
+            return false;
+          }
+          if (ddCargoReq && !dem.cargoFuncion) {
+            toast.error('⚠️ Cargo obligatorio', {
+              description: `El cargo es obligatorio para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (ddTelefonoReq && !dem.telefono) {
+            toast.error('⚠️ Teléfono obligatorio', {
+              description: `El teléfono es obligatorio para el demandado ${dem.nombreCompleto || ''}.`
             });
             return false;
           }
@@ -639,51 +1465,120 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             });
             return false;
           }
+          if (ddCorreoReq && !dem.correo) {
+            toast.error('⚠️ Correo obligatorio', {
+              description: `El correo electrónico es obligatorio para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${dem.correo}" del demandado ${dem.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (ddDireccionReq && !dem.direccion) {
+            toast.error('⚠️ Dirección obligatoria', {
+              description: `La dirección es obligatoria para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
         }
         return true;
+      }
 
-      case 4:
+      case 4: {
+        const oaTipoPersonaReq = isFieldRequired('otroActorTipoPersona', false);
+        const oaIdentificacionReq = isFieldRequired('otroActorIdentificacion', false);
+        const oaNombreReq = isFieldRequired('otroActorNombre', true);
+        const oaRolReq = isFieldRequired('otroActorRol', true);
+        const oaTelefonoReq = isFieldRequired('otroActorTelefono', false);
+        const oaCorreoReq = isFieldRequired('otroActorCorreo', false);
+        const oaDireccionReq = isFieldRequired('otroActorDireccion', false);
+
         for (const actor of formData.otrosActores) {
-          if (!actor.nombreCompleto) {
-            toast.error('⚠️ Información incompleta', {
+          if (oaTipoPersonaReq && !actor.tipoPersona) {
+            toast.error('⚠️ Tipo de persona obligatorio', {
+              description: `El tipo de persona es obligatorio para el actor ${actor.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (oaIdentificacionReq && !actor.cedula) {
+            toast.error('⚠️ Identificación obligatoria', {
+              description: `La identificación es obligatoria para el actor ${actor.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (oaNombreReq && !actor.nombreCompleto) {
+            toast.error('⚠️ Nombre obligatorio', {
               description: 'El nombre completo o razón social es obligatorio para los otros actores'
             });
             return false;
           }
-          if (!actor.rol) {
-            toast.error('⚠️ Información incompleta', {
-              description: `Debe especificar el rol para el actor ${actor.nombreCompleto}`
+          if (oaRolReq && !actor.rol) {
+            toast.error('⚠️ Rol obligatorio', {
+              description: `Debe especificar el rol para el actor ${actor.nombreCompleto || ''}`
             });
             return false;
           }
-          if (actor.correo && !EMAIL_REGEX.test(actor.correo)) {
-            toast.error('⚠️ Correo inválido', {
-              description: `El correo "${actor.correo}" de ${actor.nombreCompleto} no es válido`
+          if (oaTelefonoReq && !actor.telefono) {
+            toast.error('⚠️ Teléfono obligatorio', {
+              description: `El teléfono es obligatorio para el actor ${actor.nombreCompleto || ''}.`
             });
             return false;
           }
           if (actor.telefono && actor.telefono.length < 7) {
             toast.error('⚠️ Teléfono inválido', {
-              description: `El teléfono de ${actor.nombreCompleto} debe tener al menos 7 dígitos`
+              description: `El teléfono de ${actor.nombreCompleto || ''} debe tener al menos 7 dígitos`
+            });
+            return false;
+          }
+          if (oaCorreoReq && !actor.correo) {
+            toast.error('⚠️ Correo obligatorio', {
+              description: `El correo electrónico es obligatorio para el actor ${actor.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (actor.correo && !EMAIL_REGEX.test(actor.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${actor.correo}" de ${actor.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (oaDireccionReq && !actor.direccion) {
+            toast.error('⚠️ Dirección obligatoria', {
+              description: `La dirección es obligatoria para el actor ${actor.nombreCompleto || ''}.`
             });
             return false;
           }
         }
         return true;
+      }
 
-      case 5:
-        if (!formData.juzgadoTribunal || !formData.departamento || !formData.ciudad) {
-          toast.error('⚠️ Ubicación incompleta', {
-            description: 'Complete todos los campos de juzgado y ubicación'
+      case 5: {
+        const juzgadoReq = isFieldRequired('juzgadoTribunal', true);
+        const ubicacionReq = isFieldRequired('departamentoCiudad', true);
+
+        if (juzgadoReq && !formData.juzgadoTribunal) {
+          toast.error('⚠️ Juzgado obligatorio', {
+            description: 'El campo Juzgado / Tribunal es obligatorio.'
+          });
+          return false;
+        }
+        if (ubicacionReq && (!formData.departamento || !formData.ciudad)) {
+          toast.error('⚠️ Ubicación obligatoria', {
+            description: 'Debe seleccionar Departamento y Ciudad.'
           });
           return false;
         }
         return true;
+      }
 
-      case 6:
-        if (!formData.fechaNotificacion) {
-          toast.error('⚠️ Fechas incompletas', {
-            description: 'Verifique los campos obligatorios de fechas'
+      case 6: {
+        const abogadoReq = isFieldRequired('abogadoResponsable', false);
+        if (!formData.fechaNotificacion || (abogadoReq && (!formData.abogadoResponsable || formData.abogadoResponsable === 'Sin asignar (Temporal)'))) {
+          toast.error('⚠️ Información obligatoria incompleta', {
+            description: 'Verifique los campos obligatorios del paso de fechas y asignación'
           });
           return false;
         }
@@ -697,15 +1592,19 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         }
 
         return true;
+      }
 
-      case 7:
-        if (!formData.pretensiones || formData.pretensiones.length < 20) {
-          toast.error('⚠️ Pretensiones requeridas', {
-            description: 'Las pretensiones son obligatorias (mínimo 20 caracteres)'
+      case 7: {
+        const pretensionesReq = isFieldRequired('pretensiones', true);
+        const hechosReq = isFieldRequired('hechos', false);
+        if ((pretensionesReq && (!formData.pretensiones || formData.pretensiones.length < 20)) || (hechosReq && !formData.hechos)) {
+          toast.error('⚠️ Detalles del proceso obligatorios', {
+            description: 'Complete todos los campos obligatorios de la sección detalles del proceso'
           });
           return false;
         }
         return true;
+      }
 
       default:
         return true;
@@ -714,16 +1613,38 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   const siguiente = () => {
     if (validarPasoActual()) {
-      setPasoActual(prev => Math.min(prev + 1, totalPasos));
+      const siguientePaso = pasosActivos[indicePasoActual + 1];
+      if (siguientePaso !== undefined) setPasoActual(siguientePaso);
     }
   };
 
   const anterior = () => {
-    setPasoActual(prev => Math.max(prev - 1, 1));
+    const pasoPrevio = pasosActivos[indicePasoActual - 1];
+    if (pasoPrevio !== undefined) setPasoActual(pasoPrevio);
   };
 
   const handleSubmit = async () => {
     if (!validarPasoActual()) return;
+
+    // Validación transversal: El número de radicado debe ser único
+    const isEdit = !!expedienteEdit;
+    const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
+    const radicadoDuplicado = todosLosExpedientes.some(exp => {
+      const expId = exp.uuid || exp.id;
+      if (isEdit && expId === currentId) return false;
+      
+      const expRadicado = exp.radicado || exp.numeroRadicado || exp.id;
+      return expRadicado && String(expRadicado).trim().toLowerCase() === String(formData.numeroRadicado).trim().toLowerCase();
+    });
+
+    if (radicadoDuplicado) {
+      setErroresCampos(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya está registrado en el sistema' }));
+      setPasoActual(1);
+      toast.error('⚠️ Radicado duplicado', {
+        description: `El número de radicado "${formData.numeroRadicado}" ya está registrado en la plataforma. Use un número único.`
+      });
+      return;
+    }
 
     // Validación transversal: La fecha de estimación contable no puede ser anterior a la notificación
     if (formData.fechaEstimacionProvision && formData.fechaNotificacion) {
@@ -766,14 +1687,19 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           abogadoSustanciador: formData.abogadoResponsable === 'Sin asignar (Temporal)' ? null : (formData.abogadoResponsable || undefined),
           pretensionDemandante: formData.pretensiones || undefined,
           hechos: formData.hechos || undefined,
-          tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+          tipoConteoTermino: formData.tipoPlazo === 'Horas' ? 'HORAS' : formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
           terminoProcesalDias: formData.termino || undefined,
+          camposAdicionales: formData.camposAdicionales || undefined,
           // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
         };
       } else {
         // For creations, the parent component strictly expects the full NuevaDemandaData signature
         // to properly construct the complex CreateExpedienteDto payload.
-        finalPayload = { ...formData };
+        finalPayload = {
+          ...formData,
+          territorialNombre: seccionales.find(s => String(s.idSeccional) === formData.territorial)?.nomSeccional,
+          dependenciaNombre: dependenciasActivas.find((d: any) => d.id === formData.dependencia)?.nombre,
+        };
       }
 
       onSave(finalPayload, isEdit, idStr);
@@ -786,33 +1712,61 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       });
 
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       toast.error(expedienteEdit ? '❌ Error al actualizar demanda' : '❌ Error al registrar demanda', {
-        description: 'Por favor intente nuevamente'
+        description: error.message || 'Por favor intente nuevamente'
       });
     } finally {
       setEnviando(false);
     }
   };
 
-  const handleCancel = () => {
-    if (formData.numeroRadicado || formData.pretensiones) {
-      setShowCancelConfirm(true);
+  const handleCancel = (e?: any) => {
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+
+    if (expedienteEdit) {
+      // Check if any fields were modified from their initial loaded values
+      const hasChanges =
+        formData.numeroRadicado !== (expedienteEdit.radicado || expedienteEdit.id) ||
+        formData.medioControl !== (expedienteEdit.medioControl || '') ||
+        formData.tipoProcesoJudicial !== (expedienteEdit.tipoProceso || expedienteEdit.tipo || '') ||
+        formData.etapaProcesal !== (expedienteEdit.etapa || '') ||
+        formData.pretensiones !== (expedienteEdit.pretensiones || '') ||
+        formData.hechos !== (expedienteEdit.hechos || '') ||
+        formData.juzgadoTribunal !== (expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '');
+
+      if (hasChanges) {
+        setShowCancelConfirm(true);
+      } else {
+        onClose();
+      }
     } else {
-      onClose();
+      // Creation mode: warn if any data has been typed
+      if (formData.numeroRadicado || formData.pretensiones) {
+        setShowCancelConfirm(true);
+      } else {
+        onClose();
+      }
     }
   };
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = (e?: any) => {
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
     setShowCancelConfirm(false);
     onClose();
   };
 
-  const porcentajeProgreso = (pasoActual / totalPasos) * 100;
+  const porcentajeProgreso = totalPasosActivos > 0 ? ((indicePasoActual + 1) / totalPasosActivos) * 100 : 0;
 
   const getBadgesPorPaso = () => {
     const badges: Array<{ texto: string; color: 'azul' | 'verde' | 'rojo' }> = [
-      { texto: `Paso ${pasoActual} de ${totalPasos}`, color: 'azul' },
+      { texto: `Paso ${indicePasoActual + 1} de ${totalPasosActivos}`, color: 'azul' },
       { texto: `${Math.round(porcentajeProgreso)}% Completado`, color: 'verde' }
     ];
     return badges;
@@ -822,30 +1776,35 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
-        <DialogDescription className="sr-only">
-          Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
-        </DialogDescription>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+        <DialogContent 
+          hideCloseButton 
+          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
+          style={{ width: '80vw', maxWidth: '80vw' }}
+        >
+          <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
+            <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {indicePasoActual + 1} de {totalPasosActivos}
+          </DialogDescription>
 
-        {/* HEADER - flex-shrink-0 (siempre visible) */}
-        <ModalHeaderClean
-          icono={Scale}
-          titulo={expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}
-          subtitulo={
-            pasoActual === 1 ? 'Datos del Proceso Judicial' :
-              pasoActual === 2 ? 'Datos del/los Demandante(s)' :
-                pasoActual === 3 ? 'Datos del/los Demandado(s)' :
-                  pasoActual === 4 ? 'Datos de Otros Actores (Opcional)' :
-                    pasoActual === 5 ? 'Juzgado y Ubicación' :
-                      pasoActual === 6 ? 'Fechas y Asignación' :
-                        'Detalles del Proceso'
-          }
-          colorIcono="blue"
-          badges={getBadgesPorPaso()}
-          onClose={onClose}
-        />
+          {/* ==================== HEADER LIMPIO Y USABLE ==================== */}
+          <ModalHeaderClean
+            icono={Scale}
+            titulo={expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}
+            subtitulo={
+              pasoActual === 1 ? 'Datos del Proceso Judicial' :
+                pasoActual === 2 ? 'Datos del/los Demandante(s)' :
+                  pasoActual === 3 ? 'Datos del/los Demandado(s)' :
+                    pasoActual === 4 ? 'Datos de Otros Actores (Opcional)' :
+                      pasoActual === 5 ? 'Juzgado y Ubicación' :
+                        pasoActual === 6 ? 'Fechas y Asignación' :
+                          'Detalles del Proceso'
+            }
+            colorIcono="blue"
+            badges={getBadgesPorPaso()}
+            onClose={handleCancel}
+          />
 
         {/* Progress Bar */}
         <div className="flex-shrink-0 px-6 pt-2">
@@ -856,32 +1815,28 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             />
           </div>
 
-          {/* Breadcrumb de pasos */}
+          {/* Breadcrumb de pasos (solo los pasos activos, renumerados de forma continua) */}
           <div className="flex items-center justify-between mt-3 mb-2 text-xs">
-            {[
-              { num: 1, label: 'Proceso' },
-              { num: 2, label: 'Demandantes' },
-              { num: 3, label: 'Demandados' },
-              { num: 4, label: 'Otros' },
-              { num: 5, label: 'Juzgado' },
-              { num: 6, label: 'Fechas' },
-              { num: 7, label: 'Detalles' }
-            ].map((paso) => (
-              <div key={paso.num} className="flex flex-col items-center">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${pasoActual === paso.num
-                  ? 'bg-blue-600 text-white'
-                  : pasoActual > paso.num
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-500'
-                  }`}>
-                  {pasoActual > paso.num ? <Check className="w-4 h-4" /> : paso.num}
+            {pasosActivos.map((num, idx) => {
+              const esActual = pasoActual === num;
+              const completado = indicePasoActual > idx;
+              return (
+                <div key={num} className="flex flex-col items-center">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${esActual
+                    ? 'bg-blue-600 text-white'
+                    : completado
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-200 text-gray-500'
+                    }`}>
+                    {completado ? <Check className="w-4 h-4" /> : idx + 1}
+                  </div>
+                  <span className={`text-[10px] mt-1 ${esActual ? 'text-blue-600 font-bold' : 'text-gray-500'
+                    }`}>
+                    {ETIQUETAS_PASO[num]}
+                  </span>
                 </div>
-                <span className={`text-[10px] mt-1 ${pasoActual === paso.num ? 'text-blue-600 font-bold' : 'text-gray-500'
-                  }`}>
-                  {paso.label}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -902,7 +1857,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="numeroRadicado" className="text-sm font-bold text-gray-700">
+                      <Label htmlFor="numeroRadicado" className={`text-sm font-bold ${erroresCampos.numeroRadicado ? 'text-red-600' : 'text-gray-700'}`}>
                         Número de Radicado <span className="text-red-500">*</span>
                         <span className="text-xs font-normal text-gray-400 ml-1">(23 dígitos)</span>
                       </Label>
@@ -911,19 +1866,33 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         placeholder="Ej: 66001233300020260012300"
                         value={formData.numeroRadicado}
                         maxLength={23}
+                        className={`bg-white ${erroresCampos.numeroRadicado ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                         onChange={(e) => {
                           // Solo permitir dígitos, máximo 23
                           const valor = e.target.value.replace(/[^0-9]/g, '').slice(0, 23);
                           setFormData({ ...formData, numeroRadicado: valor });
+                          if (erroresCampos.numeroRadicado) {
+                            setErroresCampos(prev => {
+                              const copy = { ...prev };
+                              delete copy.numeroRadicado;
+                              return copy;
+                            });
+                          }
                         }}
                       />
-                      {formData.numeroRadicado && formData.numeroRadicado.length !== 23 && (
+                      {erroresCampos.numeroRadicado && (
+                        <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {erroresCampos.numeroRadicado}
+                        </p>
+                      )}
+                      {!erroresCampos.numeroRadicado && formData.numeroRadicado && formData.numeroRadicado.length !== 23 && (
                         <p className="text-xs text-amber-600 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
                           {formData.numeroRadicado.length}/23 dígitos
                         </p>
                       )}
-                      {formData.numeroRadicado && formData.numeroRadicado.length === 23 && (
+                      {!erroresCampos.numeroRadicado && formData.numeroRadicado && formData.numeroRadicado.length === 23 && (
                         <p className="text-xs text-green-600 flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" />
                           Radicado completo
@@ -932,34 +1901,61 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="medioControl" className="text-sm font-bold text-gray-700">
-                          Medio de Control <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                          value={formData.medioControl}
-                          onValueChange={(value: string) => setFormData({ ...formData, medioControl: value })}
-                        >
-                          <SelectTrigger id="medioControl" className="bg-white">
-                            <SelectValue placeholder="Seleccione medio de control..." />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {mediosControlActivos.map(mc => (
-                              <SelectItem key={mc.id} value={mc.nombre}>{mc.nombre}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {isFieldVisible('medioControl', true) && (
+                        <div className="space-y-2">
+                          <Label htmlFor="medioControl" className={`text-sm font-bold ${erroresCampos.medioControl ? 'text-red-600' : 'text-gray-700'}`}>
+                            Medio de Control {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Select
+                            value={formData.medioControl}
+                            onValueChange={(value: string) => {
+                              setFormData({ ...formData, medioControl: value });
+                              if (erroresCampos.medioControl) {
+                                setErroresCampos(prev => {
+                                  const copy = { ...prev };
+                                  delete copy.medioControl;
+                                  return copy;
+                                });
+                              }
+                            }}
+                          >
+                            <SelectTrigger id="medioControl" className={`bg-white ${erroresCampos.medioControl ? 'border-red-500 focus:ring-red-500' : ''}`}>
+                              <SelectValue placeholder="Seleccione medio de control..." />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {mediosControlActivos.map(mc => (
+                                <SelectItem key={mc.id} value={mc.nombre}>{mc.nombre}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {erroresCampos.medioControl && (
+                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {erroresCampos.medioControl}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       <div className="space-y-2">
-                        <Label htmlFor="tipoProcesoJudicial" className="text-sm font-bold text-gray-700">
+                        <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
                           Tipo de Proceso Judicial <span className="text-red-500">*</span>
                         </Label>
                         <Select
                           value={formData.tipoProcesoJudicial}
-                          onValueChange={(value: string) => setFormData({ ...formData, tipoProcesoJudicial: value })}
+                          onValueChange={(value: string) => {
+                            const tp = tiposProcesosActivos.find(t => t.nombre === value);
+                            setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
+                            if (erroresCampos.tipoProcesoJudicial) {
+                              setErroresCampos(prev => {
+                                const copy = { ...prev };
+                                delete copy.tipoProcesoJudicial;
+                                return copy;
+                              });
+                            }
+                          }}
                         >
-                          <SelectTrigger id="tipoProcesoJudicial" className="bg-white">
+                          <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
                             <SelectValue placeholder="Seleccione tipo de proceso..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
@@ -968,60 +1964,98 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             ))}
                           </SelectContent>
                         </Select>
+                        {erroresCampos.tipoProcesoJudicial && (
+                          <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {erroresCampos.tipoProcesoJudicial}
+                          </p>
+                        )}
                       </div>
 
+
                       <div className="space-y-2">
-                        <Label htmlFor="etapaProcesal" className="text-sm font-bold text-gray-700">
+                        <Label htmlFor="etapaProcesal" className={`text-sm font-bold ${erroresCampos.etapaProcesal ? 'text-red-600' : 'text-gray-700'}`}>
                           Etapa Procesal <span className="text-red-500">*</span>
                         </Label>
                         <Select
                           value={formData.etapaProcesal}
-                          onValueChange={(value: string) => setFormData({ ...formData, etapaProcesal: value })}
+                          onValueChange={(value: string) => {
+                            setFormData({ ...formData, etapaProcesal: value });
+                            if (erroresCampos.etapaProcesal) {
+                              setErroresCampos(prev => {
+                                const copy = { ...prev };
+                                delete copy.etapaProcesal;
+                                return copy;
+                              });
+                            }
+                          }}
                         >
-                          <SelectTrigger id="etapaProcesal" className="bg-white">
+                          <SelectTrigger id="etapaProcesal" className={`bg-white ${erroresCampos.etapaProcesal ? 'border-red-500 focus:ring-red-500' : ''}`}>
                             <SelectValue placeholder="Seleccione etapa procesal..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            {estadosActivos.map(estado => (
+                            {etapasDelProceso.map(estado => (
                               <SelectItem key={estado.id} value={estado.id}>{estado.nombre}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {erroresCampos.etapaProcesal && (
+                          <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            {erroresCampos.etapaProcesal}
+                          </p>
+                        )}
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="cuantia" className="text-sm font-bold text-gray-700">
-                          Cuantía (COP)
-                          <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
-                        </Label>
-                        <Input
-                          id="cuantia"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9]/g, '');
-                            // Si está vacío, poner 0
-                            if (!raw) {
-                              setFormData({ ...formData, cuantia: 0 });
-                              return;
-                            }
-                            // Si empieza con 0, solo permitir "0" exacto
-                            if (raw.startsWith('0')) {
-                              setFormData({ ...formData, cuantia: 0 });
-                              return;
-                            }
-                            // Máximo 12 dígitos
-                            const limitado = raw.slice(0, 12);
-                            setFormData({ ...formData, cuantia: parseInt(limitado, 10) });
-                          }}
-                        />
-                      </div>
+                      {isFieldVisible('cuantia', true) && (
+                        <div className="space-y-2">
+                          <Label htmlFor="cuantia" className={`text-sm font-bold ${erroresCampos.cuantia ? 'text-red-600' : 'text-gray-700'}`}>
+                            Cuantía (COP) {isFieldRequired('cuantia', false) && <span className="text-red-500">*</span>}
+                            <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
+                          </Label>
+                          <Input
+                            id="cuantia"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
+                            className={`bg-white ${erroresCampos.cuantia ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9]/g, '');
+                              // Si está vacío, poner 0
+                              if (!raw) {
+                                setFormData({ ...formData, cuantia: 0 });
+                                return;
+                              }
+                              // Si empieza con 0, solo permitir "0" exacto
+                              if (raw.startsWith('0')) {
+                                setFormData({ ...formData, cuantia: 0 });
+                                return;
+                              }
+                              // Máximo 12 dígitos
+                              const limitado = raw.slice(0, 12);
+                              setFormData({ ...formData, cuantia: parseInt(limitado, 10) });
+                              if (erroresCampos.cuantia) {
+                                setErroresCampos(prev => {
+                                  const copy = { ...prev };
+                                  delete copy.cuantia;
+                                  return copy;
+                                });
+                              }
+                            }}
+                          />
+                          {erroresCampos.cuantia && (
+                            <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {erroresCampos.cuantia}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>
-
+                {renderCamposAdicionales(1)}
               </>
             )}
 
@@ -1070,102 +2104,120 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Tipo de Persona <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={demandante.tipoPersona}
-                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandante(demandante.id, 'tipoPersona', value)}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100000]">
-                                <SelectItem value="Natural">Natural</SelectItem>
-                                <SelectItem value="Juridica">Jurídica</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandante.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandante.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
-                              value={demandante.cedula}
-                              maxLength={demandante.tipoPersona === 'Natural' ? 10 : 15}
-                              onChange={(e) => {
-                                const val = demandante.tipoPersona === 'Natural'
-                                  ? soloDigitos(e.target.value)
-                                  : nitFormato(e.target.value);
-                                actualizarDemandante(demandante.id, 'cedula', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandante.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandante.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
-                              value={demandante.nombreCompleto}
-                              onChange={(e) => {
-                                const val = demandante.tipoPersona === 'Natural'
-                                  ? soloLetrasEspacios(e.target.value)
-                                  : e.target.value;
-                                actualizarDemandante(demandante.id, 'nombreCompleto', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Teléfono</Label>
-                            <Input
-                              placeholder="3001234567"
-                              value={demandante.telefono}
-                              maxLength={10}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Correo Electrónico <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              type="email"
-                              placeholder="correo@ejemplo.com"
-                              value={demandante.correo}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'correo', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Dirección</Label>
-                            <Input
-                              placeholder="Calle 123 #45-67"
-                              value={demandante.direccion}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'direccion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id={`apoderado-dem-${demandante.id}`}
-                                checked={demandante.tieneApoderado}
-                                onChange={(e) => actualizarDemandante(demandante.id, 'tieneApoderado', e.target.checked)}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`apoderado-dem-${demandante.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
-                                Tiene Apoderado
+                          {isFieldVisible('demandanteTipoPersona', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Tipo de Persona {isFieldRequired('demandanteTipoPersona', true) && <span className="text-red-500">*</span>}
                               </Label>
+                              <Select
+                                value={demandante.tipoPersona}
+                                onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandante(demandante.id, 'tipoPersona', value)}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100000]">
+                                  <SelectItem value="Natural">Natural</SelectItem>
+                                  <SelectItem value="Juridica">Jurídica</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          )}
+
+                          {isFieldVisible('demandanteIdentificacion', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandante.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} {isFieldRequired('demandanteIdentificacion', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandante.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
+                                value={demandante.cedula}
+                                maxLength={demandante.tipoPersona === 'Natural' ? 10 : 15}
+                                onChange={(e) => {
+                                  const val = demandante.tipoPersona === 'Natural'
+                                    ? soloDigitos(e.target.value)
+                                    : nitFormato(e.target.value);
+                                  actualizarDemandante(demandante.id, 'cedula', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteNombre', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandante.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} {isFieldRequired('demandanteNombre', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandante.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
+                                value={demandante.nombreCompleto}
+                                onChange={(e) => {
+                                  const val = demandante.tipoPersona === 'Natural'
+                                    ? soloLetrasEspacios(e.target.value)
+                                    : e.target.value;
+                                  actualizarDemandante(demandante.id, 'nombreCompleto', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteTelefono', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Teléfono {isFieldRequired('demandanteTelefono', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="3001234567"
+                                value={demandante.telefono}
+                                maxLength={10}
+                                onChange={(e) => actualizarDemandante(demandante.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteCorreo', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Correo Electrónico {isFieldRequired('demandanteCorreo', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={demandante.correo}
+                                onChange={(e) => actualizarDemandante(demandante.id, 'correo', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteDireccion', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Dirección {isFieldRequired('demandanteDireccion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Calle 123 #45-67"
+                                value={demandante.direccion}
+                                onChange={(e) => actualizarDemandante(demandante.id, 'direccion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteTieneApoderado', true) && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`apoderado-dem-${demandante.id}`}
+                                  checked={demandante.tieneApoderado}
+                                  onChange={(e) => actualizarDemandante(demandante.id, 'tieneApoderado', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <Label htmlFor={`apoderado-dem-${demandante.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
+                                  Tiene Apoderado
+                                </Label>
+                              </div>
+                            </div>
+                          )}
 
                           {demandante.tieneApoderado && (
                             <div className="md:col-span-2 bg-blue-50 p-3 rounded border border-blue-200">
@@ -1229,12 +2281,64 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     ))}
                   </div>
                 </Card>
+                {renderCamposAdicionales(2)}
               </>
             )}
 
             {/* PASO 3: DATOS DEMANDADOS */}
             {pasoActual === 3 && (
               <>
+                {/* CAMPOS DE SISTEMA: Territorial y Dependencia */}
+                <Card className="p-4 bg-blue-50 border-blue-200 mb-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <MapPin className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-bold text-gray-900">Territorial y Dependencia</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Territorial */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-bold text-gray-700">
+                        Territorial <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={formData.territorial}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, territorial: val }))}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Seleccione territorial..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          {seccionales.map(s => (
+                            <SelectItem key={s.idSeccional} value={String(s.idSeccional)}>
+                              {s.nomSeccional}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Dependencia */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-bold text-gray-700">Dependencia</Label>
+                      <Select
+                        value={formData.dependencia}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, dependencia: val }))}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Seleccione dependencia..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100000]">
+                          {dependenciasActivas.map(d => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </Card>
+
                 <Card className="p-4 bg-red-50 border-red-200">
                   <div className="flex items-start gap-3 mb-4">
                     <Building2 className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -1277,111 +2381,133 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Tipo de Persona <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={demandado.tipoPersona}
-                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandado(demandado.id, 'tipoPersona', value)}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100000]">
-                                <SelectItem value="Natural">Natural</SelectItem>
-                                <SelectItem value="Juridica">Jurídica</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandado.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandado.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
-                              value={demandado.cedula}
-                              maxLength={demandado.tipoPersona === 'Natural' ? 10 : 15}
-                              onChange={(e) => {
-                                const val = demandado.tipoPersona === 'Natural'
-                                  ? soloDigitos(e.target.value)
-                                  : nitFormato(e.target.value);
-                                actualizarDemandado(demandado.id, 'cedula', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandado.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandado.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
-                              value={demandado.nombreCompleto}
-                              onChange={(e) => {
-                                const val = demandado.tipoPersona === 'Natural'
-                                  ? soloLetrasEspacios(e.target.value)
-                                  : e.target.value;
-                                actualizarDemandado(demandado.id, 'nombreCompleto', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Cargo / Función (Opcional)</Label>
-                            <Input
-                              placeholder="Director, Gerente, etc."
-                              value={demandado.cargoFuncion || ''}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'cargoFuncion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Teléfono</Label>
-                            <Input
-                              placeholder="3001234567"
-                              value={demandado.telefono}
-                              maxLength={10}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Correo Electrónico <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              type="email"
-                              placeholder="correo@ejemplo.com"
-                              value={demandado.correo}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'correo', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Dirección</Label>
-                            <Input
-                              placeholder="Calle 123 #45-67"
-                              value={demandado.direccion}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'direccion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id={`apoderado-dema-${demandado.id}`}
-                                checked={demandado.tieneApoderado}
-                                onChange={(e) => actualizarDemandado(demandado.id, 'tieneApoderado', e.target.checked)}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`apoderado-dema-${demandado.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
-                                Tiene Apoderado
+                          {isFieldVisible('demandadoTipoPersona', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Tipo de Persona {isFieldRequired('demandadoTipoPersona', true) && <span className="text-red-500">*</span>}
                               </Label>
+                              <Select
+                                value={demandado.tipoPersona}
+                                onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandado(demandado.id, 'tipoPersona', value)}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100000]">
+                                  <SelectItem value="Natural">Natural</SelectItem>
+                                  <SelectItem value="Juridica">Jurídica</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          )}
+
+                          {isFieldVisible('demandadoIdentificacion', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandado.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} {isFieldRequired('demandadoIdentificacion', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandado.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
+                                value={demandado.cedula}
+                                maxLength={demandado.tipoPersona === 'Natural' ? 10 : 15}
+                                onChange={(e) => {
+                                  const val = demandado.tipoPersona === 'Natural'
+                                    ? soloDigitos(e.target.value)
+                                    : nitFormato(e.target.value);
+                                  actualizarDemandado(demandado.id, 'cedula', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoNombre', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandado.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} {isFieldRequired('demandadoNombre', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandado.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
+                                value={demandado.nombreCompleto}
+                                onChange={(e) => {
+                                  const val = demandado.tipoPersona === 'Natural'
+                                    ? soloLetrasEspacios(e.target.value)
+                                    : e.target.value;
+                                  actualizarDemandado(demandado.id, 'nombreCompleto', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoCargo', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Cargo / Función {isFieldRequired('demandadoCargo', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Director, Gerente, etc."
+                                value={demandado.cargoFuncion || ''}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'cargoFuncion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoTelefono', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Teléfono {isFieldRequired('demandadoTelefono', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="3001234567"
+                                value={demandado.telefono}
+                                maxLength={10}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoCorreo', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Correo Electrónico {isFieldRequired('demandadoCorreo', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={demandado.correo}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'correo', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoDireccion', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Dirección {isFieldRequired('demandadoDireccion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Calle 123 #45-67"
+                                value={demandado.direccion}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'direccion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoTieneApoderado', true) && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`apoderado-dema-${demandado.id}`}
+                                  checked={demandado.tieneApoderado}
+                                  onChange={(e) => actualizarDemandado(demandado.id, 'tieneApoderado', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <Label htmlFor={`apoderado-dema-${demandado.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
+                                  Tiene Apoderado
+                                </Label>
+                              </div>
+                            </div>
+                          )}
 
                           {demandado.tieneApoderado && (
                             <div className="md:col-span-2 bg-blue-50 p-3 rounded border border-blue-200">
@@ -1445,6 +2571,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     ))}
                   </div>
                 </Card>
+                {renderCamposAdicionales(3)}
               </>
             )}
 
@@ -1493,107 +2620,133 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Tipo de Persona</Label>
-                            <Select
-                              value={actor.tipoPersona}
-                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarOtroActor(actor.id, 'tipoPersona', value)}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100000]">
-                                <SelectItem value="Natural">Natural</SelectItem>
-                                <SelectItem value="Juridica">Jurídica</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {actor.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'}
-                            </Label>
-                            <Input
-                              placeholder={actor.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
-                              value={actor.cedula}
-                              maxLength={actor.tipoPersona === 'Natural' ? 10 : 15}
-                              onChange={(e) => {
-                                const val = actor.tipoPersona === 'Natural'
-                                  ? soloDigitos(e.target.value)
-                                  : nitFormato(e.target.value);
-                                actualizarOtroActor(actor.id, 'cedula', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
-                              value={actor.nombreCompleto}
-                              onChange={(e) => {
-                                const val = actor.tipoPersona === 'Natural'
-                                  ? soloLetrasEspacios(e.target.value)
-                                  : e.target.value;
-                                actualizarOtroActor(actor.id, 'nombreCompleto', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Rol <span className="text-red-500">*</span></Label>
-                            <Input
-                              placeholder="Ej: Tercero interviniente, Litisconsorte, etc."
-                              value={actor.rol}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'rol', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Teléfono</Label>
-                            <Input
-                              placeholder="3001234567"
-                              value={actor.telefono}
-                              maxLength={10}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Correo Electrónico</Label>
-                            <Input
-                              type="email"
-                              placeholder="correo@ejemplo.com"
-                              value={actor.correo}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'correo', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Dirección</Label>
-                            <Input
-                              placeholder="Calle 123 #45-67"
-                              value={actor.direccion}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'direccion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id={`apoderado-actor-${actor.id}`}
-                                checked={actor.tieneApoderado}
-                                onChange={(e) => actualizarOtroActor(actor.id, 'tieneApoderado', e.target.checked)}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`apoderado-actor-${actor.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
-                                Tiene Apoderado
+                          {isFieldVisible('otroActorTipoPersona', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Tipo de Persona {isFieldRequired('otroActorTipoPersona', false) && <span className="text-red-500">*</span>}
                               </Label>
+                              <Select
+                                value={actor.tipoPersona}
+                                onValueChange={(value: 'Natural' | 'Juridica') => actualizarOtroActor(actor.id, 'tipoPersona', value)}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100000]">
+                                  <SelectItem value="Natural">Natural</SelectItem>
+                                  <SelectItem value="Juridica">Jurídica</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          )}
+
+                          {isFieldVisible('otroActorIdentificacion', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {actor.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} {isFieldRequired('otroActorIdentificacion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={actor.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
+                                value={actor.cedula}
+                                maxLength={actor.tipoPersona === 'Natural' ? 10 : 15}
+                                onChange={(e) => {
+                                  const val = actor.tipoPersona === 'Natural'
+                                    ? soloDigitos(e.target.value)
+                                    : nitFormato(e.target.value);
+                                  actualizarOtroActor(actor.id, 'cedula', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorNombre', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} {isFieldRequired('otroActorNombre', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
+                                value={actor.nombreCompleto}
+                                onChange={(e) => {
+                                  const val = actor.tipoPersona === 'Natural'
+                                    ? soloLetrasEspacios(e.target.value)
+                                    : e.target.value;
+                                  actualizarOtroActor(actor.id, 'nombreCompleto', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorRol', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Rol {isFieldRequired('otroActorRol', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Ej: Tercero interviniente, Litisconsorte, etc."
+                                value={actor.rol}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'rol', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorTelefono', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Teléfono {isFieldRequired('otroActorTelefono', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="3001234567"
+                                value={actor.telefono}
+                                maxLength={10}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorCorreo', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Correo Electrónico {isFieldRequired('otroActorCorreo', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={actor.correo}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'correo', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorDireccion', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Dirección {isFieldRequired('otroActorDireccion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Calle 123 #45-67"
+                                value={actor.direccion}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'direccion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorTieneApoderado', true) && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`apoderado-actor-${actor.id}`}
+                                  checked={actor.tieneApoderado}
+                                  onChange={(e) => actualizarOtroActor(actor.id, 'tieneApoderado', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <Label htmlFor={`apoderado-actor-${actor.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
+                                  Tiene Apoderado
+                                </Label>
+                              </div>
+                            </div>
+                          )}
 
                           {actor.tieneApoderado && (
                             <div className="md:col-span-2 bg-blue-50 p-3 rounded border border-blue-200">
@@ -1657,6 +2810,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     ))}
                   </div>
                 </Card>
+                {renderCamposAdicionales(4)}
               </>
             )}
 
@@ -1673,63 +2827,68 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="juzgadoTribunal" className="text-sm font-bold text-gray-700">
-                        Juzgado / Tribunal <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="juzgadoTribunal"
-                        placeholder="Ej: Tribunal Administrativo de Cundinamarca"
-                        value={formData.juzgadoTribunal}
-                        onChange={(e) => setFormData({ ...formData, juzgadoTribunal: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {isFieldVisible('juzgadoTribunal', true) && (
                       <div className="space-y-2">
-                        <Label htmlFor="departamento" className="text-sm font-bold text-gray-700">
-                          Departamento <span className="text-red-500">*</span>
+                        <Label htmlFor="juzgadoTribunal" className="text-sm font-bold text-gray-700">
+                          Juzgado / Tribunal {isFieldRequired('juzgadoTribunal', true) && <span className="text-red-500">*</span>}
                         </Label>
-                        <Select
-                          value={formData.departamento}
-                          onValueChange={(value: string) => setFormData({ ...formData, departamento: value })}
-                        >
-                          <SelectTrigger id="departamento" className="bg-white">
-                            <SelectValue placeholder="Seleccione departamento..." />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {departamentosAPI.map(dep => (
-                              <SelectItem key={dep.id} value={dep.nombre}>{dep.nombre}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Input
+                          id="juzgadoTribunal"
+                          placeholder="Ej: Tribunal Administrativo de Cundinamarca"
+                          value={formData.juzgadoTribunal}
+                          onChange={(e) => setFormData({ ...formData, juzgadoTribunal: e.target.value })}
+                        />
                       </div>
+                    )}
 
-                      <div className="space-y-2">
-                        <Label htmlFor="ciudad" className="text-sm font-bold text-gray-700">
-                          Ciudad <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                          value={formData.ciudad}
-                          onValueChange={(value: string) => setFormData({ ...formData, ciudad: value })}
-                          disabled={!formData.departamento || cargandoCiudades}
-                        >
-                          <SelectTrigger id="ciudad" className="bg-white">
-                            <SelectValue placeholder={cargandoCiudades ? 'Cargando ciudades...' : 'Seleccione ciudad...'} />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {ciudadesDisponibles.map(ciudad => (
-                              <SelectItem key={ciudad} value={ciudad}>{ciudad}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {!formData.departamento && (
-                          <p className="text-xs text-gray-500 mt-1">Primero seleccione un departamento</p>
-                        )}
+                    {isFieldVisible('departamentoCiudad', true) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="departamento" className="text-sm font-bold text-gray-700">
+                            Departamento {isFieldRequired('departamentoCiudad', true) && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Select
+                            value={formData.departamento}
+                            onValueChange={(value: string) => setFormData({ ...formData, departamento: value })}
+                          >
+                            <SelectTrigger id="departamento" className="bg-white">
+                              <SelectValue placeholder="Seleccione departamento..." />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {departamentosAPI.map(dep => (
+                                <SelectItem key={dep.id} value={dep.nombre}>{dep.nombre}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="ciudad" className="text-sm font-bold text-gray-700">
+                            Ciudad {isFieldRequired('departamentoCiudad', true) && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Select
+                            value={formData.ciudad}
+                            onValueChange={(value: string) => setFormData({ ...formData, ciudad: value })}
+                            disabled={!formData.departamento || cargandoCiudades}
+                          >
+                            <SelectTrigger id="ciudad" className="bg-white">
+                              <SelectValue placeholder={cargandoCiudades ? 'Cargando ciudades...' : 'Seleccione ciudad...'} />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {ciudadesDisponibles.map(ciudad => (
+                                <SelectItem key={ciudad} value={ciudad}>{ciudad}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {!formData.departamento && (
+                            <p className="text-xs text-gray-500 mt-1">Primero seleccione un departamento</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </Card>
+                {renderCamposAdicionales(5)}
               </>
             )}
 
@@ -1754,7 +2913,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         <Select
                           value={formData.tipoPlazo}
                           onValueChange={(value: string) => {
-                            const nuevoTipo = value as 'Dias Habiles' | 'Dias Calendario';
+                            const nuevoTipo = value as 'Dias Habiles' | 'Dias Calendario' | 'Horas';
                             // Si se cambia a Días Hábiles, normalizamos la fecha existente si la hay
                             const nuevaFechaNotificacion = (nuevoTipo === 'Dias Habiles' && formData.fechaNotificacion)
                               ? normalizarAHorarioHabil(formData.fechaNotificacion)
@@ -1766,27 +2925,32 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            <SelectItem value="Dias Habiles">Días Hábiles</SelectItem>
-                            <SelectItem value="Dias Calendario">Días Calendario</SelectItem>
+                            {(!activeTipoProceso?.unidadTermino || activeTipoProceso.unidadTermino === 'dias' || activeTipoProceso.unidadTermino === 'Dias Habiles' || activeTipoProceso.unidadTermino === 'Ambos') && (
+                                <SelectItem value="Dias Habiles">Días Hábiles</SelectItem>
+                            )}
+                            {(!activeTipoProceso?.unidadTermino || activeTipoProceso.unidadTermino === 'dias' || activeTipoProceso.unidadTermino === 'Dias Calendario' || activeTipoProceso.unidadTermino === 'Ambos') && (
+                                <SelectItem value="Dias Calendario">Días Calendario</SelectItem>
+                            )}
+                            {(!activeTipoProceso?.unidadTermino || activeTipoProceso?.unidadTermino === 'horas' || activeTipoProceso?.unidadTermino === 'Horas' || activeTipoProceso?.unidadTermino === 'Ambos') && (
+                              <SelectItem value="Horas">Horas</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-2">
                         <Label htmlFor="termino" className="text-sm font-bold text-gray-700">
-                          Término (Días) <span className="text-red-500">*</span>
+                          {formData.tipoPlazo === 'Horas' ? 'Término (Horas)' : 'Término (Días)'}
                         </Label>
                         <Input
                           id="termino"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="30"
+                          type="number"
                           value={formData.termino === 0 ? '' : String(formData.termino)}
-                          onChange={(e) => {
-                            const raw = soloDigitos(e.target.value).slice(0, 4);
-                            setFormData({ ...formData, termino: parseInt(raw, 10) || 0 });
-                          }}
+                          onChange={(e) => setFormData({ ...formData, termino: parseInt(e.target.value) || 0 })}
+                          className="bg-white"
+                          min="1"
                         />
+                        <p className="text-xs text-gray-500">Por defecto cargado del tipo de proceso, pero puede ser editado</p>
                       </div>
 
                       <div className="space-y-2">
@@ -1798,7 +2962,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           type="datetime-local"
                           value={formData.fechaNotificacion}
                           onChange={(e) => {
-                            const normalizada = formData.tipoPlazo === 'Dias Habiles'
+                            const normalizada = (activeTipoProceso?.unidadTermino?.toLowerCase() !== 'horas' && formData.tipoPlazo === 'Dias Habiles')
                               ? normalizarAHorarioHabil(e.target.value)
                               : e.target.value;
                             setFormData({ ...formData, fechaNotificacion: normalizada });
@@ -1818,32 +2982,36 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           className="bg-gray-100"
                         />
                         <p className="text-xs text-gray-500 mt-1">
-                          {formData.tipoPlazo === 'Dias Habiles'
+                          {formData.tipoPlazo === 'Horas'
+                            ? 'Se calcula exactamente sumando las horas a partir de la notificación.'
+                            : formData.tipoPlazo === 'Dias Habiles'
                             ? 'Se calcula automáticamente (8:00 AM a 5:00 PM)'
                             : 'Se calcula exactamente desde la hora de notificación'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
-                        Abogado Defensor <span className="text-gray-400 font-normal ml-1">(Opcional)</span>
-                      </Label>
-                      <Select
-                        value={formData.abogadoResponsable}
-                        onValueChange={(value: string) => setFormData({ ...formData, abogadoResponsable: value })}
-                      >
-                        <SelectTrigger id="abogadoResponsable" className="bg-white">
-                          <SelectValue placeholder="Seleccione abogado..." />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100000]">
-                          <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
-                          {abogadosAPI.map(abog => (
-                            <SelectItem key={abog.id} value={abog.nombre}>{abog.nombre}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {isFieldVisible('abogadoResponsable', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
+                          Abogado Responsable {isFieldRequired('abogadoResponsable', false) ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal ml-1">(Opcional)</span>}
+                        </Label>
+                        <Select
+                          value={formData.abogadoResponsable}
+                          onValueChange={(value: string) => setFormData({ ...formData, abogadoResponsable: value })}
+                        >
+                          <SelectTrigger id="abogadoResponsable" className="bg-white">
+                            <SelectValue placeholder="Seleccione abogado..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100000]">
+                            <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
+                            {abogadosAPI.map(abog => (
+                              <SelectItem key={abog.id} value={abog.id}>{abog.nombre}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                     {formData.fechaVencimiento && (
                       <div className="p-3 bg-blue-50 border border-blue-200 rounded">
@@ -1852,9 +3020,26 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           <div className="flex-1">
                             <h4 className="text-sm font-bold text-blue-900 mb-1">Cálculo Automático de Vencimiento</h4>
                             <div className="text-xs text-blue-800 space-y-1">
-                              <p>• Tipo de plazo: <strong>{formData.tipoPlazo}</strong></p>
-                              <p>• Término: <strong>{formData.termino} días</strong></p>
-                              <p>• Vencimiento calculado a las: <strong>5:00 PM</strong></p>
+                              {formData.tipoPlazo === 'Horas' ? (
+                                <>
+                                  <p>• Unidad de término: <strong>Horas</strong></p>
+                                  <p>• Término: <strong>{formData.termino} horas</strong></p>
+                                </>
+                              ) : (
+                                <>
+                                  <p>• Tipo de plazo: <strong>{formData.tipoPlazo === 'Dias Habiles' ? 'Días Hábiles' : 'Días Calendario'}</strong></p>
+                                  <p>• Término: <strong>{formData.termino} días</strong></p>
+                                </>
+                              )}
+                              {formData.fechaNotificacion && (
+                                <p>• Fecha de notificación: <strong>{formatFechaLocal(formData.fechaNotificacion)}</strong></p>
+                              )}
+                              {formData.fechaVencimiento && (
+                                <p>• Fecha de vencimiento: <strong>{formatFechaLocal(formData.fechaVencimiento)}</strong></p>
+                              )}
+                              {formData.tipoPlazo !== 'Horas' && (
+                                <p>• Vencimiento calculado a las: <strong>{activeTipoProceso?.horaEspecial || '17:00'}</strong></p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1862,6 +3047,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     )}
                   </div>
                 </Card>
+                {renderCamposAdicionales(6)}
               </>
             )}
 
@@ -1878,57 +3064,66 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="pretensiones" className="text-sm font-bold text-gray-700">
-                        Pretensiones <span className="text-red-500">*</span>
-                      </Label>
-                      <Textarea
-                        id="pretensiones"
-                        placeholder="Descripción detallada de las pretensiones del demandante..."
-                        value={formData.pretensiones}
-                        onChange={(e) => setFormData({ ...formData, pretensiones: e.target.value })}
-                        rows={6}
-                        className="resize-none"
-                      />
-                      <div className="flex items-center justify-between mt-2">
-                        <p className={`text-xs font-bold ${formData.pretensiones.length < 20 ? 'text-gray-400' : 'text-green-600'
-                          }`}>
-                          {formData.pretensiones.length} caracteres {formData.pretensiones.length < 20 && '(mínimo 20)'}
-                        </p>
-                        {formData.pretensiones.length >= 20 && (
-                          <p className="text-xs text-green-600 font-bold flex items-center gap-1">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            Pretensiones válidas
+                    {isFieldVisible('pretensiones', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="pretensiones" className="text-sm font-bold text-gray-700">
+                          Pretensiones {isFieldRequired('pretensiones', true) && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Textarea
+                          id="pretensiones"
+                          placeholder="Descripción detallada de las pretensiones del demandante..."
+                          value={formData.pretensiones}
+                          onChange={(e) => setFormData({ ...formData, pretensiones: e.target.value })}
+                          rows={6}
+                          className="resize-none"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <p className={`text-xs font-bold ${formData.pretensiones.length < 20 ? 'text-gray-400' : 'text-green-600'
+                            }`}>
+                            {formData.pretensiones.length} caracteres {formData.pretensiones.length < 20 && '(mínimo 20)'}
                           </p>
-                        )}
+                          {formData.pretensiones.length >= 20 && (
+                            <p className="text-xs text-green-600 font-bold flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Pretensiones válidas
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="hechos" className="text-sm font-bold text-gray-700">Hechos</Label>
-                      <Textarea
-                        id="hechos"
-                        placeholder="Descripción de los hechos que originaron la demanda..."
-                        value={formData.hechos}
-                        onChange={(e) => setFormData({ ...formData, hechos: e.target.value })}
-                        rows={5}
-                        className="resize-none"
-                      />
-                    </div>
+                    {isFieldVisible('hechos', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="hechos" className="text-sm font-bold text-gray-700">
+                          Hechos {isFieldRequired('hechos', false) && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Textarea
+                          id="hechos"
+                          placeholder="Descripción de los hechos que originaron la demanda..."
+                          value={formData.hechos}
+                          onChange={(e) => setFormData({ ...formData, hechos: e.target.value })}
+                          rows={5}
+                          className="resize-none"
+                        />
+                      </div>
+                    )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="observaciones" className="text-sm font-bold text-gray-700">Observaciones Adicionales</Label>
-                      <Textarea
-                        id="observaciones"
-                        placeholder="Cualquier información adicional relevante..."
-                        value={formData.observaciones}
-                        onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                        rows={4}
-                        className="resize-none"
-                      />
-                    </div>
+                    {isFieldVisible('observaciones', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="observaciones" className="text-sm font-bold text-gray-700">Observaciones Adicionales</Label>
+                        <Textarea
+                          id="observaciones"
+                          placeholder="Cualquier información adicional relevante..."
+                          value={formData.observaciones}
+                          onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                          rows={4}
+                          className="resize-none"
+                        />
+                      </div>
+                    )}
                   </div>
                 </Card>
+                {renderCamposAdicionales(7)}
               </>
             )}
           </div>
@@ -1940,7 +3135,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             Los campos marcados con <span className="text-red-500 font-bold">*</span> son obligatorios
           </p>
           <div className="flex gap-3">
-            {pasoActual > 1 && (
+            {!esPrimerPaso && (
               <Button
                 type="button"
                 variant="outline"
@@ -1962,7 +3157,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
               Cancelar
             </Button>
 
-            {pasoActual < totalPasos ? (
+            {!esUltimoPaso ? (
               <Button
                 type="button"
                 onClick={siguiente}
@@ -1994,6 +3189,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             )}
           </div>
         </div>
+        </div> {/* Closing div for the scale transform container */}
       </DialogContent>
     </Dialog>
 

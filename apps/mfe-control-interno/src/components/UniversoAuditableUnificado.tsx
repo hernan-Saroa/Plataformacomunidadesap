@@ -33,6 +33,7 @@ import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from '.
 import { FormularioProcesoDafpVisual as FormularioProcesoAuditable, type FormularioDafpData as ProcesoAuditableData } from './FormularioProcesoDafpVisualSimplificado';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { TabUniversoAuditableResponsive } from './TabUniversoAuditableResponsive';
+import { calcularAuditableDesdeCiclo, resolverAuditableEfectivo } from '../utils/auditableEvaluacion';
 import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 
 import { TooltipGuia } from './TooltipGuia';
@@ -42,6 +43,8 @@ import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI,
 import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
 // ✅ HOOK DE EVALUACIONES DAFP (nueva funcionalidad)
 import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/useEvaluacionesProcesoData';
+// ✅ HOOK DE CONFIGURACIÓN DE KANBAN (dinámico)
+import { useKanbanConfig } from './context/KanbanConfigContext';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
 import { loadTipos, loadEspIds } from './ConfiguracionProcesosModule';
@@ -50,6 +53,7 @@ import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/u
 // ✅ HOOK DE PERMISOS FLEXIBLE
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -68,7 +72,7 @@ type AuditoriaProgramada = AuditoriaProgramadaUI;
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * Horas estimadas por auditoría según nivel DAFP (Guía RE-E-GE-034):
+ * Horas estimadas por auditoría según Guía RE-E-GE-034:
  *   Extremo  / Cada año    → 80h
  *   Alto     / Cada 2 años → 60h
  *   Moderado / Cada 3 años → 40h
@@ -123,7 +127,11 @@ interface UniversoAuditableUnificadoProps {
   modoSeguimiento?: boolean;
 }
 
-export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSeguimiento = false }: UniversoAuditableUnificadoProps) {
+export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, modoSeguimiento = false }: UniversoAuditableUnificadoProps) {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigencia = vigenciaCtx?.vigencia ?? vigenciaProp ?? new Date().getFullYear();
+  const planAnualId = vigenciaCtx?.planActivoId ?? undefined;
+
   const [tabActiva, setTabActiva] = useState<TabActiva>(modoSeguimiento ? 'programa' : 'universo');
   const [filtroNivelRiesgo, setFiltroNivelRiesgo] = useState<NivelRiesgo | 'TODOS'>('TODOS');
   const [filtroTipoProceso, setFiltroTipoProceso] = useState<TipoProceso | 'TODOS'>('TODOS');
@@ -142,6 +150,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     refetch: refetchProcesos,
   } = useUniversoAuditableData();
 
+  // ✅ MAPA de procesos por ID para lookup rápido (Mover aquí para evitar ReferenceError)
+  const procesosMap = useMemo(() => {
+    const map = new Map<string, any>();
+    procesos.forEach(p => map.set(p.id, p));
+    return map;
+  }, [procesos]);
+
   // ✅ HOOK DE EVALUACIONES DAFP - Para crear nuevas evaluaciones por proceso
   const {
     evaluaciones,
@@ -149,6 +164,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     agregarEvaluacion,
     editarEvaluacion,
     eliminarEvaluacion,
+    patchAuditableManual,
     refetch: refetchEvaluaciones,
   } = useEvaluacionesProcesoData({ vigencia });
 
@@ -160,7 +176,93 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     isOnline: isOnlineAuditorias,
     agregarAuditoria,
     refetch: refetchAuditorias,
-  } = useProgramaAnualData({ vigencia, procesos });
+  } = useProgramaAnualData({ vigencia, planAnualId, procesos });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PROCESAR DATOS PARA LA TABLA (Merge de Procesos + Evaluaciones)
+  // ══════════════════════════════════════════════════════════════════════════
+  
+  const evaluacionesComoFilas = useMemo((): ProcesoAuditable[] => {
+    if (!procesos.length && !evaluaciones.length) return [];
+
+    const nivelRiesgoMap: Record<string, NivelRiesgo> = {
+      'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
+    };
+    const mapPonderacion: Record<string, NivelRiesgo> = {
+      'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
+    };
+
+    return evaluaciones.map(ev => {
+      const p = procesosMap.get(ev.procesoId);
+      if (!p) return null;
+
+      const nivelRiesgo = (nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio');
+      const scoreCalculado = ev.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev.scoreRiesgo || 0);
+      const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
+      
+      // ✅ Calcular horas estimadas desde evaluación o nivel de riesgo
+      const horasEst = ev.horasEstimadas ?? calcHorasEstimadas(ev.nivelCriticidadDafp, ev.cicloRotacionDafp);
+      const auditableCalculado =
+        ev.auditableCalculado ?? calcularAuditableDesdeCiclo(ev.cicloRotacionDafp);
+      const auditableManual = ev.auditableManual ?? null;
+      const auditable = resolverAuditableEfectivo(auditableCalculado, auditableManual);
+
+      // Extraer la dependencia y unidad auditable (macroproceso) si están concatenados
+      let dep = p.dependencia || ev.dependenciaResponsable || '';
+      let mac = p.macroproceso || '';
+      if (ev.dependenciaResponsable && ev.dependenciaResponsable.includes('||')) {
+        const parts = ev.dependenciaResponsable.split('||');
+        dep = parts[0].trim();
+        mac = parts[1].trim();
+      }
+
+      return {
+        id: ev.id, // ✅ Usar idEvaluacion como ID de la fila para permitir múltiples evaluaciones del mismo proceso
+        idEvaluacion: ev.id,
+        _backendId: p.id, // ✅ Crucial para que onEditarProceso funcione (ID del proceso maestro)
+        codigo: p.codigo,
+        nombre: p.nombre,
+        tipo: p.tipo,
+        tipoProceso: p.tipoProceso || p.tipo,
+        macroproceso: mac, // Unidad Auditable extraída
+        dependencia: dep,
+        dependenciaResponsable: dep, // ✅ Crucial para búsqueda
+        responsable: p.responsable,
+        nivelRiesgo,
+        puntajeRiesgo: scoreCalculado,
+        scoreRiesgo: scoreCalculado,
+        horasEstimadas: horasEst,
+        frecuenciaSugerida: frecuencia,
+        frecuenciaAuditoria: frecuencia as any,
+        _evaluacionRiesgo: {
+          ponderacionFinalDafp: ev.ponderacionFinalDafp,
+          nivelCriticidadDafp: ev.nivelCriticidadDafp,
+          cicloRotacionDafp: ev.cicloRotacionDafp,
+          riesgosExtremos: ev.riesgosExtremos,
+          riesgosAltos: ev.riesgosAltos,
+          riesgosModerados: ev.riesgosModerados,
+          riesgosBajos: ev.riesgosBajos,
+          totalRiesgos: ev.totalRiesgos,
+          scoreRiesgo: ev.scoreRiesgo,
+          decisionFinal: ev.decisionFinal,
+          vigencia: ev.vigencia,
+          fechaCorte: ev.fechaCorte,
+          auditableCalculado,
+          auditableManual,
+        } as any,
+        auditableCalculado,
+        auditableManual,
+        auditable,
+        activo: ev.activo ?? p.activo,
+        createdAt: ev.createdAt || p.createdAt,
+        updatedAt: ev.updatedAt || p.updatedAt,
+      } as ProcesoAuditable;
+    }).filter(Boolean) as ProcesoAuditable[];
+  }, [evaluaciones, procesos, procesosMap]);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ESTADOS Y UI
+  // ══════════════════════════════════════════════════════════════════════════
 
   // ✅ HOOK DE PROFESIONALES OCI (para badge del tab)
   const {
@@ -181,70 +283,6 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   const [mostrarFormularioProceso, setMostrarFormularioProceso] = useState(false);
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoAuditable | null>(null);
   const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState<EvaluacionProcesoUI | null>(null);
-
-  // ✅ MAPA de procesos por ID para lookup rápido
-  const procesosMap = useMemo(() => {
-    const map = new Map<string, ProcesoAuditable>();
-    procesos.forEach(p => map.set(p.id, p));
-    return map;
-  }, [procesos]);
-
-  // ✅ Convertir evaluaciones DAFP registradas a filas de la tabla.
-  // Solo muestra procesos que hayan sido evaluados por el formulario DAFP.
-  const evaluacionesComoFilas = useMemo((): ProcesoAuditable[] => {
-    const nivelRiesgoMap: Record<string, NivelRiesgo> = {
-      'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
-    };
-    const mapPonderacion: Record<string, NivelRiesgo> = {
-      'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
-    };
-
-    return evaluaciones.map(ev => {
-      const proceso = procesosMap.get(ev.procesoId);
-      const nivelRiesgo = nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio';
-      const scoreCalculado = ev.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev.scoreRiesgo || 0);
-      const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
-      return {
-        id: ev.id,
-        nombre: proceso?.nombre || '',
-        tipo: proceso?.tipo || 'Apoyo' as any,
-        descripcion: `Vigencia ${ev.vigencia} — Corte ${ev.fechaCorte}`,
-        responsable: ev.dependenciaResponsable || proceso?.responsable || '',
-        nivelRiesgo,
-        puntajeRiesgo: scoreCalculado,
-        calificacionDafp: ev.prioridadRegla || 0,
-        categoria: ev.decisionFinal || '',
-        auditable: ev.decisionFinal === 'INCLUIR PLAN ANUAL',
-        ultimaAuditoria: ev.fechaUltimaAuditoria,
-        resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
-        frecuenciaAuditoria: frecuencia as any,
-        activo: ev.activo ?? proceso?.activo,
-        codigo: proceso?.codigo || '',
-        macroproceso: proceso?.macroproceso || '',
-        tipoProceso: proceso?.tipo || 'Apoyo' as any,
-        dependenciaResponsable: ev.dependenciaResponsable || proceso?.dependenciaResponsable || '',
-        scoreRiesgo: scoreCalculado,
-        frecuenciaSugerida: frecuencia,
-        horasEstimadas: calcHorasEstimadas(ev.nivelCriticidadDafp, ev.cicloRotacionDafp),
-        _backendId: ev.procesoId,
-        _evaluacionRiesgo: {
-          riesgosExtremos: ev.riesgosExtremos, riesgosAltos: ev.riesgosAltos,
-          riesgosModerados: ev.riesgosModerados, riesgosBajos: ev.riesgosBajos,
-          totalRiesgos: ev.totalRiesgos,
-          requerimientoComite: ev.requerimientoComite, requerimientoEntesReg: ev.requerimientoEntesReg,
-          fechaUltimaAuditoria: ev.fechaUltimaAuditoria, resultadoUltimaAuditoria: ev.resultadoUltimaAuditoria,
-          ponderacionRiesgo: ev.ponderacionRiesgo,
-          criticidad: ev.criticidad, exposicion: ev.exposicion, mitigantes: ev.mitigantes, scoreRiesgo: ev.scoreRiesgo,
-          tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria, temasAltaDireccion: ev.temasAltaDireccion,
-          objetivosEstrategicos: ev.objetivosEstrategicos, hallazgosAnteriores: ev.hallazgosAnteriores,
-          ponderacionFinalDafp: ev.ponderacionFinalDafp, nivelCriticidadDafp: ev.nivelCriticidadDafp,
-          cicloRotacionDafp: ev.cicloRotacionDafp,
-          decisionFinal: ev.decisionFinal, motivoDecision: ev.motivoDecision, prioridadRegla: ev.prioridadRegla,
-          vigencia: ev.vigencia, fechaCorte: ev.fechaCorte,
-        } as any,
-      } as ProcesoAuditable;
-    });
-  }, [evaluaciones, procesosMap]);
 
   // ✅ Estadísticas calculadas desde evaluaciones
   const estadisticasEvaluaciones = useMemo(() => {
@@ -315,24 +353,17 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     let cicloRotacionDafp = datos.cicloRotacionDafp || '';
 
     if (tiempo > 0 && ad > 0 && obj > 0 && hall > 0 && (!ponderacionFinalDafp || !nivelCriticidadDafp || !cicloRotacionDafp)) {
-      ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
+      ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(1);
       const resultado = resolverResultadoDafp(ponderacionFinalDafp, datos.modoProcesoEspecial);
       nivelCriticidadDafp = resultado.nivel;
       cicloRotacionDafp = resultado.ciclo;
     }
 
-    console.log('[handleAgregarEvaluacion] Guardando evaluación con datos:', {
-      procesoId,
-      riesgos: { riesgosExtremos: riesgoExt, riesgosAltos: riesgoAlt, riesgosModerados: riesgoMod, riesgosBajos: riesgoBaj, totalRiesgos },
-      criterios: { tiempoUltimaAuditoria: tiempo, temasAltaDireccion: ad, objetivosEstrategicos: obj, hallazgosAnteriores: hall },
-      resultado: { ponderacionFinalDafp, nivelCriticidadDafp, cicloRotacionDafp }
-    });
-
     const evaluacionData: Partial<EvaluacionProcesoUI> = {
       procesoId,
       vigencia: Number(datos.vigencia) || new Date().getFullYear(),
       fechaCorte: datos.fechaCorte || new Date().toISOString().split('T')[0],
-      dependenciaResponsable: datos.dependenciaResponsable || 'Sin dependencia',
+      dependenciaResponsable: `${datos.dependenciaResponsable || 'Sin dependencia'} || ${datos.macroproceso || 'Sin unidad'}`,
       riesgosExtremos: Number(riesgoExt),
       riesgosAltos: Number(riesgoAlt),
       riesgosModerados: Number(riesgoMod),
@@ -355,20 +386,18 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       ponderacionFinalDafp: Number(ponderacionFinalDafp),
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp || 'No auditar',
-      decisionFinal: datos.decisionFinal || 'AUDITORÍA POSTERIOR',
+      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp || 'No auditar'),
+      decisionFinal: datos.decisionFinal || 'INCLUIR_AUDITORIA_POSTERIOR',
       motivoDecision: datos.motivoDecision || '',
       prioridadRegla: Number(datos.prioridadRegla) || 5,
     };
     
-    console.log('[handleAgregarEvaluacion] Evaluacion lista para guardar:', evaluacionData);
-
     const result = await agregarEvaluacion(evaluacionData);
-    console.log('[handleAgregarEvaluacion] Resultado:', result);
-    if (result) {
-      console.log('[handleAgregarEvaluacion] Ejecutando refetchEvaluaciones...');
-      await refetchEvaluaciones();
-      console.log('[handleAgregarEvaluacion] Refetch completado');
-      toast.success('Evaluación creada exitosamente');
+    // ✅ Siempre refetch para sincronizar la tabla (el hook ya gestiona el toast)
+    await refetchEvaluaciones();
+    if (!result) {
+      // El hook ya mostró toast de error
+      return;
     }
   };
 
@@ -391,7 +420,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     let cicloRotacionDafp = datos.cicloRotacionDafp || '';
 
     if (tiempo > 0 && ad > 0 && obj > 0 && hall > 0 && (!ponderacionFinalDafp || !nivelCriticidadDafp || !cicloRotacionDafp)) {
-      ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(2);
+      ponderacionFinalDafp = +(riCuan * 0.4 + tiempo * 0.1 + ad * 0.1 + obj * 0.1 + hall * 0.3).toFixed(1);
       const resultado = resolverResultadoDafp(ponderacionFinalDafp, datos.modoProcesoEspecial);
       nivelCriticidadDafp = resultado.nivel;
       cicloRotacionDafp = resultado.ciclo;
@@ -400,7 +429,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     const evaluacionData: Partial<EvaluacionProcesoUI> = {
       vigencia: datos.vigencia || new Date().getFullYear(),
       fechaCorte: datos.fechaCorte,
-      dependenciaResponsable: datos.dependenciaResponsable || '',
+      dependenciaResponsable: `${datos.dependenciaResponsable || 'Sin dependencia'} || ${datos.macroproceso || 'Sin unidad'}`,
       riesgosExtremos: riesgoExt,
       riesgosAltos: riesgoAlt,
       riesgosModerados: riesgoMod,
@@ -423,23 +452,21 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       ponderacionFinalDafp: ponderacionFinalDafp,
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp,
+      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp),
       decisionFinal: datos.decisionFinal,
       motivoDecision: datos.motivoDecision,
       prioridadRegla: datos.prioridadRegla,
     };
 
     await editarEvaluacion(evaluacionId, evaluacionData);
+    // ✅ Siempre refetch para sincronizar la tabla (el hook ya gestiona el toast)
     await refetchEvaluaciones();
-    toast.success('Evaluación actualizada');
   };
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* INDICADOR DE ESTADO DE CONEXIÓN */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* INDICADOR DE ESTADO DE CONEXIÓN / ERRORES GLOBALES */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       {error && (!error.includes('permisos') || (error.includes('auditoria') && tabActiva !== 'programa')) && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm transition-all">
@@ -469,14 +496,16 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             : 'Gestión integral del universo auditable y programa anual'}
           icon={<Layers className="w-5 h-5 text-white" />}
           color="#003DA5"
-          rightContent={onVolver ? (
-            <button
-              onClick={onVolver}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors"
-            >
-              Volver
-            </button>
-          ) : undefined}
+          rightContent={
+            onVolver ? (
+              <button
+                onClick={onVolver}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors"
+              >
+                Volver
+              </button>
+            ) : undefined
+          }
         />
       </div>
 
@@ -497,11 +526,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             >
               <Layers className="w-4 h-4" />
               Universo Auditable
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'universo' ? 'bg-white/20' : 'bg-gray-200'
-              }`}>
-                {estadisticas.procesosAuditables}
-              </span>
+              {estadisticasEvaluaciones.totalProcesos > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  tabActiva === 'universo' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {estadisticasEvaluaciones.totalProcesos}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setTabActiva('programa')}
@@ -513,11 +544,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             >
               <CalendarIcon className="w-4 h-4" />
               Programa Anual
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'programa' ? 'bg-white/20' : 'bg-gray-200'
-              }`}>
-                {estadisticas.totalProgramadas}
-              </span>
+              {estadisticas.totalProgramadas > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  tabActiva === 'programa' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {estadisticas.totalProgramadas}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setTabActiva('profesionales')}
@@ -529,11 +562,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             >
               <Users className="w-4 h-4" />
               Profesionales
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
-              }`}>
-                {loadingProfesionales ? '...' : profesionalesOCI.length}
-              </span>
+              {(!loadingProfesionales && profesionalesOCI.length > 0) && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {profesionalesOCI.length}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -566,11 +601,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                   setMostrarFormularioProceso(true);
                 }}
                 onEditarProceso={(filaEvaluacion) => {
-                  // Buscar el proceso maestro para pre-llenar el formulario
                   const procesoMaestro = procesosMap.get(filaEvaluacion._backendId || '');
                   if (procesoMaestro) setProcesoSeleccionado(procesoMaestro);
-                  // Guardar referencia a la evaluación que se edita
-                  const evOriginal = evaluaciones.find(e => e.id === filaEvaluacion.id);
+                  const evOriginal = evaluaciones.find(e => e.id === (filaEvaluacion as any).idEvaluacion);
                   if (evOriginal) setEvaluacionSeleccionada(evOriginal);
                   setMostrarFormularioProceso(true);
                 }}
@@ -581,7 +614,14 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                   await editarEvaluacion(evaluacionId, datos);
                   return true;
                 }}
-                onRefresh={refetchEvaluaciones}
+                onRefresh={async () => {
+                  await refetchProcesos();
+                  await refetchEvaluaciones();
+                }}
+                onCambiarAuditable={async (evaluacionId, auditableManual) => {
+                  const ok = await patchAuditableManual(evaluacionId, auditableManual);
+                  return ok !== null;
+                }}
                 puedeCrear={!modoSeguimiento && puedeCrearProceso}
                 puedeEditar={!modoSeguimiento && puedeEditarProceso}
                 puedeEliminar={!modoSeguimiento && puedeEliminarProceso}
@@ -598,6 +638,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                 puedeCrearAuditoria={puedeRealizar('auditorias', 'create')}
                 error={errorAuditorias}
                 onRefresh={refetchAuditorias}
+                vigencia={vigencia}
               />
             )}
             {tabActiva === 'profesionales' && (
@@ -612,14 +653,16 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       </div>
 
       {/* MODALES */}
-      {/* Formulario para gestionar auditorías programadas */}
       {mostrarFormulario && (
         <FormularioAuditoriaUnificado
           open={mostrarFormulario}
           onClose={() => setMostrarFormulario(false)}
+          initialData={{
+            vinculadaPlanAnual: true,
+            planAnualId: planAnualId ?? '',
+            planAnualAño: vigencia,
+          }}
           onSubmit={async (data: AuditoriaUnificadaFormData) => {
-            // Convertir datos del formulario al formato del hook
-            // ✅ Mapeo correcto de fechas: usar fechaInicioPlaneacion como fechaInicio
             const auditoriaData: AuditoriaCreateData = {
               tipoAuditoria: data.tipoAuditoria,
               titulo: data.titulo,
@@ -629,10 +672,14 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               procesoAuditado: data.procesoAuditado,
               alcance: data.alcance,
               auditorLider: data.auditorLider,
-              auditorAsignado: data.auditorAsignado,
               equipoAuditores: data.equipoAuditores,
               supervisorAsignado: data.supervisorAsignado,
-              // ✅ FECHAS: Usar los campos correctos del formulario con valores por defecto
+              ...(data.responsableArea && {
+                responsableAreaIdPersona: data.responsableArea.idPersona,
+                responsableAreaNombre: data.responsableArea.nombre,
+                responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
+                responsableAreaEmail: data.responsableArea.email,
+              }),
               fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio || new Date().toISOString().split('T')[0],
               fechaFinPlaneacion: data.fechaFinPlaneacion,
               fechaInicioEjecucion: data.fechaInicioEjecucion,
@@ -649,11 +696,11 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               recursos: data.recursos,
               productosEsperados: data.productosEsperados,
               hitos: data.hitos,
-              vinculadaPlanAnual: data.vinculadaPlanAnual,
-              planAnualId: data.planAnualId,
-              planAnualAño: data.planAnualAño,
+              vinculadaPlanAnual: data.vinculadaPlanAnual ?? true,
+              planAnualId: data.planAnualId ?? planAnualId,
+              planAnualAño: data.planAnualAño ?? vigencia,
               rolDecretoAsociado: data.rolDecretoAsociado,
-              estadoKanban: data.estadoKanban || 'Plan Anual', // Crear en Plan Anual por defecto
+              estadoKanban: data.estadoKanban || 'Programa Anual',
               incluirHallazgosPreliminares: data.incluirHallazgosPreliminares,
               hallazgos: data.hallazgos,
             };
@@ -662,6 +709,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             if (exito) {
               setMostrarFormulario(false);
             }
+            return exito; // ✅ Retornar resultado para que el formulario sepa si fue exitoso
           }}
           mode="create"
         />
@@ -677,16 +725,17 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             setProcesoSeleccionado(null);
             setEvaluacionSeleccionada(null);
           }}
-          onSubmit={(proceso, procesoIdSeleccionado) => {
+          onSubmit={async (proceso, procesoIdSeleccionado) => {
             // ✅ FIX: Universo Auditable crea EVALUACIONES, no procesos
             // El proceso maestro viene del catálogo (Configuración → Procesos)
             // Aquí se crean evaluaciones DAFP del proceso seleccionado
+            // ✅ CRÍTICO: await para que el guardado se complete ANTES de cerrar el modal
             if (evaluacionSeleccionada) {
               // Modo EDIT: actualizar evaluación existente
-              handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
+              await handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
             } else {
               // Modo CREATE: crear nueva evaluación para el proceso seleccionado
-              handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
+              await handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
             }
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
@@ -746,6 +795,7 @@ interface TabUniversoAuditableProps {
   onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
   // ✅ Nueva prop para recargar datos
   onRefresh?: () => void;
+  onCambiarAuditable?: (evaluacionId: string, auditableManual: boolean | null) => Promise<boolean>;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeCrear?: boolean;
   puedeEditar?: boolean;
@@ -766,6 +816,7 @@ function TabUniversoAuditable({
   onEliminarProceso,
   onGuardarEvaluacion,
   onRefresh,
+  onCambiarAuditable,
   puedeCrear = true,
   puedeEditar = true,
   puedeEliminar = true
@@ -786,6 +837,7 @@ function TabUniversoAuditable({
       onEliminarProceso={onEliminarProceso}
       onGuardarEvaluacion={onGuardarEvaluacion}
       onRefresh={onRefresh}
+      onCambiarAuditable={onCambiarAuditable}
       puedeCrear={puedeCrear}
       puedeEditar={puedeEditar}
       puedeEliminar={puedeEliminar}
@@ -810,6 +862,8 @@ interface TabProgramaAnualProps {
   error?: string | null;
   /** Función para reintentar la carga */
   onRefresh?: () => void;
+  /** Vigencia para el cronograma */
+  vigencia: number;
 }
 
 function TabProgramaAnual({ 
@@ -820,18 +874,35 @@ function TabProgramaAnual({
   puedeCrear = true,
   puedeCrearAuditoria = false,
   error = null,
-  onRefresh
+  onRefresh,
+  vigencia
 }: TabProgramaAnualProps) {
   const [vistaProgramaAnual, setVistaProgramaAnual] = useState<'lista' | 'cronograma'>('cronograma'); // 🆕 Estado para alternar vista
+  const { etapasKanban } = useKanbanConfig();
   
   const getColorEstado = (auditoria: AuditoriaProgramada) => {
-    const kanban = (auditoria.estadoKanban || '').toLowerCase().trim();
-    if (kanban === 'plan anual') return { bg: '#EDE9FE', text: '#5B21B6', icon: Clock, label: 'Plan Anual' };
+    const kanbanStr = (auditoria.estadoKanban || '').trim();
+    // 1. Buscar en las etapas dinámicas
+    const etapaConfig = etapasKanban.find(e => e.nombre.toLowerCase() === kanbanStr.toLowerCase());
+    
+    if (etapaConfig) {
+      return { 
+        bg: `${etapaConfig.color}20`, // Color con 20% de opacidad para fondo
+        text: etapaConfig.color, 
+        icon: Activity, // Podríamos hacer esto dinámico en el futuro
+        label: etapaConfig.nombre 
+      };
+    }
+
+    // 2. Fallback dinámico si no existe en la BD o BD no cargada
+    const kanban = kanbanStr.toLowerCase();
+    if (kanban === 'programa anual') return { bg: '#EDE9FE', text: '#5B21B6', icon: Clock, label: 'Programa Anual' };
     if (kanban === 'planeación' || kanban === 'planeacion') return { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' };
     if (kanban === 'ejecución' || kanban === 'ejecucion') return { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecución' };
     if (kanban === 'comunicación' || kanban === 'comunicacion') return { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Comunicación' };
     if (kanban === 'seguimiento') return { bg: '#E0F2FE', text: '#075985', icon: TrendingUp, label: 'Seguimiento' };
     if (kanban === 'finalizada') return { bg: '#F0FDF4', text: '#166534', icon: CheckCircle2, label: 'Finalizada' };
+    
     // Fallback por estado UI
     const colores: Record<string, { bg: string; text: string; icon: any; label: string }> = {
       'PROGRAMADA': { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' },
@@ -1000,7 +1071,7 @@ function TabProgramaAnual({
             >
               <CronogramaAuditoriasPremium 
                 auditorias={auditorias as any}
-                vigencia={new Date().getFullYear()}
+                vigencia={vigencia}
               />
             </motion.div>
           ) : (

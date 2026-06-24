@@ -2,7 +2,7 @@ import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
-const SERVICE_PREFIX = '/auth/api/v1';
+const SERVICE_PREFIX = '/notificaciones/api/v1';
 
 // Types
 export interface Notification {
@@ -244,6 +244,22 @@ export const notificationsService = {
     }
   },
 
+  /**
+   * Disparar un evento de notificación de alto nivel (el backend resuelve todo)
+   */
+  triggerEvent: async (eventoCode: string, context: any): Promise<any> => {
+    try {
+      // Usar el prefijo correcto del servicio de control institucional
+      const response = await apiClient.post('/control-institucional/api/v1/notificaciones/disparar-evento', {
+        eventoCode,
+        context
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error triggering event ${eventoCode}:`, error);
+      throw error;
+    }
+  },
   /**
    * Actualizar preferencias de notificación
    */

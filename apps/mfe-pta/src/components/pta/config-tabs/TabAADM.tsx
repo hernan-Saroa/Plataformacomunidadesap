@@ -148,7 +148,7 @@ export function TabAADM({ draft, handleChange }: { draft: PTARules; handleChange
                   checked={draft.requiere_acreditacion_final}
                   onChange={(v) => handleChange("requiere_acreditacion_final", v)}
                   title="Acreditación final obligatoria"
-                  description="Exige soportes en Carpeta Digital para cierre."
+                  description="Exige soportes documentales para cierre."
                 />
                 <SwitchToggle
                   checked={draft.ggp_auditoria_activa}

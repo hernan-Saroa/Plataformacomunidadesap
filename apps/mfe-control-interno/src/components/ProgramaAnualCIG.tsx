@@ -49,14 +49,16 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
 // ============ SERVICIO BACKEND ============
-import { controlInternoService } from '@/services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
+// import { notificationsService } from '@/services/api/notificationsService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ============ INTEGRACIÓN CONTEXT ============
 import { useIntegracionAuditoriaPlanes, type AuditoriaProgramada } from './IntegracionAuditoriasPlanesContext';
 
 // ============ TIPOS ============
 
-type TipoAuditoria = 'Sede' | 'Territorial';
+type TipoAuditoria = 'Regular' | 'Territorial' | 'Especial';
 type FaseAuditoria = 'Planeación' | 'Ejecución' | 'Comunicación';
 type EstadoPrograma = 'Borrador' | 'Pendiente Aprobación' | 'Aprobado' | 'En Ejecución' | 'Finalizado';
 type MesAño = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
@@ -163,12 +165,30 @@ const AUDITORES_MOCK: AuditorDisponible[] = [
   }
 ];
 
+/**
+ * Mapea el tipo de auditoría del backend al formato del Programa Anual.
+ * Prioriza el valor real del campo 'tipo' tal como fue configurado en la creación.
+ * Solo infiere desde territorial como fallback si tipo no está disponible.
+ */
+function mapearTipoProgramaAnual(tipo?: string, territorial?: string, sede?: string): TipoAuditoria {
+  if (tipo) {
+    const t = tipo.toLowerCase().trim();
+    if (t === 'territorial') return 'Territorial';
+    if (t === 'especial') return 'Especial';
+    // 'regular', 'sede', 'gestión', 'cumplimiento', etc. → Regular
+    return 'Regular';
+  }
+  // Fallback: inferir desde territorial solo cuando tipo no está disponible
+  if (territorial === 'Nacional' || sede === 'Nacional') return 'Regular';
+  return 'Territorial';
+}
+
 const AUDITORIAS_PROGRAMADAS_MOCK: AuditoriaPrograma[] = [
   {
     id: 'prog-001',
     codigo: 'AUD-2025-001',
     nombre: 'Auditoría Gestión Financiera',
-    tipo: 'Sede',
+    tipo: 'Regular',
     areaAuditable: 'SEDE-001',
     procesoId: 'proc-001',
     procesoNombre: 'Gestión Financiera',
@@ -211,7 +231,7 @@ const AUDITORIAS_PROGRAMADAS_MOCK: AuditoriaPrograma[] = [
     id: 'prog-003',
     codigo: 'AUD-2025-003',
     nombre: 'Auditoría Gestión Administrativa',
-    tipo: 'Sede',
+    tipo: 'Regular',
     areaAuditable: 'SEDE-002',
     procesoId: 'proc-002',
     procesoNombre: 'Gestión Administrativa',
@@ -268,7 +288,7 @@ export function ProgramaAnualOCIG() {
               id: aud.id,
               codigo: aud.codigo || `AUD-${añoActual}-${String(response.indexOf(aud) + 1).padStart(3, '0')}`,
               nombre: aud.nombre || 'Sin nombre',
-              tipo: aud.territorial === 'Nacional' || aud.sede === 'Nacional' ? 'Sede' : 'Territorial' as 'Sede' | 'Territorial',
+              tipo: mapearTipoProgramaAnual(aud.tipo, aud.territorial, aud.sede),
               areaAuditable: aud.areaObjetivo || aud.procesoAuditado || '',
               procesoId: aud.id,
               procesoNombre: aud.procesoAuditado || aud.areaObjetivo || '',
@@ -323,7 +343,7 @@ export function ProgramaAnualOCIG() {
   };
 
   // ✅ NUEVO: Handler para aprobar programa
-  const handleAprobarPrograma = () => {
+  const handleAprobarPrograma = async () => {
     // 1. Validar que haya auditorías aprobadas
     const auditoriasParaKanban = auditoriasProgramadas.filter(
       aud => aud.estadoPrograma === 'Aprobado' || aud.estadoPrograma === 'Pendiente Aprobación'
@@ -353,7 +373,7 @@ export function ProgramaAnualOCIG() {
         },
         fechaInicio,
         fechaFin,
-        tipo: aud.tipo === 'Sede' ? 'regular' : 'territorial',
+        tipo: aud.tipo === 'Territorial' ? 'territorial' : aud.tipo === 'Especial' ? 'especial' : 'regular',
         prioridad: 'alta',
         areaObjetivo: aud.areaAuditable,
         programaId: 'programa-2025',
@@ -364,6 +384,17 @@ export function ProgramaAnualOCIG() {
     // 3. Agregar al context
     console.log('📋 Enviando', auditoriasFormateadas.length, 'auditorías al Kanban');
     agregarAuditoriasProgramadas(auditoriasFormateadas);
+
+    // 🚀 DISPARAR EVENTO AL BACKEND
+    try {
+      await notificationsService.triggerEvent('EVT-PA-001', {
+        tituloCustom: 'Programa Anual Aprobado',
+        mensajeCustom: `Se ha aprobado el Programa Anual con ${auditoriasFormateadas.length} auditorías.`,
+        url_accion: '/control-interno/plan-anual',
+      });
+    } catch (e) {
+      console.error('Error disparando notificación:', e);
+    }
 
     // 4. Marcar como aprobado
     setProgramaAprobado(true);
@@ -741,10 +772,10 @@ function VistaLista({ auditorias }: { auditorias: AuditoriaPrograma[] }) {
                   {aud.codigo}
                 </Badge>
                 <Badge 
-                  variant={aud.tipo === 'Sede' ? 'info' : 'success'} 
+                  variant={aud.tipo === 'Regular' ? 'info' : aud.tipo === 'Especial' ? 'warning' : 'success'} 
                   size="sm"
                 >
-                  {aud.tipo === 'Sede' ? <Building2 className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+                  {aud.tipo === 'Territorial' ? <MapPin className="w-3 h-3" /> : <Building2 className="w-3 h-3" />}
                   <span className="ml-1">{aud.tipo}</span>
                 </Badge>
                 <Badge 
@@ -935,6 +966,21 @@ function ModalNuevaAuditoria({ onClose }: { onClose: () => void }) {
         procesoId: auditoria.areaAuditable?.id || null,
         procesoNombre: auditoria.areaAuditable?.nombre || '',
         areaAuditable: auditoria.areaAuditable?.nombre || '',
+        areaObjetivo: auditoria.areaAuditable?.nombre || '',
+        procesoAuditado: Array.isArray(auditoria.procesosIncluidos)
+          ? auditoria.procesosIncluidos.join(', ')
+          : '',
+        // Regla actual: responsable = auditado (responsable del área auditada)
+        responsable: auditoria.responsableArea?.nombre
+          || auditoria.areaAuditable?.responsable
+          || 'Por asignar',
+        responsableAreaNombre: auditoria.responsableArea?.nombre
+          || auditoria.areaAuditable?.responsable
+          || '',
+        responsableAreaCargo: auditoria.responsableArea?.cargo
+          || 'Responsable de área',
+        responsableAreaEmail: auditoria.responsableArea?.email || '',
+        responsableAreaIdPersona: auditoria.responsableArea?.idPersona || undefined,
         fechaInicio: auditoria.fechaInicio,
         fechaFin: auditoria.fechaFin,
         fechaFinPlaneacion: auditoria.fechaFinPlaneacion,

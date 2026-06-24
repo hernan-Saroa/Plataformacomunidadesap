@@ -29,13 +29,16 @@ import {
 import { toast } from 'sonner';
 
 // Servicio API
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
+import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 import { getServiceUrl, API_MODE } from '../../../config/environment';
+import { notificationsService } from '../../../services/api/notificationsService';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ✅ FASE 1 DÍA 3: Componentes responsive
 import { Container4K } from '@esap-mfe/shared-ui/container-4k';
@@ -183,7 +186,7 @@ function mapEstadoAuditoria(fase: string, estadoKanban?: string): 'ABIERTO' | 'E
   if (estadoKanban === 'Finalizada' || fase === 'CIERRE' || fase === 'cierre') {
     return 'CERRADO';
   }
-  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Plan Anual' || estadoKanban === 'Planeación') {
+  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Programa Anual' || estadoKanban === 'Planeación') {
     return 'ABIERTO';
   }
   return 'EN_PROCESO';
@@ -195,7 +198,7 @@ function mapEtapaToFase(etapa: string): FaseAuditoria {
     'planificacion': 'PLANIFICACION',
     'PLANIFICACION': 'PLANIFICACION',
     'Planeación': 'PLANIFICACION',
-    'Plan Anual': 'PLANIFICACION',
+    'Programa Anual': 'PLANIFICACION',
     'ejecucion': 'EJECUCION',
     'EJECUCION': 'EJECUCION',
     'Ejecución': 'EJECUCION',
@@ -233,8 +236,68 @@ function mapDocumentoBackend(doc: any): Documento {
   };
 }
 
+/** Evidencias de hallazgos (evidencia_documento) */
+function mapEvidenciaBackend(ev: any): Documento {
+  const baseUrl = getFilesBaseUrl();
+  const tamanioBytes = Number(ev.tamanioBytes) || 0;
+  return {
+    id: ev.id,
+    nombre: ev.nombre || ev.nombreArchivoOriginal || 'Evidencia',
+    nombreArchivo: ev.nombreArchivoOriginal || ev.nombre || 'evidencia',
+    tipo: 'evidencia_hallazgo',
+    tipoMime: ev.tipoMime || 'application/octet-stream',
+    tamanio: formatFileSize(tamanioBytes),
+    tamanioBytes,
+    fechaCreacion: (ev.fechaSubida || ev.createdAt || '').split('T')[0],
+    autor: ev.subidoPor || 'Sistema',
+    fase: 'HALLAZGOS',
+    rutaArchivo: `${baseUrl}/evidencias/${ev.id}/download`,
+    descripcion: ev.descripcion || '📎 Evidencia de hallazgo',
+  };
+}
+
 // Convierte datos del backend de auditoría a la interfaz Expediente
 function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expediente {
+  // ✅ Resolver nombre del responsable (auditorLider puede ser objeto, UUID string, o nombre)
+  let nombreResponsable = 'Sin asignar';
+  
+  if (auditoria.auditorLider) {
+    if (typeof auditoria.auditorLider === 'object' && auditoria.auditorLider.nombre) {
+      // Caso 1: auditorLider es objeto { nombre, cargo, iniciales }
+      nombreResponsable = auditoria.auditorLider.nombre;
+    } else if (typeof auditoria.auditorLider === 'string') {
+      // Caso 2: auditorLider es string - verificar si es UUID o nombre real
+      const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(auditoria.auditorLider);
+      if (!esUUID) {
+        // Es un nombre directo
+        nombreResponsable = auditoria.auditorLider;
+      }
+      // Si es UUID, se queda como 'Sin asignar' y se intenta resolver abajo
+    }
+  }
+  
+  // Fallback: intentar otros campos disponibles en el backend
+  if (nombreResponsable === 'Sin asignar') {
+    if (auditoria.auditorLiderNombre) {
+      nombreResponsable = auditoria.auditorLiderNombre;
+    } else if (auditoria.responsable && typeof auditoria.responsable === 'string') {
+      const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(auditoria.responsable);
+      if (!esUUID) {
+        nombreResponsable = auditoria.responsable;
+      }
+    } else if (auditoria.responsableArea?.nombre) {
+      nombreResponsable = auditoria.responsableArea.nombre;
+    } else if (auditoria.equipoAuditores?.length > 0) {
+      const primerAuditor = auditoria.equipoAuditores[0];
+      if (typeof primerAuditor === 'object' && primerAuditor.nombre) {
+        nombreResponsable = primerAuditor.nombre;
+      } else if (typeof primerAuditor === 'string') {
+        const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(primerAuditor);
+        if (!esUUID) nombreResponsable = primerAuditor;
+      }
+    }
+  }
+
   return {
     id: auditoria.id,
     codigoAuditoria: auditoria.codigo || `AU-${auditoria.id.slice(0, 8).toUpperCase()}`,
@@ -243,7 +306,7 @@ function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expe
     fechaInicio: auditoria.fechaInicio?.split('T')[0] || auditoria.createdAt?.split('T')[0] || '',
     fechaFin: auditoria.fechaFin?.split('T')[0],
     estado: mapEstadoAuditoria(auditoria.fase, auditoria.estadoKanban),
-    responsable: auditoria.responsable || auditoria.auditorLider || 'Sin asignar',
+    responsable: nombreResponsable,
     totalDocumentos: documentos.length,
     documentos: documentos
   };
@@ -254,11 +317,14 @@ function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expe
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModulePremium() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <ModuleHeaderBar
         title="Expedientes"
-        subtitle="Archivo digital organizado por fases de auditoría"
+        subtitle={`Archivo digital organizado por fases de auditoría${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''}`}
         icon={<FolderOpen className="w-5 h-5 text-white" />}
         color="#0891B2"
       />
@@ -274,6 +340,8 @@ export function ExpedientesModulePremium() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function VistaExpedientes() {
+  const vigenciaContext = usePlanAnualVigenciaContextOptional();
+  const vigencia = vigenciaContext?.vigencia;
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ABIERTO' | 'EN_PROCESO' | 'CERRADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
@@ -289,17 +357,35 @@ function VistaExpedientes() {
     setError(null);
     
     try {
-      // 1. Obtener todas las auditorías
-      const auditorias = await controlInternoService.getAuditorias();
-      
+      // 1. Auditorías de la vigencia del plan anual (mismo criterio que Kanban OCI / Planes)
+      const filtrosVigencia =
+        vigencia != null
+          ? { planAnualVigencia: vigencia, year: vigencia }
+          : undefined;
+      const auditoriasResp = await controlInternoService.getAuditorias(filtrosVigencia);
+      let auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      if (vigencia != null) {
+        auditorias = auditorias.filter((a: any) =>
+          auditoriaCoincideVigenciaPlan(a, vigencia),
+        );
+      }
+
       // 2. Para cada auditoría, cargar sus documentos
       const expedientesConDocs = await Promise.all(
         auditorias.map(async (auditoria: any) => {
           const documentos: Documento[] = [];
 
           try {
-            const docsBackend = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
-            documentos.push(...docsBackend.map(mapDocumentoBackend));
+            const [docsBackend, evidenciasBackend] = await Promise.all([
+              controlInternoService.getDocumentosByAuditoria(auditoria.id).catch(() => []),
+              controlInternoService.getEvidenciasByAuditoria(auditoria.id).catch(() => []),
+            ]);
+            const docs = (Array.isArray(docsBackend) ? docsBackend : []).map(mapDocumentoBackend);
+            const ids = new Set(docs.map((d) => d.id));
+            const evids = (Array.isArray(evidenciasBackend) ? evidenciasBackend : [])
+              .map(mapEvidenciaBackend)
+              .filter((e) => !ids.has(e.id));
+            documentos.push(...docs, ...evids);
           } catch {
             // Si falla el endpoint de docs, continuar sin ellos
           }
@@ -337,7 +423,7 @@ function VistaExpedientes() {
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [vigencia]);
 
   // Cargar al montar
   useEffect(() => {
@@ -964,6 +1050,19 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
         },
         (progress) => setProgreso(progress)
       );
+
+      // 🚀 DISPARAR EVENTO AL BACKEND
+      try {
+        await notificationsService.triggerEvent('EVT-DOC-001', {
+          auditoriaId: expediente.id,
+          auditoriaCodigo: expediente.codigoAuditoria,
+          tituloCustom: 'Nuevo Documento Cargado',
+          mensajeCustom: `Se ha cargado el documento ${nombreDocumento.trim()} en el expediente ${expediente.codigoAuditoria}.`,
+          url_accion: '/control-interno/expedientes',
+        });
+      } catch (e) {
+        console.error('Error disparando notificación:', e);
+      }
 
       toast.success('Documento Cargado Exitosamente', {
         description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,

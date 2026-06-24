@@ -12,6 +12,7 @@ import {
   HttpStatus,
   Res,
   UseInterceptors,
+  UploadedFile,
   UploadedFiles,
   BadRequestException,
   ForbiddenException,
@@ -28,7 +29,7 @@ import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
 import type { Request, Response } from 'express';
 import { Public } from '../auth/public.decorator';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import * as fs from 'fs';
@@ -43,9 +44,29 @@ type ValidationGeoContext = {
 type AuthenticatedRequest = Request & {
   user?: {
     roles?: unknown[];
+    permissions?: unknown[];
     internalService?: boolean;
   };
 };
+
+const FINAL_REVIEW_DECISION_PERMISSIONS = [
+  'graduates.edit',
+  'graduates.export',
+  'graduates.verify_certificate',
+  'graduates-certificates.solicitude.aprobar',
+  'graduates-certificates.certificates.view',
+  'graduates-certificates.certificates.edit',
+  'graduates-certificates.certificates.export',
+  'graduates-certificates.solicitude.rechazar',
+  'graduates-certificates.certificates.reenviar',
+];
+const REVIEW_WORK_PERMISSIONS = [
+  'graduates-certificates.solicitude.review',
+];
+const APPROVE_REQUEST_PERMISSION =
+  'graduates-certificates.solicitude.aprobar';
+const REJECT_REQUEST_PERMISSION =
+  'graduates-certificates.solicitude.rechazar';
 
 const normalizeRoleCode = (value: string): string =>
   value
@@ -75,21 +96,131 @@ const getNormalizedRoles = (roles: unknown[] | undefined): Set<string> => {
   return normalized;
 };
 
+const normalizePermissionCode = (value: string): string =>
+  value.trim().toLowerCase();
+
+const addPermissionCandidate = (normalized: Set<string>, value: unknown) => {
+  if (typeof value === 'string' && value.trim()) {
+    normalized.add(normalizePermissionCode(value));
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    const candidate = value as { code?: string };
+    if (candidate.code) {
+      normalized.add(normalizePermissionCode(candidate.code));
+    }
+  }
+};
+
+const getNormalizedPermissions = (
+  user: AuthenticatedRequest['user'],
+): Set<string> => {
+  const normalized = new Set<string>();
+
+  for (const permission of user?.permissions || []) {
+    addPermissionCandidate(normalized, permission);
+  }
+
+  for (const role of user?.roles || []) {
+    if (role && typeof role === 'object') {
+      const candidate = role as { permissions?: unknown[] };
+      if (Array.isArray(candidate.permissions)) {
+        candidate.permissions.forEach((permission) =>
+          addPermissionCandidate(normalized, permission),
+        );
+      }
+    }
+  }
+
+  return normalized;
+};
+
 const assertCanMakeFinalReviewDecision = (req: AuthenticatedRequest) => {
   if (req.user?.internalService) {
     return;
   }
 
   const roles = getNormalizedRoles(req.user?.roles);
+  if (roles.has('SUPER_ADMIN')) {
+    return;
+  }
+
+  const permissions = getNormalizedPermissions(req.user);
   if (
-    roles.has('SUPER_ADMIN') ||
-    roles.has('JEFE_REGISTRO_ACADEMICO')
+    FINAL_REVIEW_DECISION_PERMISSIONS.every((permission) =>
+      permissions.has(permission),
+    )
   ) {
     return;
   }
 
   throw new ForbiddenException(
-    'Solo el Jefe de Registro Academico puede emitir la decision final.',
+    'Se requieren los permisos minimos de jefe de Registro Academico para emitir la decision final.',
+  );
+};
+
+const hasPermission = (
+  req: AuthenticatedRequest,
+  permissionCode: string,
+): boolean => {
+  if (req.user?.internalService) return true;
+
+  const roles = getNormalizedRoles(req.user?.roles);
+  if (roles.has('SUPER_ADMIN')) return true;
+
+  return getNormalizedPermissions(req.user).has(permissionCode);
+};
+
+const assertHasAnyPermission = (
+  req: AuthenticatedRequest,
+  permissionCodes: string[],
+  message: string,
+) => {
+  if (permissionCodes.some((permissionCode) => hasPermission(req, permissionCode))) {
+    return;
+  }
+
+  throw new ForbiddenException(message);
+};
+
+const assertHasPermission = (
+  req: AuthenticatedRequest,
+  permissionCode: string,
+  message: string,
+) => assertHasAnyPermission(req, [permissionCode], message);
+
+const assertCanResolveApprovalDecision = (
+  req: AuthenticatedRequest,
+  body: ResolveReviewApprovalDto,
+) => {
+  if (body?.finalDecision === true) {
+    assertCanMakeFinalReviewDecision(req);
+    return;
+  }
+
+  if (body?.decision === 'REJECTED') {
+    assertHasPermission(
+      req,
+      REJECT_REQUEST_PERMISSION,
+      'Se requiere permiso para rechazar solicitudes de revision.',
+    );
+    return;
+  }
+
+  if (body?.decision === 'OBSERVATION') {
+    assertHasAnyPermission(
+      req,
+      [APPROVE_REQUEST_PERMISSION, REJECT_REQUEST_PERMISSION],
+      'Se requiere permiso de aprobador para devolver solicitudes con observacion.',
+    );
+    return;
+  }
+
+  assertHasPermission(
+    req,
+    APPROVE_REQUEST_PERMISSION,
+    'Se requiere permiso para aprobar solicitudes de revision.',
   );
 };
 
@@ -234,15 +365,51 @@ const getGeoContext = (req: Request): ValidationGeoContext => {
   };
 };
 
+const normalizeBaseUrl = (value?: string | null): string | undefined => {
+  const raw = String(value || '').trim();
+  if (!raw) return undefined;
+  try {
+    return new URL(raw).origin;
+  } catch (_) {
+    return undefined;
+  }
+};
+
+const getForwardedFrontendBaseUrl = (req: Request): string | undefined => {
+  const forwardedHost = pickHeader(req, 'x-forwarded-host', 'x-original-host');
+  if (!forwardedHost) return undefined;
+
+  const forwardedProto =
+    pickHeader(req, 'x-forwarded-proto', 'x-forwarded-protocol') ||
+    req.protocol ||
+    'http';
+  const host = forwardedHost.split(',')[0]?.trim();
+  const proto = forwardedProto.split(',')[0]?.trim() || 'http';
+
+  return normalizeBaseUrl(`${proto}://${host}`);
+};
+
 const getFrontendBaseUrl = (req: Request): string | undefined => {
-  const origin =
-    typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  const origin = normalizeBaseUrl(
+    typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
+  );
   const referer =
     typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
   if (origin) return origin;
-  if (!referer) return undefined;
+  if (referer) {
+    const refererOrigin = normalizeBaseUrl(referer);
+    if (refererOrigin) return refererOrigin;
+  }
+
+  const forwarded = getForwardedFrontendBaseUrl(req);
+  if (forwarded) return forwarded;
+
+  const host =
+    typeof req.headers.host === 'string' ? req.headers.host.trim() : undefined;
+  if (!host) return undefined;
+
   try {
-    return new URL(referer).origin;
+    return new URL(`${req.protocol || 'http'}://${host}`).origin;
   } catch (_) {
     return undefined;
   }
@@ -312,23 +479,73 @@ export class GraduationCertificatesController {
     @Body() body: LandingCertificateRequestDto,
     @Req() req: Request,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
     return await this.service.solicitarCertificadoLanding(
       body,
-      frontendBaseUrl,
+      getFrontendBaseUrl(req),
     );
+  }
+
+  @Post('autoservicio/solicitar-revision-con-soporte')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('supportFile', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const uploadDir = join(
+            process.cwd(),
+            'uploads',
+            'graduation-request-supports',
+          );
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          cb(null, uploadDir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `request-support-${uniqueSuffix}${extname(file.originalname)}`);
+        },
+      }),
+      fileFilter: (_req, file, cb) => {
+        const ext = extname(file.originalname || '').toLowerCase();
+        const isPdf = ext === '.pdf' || file.mimetype === 'application/pdf';
+        if (!isPdf) {
+          return cb(
+            new BadRequestException('El soporte debe ser un archivo PDF'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        files: 1,
+        fileSize: 20 * 1024 * 1024,
+      },
+    }),
+  )
+  async solicitarRevisionConSoporte(
+    @Body() body: LandingCertificateRequestDto,
+    @UploadedFile() supportFile: Express.Multer.File | undefined,
+    @Req() req: Request,
+  ) {
+    try {
+      return await this.service.solicitarCertificadoLandingConSoporte(
+        body,
+        supportFile,
+        getFrontendBaseUrl(req),
+      );
+    } catch (error) {
+      if (supportFile?.path && fs.existsSync(supportFile.path)) {
+        try {
+          fs.unlinkSync(supportFile.path);
+        } catch {
+          // Mantener el error funcional de la solicitud.
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -364,11 +581,13 @@ export class GraduationCertificatesController {
   @HttpCode(HttpStatus.OK)
   async validarCodigoYGenerarCertificado(
     @Body() body: { idNumber: string; idIssueDate?: string; codigo: string },
+    @Req() req: Request,
   ) {
     return await this.service.validarCodigoYGenerarCertificado(
       body.idNumber,
       body.idIssueDate,
       body.codigo,
+      getFrontendBaseUrl(req),
     );
   }
 
@@ -461,36 +680,6 @@ export class GraduationCertificatesController {
   }
 
   /**
-   * GET /academic-registration/api/v1/certificates/descargas
-   * Listar descargas de certificados
-   */
-  @Get('descargas')
-  async listarDescargas(@Query('certificateId') certificateId?: string) {
-    return await this.service.listarDescargas(certificateId);
-  }
-
-  /**
-   * POST /academic-registration/api/v1/certificates/descargas
-   * Registrar una descarga de certificado
-   */
-  @Post('descargas')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async registrarDescarga(
-    @Body() body: { certificateId: string },
-    @Req() req: Request,
-  ) {
-    const ipAddress = getClientIp(req);
-    const userAgent = req.headers['user-agent'];
-
-    return await this.service.registrarDescarga(
-      body.certificateId,
-      ipAddress,
-      userAgent,
-    );
-  }
-
-  /**
    * ====================================
    * ENDPOINTS DE ADMINISTRACIÓN
    * ====================================
@@ -544,6 +733,28 @@ export class GraduationCertificatesController {
   @Get('solicitudes/:id/revision-files')
   async listarArchivosRevisionSolicitud(@Param('id') id: string) {
     return await this.service.listarArchivosRevisionSolicitud(id);
+  }
+
+  @Get('solicitudes/:id/requester-support/download')
+  async descargarSoporteSolicitanteRevision(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const { file, filePath } =
+      await this.service.obtenerSoporteSolicitanteRevisionParaDescarga(id);
+    const safeName = (file.originalName || 'soporte-solicitud.pdf').replace(
+      /"/g,
+      '',
+    );
+    const encodedName = encodeURIComponent(safeName);
+
+    res.setHeader('Content-Type', file.mimeType || 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+    );
+
+    return res.sendFile(filePath);
   }
 
   @Get('solicitudes/:id/revision-files/:fileId/download')
@@ -600,6 +811,16 @@ export class GraduationCertificatesController {
         },
       }),
       fileFilter: (_req, file, cb) => {
+        try {
+          assertHasAnyPermission(
+            _req as AuthenticatedRequest,
+            REVIEW_WORK_PERMISSIONS,
+            'Se requiere permiso para trabajar solicitudes de revision.',
+          );
+        } catch (error) {
+          return cb(error as Error, false);
+        }
+
         const allowedExtensions = new Set([
           '.pdf',
           '.doc',
@@ -638,9 +859,16 @@ export class GraduationCertificatesController {
   async subirArchivosRevisionSolicitud(
     @Param('id') id: string,
     @UploadedFiles() files: Express.Multer.File[],
+    @Req() req: AuthenticatedRequest,
     @Body('uploadedBy') uploadedBy?: string,
     @Body('uploadedByEmail') uploadedByEmail?: string,
   ) {
+    assertHasAnyPermission(
+      req,
+      REVIEW_WORK_PERMISSIONS,
+      'Se requiere permiso para trabajar solicitudes de revision.',
+    );
+
     if (!files || files.length === 0) {
       throw new BadRequestException('No se recibieron archivos');
     }
@@ -662,8 +890,14 @@ export class GraduationCertificatesController {
     @Param('id') id: string,
     @Body()
     body: { reviewerName?: string; reviewerId?: string; reviewerEmail?: string },
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
+    assertHasAnyPermission(
+      req,
+      REVIEW_WORK_PERMISSIONS,
+      'Se requiere permiso para iniciar la revision de solicitudes.',
+    );
+
     return await this.service.marcarEnRevision(
       id,
       body.reviewerName,
@@ -682,7 +916,14 @@ export class GraduationCertificatesController {
   async enviarDecisionRevision(
     @Param('id') id: string,
     @Body() body: SubmitReviewDecisionDto,
+    @Req() req: AuthenticatedRequest,
   ) {
+    assertHasAnyPermission(
+      req,
+      REVIEW_WORK_PERMISSIONS,
+      'Se requiere permiso para enviar decisiones de revision.',
+    );
+
     return await this.service.enviarDecisionRevision(id, body);
   }
 
@@ -697,9 +938,7 @@ export class GraduationCertificatesController {
     @Body() body: ResolveReviewApprovalDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    if (body?.finalDecision === true) {
-      assertCanMakeFinalReviewDecision(req);
-    }
+    assertCanResolveApprovalDecision(req, body);
 
     return await this.service.resolverDecisionAprobador(
       id,
@@ -717,22 +956,15 @@ export class GraduationCertificatesController {
   async aprobarSolicitud(
     @Param('id') id: string,
     @Body() body: ApproveRequestDto,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
+    assertHasPermission(
+      req,
+      APPROVE_REQUEST_PERMISSION,
+      'Se requiere permiso para aprobar solicitudes de revision.',
+    );
 
-    return await this.service.aprobarSolicitud(id, body, frontendBaseUrl);
+    return await this.service.aprobarSolicitud(id, body, getFrontendBaseUrl(req));
   }
 
   /**
@@ -745,27 +977,20 @@ export class GraduationCertificatesController {
     @Param('id') id: string,
     @Body()
     body: { reason: string; reviewerName?: string; reviewerId?: string },
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
+    assertHasPermission(
+      req,
+      REJECT_REQUEST_PERMISSION,
+      'Se requiere permiso para rechazar solicitudes de revision.',
+    );
 
     return await this.service.rechazarSolicitud(
       id,
       body.reason,
       body.reviewerName,
       body.reviewerId,
-      frontendBaseUrl,
+      getFrontendBaseUrl(req),
     );
   }
 
@@ -855,20 +1080,10 @@ export class GraduationCertificatesController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
-    const pdfBuffer = await this.service.getCertificatePDF(id, frontendBaseUrl);
+    const pdfBuffer = await this.service.getCertificatePDF(
+      id,
+      getFrontendBaseUrl(req),
+    );
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
@@ -898,19 +1113,6 @@ export class GraduationCertificatesController {
   @Post(':id/reenviar')
   @HttpCode(HttpStatus.OK)
   async reenviarCertificado(@Param('id') id: string, @Req() req: Request) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
-    return await this.service.reenviarCertificado(id, frontendBaseUrl);
+    return await this.service.reenviarCertificado(id, getFrontendBaseUrl(req));
   }
 }

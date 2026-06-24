@@ -1,6 +1,10 @@
 import { Injectable, ConflictException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, Repository, Like } from 'typeorm';
+import { randomBytes } from 'node:crypto';
+import { extname, join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
@@ -21,10 +25,14 @@ export class ExpedienteService {
         private expedienteRepository: Repository<Expediente>,
         @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
+        @InjectRepository(Documento)
+        private documentoRepository: Repository<Documento>,
         @InjectRepository(DecisionDisciplinaria)
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
         private excepcionRepository: Repository<ExcepcionProcesal>,
+        @InjectDataSource()
+        private readonly dataSource: DataSource,
         private readonly configService: ConfigurationsService,
         private readonly legalNotifications: LegalNotificationsService
     ) { }
@@ -107,6 +115,10 @@ export class ExpedienteService {
                 const vencimiento = new Date(fechaNotif);
                 vencimiento.setDate(vencimiento.getDate() + Number(data.terminoProcesalDias));
                 data.fechaVencimientoTermino = vencimiento;
+            } else if (tipoConteo === 'HORAS') {
+                const vencimiento = new Date(fechaNotif);
+                vencimiento.setHours(vencimiento.getHours() + Number(data.terminoProcesalDias));
+                data.fechaVencimientoTermino = vencimiento;
             } else {
                 data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
             }
@@ -129,6 +141,15 @@ export class ExpedienteService {
         const nuevoExpediente = this.expedienteRepository.create(data);
         const saved = await this.expedienteRepository.save(nuevoExpediente);
 
+        // Persistir como Documentos del expediente los archivos cargados en campos adicionales
+        // (llegan como base64 dentro de camposAdicionales). Así aparecen en la pestaña de Documentos.
+        // Reemplaza el base64 pesado por metadata liviana en camposAdicionales.
+        try {
+            await this.persistirDocumentosCamposAdicionales(saved, creadoPor);
+        } catch (err: any) {
+            Logger.warn(`[ExpedienteService] Falló persistencia de documentos de campos adicionales: ${err?.message || err}`);
+        }
+
         const esDisciplinario =
             saved.jurisdiccion === 'DISCIPLINARIO' ||
             saved.jurisdiccion === 'Disciplinaria' ||
@@ -136,14 +157,113 @@ export class ExpedienteService {
             saved.tipoProceso === 'Disciplinario';
         const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
 
-        await this.legalNotifications.notifyProcesoCreado({
-            modulo,
-            radicado: saved.radicado,
-            procesoId: saved.id,
-            creadoPor,
-        });
+        // Notificaciones en segundo plano: NO deben bloquear la respuesta del POST.
+        // Antes esto se hacía con await y, si el notifications-service estaba caído/lento,
+        // cada llamada esperaba hasta el timeout de axios (~3s), retrasando varios segundos
+        // la creación visible para el usuario. Ahora se disparan sin bloquear (fire-and-forget).
+        void (async () => {
+            try {
+                await this.legalNotifications.notifyProcesoCreado({
+                    modulo,
+                    radicado: saved.radicado,
+                    procesoId: saved.id,
+                    creadoPor,
+                });
+
+                if (saved.abogadoSustanciador) {
+                    await this.legalNotifications.notifyProfesionalAsignado({
+                        modulo,
+                        radicado: saved.radicado,
+                        procesoId: saved.id,
+                        abogadoId: saved.abogadoSustanciador,
+                        asignadoPor: creadoPor,
+                        esReasignacion: false,
+                    });
+                }
+            } catch (err: any) {
+                Logger.warn(`[ExpedienteService] Notificación de creación falló (no bloqueante): ${err?.message || err}`);
+            }
+        })();
 
         return saved;
+    }
+
+    /**
+     * Extrae los archivos cargados (base64) en `camposAdicionales` y los persiste como
+     * Documentos del expediente, para que aparezcan en la pestaña de Documentos.
+     * Luego reemplaza el base64 pesado por metadata liviana dentro de camposAdicionales.
+     */
+    private async persistirDocumentosCamposAdicionales(expediente: Expediente, creadoPor: string): Promise<void> {
+        const campos = expediente.camposAdicionales as Record<string, any> | undefined | null;
+        if (!campos || typeof campos !== 'object') return;
+
+        const uploadsDir = join(process.cwd(), 'uploads');
+        if (!existsSync(uploadsDir)) {
+            mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        let huboCambios = false;
+        const camposLimpios: Record<string, any> = {};
+
+        for (const [key, val] of Object.entries(campos)) {
+            const esArray = Array.isArray(val);
+            const docs: any[] = esArray
+                ? val
+                : (val && typeof val === 'object' && val.base64 ? [val] : []);
+
+            if (docs.length === 0) {
+                camposLimpios[key] = val;
+                continue;
+            }
+
+            const docsResultantes: any[] = [];
+            for (const doc of docs) {
+                if (doc && typeof doc === 'object' && doc.base64 && doc.nombre && doc.esNuevo) {
+                    try {
+                        const base64Str = String(doc.base64);
+                        const comma = base64Str.indexOf(',');
+                        const soloBase64 = comma >= 0 ? base64Str.slice(comma + 1) : base64Str;
+                        const buffer = Buffer.from(soloBase64, 'base64');
+                        const filename = `${randomBytes(16).toString('hex')}${extname(doc.nombre) || ''}`;
+                        writeFileSync(join(uploadsDir, filename), buffer);
+
+                        const documento = this.documentoRepository.create({
+                            expedienteId: expediente.id,
+                            nombre: doc.nombre,
+                            tipo: 'DATO_ADICIONAL',
+                            categoria: 'documentos',
+                            subidoPor: creadoPor || 'Sistema (Campo Dinámico)',
+                            archivoUrl: `files/${filename}`,
+                            archivoNombreOriginal: doc.nombre,
+                            archivoMimeType: doc.tipoMime || undefined,
+                            archivoTamano: doc.tamano ?? buffer.length,
+                        });
+                        await this.documentoRepository.save(documento);
+
+                        // Metadata liviana para no dejar el base64 dentro de camposAdicionales (JSON pesado).
+                        docsResultantes.push({
+                            nombre: doc.nombre,
+                            tipoMime: doc.tipoMime,
+                            tamano: doc.tamano ?? buffer.length,
+                            cargado: true,
+                        });
+                        huboCambios = true;
+                    } catch (err: any) {
+                        Logger.warn(`[ExpedienteService] No se pudo persistir documento "${doc.nombre}" del campo "${key}": ${err?.message || err}`);
+                        docsResultantes.push(doc); // conservar tal cual si falla
+                    }
+                } else {
+                    docsResultantes.push(doc);
+                }
+            }
+
+            camposLimpios[key] = esArray ? docsResultantes : (docsResultantes[0] ?? val);
+        }
+
+        if (huboCambios) {
+            expediente.camposAdicionales = camposLimpios;
+            await this.expedienteRepository.save(expediente);
+        }
     }
 
     private addBusinessDays(startDate: Date, days: number): Date {
@@ -159,71 +279,176 @@ export class ExpedienteService {
         return currentDate;
     }
 
-    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
-        const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
-        // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
-        queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
-        queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
-        queryBuilder.leftJoinAndSelect('expediente.procesosAnexados', 'procesosAnexados', "procesosAnexados.estadoArchivo = 'ACTIVO'");
-        queryBuilder.leftJoinAndSelect('procesosAnexados.actors', 'procesosAnexadosActors');
+    private shiftBusinessDays(date: Date, delta: number): Date {
+        const result = new Date(date);
+        if (delta === 0) return result;
+        const step = delta > 0 ? 1 : -1;
+        let remaining = Math.abs(delta);
+        while (remaining > 0) {
+            result.setDate(result.getDate() + step);
+            const day = result.getDay();
+            if (day !== 0 && day !== 6) remaining--;
+        }
+        return result;
+    }
 
-        // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
-        queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
+    async renombrarTipoProceso(nombreAnterior: string, nombreNuevo: string): Promise<{ updated: number }> {
+        const result = await this.expedienteRepository
+            .createQueryBuilder()
+            .update()
+            .set({ tipoProceso: nombreNuevo })
+            .where('tipo_proceso = :nombreAnterior', { nombreAnterior })
+            .execute();
+        return { updated: result.affected ?? 0 };
+    }
 
-        // No mostrar expedientes anexados como tarjetas independientes en el Kanban
-        queryBuilder.andWhere("expediente.procesoPrincipalId IS NULL");
+    async recalcularPlazosPorTipoProceso(tipoProceso: string, deltaDias: number): Promise<{ updated: number }> {
+        if (deltaDias === 0) return { updated: 0 };
 
-        queryBuilder.addSelect((subQuery) => {
-            return subQuery
-                .select("COUNT(doc.id)", "count")
-                .from(Documento, "doc")
-                .where("doc.expedienteId = expediente.id");
-        }, "conteo_docs");
+        const expedientes = await this.expedienteRepository.find({ where: { tipoProceso } });
+        let updated = 0;
 
-        if (filtros.estado) {
-            queryBuilder.andWhere('expediente.estado = :estado', { estado: filtros.estado });
+        for (const exp of expedientes) {
+            if (!exp.fechaVencimientoTermino) continue;
+
+            const nuevaFecha = exp.tipoConteoTermino === 'CALENDARIO'
+                ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setDate(d.getDate() + deltaDias); return d; })()
+                : exp.tipoConteoTermino === 'HORAS'
+                ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setHours(d.getHours() + deltaDias); return d; })()
+                : this.shiftBusinessDays(new Date(exp.fechaVencimientoTermino), deltaDias);
+
+            await this.expedienteRepository.update(exp.id, {
+                fechaVencimientoTermino: nuevaFecha,
+                terminoProcesalDias: Math.max(1, (exp.terminoProcesalDias || 0) + deltaDias),
+            });
+            updated++;
         }
 
-        if (filtros.jurisdiccion) {
-            queryBuilder.andWhere('expediente.jurisdiccion = :jurisdiccion', { jurisdiccion: filtros.jurisdiccion });
+        return { updated };
+    }
+
+    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<any[]> {
+        try {
+            const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
+            queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
+            queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
+            queryBuilder.leftJoinAndSelect('expediente.procesosAnexados', 'procesosAnexados', "procesosAnexados.estado_archivo = 'ACTIVO'");
+            queryBuilder.leftJoinAndSelect('procesosAnexados.actors', 'procesosAnexadosActors');
+
+            // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
+            queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
+
+            // No mostrar expedientes anexados como tarjetas independientes en el Kanban
+            queryBuilder.andWhere("expediente.procesoPrincipalId IS NULL");
+
+            queryBuilder.addSelect((subQuery) => {
+                return subQuery
+                    .select("COUNT(doc.id)", "count")
+                    .from(Documento, "doc")
+                    .where("doc.expedienteId = expediente.id");
+            }, "conteo_docs");
+
+            if (filtros.estado) {
+                queryBuilder.andWhere('expediente.estado = :estado', { estado: filtros.estado });
+            }
+
+            if (filtros.jurisdiccion) {
+                queryBuilder.andWhere('expediente.jurisdiccion = :jurisdiccion', { jurisdiccion: filtros.jurisdiccion });
+            }
+
+            if (filtros.search) {
+                queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
+            }
+
+            if (filtros.abogadoSustanciadorKeys?.length) {
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const uuidKey = filtros.abogadoSustanciadorKeys.find(k => uuidRegex.test(k));
+                const normalizedKeys = filtros.abogadoSustanciadorKeys.map(k => k.toLowerCase());
+                if (uuidKey) {
+                    queryBuilder.andWhere(
+                        `(LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)
+                          OR LOWER(expediente.abogadoSustanciador) = (
+                              SELECT LOWER(u.public_id::text)
+                              FROM auth."user" u
+                              WHERE u.id_user::text = :userId
+                              LIMIT 1
+                          )
+                          OR LOWER(expediente.abogadoSustanciador) = (
+                              SELECT LOWER(p.nom_largo)
+                              FROM auth."user" u
+                              LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                              WHERE u.id_user::text = :userId
+                              LIMIT 1
+                          ))`,
+                        { normalizedKeys, userId: uuidKey },
+                    );
+                } else {
+                    queryBuilder.andWhere(
+                        'LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)',
+                        { normalizedKeys },
+                    );
+                }
+            }
+
+            const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
+
+            const profesionalIds = [...new Set(entities.map((entity) => entity.abogadoSustanciador).filter(Boolean))];
+            const profesionalesMap = await this.resolveProfesionalesDesdeAuth(profesionalIds);
+
+            return entities.map((entity) => {
+                const rawRow = raw.find(r => r.expediente_id === entity.id);
+                const count = rawRow ? Number(rawRow.conteo_docs) : 0;
+                entity.documentosCount = count;
+                if (!entity.actuaciones) entity.actuaciones = [];
+                const abogadoId = entity.abogadoSustanciador || null;
+                const abogadoAuth = abogadoId ? profesionalesMap.get(abogadoId) : undefined;
+                return {
+                    ...entity,
+                    abogadoAsignado: {
+                        id: abogadoId,
+                        nombre: abogadoAuth?.nombre ?? 'Sin asignar',
+                        identificacion: abogadoAuth?.identificacion ?? '',
+                    },
+                };
+            });
+        } catch (error) {
+            Logger.error(`[ExpedienteService] Error en listarExpedientes: ${error?.message || error}`, error?.stack);
+            throw error;
         }
+    }
 
-        if (filtros.search) {
-            queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
+    private async resolveProfesionalesDesdeAuth(ids: string[]): Promise<Map<string, { nombre: string; identificacion: string }>> {
+        const filteredIds = ids.filter(Boolean);
+        if (filteredIds.length === 0) return new Map();
+
+        try {
+            const rows = await this.dataSource.query(
+                `SELECT
+                    u.id_user::text AS id_user,
+                    u.public_id::text AS public_id,
+                    COALESCE(p.nom_largo, u.username, u.id_user::text) AS nombre,
+                    COALESCE(p.num_identificacion::text, p.dir_email, u.username, '') AS identificacion
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE u.id_user::text = ANY($1)
+                    OR u.public_id::text = ANY($1)`,
+                [filteredIds],
+            );
+
+            const map = new Map<string, { nombre: string; identificacion: string }>();
+            for (const row of rows) {
+                const value = {
+                    nombre: row.nombre || 'Sin asignar',
+                    identificacion: row.identificacion || '',
+                };
+                if (row.id_user) map.set(row.id_user, value);
+                if (row.public_id) map.set(row.public_id, value);
+            }
+            return map;
+        } catch (error) {
+            Logger.warn(`[ExpedienteService] No se pudieron resolver profesionales desde auth: ${error?.message || error}`);
+            return new Map();
         }
-
-        const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
-
-        // // Populate actuaciones manually
-        // // Optimization: Fetch all needed actuaciones in one query
-        // const ids = entities.map(e => e.id);
-        // const radicados = entities.map(e => e.radicado).filter(r => r); // Filter out null/undefined radicados
-
-        // if (ids.length > 0) {
-        //     const query = this.actuacionRepository.createQueryBuilder('act')
-        //         .where('act.expedienteId IN (:...ids)', { ids });
-
-        //     if (radicados.length > 0) {
-        //         query.orWhere('act.expedienteId IN (:...radicados)', { radicados });
-        //     }
-
-        //     const allActuaciones = await query.orderBy('act.fechaActuacion', 'DESC').getMany();
-
-        //     entities.forEach(entity => {
-        //         // Attach if it matches either ID or Radicado
-        //         entity.actuaciones = allActuaciones.filter(a =>
-        //             a.expedienteId === entity.id || a.expedienteId === entity.radicado
-        //         );
-        //     });
-        // }
-
-        return entities.map((entity) => {
-            const rawRow = raw.find(r => r.expediente_id === entity.id);
-            const count = rawRow ? Number(rawRow.conteo_docs) : 0;
-            entity.documentosCount = count;
-            if (!entity.actuaciones) entity.actuaciones = [];
-            return entity;
-        });
     }
 
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
@@ -240,6 +465,29 @@ export class ExpedienteService {
                 fechaActuacion: new Date(),
                 usuarioResponsable: 'Sistema' // O idealmente el usuario del request si se pasa
             });
+
+            // Auto-autorizar actuaciones pendientes
+            try {
+                const pendingActuaciones = await this.actuacionRepository.find({
+                    where: [
+                        { expedienteId: currentExpediente.id },
+                        { expedienteId: currentExpediente.radicado }
+                    ]
+                });
+                for (const act of pendingActuaciones) {
+                    if (act.metadata && act.metadata.estadoAutorizacion === 'PENDIENTE') {
+                        act.metadata.estadoAutorizacion = 'AUTORIZADO';
+                        act.metadata.estado = 'Completado';
+                        act.metadata.firmadoPor = 'Aprobación General';
+                        act.metadata.fechaFirma = new Date().toISOString();
+                        delete act.metadata.otp;
+                        delete act.metadata.otpExpiry;
+                        await this.actuacionRepository.save(act);
+                    }
+                }
+            } catch (err) {
+                Logger.error(`Error auto-autorizando actuaciones en cambio de etapa: ${err?.message || err}`);
+            }
         }
 
         if (data.estado && data.estado !== currentExpediente.estado) {
@@ -252,7 +500,9 @@ export class ExpedienteService {
         }
 
         // 2b. Detectar reasignación de abogado
+        let nuevoProfesionalId: string | undefined;
         if (data.abogadoSustanciador && data.abogadoSustanciador !== currentExpediente.abogadoSustanciador) {
+            nuevoProfesionalId = data.abogadoSustanciador;
             const abogadoAnterior = currentExpediente.abogadoSustanciador;
             if (abogadoAnterior) {
                 // Append to abogadosAnteriores (deduplicated)
@@ -268,6 +518,26 @@ export class ExpedienteService {
         await this.expedienteRepository.update(id, data);
         const updated = await this.findOne(id);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        // Notificar al nuevo abogado si hubo reasignación
+        if (nuevoProfesionalId) {
+            const esDisciplinario =
+                updated.jurisdiccion === 'DISCIPLINARIO' ||
+                updated.jurisdiccion === 'Disciplinaria' ||
+                updated.tipoProceso === 'DISCIPLINARIO' ||
+                updated.tipoProceso === 'Disciplinario';
+            const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+            await this.legalNotifications.notifyProfesionalAsignado({
+                modulo,
+                radicado: updated.radicado,
+                procesoId: updated.id,
+                abogadoId: nuevoProfesionalId,
+                asignadoPor: 'Sistema',
+                esReasignacion: true,
+            });
+        }
+
         return updated;
     }
 
@@ -385,15 +655,23 @@ export class ExpedienteService {
     /**
      * Obtener expedientes archivados y eliminados
      */
-    async getExpedientesArchivados(): Promise<Expediente[]> {
-        return this.expedienteRepository.find({
-            where: [
-                { estadoArchivo: 'ARCHIVADO' },
-                { estadoArchivo: 'ELIMINADO' }
-            ],
-            order: { fechaArchivo: 'DESC' },
-            relations: ['actors']
-        });
+    async getExpedientesArchivados(filtros: { abogadoSustanciadorKeys?: string[] } = {}): Promise<Expediente[]> {
+        const query = this.expedienteRepository
+            .createQueryBuilder('expediente')
+            .leftJoinAndSelect('expediente.actors', 'actors')
+            .where('expediente.estadoArchivo IN (:...estadosArchivo)', {
+                estadosArchivo: ['ARCHIVADO', 'ELIMINADO'],
+            });
+
+        if (filtros.abogadoSustanciadorKeys?.length) {
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(expediente.abogadoSustanciador IN (:...abogadoSustanciadorKeys) OR LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys))',
+                { abogadoSustanciadorKeys: filtros.abogadoSustanciadorKeys, normalizedKeys },
+            );
+        }
+
+        return query.orderBy('expediente.fechaArchivo', 'DESC').getMany();
     }
 
     /**
@@ -580,6 +858,17 @@ export class ExpedienteService {
             radicadoPrincipal: updated.radicado,
             procesoPrincipalId: updated.id,
             anexadoPor: usuario,
+        });
+
+        await this.legalNotifications.notifyProfesionalesProcesoAnexado({
+            modulo,
+            radicadoAnexado: anexado.radicado,
+            radicadoPrincipal: updated.radicado,
+            procesoPrincipalId: updated.id,
+            procesoAnexadoId: anexado.id,
+            anexadoPor: usuario,
+            abogadoPrincipalId: updated.abogadoSustanciador ?? undefined,
+            abogadoAnexadoId: anexado.abogadoSustanciador ?? undefined,
         });
 
         return updated;

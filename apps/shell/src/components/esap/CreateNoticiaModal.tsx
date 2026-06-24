@@ -23,6 +23,7 @@ import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryBehavior } from '../../services/api/disciplinary.service';
 import { authService } from '../../services/api/authService';
+import { estructuraService } from '../../services/api/estructura.service';
 
 // ✅ NUEVO: Interface para Apoderado
 interface Apoderado {
@@ -70,36 +71,7 @@ const ORIGENES_NOTICIA = [
   'Remisión por competencia'
 ];
 
-const TERRITORIALES_ESAP = [
-  'Dirección Nacional',
-  'Territorial Amazonas',
-  'Territorial Antioquia',
-  'Territorial Atlántico',
-  'Territorial Bogotá',
-  'Territorial Bolívar',
-  'Territorial Boyacá',
-  'Territorial Caldas',
-  'Territorial Caquetá',
-  'Territorial Casanare',
-  'Territorial Cauca',
-  'Territorial Cesar',
-  'Territorial Chocó',
-  'Territorial Córdoba',
-  'Territorial Cundinamarca',
-  'Territorial Huila',
-  'Territorial La Guajira',
-  'Territorial Magdalena',
-  'Territorial Meta',
-  'Territorial Nariño',
-  'Territorial Norte de Santander',
-  'Territorial Putumayo',
-  'Territorial Quindío',
-  'Territorial Risaralda',
-  'Territorial Santander',
-  'Territorial Sucre',
-  'Territorial Tolima',
-  'Territorial Valle del Cauca'
-];
+
 
 const DEPENDENCIAS_ESAP = [
   'Por determinar',
@@ -111,7 +83,6 @@ const DEPENDENCIAS_ESAP = [
   'Talento Humano',
   'Sistemas de Información',
   'Comunicaciones',
-  ...TERRITORIALES_ESAP
 ];
 
 // Conductas indisciplinarias ahora se cargan desde la API
@@ -143,6 +114,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [currentStep, setCurrentStep] = useState(1);
   const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
   const [loadingConductas, setLoadingConductas] = useState(true);
+  const [territoriales, setTerritoriales] = useState<string[]>([]);
+  const [dependencias, setDependencias] = useState<string[]>(DEPENDENCIAS_ESAP);
 
   // Cargar conductas indisciplinarias desde la API
   useEffect(() => {
@@ -164,6 +137,32 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     loadConductas();
   }, []);
 
+  // Cargar territoriales/seccionales importando estructuraService (auth.seccionales)
+  useEffect(() => {
+    const loadTerritoriales = async () => {
+      try {
+        const [estructuraResponse, statsResponse] = await Promise.all([
+                estructuraService.obtenerEstructura(),
+                estructuraService.obtenerEstadisticas(),
+              ]);
+
+              console.log("estructuraResponse", estructuraResponse);
+              
+              const seccionales = estructuraResponse.data.seccionales;
+        
+        const list = Array.from(new Set(seccionales.map((s: any) => s.nomSeccional).filter(Boolean)));
+        setTerritoriales(list);
+
+        // También agregar las seccionales a las dependencias
+        const merged = Array.from(new Set(["Por determinar", ...list]));
+        setDependencias(merged);
+      } catch (_) {
+        setTerritoriales([]);
+      }
+    };
+    loadTerritoriales();
+  }, []);
+
   // En edición, el origen llega como valor de enum (ej: 'ANONIMO'). Lo convertimos a la
   // etiqueta que muestra el SELECT (ej: 'Anónimo') para que la opción quede seleccionada.
   const origenInicial = isEditMode && noticiaToEdit?.origen
@@ -172,7 +171,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [formData, setFormData] = useState({
     origen: origenInicial,
-    fechaQueja: noticiaToEdit?.fechaRecepcion,
+    fechaQueja: (noticiaToEdit?.fechaQueja || noticiaToEdit?.fechaRecepcion)?.split('T')[0],
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
@@ -339,9 +338,25 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     setEditingDenuncianteId(null);
     resetDenunciadoForm();
     resetDenuncianteForm();
+
+    // ✅ Soporte para documentos adjuntos en edición (acepta tanto adjuntos crudos como desde archivosAdjuntos del kanban)
+    let initialAdj: string[] = [];
+    if (Array.isArray(noticiaToEdit?.adjuntos)) {
+      initialAdj = noticiaToEdit.adjuntos;
+    } else if (noticiaToEdit?.adjuntos) {
+      initialAdj = [noticiaToEdit.adjuntos];
+    } else if (Array.isArray(noticiaToEdit?.archivosAdjuntos)) {
+      initialAdj = noticiaToEdit.archivosAdjuntos
+        .map((a: any) => a.url || a.fullUrl || a.nombre || a)
+        .filter(Boolean);
+    }
+    setAdjuntosExistentes(initialAdj);
+    setAdjuntosParaEliminar([]);
   }, [isEditMode, noticiaToEdit]);
 
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+  const [adjuntosExistentes, setAdjuntosExistentes] = useState<string[]>([]);
+  const [adjuntosParaEliminar, setAdjuntosParaEliminar] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ✅ NUEVO: Estado para apoderados
@@ -686,6 +701,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     }
   };
 
+  // ✅ Manejo de eliminación de documentos existentes en modo edición
+  const handleRemoveExistingAdjunto = (filename: string) => {
+    setAdjuntosExistentes((prev) => prev.filter((a) => a !== filename));
+    setAdjuntosParaEliminar((prev) => (prev.includes(filename) ? prev : [...prev, filename]));
+  };
+
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
 
@@ -783,6 +804,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       hechosSeparados, // ✅ Incluir los hechos separados
       denunciantes, // ✅ Incluir múltiples denunciantes
       archivosAdjuntos,
+      adjuntosExistentes, // kept existing in edit mode
+      adjuntosParaEliminar,
       fechaRegistro: new Date().toISOString(),
       radicadorId: currentUser?.id, // ✅ ID del usuario que radica
       porDeterminar, // ✅ Incluir flags de campos "Por determinar"
@@ -793,10 +816,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     };
 
     try {
+      console.log('[MODAL] Enviando a onSave - archivosAdjuntos.length:', archivosAdjuntos?.length || 0);
+      console.log('[MODAL] Enviando a onSave - adjuntosParaEliminar.length:', adjuntosParaEliminar?.length || 0);
+      console.log('[MODAL] Enviando a onSave - adjuntosExistentes.length:', adjuntosExistentes?.length || 0);
       await onSave(dataToSave);
       onClose();
     } catch (error) {
-      // Error is handled by the parent, but ensure modal stays open
       console.error('Error saving noticia:', error);
     }
   };
@@ -882,7 +907,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         </div>
 
         {/* ✅ NUEVO: Resumen de datos actuales en modo edición */}
-        {isEditMode && noticiaToEdit && (
+        {/* {isEditMode && noticiaToEdit && (
           <div className="px-6 py-4 border-b border-gray-200 bg-amber-50">
             <div className="max-w-4xl mx-auto">
               <h3 className="text-lg font-semibold text-amber-900 mb-4 flex items-center gap-2">
@@ -955,7 +980,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
@@ -1042,11 +1067,11 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     errors.territorial ? 'border-red-500' : 'border-gray-300'
                   } ${porDeterminar.territorial ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                 >
-                  <option value="">Seleccione territorial...</option>
-                  <option value="Por determinar">Por determinar</option>
-                  {TERRITORIALES_ESAP.map(territorial => (
-                    <option key={territorial} value={territorial}>{territorial}</option>
-                  ))}
+                   <option value="">Seleccione territorial...</option>
+                   <option value="Por determinar">Por determinar</option>
+                   {territoriales.map(territorial => (
+                     <option key={territorial} value={territorial}>{territorial}</option>
+                   ))}
                 </select>
                 {errors.territorial && (
                   <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
@@ -1370,7 +1395,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoLugarHechos ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     >
                       <option value="">Seleccione lugar de los hechos...</option>
-                      {DEPENDENCIAS_ESAP.map(dep => (
+                      {dependencias.map(dep => (
                         <option key={dep} value={dep}>{dep}</option>
                       ))}
                     </select>
@@ -2406,8 +2431,36 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     </p>
                   </label>
                 </div>
+
+                {/* ✅ Documentos existentes en modo edición - permite eliminar */}
+                {isEditMode && adjuntosExistentes.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Documentos actuales (clic en papelera para eliminar):</p>
+                    <div className="space-y-1">
+                      {adjuntosExistentes.map((filename, idx) => {
+                        const displayName = filename.split('/').pop() || filename;
+                        return (
+                          <div key={idx} className="flex items-center justify-between bg-blue-50 border border-blue-200 p-2 rounded text-sm">
+                            <span className="text-gray-700 truncate" title={filename}>{displayName}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExistingAdjunto(filename)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Eliminar documento"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Nuevos archivos seleccionados para subir */}
                 {archivosAdjuntos.length > 0 && (
                   <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">{isEditMode ? 'Nuevos documentos a añadir:' : 'Documentos seleccionados:'}</p>
                     {archivosAdjuntos.map((file, idx) => (
                       <div key={idx} className="flex items-center justify-between bg-gray-50 p-2 rounded">
                         <span className="text-sm text-gray-700">{file.name}</span>

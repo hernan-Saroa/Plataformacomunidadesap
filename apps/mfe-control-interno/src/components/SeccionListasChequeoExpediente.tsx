@@ -27,11 +27,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckSquare, ChevronDown, ChevronRight, CheckCircle2, Circle,
   Paperclip, Download, ExternalLink, FileText, Upload, X,
-  AlertCircle, Calendar, User, Loader2, CheckCircle
+  AlertCircle, Calendar, User, Loader2, CheckCircle, Trash2, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -48,11 +49,22 @@ const formatFileSize = (bytes: number) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
+/** UUID del documento diligenciado subido a la auditoría (para descarga/eliminación). */
+const UUID_DOC_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function extraerIdDocumentoSubido(archivoSubidoUrl?: string): string | null {
+  if (!archivoSubidoUrl?.trim()) return null;
+  const t = archivoSubidoUrl.trim();
+  if (UUID_DOC_RE.test(t)) return t;
+  const m = t.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  return m ? m[1] : null;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type EtapaKanban = 'Plan Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
+type EtapaKanban = 'Programa Anual' | 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
 
 interface ItemChequeo {
   id: string;
@@ -96,6 +108,8 @@ interface SeccionListasChequeoExpedienteProps {
   auditoriaId: string;
   etapaActual: EtapaKanban;
   readOnly?: boolean; // ✅ Modo solo lectura (deshabilita edición)
+  /** Documentos de auditoría ya cargados por el expediente (evita GET duplicado) */
+  documentosAuditoriaPrecargados?: DocumentoAuditoriaSubido[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -108,7 +122,7 @@ function mapApiListaToExpediente(
 ): ListaChequeo {
   // Preferir etapaNombreKanban del backend (viene del registro de la etapa real del Kanban).
   // Fallback: mapear desde el campo tipo para compatibilidad con datos anteriores.
-  const VALID_STAGES: EtapaKanban[] = ['Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'];
+  const VALID_STAGES: EtapaKanban[] = ['Programa Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'];
 
   const tipoToEtapa: Record<string, EtapaKanban> = {
     'planeacion': 'Planeación',
@@ -119,8 +133,8 @@ function mapApiListaToExpediente(
     'COMUNICACION': 'Comunicación',
     'seguimiento': 'Seguimiento',
     'SEGUIMIENTO': 'Seguimiento',
-    'plan_anual': 'Plan Anual',
-    'PLAN_ANUAL': 'Plan Anual'
+    'plan_anual': 'Programa Anual',
+    'PLAN_ANUAL': 'Programa Anual'
   };
 
   // etapaNombreKanban viene directamente del Kanban configurado
@@ -227,13 +241,16 @@ function mapApiListaToExpediente(
 export function SeccionListasChequeoExpediente({
   auditoriaId,
   etapaActual,
-  readOnly = false
+  readOnly = false,
+  documentosAuditoriaPrecargados,
 }: SeccionListasChequeoExpedienteProps) {
+  const { user } = useAuth();
   const [listas, setListas] = useState<ListaChequeo[]>([]);
   const [listaExpandida, setListaExpandida] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalUpload, setModalUpload] = useState<{ listaId: string; doc: DocumentoAdjunto } | null>(null);
+  const [eliminandoDocId, setEliminandoDocId] = useState<string | null>(null);
 
   // ✅ CARGAR LISTAS DE CHEQUEO VINCULADAS A LA AUDITORÍA
   const cargarListasAuditoria = useCallback(async () => {
@@ -249,8 +266,9 @@ export function SeccionListasChequeoExpediente({
       const listasApi = await controlInternoService.getListasAplicadas(auditoriaId);
 
       // Cruzar con documentos ya subidos para marcar plantillas diligenciadas
-      const documentosAuditoria = await controlInternoService.getDocumentosByAuditoria(auditoriaId)
-        .catch(() => []) as DocumentoAuditoriaSubido[];
+      const documentosAuditoria = documentosAuditoriaPrecargados !== undefined
+        ? documentosAuditoriaPrecargados
+        : ((await controlInternoService.getDocumentosByAuditoria(auditoriaId).catch(() => [])) as DocumentoAuditoriaSubido[]);
 
       const documentosSubidosPorBiblioteca = (documentosAuditoria || []).reduce((acc, doc) => {
         if (!doc.documentoBibliotecaId) return acc;
@@ -282,7 +300,7 @@ export function SeccionListasChequeoExpediente({
     } finally {
       setIsLoading(false);
     }
-  }, [auditoriaId]);
+  }, [auditoriaId, documentosAuditoriaPrecargados]);
 
   useEffect(() => {
     cargarListasAuditoria();
@@ -312,8 +330,50 @@ export function SeccionListasChequeoExpediente({
     }
   };
 
-  // Filtrar listas por la etapa actual. Si no hay coincidencias el componente retorna null.
-  const listasEtapaActual = listas.filter(lista => lista.etapaKanban === etapaActual);
+  const handleEliminarDiligenciado = useCallback(
+    async (doc: DocumentoAdjunto) => {
+      if (readOnly) return;
+      const id = extraerIdDocumentoSubido(doc.archivoSubidoUrl);
+      if (!id) {
+        toast.error('No se pudo identificar el documento subido para eliminarlo.');
+        return;
+      }
+      if (!window.confirm('¿Eliminar el documento diligenciado? Podrás subir otro archivo después.')) return;
+      setEliminandoDocId(id);
+      try {
+        await controlInternoService.deleteDocumento(id);
+        toast.success('Documento eliminado. Puedes subir uno nuevo.');
+        await cargarListasAuditoria();
+      } catch (e) {
+        console.error(e);
+        toast.error('No se pudo eliminar el documento');
+      } finally {
+        setEliminandoDocId(null);
+      }
+    },
+    [readOnly, cargarListasAuditoria]
+  );
+
+  // Filtrar listas por la etapa actual y por auditor. Si no hay coincidencias el componente retorna UI para generarlas.
+  const listasEtapaActual = listas.filter(lista => {
+    const esEtapaActual = lista.etapaKanban === etapaActual;
+    const esJefeOciSuperadmin = user?.roles?.some(r => ['superadmin', 'jefe_oci', 'admin'].includes(r)) || false;
+    const nombreCompleto = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const cumpleAuditor = esJefeOciSuperadmin ||
+      lista.creadoPor === nombreCompleto ||
+      lista.creadoPor === user?.email ||
+      lista.creadoPor === 'Usuario Actual' ||
+      lista.creadoPor === user?.id ||
+      (lista.creadoPor && lista.creadoPor !== 'Sistema' && user?.firstName && lista.creadoPor.includes(user.firstName));
+    return esEtapaActual && cumpleAuditor;
+  });
+
+  /** Si el ítem exige plantilla, solo puede completarse cuando ya está subida/diligenciada en esta auditoría. */
+  const plantillaEstaDiligenciada = (lista: ListaChequeo, bibliotecaId?: string): boolean => {
+    if (!bibliotecaId) return true;
+    const doc = lista.documentosAdjuntos.find(d => d.documentoBibliotecaId === bibliotecaId);
+    return Boolean(doc?.diligenciado);
+  };
 
   const toggleItem = async (listaId: string, itemId: string) => {
     // ✅ VALIDACIÓN: No permitir edición en modo solo lectura
@@ -341,6 +401,18 @@ export function SeccionListasChequeoExpediente({
     if (!item) return;
 
     const nuevoEstado = !item.completado;
+
+    if (
+      nuevoEstado
+      && item.documentoBibliotecaId
+      && !plantillaEstaDiligenciada(lista, item.documentoBibliotecaId)
+    ) {
+      toast.error('Plantilla pendiente', {
+        description: 'Sube el documento diligenciado en «Plantillas requeridas» antes de marcar este ítem como completado.',
+        duration: 5000
+      });
+      return;
+    }
     const fechaCompletado = nuevoEstado ? new Date().toISOString().split('T')[0] : undefined;
 
     // Actualizar UI optimistamente
@@ -406,13 +478,13 @@ export function SeccionListasChequeoExpediente({
   // Estado de carga
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-8">
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-4">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-spin" />
-          <h3 className="text-lg font-bold text-gray-900 mb-2">
+          <Loader2 className="w-8 h-8 text-blue-600 mx-auto mb-2 animate-spin" />
+          <h3 className="text-sm font-bold text-gray-900 mb-1">
             Cargando listas de chequeo...
           </h3>
-          <p className="text-gray-600">
+          <p className="text-xs text-gray-600">
             Obteniendo listas vinculadas a esta auditoría
           </p>
         </div>
@@ -423,16 +495,16 @@ export function SeccionListasChequeoExpediente({
   // Estado de error
   if (loadError) {
     return (
-      <div className="bg-white rounded-xl border-2 border-red-200 p-8">
+      <div className="bg-white rounded-xl border-2 border-red-200 p-4">
         <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-red-900 mb-2">
+          <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
+          <h3 className="text-sm font-bold text-red-900 mb-1">
             Error al cargar listas
           </h3>
-          <p className="text-red-600 mb-4">{loadError}</p>
+          <p className="text-xs text-red-600 mb-3">{loadError}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors"
+            className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-semibold transition-colors"
           >
             Reintentar
           </button>
@@ -447,43 +519,64 @@ export function SeccionListasChequeoExpediente({
     }));
   };
 
-  if (listasEtapaActual.length === 0) {
-    return null;
-  }
-
   const etapaBorderColors: Record<EtapaKanban, string> = {
-    'Plan Anual': 'border-gray-200',
+    'Programa Anual': 'border-gray-200',
     'Planeación': 'border-blue-200',
     'Ejecución': 'border-amber-200',
     'Comunicación': 'border-green-200',
     'Seguimiento': 'border-indigo-200'
   };
 
+  if (listasEtapaActual.length === 0) {
+    return (
+      <div className={`bg-white border-2 ${etapaBorderColors[etapaActual] || 'border-gray-200'} rounded-lg p-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+              <CheckSquare className="w-4 h-4 text-gray-400" />
+              Listas de Chequeo - {etapaActual}
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              No hay listas de chequeo configuradas para esta etapa.
+            </p>
+          </div>
+          <button
+            onClick={navegarAModuloListasChequeo}
+            className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Generar Lista
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`bg-white border-2 ${etapaBorderColors[etapaActual]} rounded-lg p-4`}>
-    <div className="space-y-4">
+    <div className={`bg-white border-2 ${etapaBorderColors[etapaActual]} rounded-lg p-3`}>
+    <div className="space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-            <CheckSquare className="w-6 h-6 text-blue-600" />
+          <h3 className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+            <CheckSquare className="w-4 h-4 text-blue-600" />
             Listas de Chequeo - {etapaActual}
           </h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-xs text-gray-600 mt-0.5">
             {listasEtapaActual.length} lista(s) configurada(s) para esta etapa
           </p>
         </div>
         <button
           onClick={navegarAModuloListasChequeo}
-          className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+          className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
         >
-          <ExternalLink className="w-4 h-4" />
+          <ExternalLink className="w-3.5 h-3.5" />
           Ver Todas las Listas
         </button>
       </div>
 
       {/* Listas de Chequeo */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         {listasEtapaActual.map((lista) => {
           // ✅ VALIDACIÓN: Solo permitir completar items de la etapa actual
           const esEtapaActual = lista.etapaKanban === etapaActual;
@@ -491,17 +584,17 @@ export function SeccionListasChequeoExpediente({
           return (
             <div
               key={lista.id}
-              className={`bg-white rounded-xl border-2 overflow-hidden hover:border-blue-300 transition-all ${
+              className={`bg-white rounded-lg border-2 overflow-hidden hover:border-blue-300 transition-all ${
                 esEtapaActual ? 'border-gray-200' : 'border-gray-300 opacity-70'
               }`}
             >
               {/* Header de la lista */}
-              <div className={`px-5 py-4 border-b-2 border-gray-200 ${
+              <div className={`px-3 py-2 border-b border-gray-200 ${
                 esEtapaActual ? 'bg-gray-50' : 'bg-gray-100'
               }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-2 mb-1">
                       <button
                         onClick={() => setListaExpandida(listaExpandida === lista.id ? null : lista.id)}
                         className="p-1 hover:bg-gray-200 rounded transition-colors"
@@ -513,8 +606,8 @@ export function SeccionListasChequeoExpediente({
                         )}
                       </button>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-base font-black text-gray-900">{lista.nombre}</h4>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-sm font-bold text-gray-900">{lista.nombre}</h4>
                           {!esEtapaActual && (
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-md border border-orange-300">
                               🔒 Solo lectura
@@ -528,23 +621,23 @@ export function SeccionListasChequeoExpediente({
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-gray-600 ml-9">{lista.descripcion}</p>
+                    <p className="text-xs text-gray-600 ml-7">{lista.descripcion}</p>
                   </div>
 
                   {/* Indicador de completitud */}
-                  <div className="text-center ml-4">
-                    <div className={`text-3xl font-black mb-1 ${
+                  <div className="text-center ml-3">
+                    <div className={`text-xl font-black mb-0.5 ${
                       esEtapaActual ? 'text-blue-600' : 'text-gray-400'
                     }`}>
                       {lista.completitud}%
                     </div>
-                    <div className="text-xs text-gray-500">Completitud</div>
+                    <div className="text-[10px] text-gray-500">Completitud</div>
                   </div>
                 </div>
 
                 {/* Barra de progreso */}
-                <div className="mt-4 ml-9">
-                  <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                <div className="mt-2 ml-7">
+                  <div className="flex items-center justify-between text-[10px] text-gray-600 mb-1">
                     <span>
                       {lista.items.filter(i => i.completado).length} / {lista.items.length} items completados
                     </span>
@@ -555,7 +648,7 @@ export function SeccionListasChequeoExpediente({
                       </span>
                     )}
                   </div>
-                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-blue-600 to-blue-700 transition-all duration-500"
                       style={{ width: `${lista.completitud}%` }}
@@ -574,22 +667,37 @@ export function SeccionListasChequeoExpediente({
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="p-5 space-y-4">
+                    <div className="p-3 space-y-2">
                       {/* Items de chequeo */}
-                      <div className="space-y-2">
-                        {lista.items.map((item) => (
+                      <div className="space-y-1.5">
+                        {lista.items.map((item) => {
+                          const bloqueadoSinPlantilla =
+                            Boolean(item.documentoBibliotecaId)
+                            && !plantillaEstaDiligenciada(lista, item.documentoBibliotecaId)
+                            && !item.completado;
+                          return (
                           <div
                             key={item.id}
-                            className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${
+                            className={`flex items-start gap-2 p-2 rounded-lg border transition-all ${
                               item.completado
                                 ? 'bg-green-50 border-green-200'
                                 : 'bg-white border-gray-200 hover:border-blue-300'
                             }`}
                           >
                             <button
+                              type="button"
                               onClick={() => toggleItem(lista.id, item.id)}
-                              className={`flex-shrink-0 mt-0.5 ${readOnly ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
-                              disabled={readOnly}
+                              className={`flex-shrink-0 mt-0.5 ${
+                                readOnly || bloqueadoSinPlantilla
+                                  ? 'cursor-not-allowed opacity-60'
+                                  : 'cursor-pointer'
+                              }`}
+                              disabled={readOnly || bloqueadoSinPlantilla}
+                              title={
+                                bloqueadoSinPlantilla
+                                  ? 'Sube primero la plantilla diligenciada en «Plantillas requeridas»'
+                                  : undefined
+                              }
                             >
                               {item.completado ? (
                                 <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -599,7 +707,7 @@ export function SeccionListasChequeoExpediente({
                             </button>
 
                             <div className="flex-1 min-w-0">
-                              <p className={`text-sm ${
+                              <p className={`text-xs ${
                                 item.completado 
                                   ? 'text-gray-600 line-through' 
                                   : 'text-gray-900 font-medium'
@@ -629,11 +737,17 @@ export function SeccionListasChequeoExpediente({
                                   )}
                                 </div>
                               )}
+                              {bloqueadoSinPlantilla && (
+                                <p className="text-[10px] text-amber-700 mt-1">
+                                  Sube la plantilla diligenciada abajo para completar este ítem.
+                                </p>
+                              )}
                             </div>
 
                             {item.documentoBibliotecaId && (
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <button
+                                  type="button"
                                   onClick={() => handleDescargarDoc(item.documentoBibliotecaId!)}
                                   className="px-2.5 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
                                   title="Descargar plantilla del ítem"
@@ -641,62 +755,58 @@ export function SeccionListasChequeoExpediente({
                                   <Download className="w-3.5 h-3.5" />
                                   Plantilla
                                 </button>
-                                {!readOnly && (
-                                  <button
-                                    onClick={() => setModalUpload({
-                                      listaId: lista.id,
-                                      doc: {
-                                        documentoBibliotecaId: item.documentoBibliotecaId!,
-                                        nombreDocumento: item.documentoNombre || item.texto || 'Documento',
-                                        diligenciado: false
-                                      }
-                                    })}
-                                    className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-                                    style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}
-                                    title="Subir documento diligenciado"
-                                  >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    Subir
-                                  </button>
-                                )}
                               </div>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* ── Plantillas requeridas de la lista ── */}
                       {lista.documentosAdjuntos.length > 0 ? (
-                        <div className="mt-1 pt-4 border-t-2 border-gray-100">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Paperclip className="w-4 h-4 text-indigo-500" />
-                            <span className="text-sm font-bold text-gray-800">Plantillas requeridas</span>
-                            <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        <div className="mt-1 pt-2 border-t border-gray-100">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                            <span className="text-xs font-bold text-gray-800">Plantillas requeridas</span>
+                            <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
                               {lista.documentosAdjuntos.filter(d => d.diligenciado).length}/{lista.documentosAdjuntos.length} completadas
                             </span>
                           </div>
-                          <div className="space-y-2">
-                            {lista.documentosAdjuntos.map((doc, idx) => (
+                          <div className="space-y-1.5">
+                            {lista.documentosAdjuntos.map((doc, idx) => {
+                              const idDocSubido = extraerIdDocumentoSubido(doc.archivoSubidoUrl);
+                              return (
                               <div
-                                key={idx}
-                                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                                key={`${doc.documentoBibliotecaId || doc.nombreDocumento}-${idx}`}
+                                className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
                                   doc.diligenciado
                                     ? 'bg-emerald-50 border-emerald-200'
                                     : 'bg-slate-50 border-slate-200 hover:border-indigo-200'
                                 }`}
                               >
                                 {/* Icono estado */}
-                                <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${
+                                <div className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${
                                   doc.diligenciado ? 'bg-emerald-100' : 'bg-slate-100'
                                 }`}>
                                   {doc.diligenciado
-                                    ? <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                    : <FileText className="w-5 h-5 text-slate-400" />
+                                    ? <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                    : <FileText className="w-4 h-4 text-slate-400" />
                                   }
                                 </div>
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-gray-900 truncate">{doc.nombreDocumento}</p>
+                                  <p className="text-xs font-semibold text-gray-900 truncate">{doc.nombreDocumento}</p>
+                                  {(() => {
+                                    const itemsAsociados = lista.items
+                                      .filter(i => i.documentoBibliotecaId === doc.documentoBibliotecaId)
+                                      .map(i => i.texto);
+                                    if (itemsAsociados.length === 0) return null;
+                                    return (
+                                      <p className="text-xs text-indigo-700 mt-0.5 truncate">
+                                        Item(s): {itemsAsociados.join(' • ')}
+                                      </p>
+                                    );
+                                  })()}
                                   {doc.diligenciado && doc.fechaSubida ? (
                                     <p className="text-xs text-emerald-700 mt-0.5">
                                       ✓ Subida el {new Date(doc.fechaSubida).toLocaleDateString('es-CO')}
@@ -725,7 +835,24 @@ export function SeccionListasChequeoExpediente({
                                       <Download className="w-3.5 h-3.5" />
                                       Diligenciado
                                     </button>
-                                  ) : !readOnly ? (
+                                  ) : null}
+                                  {!readOnly && doc.diligenciado && idDocSubido ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEliminarDiligenciado(doc)}
+                                      disabled={eliminandoDocId === idDocSubido}
+                                      className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                      title="Quitar archivo subido para poder cargar otro"
+                                    >
+                                      {eliminandoDocId === idDocSubido ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      )}
+                                      Eliminar
+                                    </button>
+                                  ) : null}
+                                  {!doc.diligenciado && !readOnly ? (
                                     <button
                                       onClick={() => setModalUpload({ listaId: lista.id, doc })}
                                       className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
@@ -738,7 +865,7 @@ export function SeccionListasChequeoExpediente({
                                   ) : null}
                                 </div>
                               </div>
-                            ))}
+                            );})}
                           </div>
                         </div>
                       ) : (
@@ -783,23 +910,23 @@ export function SeccionListasChequeoExpediente({
       </div>
 
       {/* Footer con acciones */}
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600" />
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-blue-600" />
             <div>
-              <p className="text-sm font-semibold text-blue-900">
+              <p className="text-xs font-semibold text-blue-900">
                 Progreso de la etapa {etapaActual}
               </p>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-black text-blue-600">
+            <div className="text-lg font-black text-blue-600">
               {Math.round(
                 listasEtapaActual.reduce((sum, l) => sum + l.completitud, 0) / listasEtapaActual.length
               )}%
             </div>
-            <div className="text-xs text-blue-700">Completitud total</div>
+            <div className="text-[10px] text-blue-700">Completitud total</div>
           </div>
         </div>
       </div>

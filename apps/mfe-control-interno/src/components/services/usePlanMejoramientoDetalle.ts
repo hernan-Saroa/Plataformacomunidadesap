@@ -11,7 +11,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import controlInternoService from '../../../../services/api/controlInternoService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 import { toast } from 'sonner';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -143,7 +143,7 @@ export interface PlanMejoramientoDetalle {
   responsableGeneral: string;
   fechaCreacion: string;
   fechaVencimiento: string;
-  estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
+  estado: 'BORRADOR' | 'REVISION' | 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO' | 'RECHAZADO' | 'VENCIDO';
   progresoGlobal: number;
   hallazgos: HallazgoDetalle[];
   acciones: AccionCorrectiva[];
@@ -237,6 +237,10 @@ function mapearEstadoAccion(estado: string): 'PENDIENTE' | 'EN_EJECUCION' | 'COM
 
 function mapearEstadoPlan(estado: string): PlanMejoramientoDetalle['estado'] {
   const mapa: Record<string, PlanMejoramientoDetalle['estado']> = {
+    'borrador': 'BORRADOR',
+    'BORRADOR': 'BORRADOR',
+    'revision': 'REVISION',
+    'REVISION': 'REVISION',
     'formulacion': 'FORMULACION',
     'FORMULACION': 'FORMULACION',
     'aprobacion': 'APROBACION',
@@ -251,8 +255,12 @@ function mapearEstadoPlan(estado: string): PlanMejoramientoDetalle['estado'] {
     'CUMPLIDO': 'CUMPLIDO',
     'completado': 'CUMPLIDO',
     'COMPLETADO': 'CUMPLIDO',
+    'rechazado': 'RECHAZADO',
+    'RECHAZADO': 'RECHAZADO',
+    'vencido': 'VENCIDO',
+    'VENCIDO': 'VENCIDO',
   };
-  return mapa[estado] || 'FORMULACION';
+  return mapa[estado] || 'BORRADOR';
 }
 
 /**
@@ -287,6 +295,18 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
   
   // Acciones (primero) para poder calcular hallazgos con estados normalizados
   const accionesBackend = planBackend.acciones || [];
+  
+  // 🔍 DEBUG: Mostrar estructura raw de acciones para detectar campo hallazgoId
+  if (accionesBackend.length > 0) {
+    console.log('🔍 [transformarPlanDetalle] Estructura raw de primera acción:', JSON.stringify(accionesBackend[0], null, 2));
+    console.log('🔍 [transformarPlanDetalle] Campos hallazgo en acción:', {
+      hallazgoId: accionesBackend[0].hallazgoId,
+      hallazgo_id: accionesBackend[0].hallazgo_id,
+      hallazgo: accionesBackend[0].hallazgo,
+      hallazgoObj: typeof accionesBackend[0].hallazgo === 'object' ? accionesBackend[0].hallazgo?.id : 'N/A',
+    });
+  }
+  
   const acciones: AccionCorrectiva[] = accionesBackend.map((a: any) => {
     const progreso = Number(a.progreso ?? a.porcentajeAvance ?? 0) || 0;
     const estadoMapeado = mapearEstadoAccion(a.estado);
@@ -300,9 +320,16 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
       return 'PENDIENTE';
     })();
 
+    // Extraer hallazgoId: puede venir como string directo, snake_case, o como objeto anidado
+    const hallazgoId = a.hallazgoId 
+      || a.hallazgo_id 
+      || (typeof a.hallazgo === 'object' && a.hallazgo !== null ? a.hallazgo.id : null)
+      || (typeof a.hallazgo === 'string' ? a.hallazgo : null)
+      || '';
+
     return {
       id: a.id,
-      hallazgoId: a.hallazgoId || a.hallazgo_id || '',
+      hallazgoId,
       descripcion: a.descripcion || a.titulo || 'Sin descripción',
       responsable: a.responsable || 'Sin asignar',
       fechaInicio: a.fechaInicio || a.fecha_inicio || a.createdAt?.split('T')[0] || '',
@@ -313,6 +340,13 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
       observaciones: a.observaciones || a.comentarios || ''
     };
   });
+
+  // 🔍 DEBUG: Verificar coincidencia de IDs entre acciones y hallazgos
+  const hallazgoIds = hallazgosBackend.map((h: any) => h.id);
+  const accionHallazgoIds = acciones.map(a => a.hallazgoId);
+  console.log('🔗 [transformarPlanDetalle] Hallazgo IDs:', hallazgoIds);
+  console.log('🔗 [transformarPlanDetalle] Acción → HallazgoId:', accionHallazgoIds);
+  console.log('🔗 [transformarPlanDetalle] Match?:', accionHallazgoIds.map(id => hallazgoIds.includes(id)));
 
   /** Progreso del hallazgo = % de acciones completadas (misma regla que filtros en Vista Acciones) */
   const hallazgos: HallazgoDetalle[] = hallazgosBackend.map((h: any) => {

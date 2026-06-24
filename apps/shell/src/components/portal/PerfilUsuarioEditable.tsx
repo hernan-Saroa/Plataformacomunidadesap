@@ -37,7 +37,9 @@ import {
   X,
   Clock,
   FileEdit,
-  UserCircle
+  UserCircle,
+  Gamepad2,
+  Trophy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -163,6 +165,19 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
 
   const [fotoPerfil, setFotoPerfil] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [misPuntajes, setMisPuntajes] = useState<any[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('esap_error_game_leaderboard');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setMisPuntajes(parsed.filter((p: any) => p.name === userName));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [userName]);
 
   // Historial de cambios (mock data)
   const [historialCambios] = useState<CambioHistorial[]>([
@@ -478,11 +493,7 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
                     onDrop={handleDrop}
                   >
                     <Avatar className="w-32 h-32 border-4 border-white shadow-xl">
-                      {fotoPerfil ? (
-                        <AvatarImage src={fotoPerfil} />
-                      ) : (
-                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userName}`} />
-                      )}
+                      {fotoPerfil && <AvatarImage src={fotoPerfil} />}
                       <AvatarFallback className="bg-[#1e5da8] text-white text-3xl">
                         {datosPersonales.nombres[0]}{datosPersonales.apellidos[0]}
                       </AvatarFallback>
@@ -649,6 +660,10 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
                     <TabsTrigger value="historial" className="gap-2">
                       <History className="w-4 h-4" />
                       <span className="hidden sm:inline">Historial</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="logros" className="gap-2">
+                      <Gamepad2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Logros</span>
                     </TabsTrigger>
                   </TabsList>
                 </CardHeader>
@@ -1347,6 +1362,57 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
                       </div>
                     )}
                   </TabsContent>
+
+                  {/* TAB: Logros */}
+                  <TabsContent value="logros" className="space-y-6 mt-0">
+                    <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-700 rounded-xl flex items-center justify-center shadow-sm">
+                          <Gamepad2 className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-blue-900 text-lg">Tus Puntajes y Logros</h3>
+                          <p className="text-sm text-blue-700">Historial de mini-juegos en la plataforma.</p>
+                        </div>
+                      </div>
+
+                      {misPuntajes.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {misPuntajes.map((score, i) => (
+                            <div key={i} className="bg-white border border-blue-100 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center font-bold border border-amber-200">
+                                    <Trophy className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-gray-800 text-sm">Trivia de Errores</h4>
+                                    <p className="text-xs text-gray-500 font-mono">{score.date}</p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between mt-2 pt-4 border-t border-gray-100">
+                                <div>
+                                  <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Puntaje</span>
+                                  <span className="block text-2xl font-black text-[#1e5da8]">{score.score} <span className="text-sm text-blue-400 font-medium">pts</span></span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Tiempo</span>
+                                  <span className="text-lg font-bold text-gray-700 font-mono">{score.time}s</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-10 bg-white/60 rounded-xl border border-dashed border-blue-200">
+                          <Gamepad2 className="w-12 h-12 text-blue-300 mx-auto mb-3" />
+                          <p className="font-bold text-blue-800">Aún no tienes puntajes registrados</p>
+                          <p className="text-sm text-blue-600 max-w-sm mx-auto mt-1">Explora la plataforma y participa en nuestros mini-juegos para acumular puntos.</p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
                 </CardContent>
               </Tabs>
             </Card>
@@ -1372,11 +1438,7 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
             <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] rounded-lg p-6 text-white">
               <div className="flex items-start gap-4">
                 <Avatar className="w-20 h-20 border-4 border-white shadow-xl">
-                  {fotoPerfil ? (
-                    <AvatarImage src={fotoPerfil} />
-                  ) : (
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userName}`} />
-                  )}
+                  {fotoPerfil && <AvatarImage src={fotoPerfil} />}
                   <AvatarFallback className="bg-white text-[#1e5da8] text-2xl font-bold">
                     {datosPersonales.nombres[0]}{datosPersonales.apellidos[0]}
                   </AvatarFallback>

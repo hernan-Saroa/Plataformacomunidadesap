@@ -1,10 +1,11 @@
+import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { VisorPDFAuto } from './VisorPDFAuto';
 import { toast } from 'sonner';
 
 // Mock de las dependencias
-jest.mock('framer-motion', () => ({
+vi.mock('framer-motion', () => ({
   motion: {
     div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
     initial: {},
@@ -14,7 +15,7 @@ jest.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }));
 
-jest.mock('lucide-react', () => ({
+vi.mock('lucide-react', () => ({
   X: () => <div data-testid="x-icon">X</div>,
   Download: () => <div data-testid="download-icon">Download</div>,
   Printer: () => <div data-testid="printer-icon">Printer</div>,
@@ -22,24 +23,25 @@ jest.mock('lucide-react', () => ({
   Eye: () => <div data-testid="eye-icon">Eye</div>,
 }));
 
-jest.mock('sonner', () => ({
+vi.mock('sonner', () => ({
   toast: {
-    loading: jest.fn(),
-    success: jest.fn(),
-    error: jest.fn(),
+    loading: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
-jest.mock('jsPDF');
-jest.mock('html2canvas');
+vi.mock('jsPDF');
+vi.mock('html2canvas');
 
-jest.mock('../../../services/api/disciplinary.service', () => ({
+vi.mock('../../../services/api/disciplinary.service', () => ({
   disciplinaryService: {
-    getConfiguracionPlantillaAuto: jest.fn(),
+    getConfiguracionPlantillaAuto: vi.fn(),
   },
 }));
 
-const mockDisciplinaryService = require('../../../services/api/disciplinary.service').disciplinaryService;
+// Import after mocking
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 describe('VisorPDFAuto', () => {
   const mockAuto = {
@@ -62,13 +64,13 @@ describe('VisorPDFAuto', () => {
 
   const defaultProps = {
     isOpen: true,
-    onClose: jest.fn(),
+    onClose: vi.fn(),
     auto: mockAuto,
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockDisciplinaryService.getConfiguracionPlantillaAuto.mockResolvedValue({
+    vi.clearAllMocks();
+    disciplinaryService.getConfiguracionPlantillaAuto.mockResolvedValue({
       typography: { font: 'Times New Roman' },
       headerTitle: 'REPÚBLICA DE COLOMBIA\nCONTROL DISCIPLINARIO INTERNO',
       autoContentHtml: '<p>Plantilla: [RADICADO] - [FECHA_ACTUAL]</p>',
@@ -175,8 +177,8 @@ describe('VisorPDFAuto', () => {
   });
 
   it('should handle error when loading template config', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    mockDisciplinaryService.getConfiguracionPlantillaAuto.mockRejectedValue(
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    disciplinaryService.getConfiguracionPlantillaAuto.mockRejectedValue(
       new Error('Error de red')
     );
 

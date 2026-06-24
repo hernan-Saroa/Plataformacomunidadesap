@@ -10,7 +10,7 @@ import {
   FileText, User, Clock, Calendar, Filter,
   Eye, MoreVertical, ChevronsUp, ChevronsDown, Gavel,
   Download, Paperclip, Send, MessageSquare, FileCheck, Edit, Search,
-  AlertTriangle, Archive
+  AlertTriangle, Archive, List
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -18,7 +18,6 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import type { ProcesoDisciplinario } from '../core/types';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
-import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
@@ -28,9 +27,10 @@ interface VistaListaProps {
   procesos: ProcesoDisciplinario[];
   isMobile: boolean;
   isTablet: boolean;
+  readOnly?: boolean;
 }
 
-export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaListaProps) {
+export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly = false }: VistaListaProps) {
   const [ordenarPor, setOrdenarPor] = useState<'fecha' | 'dias' | 'etapa' | 'investigado'>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [paginaActual, setPaginaActual] = useState(1);
@@ -144,24 +144,27 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
   const ColumnHeader = ({ 
     label, 
     campo, 
+    icon: Icon,
     className = '' 
   }: { 
     label: string; 
     campo: 'fecha' | 'dias' | 'etapa' | 'investigado'; 
+    icon?: any;
     className?: string;
   }) => (
     <th className={`px-4 py-3 text-left ${className}`}>
       <button
         onClick={() => handleOrdenar(campo)}
-        className="flex items-center gap-1 hover:text-blue-600 transition-colors group"
+        className="flex items-center gap-1.5 text-xs font-black text-gray-700 hover:text-blue-600 transition-colors group"
       >
-        <span className="text-xs font-bold text-gray-700 group-hover:text-blue-600">
+        {Icon && <Icon className="w-3.5 h-3.5" />}
+        <span className="group-hover:text-blue-600">
           {label}
         </span>
         {ordenarPor === campo && (
           direccionOrden === 'asc' 
-            ? <ChevronsUp className="w-4 h-4 text-blue-600" />
-            : <ChevronsDown className="w-4 h-4 text-blue-600" />
+            ? <ChevronsUp className="w-3 h-3 text-blue-600" />
+            : <ChevronsDown className="w-3 h-3 text-blue-600" />
         )}
       </button>
     </th>
@@ -170,7 +173,6 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
   // Componente para fila con acciones
   const FilaProceso = ({ proceso }: { proceso: ProcesoDisciplinario }) => {
     const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
-    const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
     const [modalAutosOpen, setModalAutosOpen] = useState(false);
     const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
     const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
@@ -200,141 +202,178 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           {/* Proceso ID */}
           <td className="px-4 py-3">
             <div className="flex items-center gap-2">
-              <div className="p-2 bg-blue-50 rounded-lg">
-                <Gavel className="w-4 h-4 text-blue-600" />
+              <div className="p-1.5 rounded-lg" style={{ backgroundColor: '#E0EDFF' }}>
+                <Gavel className="w-3.5 h-3.5" style={{ color: '#003DA5' }} />
               </div>
-              <span className="font-bold text-gray-900">{proceso.id}</span>
+              <div>
+                <p className="font-bold text-sm" style={{ color: '#003DA5' }}>
+                  {proceso.id}
+                </p>
+                <p className="text-xs text-gray-500">Expediente Disciplinario</p>
+              </div>
             </div>
           </td>
 
           {/* Investigado */}
           <td className="px-4 py-3">
-            <div>
-              <p className="font-semibold text-gray-900">{proceso.investigado}</p>
-              <p className="text-xs text-gray-500">{proceso.cargo}</p>
+            <div className="flex items-center gap-2">
+              <Avatar className="w-7 h-7">
+                <AvatarFallback
+                  className="text-xs"
+                  style={{ background: '#E0EDFF', color: '#003DA5' }}
+                >
+                  {proceso.investigado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-bold text-sm text-gray-900">{proceso.investigado}</p>
+                <p className="text-xs text-gray-500">{proceso.cargo || 'Funcionario'}</p>
+              </div>
             </div>
           </td>
 
           {/* Etapa */}
           <td className="px-4 py-3">
-            <Badge className={`${etapaConfig.color} border font-semibold`}>
+            <span
+              className="inline-flex items-center gap-1.5 py-1 px-2.5 border rounded-full font-semibold text-xs"
+              style={{
+                backgroundColor: etapaConfig.label === 'Avocamiento' ? '#FFE8DB' : etapaConfig.label === 'Descargos' ? '#FEF3C7' : etapaConfig.label === 'Pruebas' ? '#DBEAFE' : '#D1FAE5',
+                borderColor: etapaConfig.label === 'Avocamiento' ? '#FFC4A8' : etapaConfig.label === 'Descargos' ? '#F59E0B' : etapaConfig.label === 'Pruebas' ? '#3B82F6' : '#10B981',
+                color: etapaConfig.label === 'Avocamiento' ? '#B84A00' : etapaConfig.label === 'Descargos' ? '#92400E' : etapaConfig.label === 'Pruebas' ? '#1E40AF' : '#065F46'
+              }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{
+                backgroundColor: etapaConfig.label === 'Avocamiento' ? '#B84A00' : etapaConfig.label === 'Descargos' ? '#92400E' : etapaConfig.label === 'Pruebas' ? '#1E40AF' : '#065F46'
+              }} />
               {etapaConfig.label}
-            </Badge>
+            </span>
           </td>
 
           {/* Tipo de Falta */}
           <td className="px-4 py-3">
-            <Badge className={`${faltaClass} border font-semibold`}>
+            <Badge className={`${faltaClass} border text-xs px-2.5 py-0.5 rounded-md font-semibold`}>
               {proceso.tipoFalta || 'Sin clasificar'}
             </Badge>
           </td>
 
           {/* Término */}
           <td className="px-4 py-3">
-            <div
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-full border-2"
-              style={{
-                backgroundColor: semaforo.bg,
-                borderColor: semaforo.border,
-                color: semaforo.text
-              }}
-            >
-              <Clock className="w-4 h-4" />
-              <span className="font-bold text-sm">{proceso.diasRestantes}d</span>
+            <div className="flex flex-col gap-1.5">
+              <div
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border w-fit"
+                style={{
+                  backgroundColor: semaforo.bg,
+                  borderColor: semaforo.border
+                }}
+              >
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: semaforo.border }}
+                />
+                <p className="font-bold text-xs" style={{ color: semaforo.text }}>
+                  {proceso.diasRestantes}d
+                </p>
+              </div>
             </div>
           </td>
 
           {/* Última Actuación */}
           <td className="px-4 py-3">
-            <div className="max-w-xs">
-              <p className="text-sm text-gray-900 truncate">
-                {proceso.ultimaActuacion || 'Sin actuaciones'}
-              </p>
-              <p className="text-xs text-gray-500">
-                {proceso.fechaUltimaActuacion ? (proceso.fechaUltimaActuacion instanceof Date ? proceso.fechaUltimaActuacion.toLocaleDateString('es-CO') : new Date(proceso.fechaUltimaActuacion).toLocaleDateString('es-CO')) : 'N/A'}
-              </p>
+            <div className="space-y-1.5 max-w-[220px]">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                <p className="text-sm text-gray-700 font-medium">
+                  {proceso.fechaUltimaActuacion ? (proceso.fechaUltimaActuacion instanceof Date ? proceso.fechaUltimaActuacion.toLocaleDateString('es-CO') : new Date(proceso.fechaUltimaActuacion).toLocaleDateString('es-CO')) : 'N/A'}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg border bg-blue-50/50 border-blue-100">
+                <p className="text-[9px] font-black text-blue-700 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                  Última Actuación
+                </p>
+                <p className="text-[11px] text-gray-600 line-clamp-2 leading-snug">
+                  {proceso.ultimaActuacion || 'Sin actuaciones'}
+                </p>
+              </div>
             </div>
           </td>
 
           {/* Acciones */}
           <td className="px-4 py-3">
-            <div className="flex items-center justify-end gap-1 relative">
+            <div className="flex items-center justify-center gap-1 relative">
               <Button
                 size="sm"
-                variant="ghost"
+                variant="outline"
                 onClick={() => setModalProcesoOpen(true)}
-                title="Ver expediente"
+                title="Ver expediente completo"
               >
-                <Archive className="w-4 h-4" />
+                <Eye className="w-3.5 h-3.5" />
               </Button>
               <div className="relative">
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => setMenuOpen(!menuOpen)}
                   title="Más acciones"
                 >
-                  <MoreVertical className="w-4 h-4" />
+                  <MoreVertical className="w-3.5 h-3.5" />
                 </Button>
                 {menuOpen && (
                   <>
                     <div 
-                      className="fixed inset-0 z-10" 
+                      className="fixed inset-0 z-40" 
                       onClick={() => setMenuOpen(false)}
                     />
-                    <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 min-w-[180px]">
-                      <button
+                    <Card className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 p-1 z-50 min-w-[180px]">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full justify-start text-xs text-gray-700"
                         onClick={() => {
                           setModalAutosOpen(true);
                           setMenuOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                       >
-                        <Gavel className="w-4 h-4" />
-                        Autos
-                      </button>
-                      <button
+                        <Gavel className="w-3.5 h-3.5 mr-2" />
+                        Ver Autos
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full justify-start text-xs text-gray-700"
                         onClick={() => {
                           setModalEvidenciasOpen(true);
                           setMenuOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                       >
-                        <Paperclip className="w-4 h-4" />
-                        Evidencias
-                      </button>
-                      <button
+                        <Paperclip className="w-3.5 h-3.5 mr-2" />
+                        Ver Evidencias
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full justify-start text-xs text-gray-700"
                         onClick={() => {
                           setModalOficiosOpen(true);
                           setMenuOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                       >
-                        <Send className="w-4 h-4" />
-                        Oficios
-                      </button>
-                      <button
+                        <Send className="w-3.5 h-3.5 mr-2" />
+                        Ver Oficios
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full justify-start text-xs text-gray-700"
                         onClick={() => {
                           setModalActasOpen(true);
                           setMenuOpen(false);
                         }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
                       >
-                        <FileCheck className="w-4 h-4" />
-                        Actas
-                      </button>
-                      <div className="border-t border-gray-200 my-1" />
-                      <button
-                        onClick={() => {
-                          setModalComunicacionesOpen(true);
-                          setMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm font-semibold text-blue-600"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                        Comentarios
-                      </button>
-                    </div>
+                        <FileCheck className="w-3.5 h-3.5 mr-2" />
+                        Ver Actas
+                      </Button>
+                    </Card>
                   </>
                 )}
               </div>
@@ -343,16 +382,14 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
         </motion.tr>
 
         {/* Modales */}
-        <ModalProcesoDisciplinario
-          isOpen={modalProcesoOpen}
-          onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso}
-        />
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expedienteParaModales as any}
-        />
+        {modalProcesoOpen && (
+          <ModalProcesoDisciplinario
+            isOpen={modalProcesoOpen}
+            onClose={() => setModalProcesoOpen(false)}
+            proceso={proceso}
+            readOnly={readOnly}
+          />
+        )}
         <ModalAutos
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
@@ -381,19 +418,37 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
     <div className="space-y-4">
       {/* Tabla Desktop/Tablet */}
       {!isMobile && (
-        <Card className="overflow-hidden">
+        <Card className="border border-gray-200 bg-white overflow-hidden shadow-sm rounded-xl relative">
+          {/* Barra de acento */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-[#003DA5]" />
+
+          {/* Header de la tabla */}
+          <div className="bg-white px-4 py-4 border-b border-gray-100 flex items-center justify-between mt-1">
+            <div className="flex items-center justify-between w-full">
+              <h3 className="font-black text-[#003DA5] flex items-center gap-2 text-base">
+                <List className="w-5 h-5" />
+                Vista de Lista - Juzgamiento Disciplinario
+              </h3>
+              <Badge className="bg-[#E0EDFF] text-[#003DA5] border border-blue-200 font-bold px-2.5 py-1">
+                {procesosOrdenados.length} procesos
+              </Badge>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <ColumnHeader label="PROCESO" campo="investigado" />
-                  <ColumnHeader label="INVESTIGADO" campo="investigado" />
-                  <ColumnHeader label="ETAPA" campo="etapa" />
-                  <ColumnHeader label="TIPO FALTA" campo="etapa" />
-                  <ColumnHeader label="TÉRMINO" campo="dias" />
-                  <ColumnHeader label="ÚLTIMA ACT." campo="fecha" />
-                  <th className="px-4 py-3 text-right">
-                    <span className="text-xs font-bold text-gray-700">ACCIONES</span>
+                  <ColumnHeader label="PROCESO" campo="investigado" icon={FileText} />
+                  <ColumnHeader label="INVESTIGADO" campo="investigado" icon={User} />
+                  <ColumnHeader label="ETAPA" campo="etapa" icon={Filter} />
+                  <ColumnHeader label="TIPO FALTA" campo="etapa" icon={AlertTriangle} />
+                  <ColumnHeader label="TÉRMINO" campo="dias" icon={Clock} />
+                  <ColumnHeader label="ÚLTIMA ACT." campo="fecha" icon={Calendar} />
+                  <th className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-black text-gray-700">
+                      ACCIONES
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -448,7 +503,6 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
   // Componente de tarjeta mobile con acciones
   function TarjetaProcesoMobile({ proceso }: { proceso: ProcesoDisciplinario }) {
     const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
-    const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
     const [modalAutosOpen, setModalAutosOpen] = useState(false);
     const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
     const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
@@ -570,29 +624,19 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
                 </Button>
               </div>
 
-              <Button
-                onClick={() => setModalComunicacionesOpen(true)}
-                size="sm"
-                className="w-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <MessageSquare className="w-3 h-3 mr-1" />
-                Comentarios
-              </Button>
             </div>
           </Card>
         </motion.div>
 
         {/* Modales */}
-        <ModalProcesoDisciplinario
-          isOpen={modalProcesoOpen}
-          onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso}
-        />
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expedienteParaModales as any}
-        />
+        {modalProcesoOpen && (
+          <ModalProcesoDisciplinario
+            isOpen={modalProcesoOpen}
+            onClose={() => setModalProcesoOpen(false)}
+            proceso={proceso}
+            readOnly={readOnly}
+          />
+        )}
         <ModalAutos
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}

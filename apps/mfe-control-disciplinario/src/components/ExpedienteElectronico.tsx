@@ -590,19 +590,12 @@ function ModalVisorDocumento({
             : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
           downloadUrl = buildApiUrl('control-disciplinario', endpoint);
         }
-        const token = sessionStorage.getItem('esap_access_token');
-
-        const headers: HeadersInit = {
-          'Accept': 'application/octet-stream',
-        };
-
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(downloadUrl, {
           method: 'GET',
-          headers,
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/octet-stream',
+          },
         });
 
         if (!response.ok) {
@@ -725,19 +718,13 @@ function ModalVisorDocumento({
         ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
         : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
       const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
-      const token = sessionStorage.getItem('esap_access_token');
-
-      const headers: HeadersInit = {
-        'Accept': 'application/octet-stream',
-      };
-
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       const response = await fetch(downloadUrl, {
         method: 'GET',
-        headers,
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/octet-stream',
+        },
       });
 
       if (!response.ok) {
@@ -1087,19 +1074,13 @@ function ModalVisorDocumento({
                                 ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
                                 : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
                               const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
-                              const token = sessionStorage.getItem('esap_access_token');
-
-                              const headers: HeadersInit = {
-                                'Accept': 'application/octet-stream',
-                              };
-
-                              if (token) {
-                                headers['Authorization'] = `Bearer ${token}`;
-                              }
 
                               const res = await fetch(downloadUrl, {
                                 method: 'GET',
-                                headers,
+                                credentials: 'include',
+                                headers: {
+                                  'Accept': 'application/octet-stream',
+                                },
                               });
 
                               if (!res.ok) {
@@ -1168,9 +1149,8 @@ function ModalVisorDocumento({
                                    console.error('Error converting DOCX to HTML:', conversionError);
                                    // Fallback to original blob
                                  }
-                               }
-                              } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
-                                tipoDetectado = 'ppt';
+                               } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
+                                 tipoDetectado = 'ppt';
                               } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
                                 tipoDetectado = 'xls';
                               }
@@ -2339,16 +2319,10 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
           ? `/disciplinary-processes/${procesoSeleccionado.id}/documents`
           : `/api/v1/disciplinary-processes/${procesoSeleccionado.id}/documents`;
         const url = buildApiUrl('control-disciplinario', endpoint);
-        const token = sessionStorage.getItem('esap_access_token');
-
-        const headers: HeadersInit = {};
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
 
         const response = await fetch(url, {
           method: 'POST',
-          headers,
+          credentials: 'include',
           body: formData,
         });
 

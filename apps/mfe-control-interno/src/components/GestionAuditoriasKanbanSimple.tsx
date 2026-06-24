@@ -4,14 +4,14 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+// Usamos API Drag & Drop nativa de HTML5 para evitar conflictos de DndProvider con el Shell
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutGrid, List, Plus, MoreVertical, Calendar, User, Clock,
   AlertCircle, CheckCircle, FileText, Eye, MessageSquare, History,
   Filter, Search, ChevronDown, TrendingUp, Target, Shield, Activity,
-  Download, Columns3, ClipboardCheck, CheckSquare,
+  Download, Columns3, ClipboardCheck, CheckSquare, PlayCircle,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
   ChevronsDown, ChevronsUp, Move, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -25,9 +25,11 @@ import { toast } from 'sonner';
 // ✅ Servicios de exportación
 import { exportarAuditoriaPDF, type AuditoriaPDFData } from './services/exportarAuditoriaPDF';
 import { exportarAuditoriasExcel } from './services/exportarAuditoriasExcel';
+import { estructuraService } from '../../services/estructuraService';
+import { isPlanAprobado, etiquetaEstadoPlan } from '../utils/estadoPlanUtils';
 
 // ✅ Importar modales desde carpeta modales/
-import { 
+import {
   ModalDetalleAuditoria,
   ModalHistorial,
   ModalNotas,
@@ -49,6 +51,7 @@ import type { AuditoriaFormData } from '../../../utils/validation';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ✅ FASE 1 DÍA 2: Componentes responsive
 import { useResponsive } from '@/hooks/useResponsive';
@@ -57,14 +60,20 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
 // ✅ Servicio para crear planes de mejoramiento
-import controlInternoService from '../../../services/api/controlInternoService';
+import { controlInternoService } from '../services/api/controlInternoService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
 import { useHallazgos } from './HallazgosContext';
 import { useTareas } from './TareasContext';
 
 // ✅ INTEGRACIÓN: Hook para cargar auditorías y auditores del backend
-import { useAuditoriasKanban, type AuditoriaKanban, type AuditorDisponible } from './services/useAuditoriasKanban';
+import {
+  useAuditoriasKanban,
+  auditoriaCoincideVigenciaPlan,
+  type AuditoriaKanban,
+  type AuditorDisponible,
+} from './services/useAuditoriasKanban';
 
 // ✅ PERMISOS: Hook de control de acceso
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
@@ -74,8 +83,6 @@ import { useKanbanConfig } from './context/KanbanConfigContext';
 
 import {
   type EstadoAuditoria,
-  construirEtapasKanbanAuditoria,
-  columnasKanbanDesdeCatalogo,
   iconoParaEstadoAuditoria,
 } from './config/auditoriaKanbanCatalog';
 
@@ -83,7 +90,7 @@ import {
 
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
-type TipoAuditoria = 'regular' | 'territorial' | 'especial';
+type TipoAuditoria = string; // Ahora es completamente dinámico
 type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
 
 interface Persona {
@@ -131,35 +138,38 @@ interface Auditoria {
   informes: number;
   tareas: number;
   documentoCierre?: any; // Campo JSONB del backend — necesario para el Expediente
-  
+
   // Nuevos campos del formulario unificado
   tipo: TipoAuditoria;
   prioridad: Prioridad;
   areaObjetivo: string;
   permiteCambiarObjetivos: boolean;
   equipoAuditores: string[];
-  
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
+
   // Información territorial (si aplica)
   territorialInfo?: {
     nombre: string;
     ciudad: string;
     departamento: string;
   };
-  
+
   // Información especial (si aplica)
   especial?: {
     tipoMotivo: string;
     solicitante: string;
     justificacion: string;
   };
-  
+
   // ✅ INTEGRACIÓN: Validación de actividades del proceso de auditoría
   actividadesCompletas?: boolean; // ¿Completó las 3 actividades de la fase actual?
   actividadesPendientes?: number; // Número de actividades pendientes (0-3)
-  
+
   // Criterios de auditoría
   criterios?: { id: string; criterio: string }[];
-  
+
   // ID del auditor líder asignado
   auditorLiderId?: string | number;
 }
@@ -767,9 +777,14 @@ const AUDITORIAS_MOCK: Auditoria[] = [
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
 
-type KanbanColumna = ReturnType<typeof columnasKanbanDesdeCatalogo>[number];
-
-const COLUMNAS_KANBAN_FALLBACK: KanbanColumna[] = columnasKanbanDesdeCatalogo();
+export interface KanbanColumna {
+  id: string;
+  titulo: string;
+  count: number;
+  icono: JSX.Element;
+  diasEstimados: number;
+  accentColor: string;
+}
 
 // ============ COMPONENTE DE TARJETA ============
 
@@ -795,6 +810,7 @@ interface TarjetaAuditoriaProps {
   contarHallazgos: (auditoriaId: string) => number;
   contarHallazgosCriticos: (auditoriaId: string) => number;
   contarTareasPendientes: (auditoriaId: string) => number;
+  contarMisTareasPendientes: (auditoriaId: string) => number;
   // ✅ PERMISOS - Control de visibilidad de acciones
   puedeEditar?: boolean;
   puedeEliminar?: boolean;
@@ -803,11 +819,11 @@ interface TarjetaAuditoriaProps {
   puedeAsignar?: boolean;
 }
 
-function TarjetaAuditoria({ 
-  auditoria, 
-  onVerDetalle, 
-  onVerNotas, 
-  onVerHistorial, 
+function TarjetaAuditoria({
+  auditoria,
+  onVerDetalle,
+  onVerNotas,
+  onVerHistorial,
   onAprobar,
   onCambiarEstado,
   onAsignarAuditor,
@@ -823,20 +839,30 @@ function TarjetaAuditoria({
   contarHallazgos,
   contarHallazgosCriticos,
   contarTareasPendientes,
+  contarMisTareasPendientes,
   puedeEditar = true,
   puedeEliminar = true,
   puedeAprobar = true,
   puedeArchivar = true,
   puedeAsignar = true
 }: TarjetaAuditoriaProps) {
-  const [{ isDragging }, drag] = useDrag(() => ({
-    type: 'auditoria',
-    item: auditoria,
-    canDrag: () => auditoria.estado !== 'Finalizada',
-    collect: (monitor) => ({
-      isDragging: !!monitor.isDragging()
-    })
-  }));
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (auditoria.estado === 'Finalizada') {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('auditoriaId', auditoria.id);
+    e.dataTransfer.setData('tipo', 'auditoria');
+    e.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+    e.stopPropagation();
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
 
   // ✅ SEMÁFORO DINÁMICO: Calcular basado en SLA configurado en lugar de mock hardcodeado
   const kanbanConfig = useKanbanConfig();
@@ -863,13 +889,15 @@ function TarjetaAuditoria({
   if (colapsada) {
     return (
       <motion.div
-        ref={drag}
+        draggable={auditoria.estado !== 'Finalizada'}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
         className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
       >
         <Card className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200">
-          <div 
+          <div
             className="h-1 flex-shrink-0"
             style={{ background: '#003DA5' }}
           />
@@ -877,7 +905,7 @@ function TarjetaAuditoria({
           <div className="p-2 md:p-2.5">
             <div className="flex items-start justify-between mb-1.5 md:mb-2">
               <div className="flex items-center gap-1.5 md:gap-2 flex-1 min-w-0">
-                <div 
+                <div
                   className="p-1 md:p-1.5 rounded-md md:rounded-lg flex-shrink-0"
                   style={{ background: '#E0EDFF' }}
                 >
@@ -889,7 +917,7 @@ function TarjetaAuditoria({
                   </h4>
                 </div>
               </div>
-              <div 
+              <div
                 className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full flex-shrink-0"
                 style={{ background: semaforo.color }}
                 title={semaforo.label}
@@ -901,23 +929,21 @@ function TarjetaAuditoria({
             </p>
 
             <div className="flex flex-wrap items-center gap-1 md:gap-1.5 mb-1.5 md:mb-2">
-              <Badge 
-                className={`text-[9px] md:text-[10px] px-1 md:px-1.5 py-0.5 font-semibold ${
-                  auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
-                  auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                  'bg-green-100 text-green-800 border-green-200'
-                }`}
+              <Badge
+                className={`text-[9px] md:text-[10px] px-1 md:px-1.5 py-0.5 font-semibold ${auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
+                    auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                      'bg-green-100 text-green-800 border-green-200'
+                  }`}
               >
                 {auditoria.riesgo}
               </Badge>
               {auditoria.prioridad && (
-                <Badge 
-                  className={`text-[9px] md:text-[10px] px-1 md:px-1.5 py-0.5 font-semibold ${
-                    auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800 border-red-200' :
-                    auditoria.prioridad === 'alta' ? 'bg-orange-100 text-orange-800 border-orange-200' :
-                    auditoria.prioridad === 'media' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                    'bg-gray-100 text-gray-800 border-gray-200'
-                  }`}
+                <Badge
+                  className={`text-[9px] md:text-[10px] px-1 md:px-1.5 py-0.5 font-semibold ${auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800 border-red-200' :
+                      auditoria.prioridad === 'alta' ? 'bg-orange-100 text-orange-800 border-orange-200' :
+                        auditoria.prioridad === 'media' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                          'bg-gray-100 text-gray-800 border-gray-200'
+                    }`}
                 >
                   {auditoria.prioridad.charAt(0).toUpperCase() + auditoria.prioridad.slice(1)}
                 </Badge>
@@ -951,16 +977,18 @@ function TarjetaAuditoria({
   // VERSIÓN EXPANDIDA NORMAL
   return (
     <motion.div
-      ref={drag}
+      draggable={auditoria.estado !== 'Finalizada'}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
       className={`w-full relative ${auditoria.estado === 'Finalizada' ? 'cursor-default' : 'cursor-move touch-none'}`}
     >
-      <Card 
+      <Card
         className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200"
       >
         {/* Barra superior azul ESAP */}
-        <div 
+        <div
           className="h-1 flex-shrink-0"
           style={{ background: '#003DA5' }}
         />
@@ -969,7 +997,7 @@ function TarjetaAuditoria({
           {/* Header */}
           <div className="flex items-start justify-between mb-1.5">
             <div className="flex items-center gap-1.5 md:gap-2 flex-1 min-w-0">
-              <div 
+              <div
                 className="p-1 md:p-1.5 rounded-md md:rounded-lg flex-shrink-0"
                 style={{ background: '#E0EDFF' }}
               >
@@ -1000,174 +1028,71 @@ function TarjetaAuditoria({
           </div>
 
           {/* Título de la Auditoría */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-[10px] md:text-xs text-gray-500 mb-0.5">📋 Auditoría:</p>
-            <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-2 leading-tight">
+          <div className="mb-2 pb-2 border-b border-gray-100">
+            <p className="font-bold text-sm text-gray-900 line-clamp-2 leading-tight">
               {auditoria.titulo}
             </p>
           </div>
 
-          {/* Auditor Líder */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-[10px] md:text-xs text-gray-500 mb-0.5">👨‍💼 Auditor Líder:</p>
-            <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-1 leading-tight">
-              {auditoria.auditorLider.nombre}
-            </p>
-            <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
-              {auditoria.auditorLider.tipoIdentificacion} {auditoria.auditorLider.numeroIdentificacion}
-            </p>
-          </div>
-
-          {/* Auditor Asignado */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <div className="flex items-center gap-1.5 md:gap-2">
-              <Avatar className="w-5 h-5 md:w-6 md:h-6 flex-shrink-0">
-                <AvatarFallback 
-                  className="text-[10px] md:text-xs"
+          {/* Auditor Responsable (Combinado) */}
+          <div className="mb-2 pb-2 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Avatar className="w-6 h-6 flex-shrink-0">
+                <AvatarFallback
+                  className="text-[10px]"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {auditoria.auditorAsignado.iniciales}
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
+                    ? 'EQ'
+                    : auditoria.auditorAsignado.iniciales}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] md:text-xs text-gray-500">👤 Auditor Asignado:</p>
-                <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-1 leading-tight">
-                  {auditoria.auditorAsignado.nombre}
-                </p>
-                <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
-                  {auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}
+                <p className="text-[10px] text-gray-500 uppercase font-semibold">Auditor:</p>
+                <p className="font-bold text-xs text-gray-900 line-clamp-1 leading-tight">
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' 
+                    ? auditoria.auditorLider.nombre 
+                    : auditoria.auditorAsignado.nombre}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Calificación del Riesgo */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-[10px] md:text-xs text-gray-500 mb-1">⚠️ Calificación del Riesgo:</p>
-            <Badge 
-              className={`text-[10px] md:text-xs font-semibold ${
-                auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
-                auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                'bg-green-100 text-green-800 border-green-200'
-              }`}
-            >
-              {auditoria.calificacionRiesgo}
+          {/* Etiquetas compactas (Riesgo, Tipo, Prioridad) */}
+          <div className="mb-2 pb-2 border-b border-gray-100 flex flex-wrap gap-1.5">
+            {auditoria.calificacionRiesgo && (
+              <Badge
+                className={`text-[10px] font-semibold ${auditoria.riesgo === 'Alto' ? 'bg-red-100 text-red-800 border-red-200' :
+                    auditoria.riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                      'bg-green-100 text-green-800 border-green-200'
+                  }`}
+              >
+                Riesgo: {auditoria.calificacionRiesgo}
+              </Badge>
+            )}
+            <Badge className="text-[10px] font-semibold bg-blue-100 text-blue-800 border-blue-200">
+              {auditoria.tipo ? auditoria.tipo.charAt(0).toUpperCase() + auditoria.tipo.slice(1) : 'Sin tipo'}
             </Badge>
-          </div>
-
-          {/* Tipo de Auditoría y Prioridad */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <p className="text-[10px] md:text-xs text-gray-500">🏷️ Tipo:</p>
-              <Badge 
-                className={`text-[10px] md:text-xs font-semibold ${
-                  auditoria.tipo === 'regular' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                  auditoria.tipo === 'territorial' ? 'bg-green-100 text-green-800 border-green-200' :
-                  'bg-red-100 text-red-800 border-red-200'
-                }`}
-              >
-                {auditoria.tipo === 'regular' ? 'Regular' :
-                 auditoria.tipo === 'territorial' ? 'Territorial' : 'Especial'}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] md:text-xs text-gray-500">⚡ Prioridad:</p>
-              <Badge 
-                className={`text-[10px] md:text-xs font-semibold ${
-                  auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800 border-red-200' :
+            <Badge
+              className={`text-[10px] font-semibold ${auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800 border-red-200' :
                   auditoria.prioridad === 'alta' ? 'bg-orange-100 text-orange-800 border-orange-200' :
-                  auditoria.prioridad === 'media' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                  'bg-gray-100 text-gray-800 border-gray-200'
+                    auditoria.prioridad === 'media' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                      'bg-gray-100 text-gray-800 border-gray-200'
                 }`}
-              >
-                {auditoria.prioridad.charAt(0).toUpperCase() + auditoria.prioridad.slice(1)}
-              </Badge>
-            </div>
-          </div>
-
-          {/* Proceso Auditado */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">🔍 Proceso:</p>
-            <p className="text-xs font-bold text-gray-900">{auditoria.areaObjetivo || auditoria.territorial || 'Sin proceso'}</p>
+            >
+              {auditoria.prioridad.charAt(0).toUpperCase() + auditoria.prioridad.slice(1)}
+            </Badge>
           </div>
 
           {/* Información Especial (si aplica) */}
           {auditoria.especial && (
-            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-              <p className="text-xs text-gray-500 mb-1">⚠️ Auditoría Especial:</p>
+            <div className="mb-2 pb-2 border-b border-gray-100">
               <div className="bg-red-50 border border-red-200 rounded p-1.5 space-y-1">
-                <div>
-                  <p className="text-xs font-bold text-red-900">{auditoria.especial.tipoMotivo}</p>
-                  <p className="text-xs text-red-700">Solicitante: {auditoria.especial.solicitante}</p>
-                </div>
+                <p className="text-[10px] text-red-700 uppercase font-semibold">Auditoría Especial</p>
+                <p className="text-xs font-bold text-red-900">{auditoria.especial.tipoMotivo}</p>
               </div>
             </div>
           )}
-
-          {/* Objetivos de la Auditoría */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-xs text-gray-500">🎯 Objetivos:</p>
-              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
-                {auditoria.objetivos.length}
-              </span>
-            </div>
-            <div className="space-y-1">
-              {auditoria.objetivos.slice(0, 2).map((objetivo, index) => (
-                <div key={objetivo.id} className="flex items-start gap-1.5">
-                  <span className="text-xs font-bold text-blue-600 flex-shrink-0">{index + 1}.</span>
-                  <p className="text-xs text-gray-700 line-clamp-1">{objetivo.descripcion}</p>
-                </div>
-              ))}
-              {auditoria.objetivos.length > 2 && (
-                <p className="text-xs text-gray-500 italic">+{auditoria.objetivos.length - 2} más...</p>
-              )}
-            </div>
-            {auditoria.permiteCambiarObjetivos && (
-              <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" />
-                Objetivos modificables
-              </p>
-            )}
-          </div>
-
-          {/* Equipo Auditor */}
-          {auditoria.equipoAuditores && auditoria.equipoAuditores.length > 0 && (
-            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-gray-500">👥 Equipo Auditor:</p>
-                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
-                  {auditoria.equipoAuditores.length}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {auditoria.equipoAuditores.slice(0, 3).map((auditor: any, index: number) => {
-                  // Manejar tanto string como objeto
-                  const nombreAuditor = typeof auditor === 'string'
-                    ? auditor
-                    : (auditor.nombre || (auditor.personaId ? `Auditor` : (auditor.rol || 'Sin asignar')));
-                  console.log(`[Kanban] equipoAuditores[${index}]:`, auditor, '→', nombreAuditor);
-                  const partes = nombreAuditor.split(' ');
-                  return (
-                    <span 
-                      key={index}
-                      className="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200"
-                    >
-                      {partes[0]} {partes[1]?.[0] ? partes[1][0] + '.' : ''}
-                    </span>
-                  );
-                })}
-                {auditoria.equipoAuditores.length > 3 && (
-                  <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-semibold">
-                    +{auditoria.equipoAuditores.length - 3}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Área Objetivo */}
-          {(() => { console.log('[Kanban] areaObjetivo:', auditoria.areaObjetivo, '| territorial:', auditoria.territorial, '| auditorLider:', auditoria.auditorLider); return null; })()}
 
           {/* Última Actuación */}
           <div className="mb-1.5">
@@ -1177,11 +1102,11 @@ function TarjetaAuditoria({
 
           {/* Badges y Semáforo */}
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-            <Badge 
+            <Badge
               className="text-xs flex items-center gap-1 font-semibold bg-gray-50 border border-gray-200"
               style={{ color: semaforo.color }}
             >
-              <div 
+              <div
                 className="w-2 h-2 rounded-full"
                 style={{ background: semaforo.color }}
               />
@@ -1200,7 +1125,7 @@ function TarjetaAuditoria({
             )}
             {/* ⚠️ ALERTA: Actividades/Tareas Pendientes */}
             {contarTareasPendientes(auditoria.id) > 0 && (
-              <Badge 
+              <Badge
                 onClick={(e) => {
                   e.stopPropagation();
                   onVerDetalle(auditoria);
@@ -1217,6 +1142,20 @@ function TarjetaAuditoria({
               <CheckSquare className="w-3 h-3" />
               {auditoria.tareas} tareas
             </Badge>
+            {/* 🎯 BADGE PERSONALIZADO: Mis tareas pendientes */}
+            {contarMisTareasPendientes(auditoria.id) > 0 && (
+              <Badge
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onVerDetalle(auditoria);
+                }}
+                className="text-xs bg-indigo-100 text-indigo-800 border-2 border-indigo-400 flex items-center gap-1 font-bold animate-pulse cursor-pointer hover:bg-indigo-200 transition-colors w-full justify-center"
+                title="Click para ver y completar tus tareas asignadas"
+              >
+                <User className="w-3 h-3" />
+                Tienes {contarMisTareasPendientes(auditoria.id)} tarea{contarMisTareasPendientes(auditoria.id) !== 1 ? 's' : ''} asignada{contarMisTareasPendientes(auditoria.id) !== 1 ? 's' : ''}
+              </Badge>
+            )}
           </div>
 
           {/* 📊 MÉTRICAS - RESPONSIVE */}
@@ -1238,37 +1177,59 @@ function TarjetaAuditoria({
           </div>
 
           {/* Acciones de Gestión */}
-          <div className="pt-2 border-t border-gray-200 mt-2">
-            {/* 🎯 ACCIONES PRINCIPALES - RESPONSIVE */}
-            <div className={`grid ${puedeEditar ? 'grid-cols-2' : 'grid-cols-1'} gap-1 sm:gap-1.5 mb-2`}>
+          <div className="pt-3 mt-3 border-t border-gray-100">
+            {/* Botón principal y Acciones primarias */}
+            <div className="flex items-center gap-2">
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
                   onVerDetalle(auditoria);
                 }}
-                size="sm"
-                className="text-[10px] sm:text-xs font-bold truncate px-2 py-1 sm:px-3 sm:py-2"
-                style={{ background: '#FF6B2C', color: '#FFFFFF' }}
+                className="flex-1 px-3 py-2.5 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm shadow-sm hover:opacity-90"
+                style={{ background: (auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') ? '#16a34a' : '#FF6B2C', color: '#FFFFFF' }}
               >
-                <Eye className="w-3 h-3 mr-0.5 sm:mr-1 flex-shrink-0" />
-                <span className="truncate">Ver</span>
+                {(auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') ? (
+                  <><PlayCircle className="w-4 h-4" /> Iniciar Auditoría</>
+                ) : (
+                  <><Eye className="w-4 h-4" /> Ver Expediente</>
+                )}
               </Button>
-              {puedeEditar && (
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditar(auditoria);
-                }}
-                size="sm"
-                variant="outline"
-                className="text-[10px] sm:text-xs font-bold truncate px-2 py-1 sm:px-3 sm:py-2"
-                disabled={auditoria.estado === 'Finalizada'}
-              >
-                <Edit className="w-3 h-3 mr-0.5 sm:mr-1 flex-shrink-0" />
-                <span className="truncate">Editar</span>
-              </Button>
+              
+              {/* Eliminar - SOLO visible en la etapa de Programa Anual / Plan Anual */}
+              {puedeEliminar && (auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEliminar(auditoria);
+                  }}
+                  variant="outline"
+                  size="icon"
+                  className="w-10 h-10 flex-shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  title="Eliminar auditoría"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               )}
             </div>
+            
+            {/* Acciones secundarias solo visibles si aplican */}
+            {puedeArchivar && auditoria.estado === 'Finalizada' ? (
+              <div className="flex items-center justify-end gap-1.5 mt-2">
+                {/* Archivar - SOLO en Finalizada */}
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onArchivar(auditoria);
+                  }}
+                  variant="outline"
+                  size="icon"
+                  className="w-8 h-8 flex-shrink-0"
+                  title="Archivar"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ) : null}
 
             {/* Botón Crear Plan: exclusivo de la etapa Comunicación */}
             {mostrarBotonCrearPlan && onCrearPlan && (
@@ -1278,216 +1239,13 @@ function TarjetaAuditoria({
                   onCrearPlan(auditoria);
                 }}
                 size="sm"
-                className="text-xs font-bold w-full mb-2"
+                className="text-xs font-bold w-full mt-2"
                 style={{ background: '#DC2626', color: '#FFFFFF' }}
               >
                 <Target className="w-3 h-3 mr-1 flex-shrink-0" />
                 <span className="truncate">Crear Plan de Mejoramiento</span>
               </Button>
             )}
-
-            {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
-            <div className="grid grid-cols-3 gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
-              {/* Cambiar estado - DESHABILITADO en Finalizada */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado !== 'Finalizada') {
-                    onCambiarEstado(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
-                  auditoria.estado === 'Finalizada' 
-                    ? 'opacity-40 cursor-not-allowed' 
-                    : 'hover:bg-white cursor-pointer'
-                }`}
-                title={
-                  auditoria.estado === 'Finalizada' 
-                    ? 'No se puede cambiar (Finalizada)' 
-                    : `Avanzar de ${auditoria.estado}`
-                }
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-gray-600" />
-                <span className="text-[9px] text-gray-600 font-medium">Estado</span>
-              </button>
-
-              {/* Asignar auditor */}
-              {puedeAsignar && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado !== 'Finalizada') {
-                    onAsignarAuditor(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado === 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
-                  auditoria.estado === 'Finalizada' 
-                    ? 'opacity-40 cursor-not-allowed' 
-                    : 'hover:bg-white cursor-pointer'
-                }`}
-                title={
-                  auditoria.estado === 'Finalizada' 
-                    ? 'No se puede modificar (Finalizada)' 
-                    : 'Asignar o reasignar auditor'
-                }
-              >
-                <UserPlus className="w-3.5 h-3.5 text-gray-600" />
-                <span className="text-[9px] text-gray-600 font-medium">Auditor</span>
-              </button>
-              )}
-
-              {/* Enviar a aprobación - SOLO en Comunicación y Seguimiento */}
-              {puedeAprobar && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento') {
-                    onEnviarAprobacion(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado !== 'Comunicación' && auditoria.estado !== 'Seguimiento'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
-                  auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                    ? 'hover:bg-white cursor-pointer' 
-                    : 'opacity-40 cursor-not-allowed'
-                }`}
-                title={
-                  auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                    ? 'Aceptar hallazgos identificados' 
-                    : 'Solo disponible en Comunicación/Seguimiento'
-                }
-              >
-                <Send className={`w-3.5 h-3.5 ${
-                  auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                    ? 'text-green-600' 
-                    : 'text-gray-400'
-                }`} />
-                <span className={`text-[9px] font-medium ${
-                  auditoria.estado === 'Comunicación' || auditoria.estado === 'Seguimiento'
-                    ? 'text-green-600' 
-                    : 'text-gray-400'
-                }`}>Aceptar</span>
-              </button>
-              )}
-
-              {/* Exportar - SOLO disponible desde Ejecución en adelante */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual') {
-                    onExportar(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
-                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
-                    ? 'hover:bg-white cursor-pointer' 
-                    : 'opacity-40 cursor-not-allowed'
-                }`}
-                title={
-                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
-                    ? 'Exportar informe PDF' 
-                    : 'Solo disponible desde Ejecución'
-                }
-              >
-                <FileDown className={`w-3.5 h-3.5 ${
-                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual' ? 'text-blue-600' : 'text-gray-400'
-                }`} />
-                <span className={`text-[9px] font-medium ${
-                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual' ? 'text-blue-600' : 'text-gray-400'
-                }`}>Export</span>
-              </button>
-
-              {/* Archivar - SOLO en Finalizada */}
-              {puedeArchivar && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado === 'Finalizada') {
-                    onArchivar(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado !== 'Finalizada'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
-                  auditoria.estado === 'Finalizada' 
-                    ? 'hover:bg-white cursor-pointer' 
-                    : 'opacity-40 cursor-not-allowed'
-                }`}
-                title={
-                  auditoria.estado === 'Finalizada' 
-                    ? 'Archivar auditoría finalizada' 
-                    : 'Solo disponible cuando esté Finalizada'
-                }
-              >
-                <Archive className={`w-3.5 h-3.5 ${
-                  auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
-                }`} />
-                <span className={`text-[9px] font-medium ${
-                  auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
-                }`}>Archivar</span>
-              </button>
-              )}
-
-              {/* Eliminar - SOLO en Planeación (no iniciada) */}
-              {puedeEliminar && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual') {
-                    onEliminar(auditoria);
-                  }
-                }}
-                disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'}
-                className={`flex flex-col items-center gap-0.5 p-1.5 rounded transition-colors ${
-                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
-                    ? 'hover:bg-white cursor-pointer' 
-                    : 'opacity-40 cursor-not-allowed'
-                }`}
-                title={
-                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
-                    ? 'Eliminar auditoría en etapa inicial'
-                    : 'Solo se puede eliminar en Planeación'
-                }
-              >
-                <Trash2 className={`w-3.5 h-3.5 ${
-                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
-                }`} />
-                <span className={`text-[9px] font-medium ${
-                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
-                }`}>Eliminar</span>
-              </button>
-              )}
-            </div>
-
-            {/* Botones Notas y Auditoría */}
-            <div className="grid grid-cols-2 gap-1 mt-1.5">
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVerNotas(auditoria);
-                }}
-                size="sm"
-                variant="outline"
-                className="text-xs truncate"
-              >
-                <MessageSquare className="w-3 h-3 mr-0.5 flex-shrink-0" />
-                Notas
-              </Button>
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVerHistorial(auditoria);
-                }}
-                size="sm"
-                variant="outline"
-                className="text-xs truncate italic"
-              >
-                <History className="w-3 h-3 mr-0.5 flex-shrink-0" />
-                Trazabilidad
-              </Button>
-            </div>
           </div>
         </div>
       </Card>
@@ -1503,7 +1261,8 @@ interface ColumnaKanbanProps {
   onVerDetalle: (aud: Auditoria) => void;
   onVerNotas: (aud: Auditoria) => void;
   onVerHistorial: (aud: Auditoria) => void;
-  onDrop: (item: Auditoria, nuevoEstado: EstadoAuditoria) => void;
+  onDrop: (item: Auditoria | string, nuevoEstado: EstadoAuditoria) => void;
+
   colapsada?: boolean;
   onToggleColapso?: () => void;
   // Acciones individuales
@@ -1522,16 +1281,17 @@ interface ColumnaKanbanProps {
   contarHallazgos: (auditoriaId: string) => number;
   contarHallazgosCriticos: (auditoriaId: string) => number;
   contarTareasPendientes: (auditoriaId: string) => number;
+  contarMisTareasPendientes: (auditoriaId: string) => number;
   // 🚀 NUEVO: Modo de vista
   modoVista?: 'ajustado' | 'confortable';
 }
 
-function ColumnaKanban({ 
-  columna, 
-  auditorias, 
-  onVerDetalle, 
-  onVerNotas, 
-  onVerHistorial, 
+function ColumnaKanban({
+  columna,
+  auditorias,
+  onVerDetalle,
+  onVerNotas,
+  onVerHistorial,
   onDrop,
   colapsada = false,
   onToggleColapso,
@@ -1549,15 +1309,32 @@ function ColumnaKanban({
   contarHallazgos,
   contarHallazgosCriticos,
   contarTareasPendientes,
+  contarMisTareasPendientes,
   modoVista = 'ajustado'
 }: ColumnaKanbanProps) {
-  const [{ isOver }, drop] = useDrop(() => ({
-    accept: 'auditoria',
-    drop: (item: Auditoria) => onDrop(item, columna.id as EstadoAuditoria),
-    collect: (monitor) => ({
-      isOver: !!monitor.isOver()
-    })
-  }));
+  const [isOver, setIsOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!isOver) setIsOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOver(false);
+  };
+
+  const handleDropEvent = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOver(false);
+    const auditoriaId = e.dataTransfer.getData('auditoriaId');
+    const tipo = e.dataTransfer.getData('tipo');
+    
+    if (auditoriaId && tipo === 'auditoria') {
+      onDrop(auditoriaId, columna.id as EstadoAuditoria);
+    }
+  };
 
   // ✅ Config visual + WIP
   const kanbanConfig = useKanbanConfig();
@@ -1572,18 +1349,19 @@ function ColumnaKanban({
   if (colapsada) {
     return (
       <motion.div
-        ref={drop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDropEvent}
         className="w-full md:w-20 flex-shrink-0 md:h-full"
         initial={{ opacity: 0.5, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0.5, scale: 0.95 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
-        <Card 
-          className={`h-full border-2 transition-all cursor-pointer group relative overflow-hidden ${
-            isOver ? 'shadow-xl border-[#F57C00] bg-gradient-to-b from-orange-50 to-orange-100' : 'hover:shadow-lg hover:border-[#2962FF] bg-gradient-to-b from-gray-50 to-white'
-          }`}
-          style={{ 
+        <Card
+          className={`h-full border-2 transition-all cursor-pointer group relative overflow-hidden ${isOver ? 'shadow-xl border-[#F57C00] bg-gradient-to-b from-orange-50 to-orange-100' : 'hover:shadow-lg hover:border-[#2962FF] bg-gradient-to-b from-gray-50 to-white'
+            }`}
+          style={{
             borderColor: isOver ? '#F57C00' : '#E5E7EB'
           }}
           onClick={onToggleColapso}
@@ -1597,7 +1375,7 @@ function ColumnaKanban({
                 className="absolute inset-0 border-2 border-[#F57C00] border-dashed rounded-lg pointer-events-none z-10"
               />
             )}
-            
+
             {/* Botón expandir con animación */}
             <motion.button
               whileHover={{ scale: 1.1 }}
@@ -1619,9 +1397,9 @@ function ColumnaKanban({
             {auditorias.length > 0 && (
               <div className="flex flex-col gap-2 py-3">
                 {auditoriasRojas > 0 && (
-                  <motion.div 
+                  <motion.div
                     whileHover={{ scale: 1.1 }}
-                    className="flex flex-col items-center gap-1 bg-red-50 px-2 py-1.5 rounded-lg border border-red-200 shadow-sm" 
+                    className="flex flex-col items-center gap-1 bg-red-50 px-2 py-1.5 rounded-lg border border-red-200 shadow-sm"
                     title={`${auditoriasRojas} vencidos`}
                   >
                     <div className="w-3 h-3 rounded-full bg-gradient-to-br from-red-500 to-red-600 shadow-md animate-pulse" />
@@ -1629,9 +1407,9 @@ function ColumnaKanban({
                   </motion.div>
                 )}
                 {auditoriasAmarillas > 0 && (
-                  <motion.div 
+                  <motion.div
                     whileHover={{ scale: 1.1 }}
-                    className="flex flex-col items-center gap-1 bg-amber-50 px-2 py-1.5 rounded-lg border border-amber-200 shadow-sm" 
+                    className="flex flex-col items-center gap-1 bg-amber-50 px-2 py-1.5 rounded-lg border border-amber-200 shadow-sm"
                     title={`${auditoriasAmarillas} próximos a vencer`}
                   >
                     <div className="w-3 h-3 rounded-full bg-gradient-to-br from-amber-400 to-amber-500 shadow-md" />
@@ -1639,9 +1417,9 @@ function ColumnaKanban({
                   </motion.div>
                 )}
                 {auditoriasVerdes > 0 && (
-                  <motion.div 
+                  <motion.div
                     whileHover={{ scale: 1.1 }}
-                    className="flex flex-col items-center gap-1 bg-green-50 px-2 py-1.5 rounded-lg border border-green-200 shadow-sm" 
+                    className="flex flex-col items-center gap-1 bg-green-50 px-2 py-1.5 rounded-lg border border-green-200 shadow-sm"
                     title={`${auditoriasVerdes} en término`}
                   >
                     <div className="w-3 h-3 rounded-full bg-gradient-to-br from-green-500 to-green-600 shadow-md" />
@@ -1653,9 +1431,9 @@ function ColumnaKanban({
 
             {/* Nombre vertical con gradiente */}
             <div className="flex-1 flex items-center justify-center py-6">
-              <h3 
+              <h3
                 className="font-black text-sm tracking-wider bg-gradient-to-b from-[#2962FF] to-[#003DA5] bg-clip-text text-transparent group-hover:from-[#F57C00] group-hover:to-[#E65100] transition-all duration-300 whitespace-nowrap"
-                style={{ 
+                style={{
                   writingMode: 'vertical-rl',
                   textOrientation: 'mixed'
                 }}
@@ -1677,19 +1455,15 @@ function ColumnaKanban({
   }
 
   // Versión expandida normal
-  // ✅ SOLUCIÓN CORRECTA V5: FLEXBOX PROPORCIONAL
-  // Cada columna ocupa ~20% del espacio disponible (flex-1 con 5 columnas)
-  // Se adapta PROPORCIONALMENTE al ancho de la pantalla
-  
   // Color de acento de la columna
   const accent = (columna as any).accentColor || '#003DA5';
 
   return (
-    <div 
-      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[264px] md:max-w-[528px] overflow-hidden"
+    <div
+      className={`bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col flex-shrink-0 w-80 overflow-hidden transition-all duration-300 ease-in-out`}
       style={{
-        height: 'calc(100vh - 280px)',
-        maxHeight: 'calc(100vh - 280px)'
+        height: '100%',
+        maxHeight: '100%'
       }}
     >
       {/* 🎨 HEADER COLUMNA - WORLD CLASS */}
@@ -1725,11 +1499,10 @@ function ColumnaKanban({
           <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0">
             {kanbanConfig.config.mostrarContadores && (
               <span
-                className={`inline-flex items-center justify-center font-bold text-[10px] md:text-xs min-w-[22px] h-[22px] md:h-6 px-1.5 rounded-md ${
-                  wipInfo.excede
+                className={`inline-flex items-center justify-center font-bold text-[10px] md:text-xs min-w-[22px] h-[22px] md:h-6 px-1.5 rounded-md ${wipInfo.excede
                     ? 'text-white'
                     : 'text-white'
-                }`}
+                  }`}
                 style={{
                   backgroundColor: wipInfo.excede ? '#EF4444' : accent
                 }}
@@ -1759,10 +1532,12 @@ function ColumnaKanban({
 
       {/* 📋 LISTA DE TARJETAS - SCROLL VERTICAL UNIFICADO */}
       <div
-        ref={drop}
-        className={`flex-1 p-2.5 sm:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto ${isOver ? 'bg-blue-50/50' : 'bg-gray-50/40'}`}
-        style={{ 
-          minHeight: '180px',
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDropEvent}
+        className={`flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto ${isOver ? 'bg-blue-50/50' : 'bg-gray-50/40'}`}
+        style={{
+          minHeight: '400px',
           scrollbarWidth: 'thin',
           scrollbarColor: `${accent} #F3F4F6`
         }}
@@ -1789,6 +1564,7 @@ function ColumnaKanban({
               contarHallazgos={contarHallazgos}
               contarHallazgosCriticos={contarHallazgosCriticos}
               contarTareasPendientes={contarTareasPendientes}
+              contarMisTareasPendientes={contarMisTareasPendientes}
             />
           ))}
         </AnimatePresence>
@@ -1818,10 +1594,13 @@ function ColumnaKanban({
 // ============ COMPONENTE PRINCIPAL ============
 
 export function GestionAuditoriasKanbanSimple() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   // ✅ CONTEXTOS GLOBALES
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
-  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, cargarTareas } = useTareas();
-  
+  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, contarMisTareasPendientes, cargarTareas } = useTareas();
+
   // ✅ PERMISOS: Control de acceso flexible
   const { puedeRealizar } = useControlInternoPermissions();
   const puedeEditarAuditoria = puedeRealizar('auditorias', 'edit');
@@ -1833,30 +1612,25 @@ export function GestionAuditoriasKanbanSimple() {
   // Config Kanban centralizada (incluye etapas dinámicas sincronizadas con backend)
   const kanbanConfig = useKanbanConfig();
   const columnasKanban = useMemo<KanbanColumna[]>(() => {
-    const etapasEfectivas = construirEtapasKanbanAuditoria(
-      kanbanConfig.loaded ? kanbanConfig.etapasKanban : undefined,
-    );
+    if (!kanbanConfig.loaded || !kanbanConfig.etapasKanban) return [];
 
-    const columnasConfiguradas = etapasEfectivas
-      .map((etapa) => ({
-        id: etapa.id,
-        titulo: etapa.titulo,
-        count: 0,
-        icono: iconoParaEstadoAuditoria(etapa.id, etapa.accentColor),
-        diasEstimados: etapa.diasEstimados,
-        accentColor: etapa.accentColor,
-      }));
-
-    return columnasConfiguradas.length > 0 ? columnasConfiguradas : COLUMNAS_KANBAN_FALLBACK;
+    return kanbanConfig.etapasKanban.map((etapa) => ({
+      id: etapa.nombre,
+      titulo: etapa.nombre,
+      count: 0,
+      icono: iconoParaEstadoAuditoria(etapa.nombre, etapa.color || '#6366F1'),
+      diasEstimados: etapa.slaDias,
+      accentColor: etapa.color || '#6366F1',
+    }));
   }, [kanbanConfig.loaded, kanbanConfig.etapasKanban]);
-  
+
   // ✅ OBTENER USUARIO ACTUAL PARA FILTROS
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      const userDataStr = sessionStorage.getItem('esap_user_data');
-      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
-    } catch (e) {}
+      const userData = (window as any).__esap_auth_cache;
+      if (userData) setCurrentUser(userData);
+    } catch (e) { }
   }, []);
 
   // ✅ HOOK BACKEND: Cargar auditorías y auditores desde el backend
@@ -1879,7 +1653,14 @@ export function GestionAuditoriasKanbanSimple() {
     getHallazgos,
     // ✅ FINALIZACIÓN: Método para finalizar auditoría con documento
     finalizarAuditoria: finalizarAuditoriaBackend
-  } = useAuditoriasKanban();
+  } = useAuditoriasKanban(
+    vigenciaCtx
+      ? {
+          planAnualVigencia: vigenciaCtx.vigencia,
+          planAnualId: vigenciaCtx.planActivoId ?? undefined,
+        }
+      : undefined,
+  );
 
   // Estado local para auditorías (sincronizado con backend)
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
@@ -1890,8 +1671,25 @@ export function GestionAuditoriasKanbanSimple() {
   const [busqueda, setBusquedaRaw] = useState(() => {
     try { return sessionStorage.getItem('kanban_busqueda') || ''; } catch { return ''; }
   });
-  const setFiltroTerritorial = (v: string) => { setFiltroTerritorialRaw(v); try { sessionStorage.setItem('kanban_filtro_territorial', v); } catch {} };
-  const setBusqueda = (v: string) => { setBusquedaRaw(v); try { sessionStorage.setItem('kanban_busqueda', v); } catch {} };
+  const setFiltroTerritorial = (v: string) => { setFiltroTerritorialRaw(v); try { sessionStorage.setItem('kanban_filtro_territorial', v); } catch { } };
+  const setBusqueda = (v: string) => { setBusquedaRaw(v); try { sessionStorage.setItem('kanban_busqueda', v); } catch { } };
+
+  // Seccionales/territoriales cargadas desde Estructura Organizacional
+  const [seccionalesKanban, setSeccionalesKanban] = useState<{ id: number; nombre: string; codigo?: string }[]>([]);
+
+  useEffect(() => {
+    const cargarSeccionales = async () => {
+      try {
+        const seccionales = await estructuraService.obtenerSeccionales();
+        if (seccionales && seccionales.length > 0) {
+          setSeccionalesKanban(seccionales.map((s: any) => ({ id: s.id, nombre: s.nombre, codigo: s.codigo })));
+        }
+      } catch (error) {
+        console.warn('[Kanban] No se pudieron cargar seccionales para filtro:', error);
+      }
+    };
+    cargarSeccionales();
+  }, []);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<Auditoria | null>(null);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [modalNotasOpen, setModalNotasOpen] = useState(false);
@@ -1910,20 +1708,25 @@ export function GestionAuditoriasKanbanSimple() {
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
   const [showScrollIndicator, setShowScrollIndicator] = useState(false); // NUEVO: Indicador de scroll
+  const [dropdownListaId, setDropdownListaId] = useState<string | null>(null); // NUEVO: Estado para menú de acciones en vista lista
   const scrollContainerRef = useRef<HTMLDivElement>(null); // REF para detectar scroll
-  
+
   // 🚀 NUEVO: Estados para UX de Clase Mundial
-  const [modoVista, setModoVista] = useState<'ajustado' | 'confortable'>('ajustado'); // Vista ajustada vs scroll
+  const [modoVista, setModoVista] = useState<'ajustado' | 'confortable'>('confortable'); // Vista ajustada vs scroll
   const [columnaActiva, setColumnaActiva] = useState(0); // Para navegación por columnas
   const [mostrarMinimapa, setMostrarMinimapa] = useState(false); // Minimapa del tablero
   const [auditoriasConPlan, setAuditoriasConPlan] = useState<Set<string>>(new Set());
 
   // ✅ NUEVO: Integración con Context - Recibir auditorías del Programa Anual
-  const { 
-    auditoriasProgramadas, 
+  const {
+    auditoriasProgramadas,
     limpiarAuditoriasProgramadas,
     agregarAuditoriaConHallazgos,
-    seleccionarAuditoria
+    seleccionarAuditoria,
+    auditoriaIdFoco,
+    setAuditoriaIdFoco,
+    faseFoco,
+    setFaseFoco
   } = useIntegracionAuditoriaPlanes();
 
   const extraerAuditoriaIdPlan = (plan: any): string | null => {
@@ -1991,9 +1794,21 @@ export function GestionAuditoriasKanbanSimple() {
         actividadesCompletas: aud.actividadesCompletas,
         actividadesPendientes: aud.actividadesPendientes,
         documentoCierre: aud.documentoCierre,
+        responsableAreaNombre: aud.responsableAreaNombre,
+        responsableAreaCargo: aud.responsableAreaCargo,
+        responsableAreaEmail: aud.responsableAreaEmail,
       } as Auditoria));
-      setAuditorias(auditoriasTransformadas);
-      
+
+      // ✅ DEDUPLICAR: Preservar las auditorías temporales del programa anual (id empieza con 'aud-prog-')
+      // que no tengan el mismo código en las auditorías del backend
+      setAuditorias(prev => {
+        const codigosBackend = new Set(auditoriasTransformadas.map(a => String(a.codigo || '').trim()));
+        const temporalesPreservadas = prev.filter(
+          a => String(a.id).startsWith('aud-prog-') && !codigosBackend.has(String(a.codigo || '').trim())
+        );
+        return [...temporalesPreservadas, ...auditoriasTransformadas];
+      });
+
       // ✅ CARGAR TAREAS: Cargar tareas para cada auditoría desde el backend
       auditoriasTransformadas.forEach(aud => {
         cargarTareas(aud.id);
@@ -2025,9 +1840,9 @@ export function GestionAuditoriasKanbanSimple() {
         // Silenciar warn estridente si es por falta de permisos cruzados (403).
         const errMsg = error?.response?.data?.message || error?.message || String(error);
         if (String(errMsg).includes('No tienes permisos') || error?.response?.status === 403) {
-           console.info('[Kanban] Precarga omitida: planes de mejoramiento no habilitados para el rol de este usuario.');
+          console.info('[Kanban] Precarga omitida: planes de mejoramiento no habilitados para el rol de este usuario.');
         } else {
-           console.warn('Omitiendo carga suplementaria de planes de mejoramiento:', error);
+          console.warn('Omitiendo carga suplementaria de planes de mejoramiento:', error);
         }
       }
     };
@@ -2046,12 +1861,12 @@ export function GestionAuditoriasKanbanSimple() {
         const container = scrollContainerRef.current;
         const hasScroll = container.scrollWidth > container.clientWidth;
         setShowScrollIndicator(hasScroll);
-        
+
         // 🔥 DEBUGGING COMPLETO - Siempre mostrar en pantallas medianas
         if (window.innerWidth >= 768 && window.innerWidth <= 1440) {
           const innerDiv = container.querySelector('div');
           const columns = container.querySelectorAll('.bg-white.rounded-xl');
-          
+
           console.log('🔍 DIAGNÓSTICO SCROLL HORIZONTAL:', {
             pantalla: {
               ancho: window.innerWidth,
@@ -2079,13 +1894,13 @@ export function GestionAuditoriasKanbanSimple() {
         }
       }
     };
-    
+
     checkScroll();
     // Verificar después de delays para asegurar render completo
     setTimeout(checkScroll, 100);
     setTimeout(checkScroll, 300);
     setTimeout(checkScroll, 500);
-    
+
     window.addEventListener('resize', checkScroll);
     return () => window.removeEventListener('resize', checkScroll);
   }, [auditorias, vistaActiva, modoVista, columnasColapsadas]);
@@ -2094,11 +1909,11 @@ export function GestionAuditoriasKanbanSimple() {
   useEffect(() => {
     const handleScroll = () => {
       if (!scrollContainerRef.current || modoVista !== 'confortable') return;
-      
+
       const container = scrollContainerRef.current;
       const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
       const currentIndex = Math.round(container.scrollLeft / columnWidth);
-      
+
       setColumnaActiva(currentIndex);
     };
 
@@ -2117,7 +1932,7 @@ export function GestionAuditoriasKanbanSimple() {
         scrollContainerRef.current.style.display = 'none';
         scrollContainerRef.current.offsetHeight; // Trigger reflow
         scrollContainerRef.current.style.display = '';
-        
+
         console.log('🔄 Recálculo forzado después de cambio de modo:', {
           modo: modoVista,
           scrollWidth: scrollContainerRef.current.scrollWidth,
@@ -2134,78 +1949,105 @@ export function GestionAuditoriasKanbanSimple() {
   useEffect(() => {
     if (auditoriasProgramadas.length > 0) {
       console.log('🎯 Kanban: Recibidas', auditoriasProgramadas.length, 'auditorías del Programa Anual');
-      
-      // Convertir a formato del Kanban
-      const nuevasAuditorias: Auditoria[] = auditoriasProgramadas.map((audProg, index) => {
-        const fechaInicio = new Date(audProg.fechaInicio);
-        const fechaFin = new Date(audProg.fechaFin);
-        
-        return {
-          id: `aud-prog-${Date.now()}-${index}`,
-          codigo: audProg.codigo,
-          titulo: audProg.titulo,
-          descripcion: audProg.descripcion,
-          estado: 'Plan Anual', // ← Comienzan en Plan Anual
-          riesgo: 'Medio',
-          semaforo: 'verde',
-          territorial: audProg.territorial,
-          auditorLider: {
-            nombre: audProg.auditorLider.nombre,
-            cargo: audProg.auditorLider.cargo,
-            iniciales: audProg.auditorLider.iniciales,
-            tipoIdentificacion: 'CC',
-            numeroIdentificacion: '000000000'
-          },
-          auditorAsignado: {
-            nombre: 'Por asignar',
-            cargo: 'Auditor',
-            iniciales: 'PA',
-            tipoIdentificacion: 'CC',
-            numeroIdentificacion: '000000000'
-          },
-          fechaInicio: fechaInicio.toLocaleDateString('es-CO'),
-          fechaFin: fechaFin.toLocaleDateString('es-CO'),
-          progreso: 0,
-          hallazgos: 0,
-          diasRestantes: calcularDiasRestantes(audProg.fechaFin),
-          porcentajeTiempo: 0,
-          ultimaActuacion: new Date().toISOString(),
-          objetivos: [
-            {
-              id: 'obj-1',
-              descripcion: `Auditar ${audProg.areaObjetivo}`
-            }
-          ],
-          calificacionRiesgo: 'Medio',
-          documentos: 0,
-          informes: 0,
-          tareas: 0,
-          tipo: audProg.tipo,
-          prioridad: audProg.prioridad,
-          areaObjetivo: audProg.areaObjetivo,
-          permiteCambiarObjetivos: true,
-          equipoAuditores: [],
-          actividadesCompletas: false,
-          actividadesPendientes: 3
-        };
-      });
 
-      // Agregar al estado del Kanban (al inicio para que sean más visibles)
-      setAuditorias(prev => [...nuevasAuditorias, ...prev]);
+      // Filtrar las programadas que ya existen en el backend (por código) para evitar duplicados en el Kanban
+      const codigosExistentes = new Set([
+        ...(auditorias || []).map(a => String(a.codigo || '').trim()),
+        ...(auditoriasBackend || []).map(a => String(a.codigo || '').trim())
+      ]);
+
+      const programadasFiltradas = auditoriasProgramadas.filter(
+        audProg => !codigosExistentes.has(String(audProg.codigo || '').trim())
+      );
+
+      if (programadasFiltradas.length > 0) {
+        // Convertir a formato del Kanban
+        const nuevasAuditorias: Auditoria[] = programadasFiltradas.map((audProg, index) => {
+          const fechaInicio = new Date(audProg.fechaInicio);
+          const fechaFin = new Date(audProg.fechaFin);
+
+          return {
+            id: `aud-prog-${Date.now()}-${index}`,
+            codigo: audProg.codigo,
+            titulo: audProg.titulo,
+            descripcion: audProg.descripcion,
+            estado: 'Programa Anual', // ← Comienzan en Plan Anual
+            riesgo: 'Medio',
+            semaforo: 'verde',
+            territorial: audProg.territorial,
+            auditorLider: {
+              nombre: audProg.auditorLider.nombre,
+              cargo: audProg.auditorLider.cargo,
+              iniciales: audProg.auditorLider.iniciales,
+              tipoIdentificacion: 'CC',
+              numeroIdentificacion: '000000000'
+            },
+            auditorAsignado: {
+              nombre: 'Por asignar',
+              cargo: 'Auditor',
+              iniciales: 'PA',
+              tipoIdentificacion: 'CC',
+              numeroIdentificacion: '000000000'
+            },
+            fechaInicio: fechaInicio.toLocaleDateString('es-CO'),
+            fechaFin: fechaFin.toLocaleDateString('es-CO'),
+            progreso: 0,
+            hallazgos: 0,
+            diasRestantes: calcularDiasRestantes(audProg.fechaFin),
+            porcentajeTiempo: 0,
+            ultimaActuacion: new Date().toISOString(),
+            objetivos: [
+              {
+                id: 'obj-1',
+                descripcion: `Auditar ${audProg.areaObjetivo}`
+              }
+            ],
+            calificacionRiesgo: 'Medio',
+            documentos: 0,
+            informes: 0,
+            tareas: 0,
+            tipo: audProg.tipo,
+            prioridad: audProg.prioridad,
+            areaObjetivo: audProg.areaObjetivo,
+            permiteCambiarObjetivos: true,
+            equipoAuditores: [],
+            actividadesCompletas: false,
+            actividadesPendientes: 3
+          };
+        });
+
+        // Agregar al estado del Kanban (al inicio para que sean más visibles)
+        setAuditorias(prev => [...nuevasAuditorias, ...prev]);
+
+        // Notificación
+        toast.success(
+          `✅ ${nuevasAuditorias.length} auditoría${nuevasAuditorias.length > 1 ? 's' : ''} agregada${nuevasAuditorias.length > 1 ? 's' : ''} al Kanban`,
+          {
+            description: `Las auditorías están listas en la columna "Programa Anual" y puedes comenzar a trabajarlas.`,
+            duration: 7000
+          }
+        );
+      } else {
+        console.log('🎯 Kanban: Todas las auditorías programadas ya están inicializadas en el backend.');
+      }
 
       // Limpiar del context
       limpiarAuditoriasProgramadas();
-
-      // Notificación
-      toast.success(
-        `✅ ${nuevasAuditorias.length} auditoría${nuevasAuditorias.length > 1 ? 's' : ''} agregada${nuevasAuditorias.length > 1 ? 's' : ''} al Kanban`,
-        {
-          description: `Las auditorías están listas en la columna "Plan Anual" y puedes comenzar a trabajarlas.`,
-          duration: 7000
-        }
-      );
     }
-  }, [auditoriasProgramadas, limpiarAuditoriasProgramadas]);
+  }, [auditoriasProgramadas, limpiarAuditoriasProgramadas, auditorias, auditoriasBackend]);
+
+  // ✅ NUEVO: Foco automático desde Notificaciones (Abrir expediente)
+  useEffect(() => {
+    if (auditoriaIdFoco && auditorias.length > 0) {
+      console.log('[Kanban] Detectado foco para auditoría:', auditoriaIdFoco, 'Fase:', faseFoco);
+      const auditoria = auditorias.find(a => a.id === auditoriaIdFoco);
+      if (auditoria) {
+        handleVerDetalle(auditoria);
+        setAuditoriaIdFoco(null);
+        // NO limpiamos faseFoco aquí, lo usará el componente ExpedienteAuditoriaCompleto al renderizar
+      }
+    }
+  }, [auditoriaIdFoco, auditorias, setAuditoriaIdFoco, faseFoco]);
 
   // Helper para calcular días restantes
   const calcularDiasRestantes = (fechaFin: string): number => {
@@ -2231,22 +2073,26 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Filtrar auditorías
   const auditoriasFiltradas = auditorias.filter(aud => {
+    const cumpleVigencia = vigenciaActiva
+      ? auditoriaCoincideVigenciaPlan(aud as AuditoriaKanban, vigenciaActiva)
+      : true;
+
     const terminoBusqueda = String(busqueda || '').toLowerCase();
     const cumpleBusqueda = String(aud.titulo || '').toLowerCase().includes(terminoBusqueda) ||
-                           String(aud.codigo || '').toLowerCase().includes(terminoBusqueda);
+      String(aud.codigo || '').toLowerCase().includes(terminoBusqueda);
     const cumpleTerritorial = filtroTerritorial === 'Todas las Territoriales' || aud.territorial === filtroTerritorial;
-    
+
     // ✅ FILTRO DE VISIBILIDAD DE USUARIO: Solo ve las suyas a menos que tenga permisos de análisis
     let cumpleUsuario = true;
     if (!puedeAprobarAuditoria && !puedeAsignarAuditoria) {
       if (!currentUser) return false;
       const currentName = currentUser.nombre || currentUser.nombres || '';
       const currentDoc = String(currentUser.id || currentUser.idPersona || currentUser.documento || '');
-      
-      const isLider = aud.auditorLider?.numeroIdentificacion === currentDoc || 
-                      (aud.auditorLider?.nombre && currentName && aud.auditorLider.nombre.includes(currentName));
-      const isAsignado = aud.auditorAsignado?.numeroIdentificacion === currentDoc || 
-                         (aud.auditorAsignado?.nombre && currentName && aud.auditorAsignado.nombre.includes(currentName));
+
+      const isLider = aud.auditorLider?.numeroIdentificacion === currentDoc ||
+        (aud.auditorLider?.nombre && currentName && aud.auditorLider.nombre.includes(currentName));
+      const isAsignado = aud.auditorAsignado?.numeroIdentificacion === currentDoc ||
+        (aud.auditorAsignado?.nombre && currentName && aud.auditorAsignado.nombre.includes(currentName));
       const isInEquipo = Array.isArray(aud.equipoAuditores) && aud.equipoAuditores.some(r => {
         const nombreEquipo = typeof r === 'string'
           ? r
@@ -2254,11 +2100,11 @@ export function GestionAuditoriasKanbanSimple() {
 
         return currentName && String(nombreEquipo).includes(currentName);
       });
-      
+
       cumpleUsuario = !!(isLider || isAsignado || isInEquipo);
     }
-    
-    return cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
+
+    return cumpleVigencia && cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
   });
 
   // Colapsar todas las tarjetas
@@ -2276,10 +2122,21 @@ export function GestionAuditoriasKanbanSimple() {
   // Handlers individuales
   const handleVerDetalle = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
-    
-    // Si la auditoría está en Planeación, abrimos el wizard de inicio (RF004)
-    // De lo contrario, abrimos el expediente completo
-    if (auditoria.estado === 'Plan Anual') {
+
+    // Si la auditoría está en Programa Anual, verificamos si el plan está aprobado antes de abrir el wizard de inicio
+    if (auditoria.estado === 'Programa Anual') {
+      // Verificar que el Plan Anual esté aprobado o vigente antes de permitir iniciar la auditoría
+      const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+
+      if (!planAprobado) {
+        toast.warning('⚠️ Plan Anual no aprobado', {
+          description: 'El Plan Anual de Auditoría debe estar aprobado o vigente antes de poder iniciar una auditoría. Por favor, complete primero el proceso de aprobación del plan.',
+          duration: 6000,
+        });
+        setAuditoriaSeleccionada(null);
+        return;
+      }
+
       setModalInicioAuditoriaOpen(true);
     } else {
       setModalExpedienteOpen(true);
@@ -2388,26 +2245,26 @@ export function GestionAuditoriasKanbanSimple() {
       console.log('   fechaInicioComunicacion:', data.fechaInicioComunicacion);
       console.log('   fechaFinComunicacion:', data.fechaFinComunicacion);
       console.log('═══════════════════════════════════════════════════════════════');
-      
+
       // Auto-calcular fechas de inicio de etapas si no están definidas
       // Etapa 2: fechaInicioEjecucion = día siguiente a fechaFinPlaneacion
       // Etapa 3: fechaInicioComunicacion = día siguiente a fechaFinEjecucion
       const fechaInicioEjecucionCalculada = data.fechaInicioEjecucion || data.fechaFinPlaneacion;
       const fechaInicioComunicacionCalculada = data.fechaInicioComunicacion || data.fechaFinEjecucion;
-      
+
       // 🔍 DEBUG: Log de valores calculados
       console.log('📊 VALORES CALCULADOS:');
       console.log('   fechaInicioEjecucionCalculada:', fechaInicioEjecucionCalculada);
       console.log('   fechaInicioComunicacionCalculada:', fechaInicioComunicacionCalculada);
-      
+
       // Preparar datos para el backend (incluir equipo auditor y riesgos — antes no se enviaban)
       const datosBackend = {
         nombre: data.titulo,
         descripcion: data.descripcion || '',
-        tipo: data.tipoAuditoria || 'Regular',
+        tipo: data.tipoAuditoria,
         territorial: data.territorial || 'Nacional',
         sede: data.territorial || 'Nacional',
-        responsable: data.auditorLider || data.supervisorAsignado || 'Por asignar',
+        responsable: data.responsableArea?.nombre || 'Por asignar',
         fechaInicio: data.fechaInicio || data.fechaInicioPlaneacion,
         fechaFin: data.fechaFin || data.fechaFinComunicacion,
         areaObjetivo: data.areaObjetivo || 'Control Interno',
@@ -2422,9 +2279,17 @@ export function GestionAuditoriasKanbanSimple() {
         riesgosIdentificados: data.riesgosIdentificados || [],
         controlesAplicar: data.controlesAplicar || [],
         auditorLiderId: data.auditorLider || undefined,
-        auditorAsignadoId: data.auditorAsignado || undefined,
         supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
+        // Responsable del Área Auditada (Paso 2 del formulario). Se envía en campos
+        // planos al backend para que la auditoría quede asociada al auditado y este
+        // pueda verla en su portal (`/auditorias/auditado/mis-auditorias`).
+        ...(data.responsableArea && {
+          responsableAreaIdPersona: data.responsableArea.idPersona,
+          responsableAreaNombre: data.responsableArea.nombre,
+          responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
+          responsableAreaEmail: data.responsableArea.email,
+        }),
         // ✅ Incluir TODAS las fechas del cronograma de 3 etapas
         // Etapa 1: Planeación
         ...(data.fechaFinPlaneacion && { fechaFinPlaneacion: data.fechaFinPlaneacion }),
@@ -2434,11 +2299,17 @@ export function GestionAuditoriasKanbanSimple() {
         // Etapa 3: Comunicación
         ...(fechaInicioComunicacionCalculada && { fechaInicioComunicacion: fechaInicioComunicacionCalculada }),
         // ✅ Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
-        estadoKanban: 'Plan Anual',
+        estadoKanban: 'Programa Anual',
+        // ✅ Vinculación con Plan Anual
+        planAnualId: data.planAnualId || vigenciaCtx?.planActivoId || undefined,
+        planAnualAño: data.planAnualAño || vigenciaActiva || undefined,
+        planAnualVigencia: data.planAnualAño || vigenciaActiva || undefined,
+        vigencia: data.planAnualAño || vigenciaActiva || undefined,
+        vinculadaPlanAnual: data.vinculadaPlanAnual ?? Boolean(vigenciaCtx?.planActivoId),
       };
-      
+
       const nuevaAuditoriaId = await crearAuditoriaBackend(datosBackend);
-      
+
       if (nuevaAuditoriaId) {
         // Crear hallazgos preliminares si se incluyeron en el formulario
         if (data.incluirHallazgosPreliminares && data.hallazgos?.length > 0) {
@@ -2475,10 +2346,10 @@ export function GestionAuditoriasKanbanSimple() {
             ? `"${data.titulo}" con ${data.hallazgos.length} hallazgo(s) preliminar(es)`
             : `"${data.titulo}" registrada correctamente`
         });
-        
+
         // Recargar auditorías desde el backend
         await recargarAuditorias();
-        
+
         setModalFormularioOpen(false);
       } else {
         toast.error('Error al crear auditoría', {
@@ -2500,21 +2371,23 @@ export function GestionAuditoriasKanbanSimple() {
 
   const handleActualizarAuditoria = async (data: AuditoriaFormData) => {
     if (!auditoriaParaEditar) return;
-    
+
     console.log('Actualizar auditoría:', auditoriaParaEditar.id, data);
-    
+
     // Auto-calcular fechas de inicio de etapas si no están definidas
     const fechaFinPlaneacion = (data as any).fechaFinPlaneacion;
     const fechaFinEjecucion = (data as any).fechaFinEjecucion;
     const fechaInicioEjecucionCalculada = (data as any).fechaInicioEjecucion || fechaFinPlaneacion;
     const fechaInicioComunicacionCalculada = (data as any).fechaInicioComunicacion || fechaFinEjecucion;
-    
+
     // ✅ Enviar actualización al backend con TODAS las fechas del cronograma
     const datosBackend = {
       nombre: data.titulo,
       descripcion: data.descripcion,
       territorial: data.territorial,
       sede: data.territorial, // Sincronizar sede con territorial
+      tipo: (data as any).tipo,
+      procesoAuditado: (data as any).procesoAuditado,
       calificacionRiesgo: data.riesgo,
       // Etapa 1: Planeación
       fechaInicio: data.fechaInicio,
@@ -2527,49 +2400,58 @@ export function GestionAuditoriasKanbanSimple() {
       fechaFin: data.fechaFin,
       alcance: data.descripcion, // Usar descripción como alcance si no hay campo separado
       // Incluir objetivos y criterios como arrays de strings
-      objetivos: (data.objetivos || []).map((obj: any) => 
+      objetivos: (data.objetivos || []).map((obj: any) =>
         typeof obj === 'string' ? obj : obj.descripcion
       ),
-      criterios: (data.criterios || []).map((crit: any) => 
+      criterios: (data.criterios || []).map((crit: any) =>
         typeof crit === 'string' ? crit : (crit.criterio || crit.descripcion)
       ),
+      // Responsable del Área Auditada
+      responsableAreaNombre: (data as any).responsableAreaNombre,
+      responsableAreaCargo: (data as any).responsableAreaCargo,
+      responsableAreaEmail: (data as any).responsableAreaEmail,
     };
 
     const exito = await actualizarAuditoriaBackend(auditoriaParaEditar.id, datosBackend);
-    
+
     if (exito) {
       // Actualizar en el estado local también para UI inmediata
       setAuditorias(prev =>
         prev.map(aud =>
           aud.id === auditoriaParaEditar.id
             ? {
-                ...aud,
-                titulo: data.titulo,
-                descripcion: data.descripcion,
-                territorial: data.territorial,
-                riesgo: data.riesgo as RiesgoAuditoria,
-                // Etapa 1: Planeación
-                fechaInicio: data.fechaInicio,
-                fechaFinPlaneacion: (data as any).fechaFinPlaneacion,
-                // Etapa 2: Ejecución
-                fechaInicioEjecucion: (data as any).fechaInicioEjecucion,
-                fechaFinEjecucion: (data as any).fechaFinEjecucion,
-                // Etapa 3: Comunicación
-                fechaInicioComunicacion: (data as any).fechaInicioComunicacion,
-                fechaFin: data.fechaFin,
-                objetivos: (data.objetivos || []).map((obj: any, i: number) => ({
-                  id: obj.id || `obj-${i}`,
-                  descripcion: typeof obj === 'string' ? obj : (obj.descripcion || '')
-                })),
-                criterios: (data.criterios || []).map((crit: any, i: number) => ({
-                  id: crit.id || `crit-${i}`,
-                  criterio: typeof crit === 'string' ? crit : (crit.criterio || crit.descripcion || '')
-                }))
-              }
+              ...aud,
+              titulo: data.titulo,
+              descripcion: data.descripcion,
+              territorial: data.territorial,
+              tipo: (data as any).tipo || aud.tipo,
+              areaObjetivo: (data as any).procesoAuditado || aud.areaObjetivo,
+              riesgo: data.riesgo as RiesgoAuditoria,
+              // Etapa 1: Planeación
+              fechaInicio: data.fechaInicio,
+              fechaFinPlaneacion: (data as any).fechaFinPlaneacion,
+              // Etapa 2: Ejecución
+              fechaInicioEjecucion: (data as any).fechaInicioEjecucion,
+              fechaFinEjecucion: (data as any).fechaFinEjecucion,
+              // Etapa 3: Comunicación
+              fechaInicioComunicacion: (data as any).fechaInicioComunicacion,
+              fechaFin: data.fechaFin,
+              objetivos: (data.objetivos || []).map((obj: any, i: number) => ({
+                id: obj.id || `obj-${i}`,
+                descripcion: typeof obj === 'string' ? obj : (obj.descripcion || '')
+              })),
+              criterios: (data.criterios || []).map((crit: any, i: number) => ({
+                id: crit.id || `crit-${i}`,
+                criterio: typeof crit === 'string' ? crit : (crit.criterio || crit.descripcion || '')
+              })),
+              responsableAreaNombre: (data as any).responsableAreaNombre,
+              responsableAreaCargo: (data as any).responsableAreaCargo,
+              responsableAreaEmail: (data as any).responsableAreaEmail,
+            }
             : aud
         )
       );
-      
+
       // Solo cerrar el modal si fue exitoso
       setModalEdicionOpen(false);
       setAuditoriaParaEditar(null);
@@ -2606,7 +2488,72 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
-  const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
+  /**
+   * Valida que al menos un Plan de Mejoramiento de la auditoría esté aprobado
+   * (o más adelante en el ciclo) antes de permitir el paso a Seguimiento.
+   * Si la auditoría no tiene hallazgos no requiere plan.
+   */
+  const validarPlanAprobadoParaSeguimiento = async (
+    auditoriaId: string,
+  ): Promise<boolean> => {
+    try {
+      const auditoria = auditorias.find(a => a.id === auditoriaId);
+      const tieneHallazgos =
+        (typeof auditoria?.hallazgos === 'number' && auditoria.hallazgos > 0) ||
+        (Array.isArray((auditoria as any)?.hallazgos) && (auditoria as any).hallazgos.length > 0);
+      if (!tieneHallazgos) return true;
+
+      const planes = await controlInternoService
+        .getPlanesMejoramientoByAuditoria(auditoriaId)
+        .catch(() => [] as any[]);
+
+      if (!Array.isArray(planes) || planes.length === 0) {
+        toast.error('Sin Plan de Mejoramiento', {
+          description:
+            'Esta auditoría tiene hallazgos pero no existe un Plan de Mejoramiento. Cree y apruebe el plan antes de pasar a Seguimiento.',
+          duration: 6000,
+        });
+        return false;
+      }
+
+      const estadosValidos = new Set([
+        'aprobado',
+        'en_ejecucion',
+        'en-ejecucion',
+        'en ejecucion',
+        'en_seguimiento',
+        'en-seguimiento',
+        'completado',
+        'cumplido',
+      ]);
+      const algunoAprobado = planes.some((p: any) => {
+        const estado = String(p?.estado || '')
+          .trim()
+          .toLowerCase()
+          .replace(/-/g, '_');
+        return estadosValidos.has(estado.replace(/_/g, ' ')) || estadosValidos.has(estado);
+      });
+
+      if (!algunoAprobado) {
+        const codigos = planes.map((p: any) => p?.codigo).filter(Boolean).join(', ');
+        toast.error('Plan de Mejoramiento sin aprobar', {
+          description: `Debe aprobar el plan ${codigos || 'asociado a la auditoría'} antes de pasar a Seguimiento. Vaya al módulo Planes de Mejoramiento, abra el detalle y pulse "Aprobar Plan".`,
+          duration: 8000,
+        });
+        return false;
+      }
+      return true;
+    } catch {
+      toast.error('No se pudo verificar el Plan de Mejoramiento');
+      return false;
+    }
+  };
+
+  const handleDrop = async (auditoriaId: Auditoria | string, nuevoEstado: EstadoAuditoria) => {
+    // Si viene del HTML5 nativo es un string (ID), si es react-dnd es objeto
+    const item = typeof auditoriaId === 'string' ? auditorias.find(a => a.id === auditoriaId) : auditoriaId;
+    if (!item) return;
+
     if (item.estado === nuevoEstado) return;
 
     // 🎯 FINALIZACIÓN: Abrir modal para solicitar documento de cierre obligatorio
@@ -2620,6 +2567,17 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA AL ARRASTRAR) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      const tieneEquipo = Array.isArray(item.equipoAuditores) && item.equipoAuditores.length > 0;
+      const asignadoNombre = item.auditorAsignado?.nombre?.trim().toLowerCase();
+      const liderNombre = item.auditorLider?.nombre?.trim().toLowerCase();
+      
+      const tieneAsignado = asignadoNombre && asignadoNombre !== 'por asignar';
+      const tieneLider = liderNombre && liderNombre !== 'por asignar';
+
+      if (!tieneAsignado && !tieneLider && !tieneEquipo) {
+        console.warn(`[Kanban] Validación front-end saltada para asignación de auditor. Lider: ${liderNombre}, Asignado: ${asignadoNombre}, Equipo: ${item.equipoAuditores?.length}`);
+        // Se ha deshabilitado el bloqueo frontal ('return') para permitir que el backend valide el estado real
+      }
       if (!(await validarDocumentosEtapa(item.id, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
     if (estadoAnterior === 'Ejecución' && nuevoEstado === 'Comunicación') {
@@ -2627,13 +2585,14 @@ export function GestionAuditoriasKanbanSimple() {
     }
     if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
       if (!(await validarDocumentosEtapa(item.id, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+      if (!(await validarPlanAprobadoParaSeguimiento(item.id))) return;
     }
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-    
+
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
-      'Plan Anual': null,
+      'Programa Anual': null,
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
       'Comunicación': 'Comunicación',
@@ -2642,34 +2601,34 @@ export function GestionAuditoriasKanbanSimple() {
     };
 
     const faseActual = estadoAFase[estadoAnterior];
-    
+
     // Mostrar advertencia si hay tareas pendientes (pero NO bloquear)
     if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
       const tareasPendientes = contarTareasPendientesPorFase(item.id, faseActual);
-      
+
       if (tareasPendientes > 0) {
         console.log(`⚠️ [handleDrop] ${tareasPendientes} tareas pendientes en fase ${faseActual}, continuando de todos modos`);
       }
     }
-    
+
     // ✅ NUEVO: Mapear estado Kanban a fase del backend
     const faseBackend = mapearEstadoAFaseBackend(nuevoEstado);
-    
+
     console.log(`[handleDrop] Cambiando ${item.codigo} de ${estadoAnterior} a ${nuevoEstado} (fase backend: ${faseBackend})`);
-    
+
     // ✅ NUEVO: Llamar al backend para cambiar la fase
     const exito = await cambiarFaseBackend(item.id, faseBackend);
-    
+
     if (exito) {
       // Actualizar UI local
       setAuditorias(prev =>
         prev.map(aud =>
           aud.id === item.id
-            ? { 
-                ...aud, 
-                estado: nuevoEstado,
-                ultimaModificacion: new Date()
-              }
+            ? {
+              ...aud,
+              estado: nuevoEstado,
+              ultimaModificacion: new Date()
+            }
             : aud
         )
       );
@@ -2686,8 +2645,23 @@ export function GestionAuditoriasKanbanSimple() {
         estadoAnterior: estadoAnterior,
         estadoNuevo: nuevoEstado
       };
-      
+
       console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
+
+      // 🚀 DISPARAR EVENTO AL BACKEND (Notificaciones Campanita + Email)
+      try {
+        await notificationsService.triggerEvent('EVT-KANBAN-001', {
+          auditoriaId: item.id,
+          auditoriaCodigo: item.codigo,
+          nuevoEstado: nuevoEstado,
+          tituloCustom: 'Auditoría Movida',
+          mensajeCustom: `La auditoría ${item.codigo} ha sido movida a la etapa: ${nuevoEstado}.`,
+          url_accion: `/control-interno/auditorias/${item.id}`,
+        });
+        console.log(`✅ Evento KANBAN_MOVE disparado exitosamente al backend.`);
+      } catch (err) {
+        console.error('❌ Error al disparar evento al Shell:', err);
+      }
 
       toast.success(`✅ ${item.codigo} movido a ${nuevoEstado}`, {
         description: `Estado actualizado en el servidor`
@@ -2708,7 +2682,7 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // ✅ MEJORADO: Ahora envía el estado Kanban directamente al backend
-  // El backend soporta todos los estados: 'Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
+  // El backend soporta todos los estados: 'Programa Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
   const mapearEstadoAFaseBackend = (estado: string): string => {
     // Ahora enviamos el estado Kanban directamente, el backend lo normaliza
     return estado;
@@ -2732,6 +2706,17 @@ export function GestionAuditoriasKanbanSimple() {
 
     // ============ VALIDACIÓN DOCUMENTOS POR ETAPA (BLOQUEA) ============
     if (estadoAnterior === 'Planeación' && nuevoEstado === 'Ejecución') {
+      const tieneEquipo = Array.isArray(auditoriaActual.equipoAuditores) && auditoriaActual.equipoAuditores.length > 0;
+      const asignadoNombre = auditoriaActual.auditorAsignado?.nombre?.trim().toLowerCase();
+      const liderNombre = auditoriaActual.auditorLider?.nombre?.trim().toLowerCase();
+      
+      const tieneAsignado = asignadoNombre && asignadoNombre !== 'por asignar';
+      const tieneLider = liderNombre && liderNombre !== 'por asignar';
+
+      if (!tieneAsignado && !tieneLider && !tieneEquipo) {
+        console.warn(`[Kanban] Validación front-end saltada (cambio estado). Lider: ${liderNombre}, Asignado: ${asignadoNombre}, Equipo: ${auditoriaActual.equipoAuditores?.length}`);
+        // Bloqueo frontal deshabilitado – el backend valida el estado real
+      }
       if (!(await validarDocumentosEtapa(auditoriaId, 'planeacion', 'Planeación', 'Ejecución'))) return;
     }
     if (estadoAnterior === 'Ejecución' && nuevoEstado === 'Comunicación') {
@@ -2739,11 +2724,12 @@ export function GestionAuditoriasKanbanSimple() {
     }
     if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
       if (!(await validarDocumentosEtapa(auditoriaId, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+      if (!(await validarPlanAprobadoParaSeguimiento(auditoriaId))) return;
     }
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
-      'Plan Anual': null,
+      'Programa Anual': null,
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
       'Comunicación': 'Comunicación',
@@ -2752,11 +2738,11 @@ export function GestionAuditoriasKanbanSimple() {
     };
 
     const faseActual = estadoAFase[estadoAnterior];
-    
+
     // Mostrar advertencia si hay tareas pendientes (pero NO bloquear)
     if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
       const tareasPendientes = contarTareasPendientesPorFase(auditoriaId, faseActual);
-      
+
       if (tareasPendientes > 0) {
         console.log(`⚠️ [handleGuardarCambioEstado] ${tareasPendientes} tareas pendientes en fase ${faseActual}, continuando de todos modos`);
       }
@@ -2808,10 +2794,10 @@ export function GestionAuditoriasKanbanSimple() {
       prev.map(aud =>
         aud.id === auditoriaId
           ? {
-              ...aud,
-              auditorLider: auditorLider,
-              auditorAsignado: auditorAsignado
-            }
+            ...aud,
+            auditorLider: auditorLider,
+            auditorAsignado: auditorAsignado
+          }
           : aud
       )
     );
@@ -2848,8 +2834,8 @@ export function GestionAuditoriasKanbanSimple() {
           cargoAuditorLider = auditoria.auditorLider.cargo || '';
         } else if (typeof auditoria.auditorLider === 'string') {
           // Verificar si es un ID y buscar en la lista de auditores
-          const auditorEncontrado = auditoresBackend?.find(a => 
-            String(a.id) === auditoria.auditorLider || 
+          const auditorEncontrado = auditoresBackend?.find(a =>
+            String(a.id) === auditoria.auditorLider ||
             a.nombre === auditoria.auditorLider
           );
           if (auditorEncontrado) {
@@ -2862,7 +2848,7 @@ export function GestionAuditoriasKanbanSimple() {
       }
       // También verificar si existe auditorLiderId y buscar por ese campo
       if (nombreAuditorLider === 'No asignado' && (auditoria as any).auditorLiderId) {
-        const auditorPorId = auditoresBackend?.find(a => 
+        const auditorPorId = auditoresBackend?.find(a =>
           String(a.id) === String((auditoria as any).auditorLiderId)
         );
         if (auditorPorId) {
@@ -2877,17 +2863,17 @@ export function GestionAuditoriasKanbanSimple() {
         equipoFormateado = auditoria.equipoAuditores.map((auditor: any) => {
           if (typeof auditor === 'string') {
             // Buscar en la lista de auditores si es un ID
-            const auditorEncontrado = auditoresBackend?.find(a => 
+            const auditorEncontrado = auditoresBackend?.find(a =>
               String(a.id) === auditor || a.nombre === auditor
             );
-            return { 
-              nombre: auditorEncontrado?.nombre || auditor, 
-              rol: auditorEncontrado?.cargo || 'Auditor' 
+            return {
+              nombre: auditorEncontrado?.nombre || auditor,
+              rol: auditorEncontrado?.cargo || 'Auditor'
             };
           } else if (typeof auditor === 'object' && auditor !== null) {
-            return { 
-              nombre: auditor.nombre || auditor.name || auditor.id || 'Auditor', 
-              rol: auditor.rol || auditor.cargo || 'Auditor' 
+            return {
+              nombre: auditor.nombre || auditor.name || auditor.id || 'Auditor',
+              rol: auditor.rol || auditor.cargo || 'Auditor'
             };
           }
           return { nombre: 'Auditor', rol: 'Auditor' };
@@ -2942,7 +2928,7 @@ export function GestionAuditoriasKanbanSimple() {
       // Filtrar auditorías según filtros activos
       let auditoriasExportar = auditorias;
       if (busqueda) {
-        auditoriasExportar = auditoriasExportar.filter(a => 
+        auditoriasExportar = auditoriasExportar.filter(a =>
           a.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
           a.codigo.toLowerCase().includes(busqueda.toLowerCase())
         );
@@ -3004,7 +2990,7 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // ============ INTEGRACIÓN: CREAR PLAN DE MEJORAMIENTO ============
-  
+
   const handleCrearPlan = async (auditoria: Auditoria) => {
     try {
       if (auditoria.estado !== 'Comunicación') {
@@ -3056,13 +3042,13 @@ export function GestionAuditoriasKanbanSimple() {
         plazoFormulacion: 30,
         hallazgos: hallazgos
       };
-      
+
       // 4. Agregar al context
       agregarAuditoriaConHallazgos(auditoriaParaPlan);
-      
+
       // 5. Seleccionar para formulación
       seleccionarAuditoria(auditoriaParaPlan);
-      
+
       // 6. Notificación
       toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
         description: `${hallazgos.length} hallazgos detectados. Ahora puede formular acciones correctivas.`,
@@ -3078,11 +3064,11 @@ export function GestionAuditoriasKanbanSimple() {
       console.error('Error en handleCrearPlan:', err);
       toast.error('Error al crear plan de mejoramiento');
     }
-    
+
     // Nota: La navegación al módulo de Planes se hace desde ControlInternoFull
     // cuando detecta que hay una auditoría seleccionada
   };
-  
+
   // Función auxiliar: calcular fecha límite (30 días después de finalización) - ISO 8601
   const calcularFechaLimitePlan = (fechaFin: string): string => {
     const [dia, mes, anio] = fechaFin.split('/');
@@ -3090,11 +3076,11 @@ export function GestionAuditoriasKanbanSimple() {
     fecha.setDate(fecha.getDate() + 30);
     return fecha.toISOString().split('T')[0]; // YYYY-MM-DD
   };
-  
+
   // Función auxiliar: generar hallazgos de ejemplo basados en el número
   const generarHallazgosEjemplo = (numeroHallazgos: number, codigoAuditoria: string): HallazgoAuditoria[] => {
     const hallazgos: HallazgoAuditoria[] = [];
-    
+
     for (let i = 1; i <= numeroHallazgos; i++) {
       hallazgos.push({
         id: `h-${codigoAuditoria}-${i}`,
@@ -3118,7 +3104,7 @@ export function GestionAuditoriasKanbanSimple() {
         ]
       });
     }
-    
+
     return hallazgos;
   };
 
@@ -3156,7 +3142,7 @@ export function GestionAuditoriasKanbanSimple() {
 
     if (tipoAccionConfirmacion === 'archivar') {
       setAuditorias(prev => prev.filter(aud => aud.id !== auditoriaId));
-      
+
       toast.success(`${auditoria.codigo} archivada`, {
         description: 'La auditoría se movió al archivo histórico',
         duration: 4000
@@ -3170,7 +3156,7 @@ export function GestionAuditoriasKanbanSimple() {
       });
     } else if (tipoAccionConfirmacion === 'eliminar') {
       setAuditorias(prev => prev.filter(aud => aud.id !== auditoriaId));
-      
+
       toast.success(`${auditoria.codigo} eliminada permanentemente`, {
         description: 'La auditoría y todos sus datos han sido eliminados',
         duration: 5000
@@ -3209,11 +3195,11 @@ export function GestionAuditoriasKanbanSimple() {
   // 🚀 NUEVAS FUNCIONES DE NAVEGACIÓN UX CLASE MUNDIAL
   const navegarColumna = (direccion: 'prev' | 'next') => {
     if (!scrollContainerRef.current) return;
-    
+
     const container = scrollContainerRef.current;
     const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
     const scrollAmount = direccion === 'next' ? columnWidth : -columnWidth;
-    
+
     container.scrollBy({
       left: scrollAmount,
       behavior: 'smooth'
@@ -3222,15 +3208,15 @@ export function GestionAuditoriasKanbanSimple() {
 
   const scrollToColumna = (index: number) => {
     if (!scrollContainerRef.current) return;
-    
+
     const container = scrollContainerRef.current;
     const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
-    
+
     container.scrollTo({
       left: columnWidth * index,
       behavior: 'smooth'
     });
-    
+
     setColumnaActiva(index);
   };
 
@@ -3238,7 +3224,7 @@ export function GestionAuditoriasKanbanSimple() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (vistaActiva !== 'kanban' || modoVista !== 'confortable') return;
-      
+
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         navegarColumna('prev');
@@ -3278,15 +3264,41 @@ export function GestionAuditoriasKanbanSimple() {
   }
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="space-y-3 w-full">
+    <div className="space-y-3 w-full">
         <ModuleHeaderBar
           title="Auditorías OCI"
-          subtitle={`${auditoriasFiltradas.length} auditorías · Sistema de Gestión`}
+          subtitle={`${auditoriasFiltradas.length} auditorías${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''} · Sistema de Gestión`}
           icon={<ClipboardCheck className="w-5 h-5 text-white" />}
           color="#F97316"
           rightContent={<TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />}
         />
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* ALERTA — Plan Anual pendiente de aprobación                   */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {(() => {
+          const estadoPlan = vigenciaCtx?.planActivo?.estado;
+          const planAprobado = isPlanAprobado(estadoPlan);
+          if (!planAprobado && !vigenciaCtx?.loading && vigenciaCtx?.planActivo) {
+            return (
+              <div className="flex items-start gap-3 p-2 bg-amber-50 border border-amber-300 rounded-xl shadow-sm">
+                <div className="flex-shrink-0 mt-0.5">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800">
+                    Plan Anual pendiente de aprobación
+                  </p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    El Plan Anual de Auditoría (Vigencia {vigenciaCtx.vigencia}) se encuentra en estado <strong>{etiquetaEstadoPlan(estadoPlan)}</strong>.
+                    Debe ser aprobado por el Comité PAI antes de poder iniciar auditorías.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         {/* ═══════════════════════════════════════════════════════════════ */}
         {/* TOOLBAR — Controles de vista, búsqueda, filtros               */}
@@ -3296,18 +3308,16 @@ export function GestionAuditoriasKanbanSimple() {
             <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
               <button
                 onClick={() => setVistaActiva('kanban')}
-                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
-                  vistaActiva === 'kanban' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
-                }`}
+                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${vistaActiva === 'kanban' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+                  }`}
               >
                 <Columns3 className="w-4 h-4" />
                 Kanban
               </button>
               <button
                 onClick={() => setVistaActiva('lista')}
-                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
-                  vistaActiva === 'lista' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-600 hover:bg-white'
-                }`}
+                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${vistaActiva === 'lista' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-600 hover:bg-white'
+                  }`}
               >
                 <List className="w-4 h-4" />
                 Lista
@@ -3332,44 +3342,24 @@ export function GestionAuditoriasKanbanSimple() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none font-medium text-sm appearance-none bg-white cursor-pointer"
               >
                 <option value="Todas las Territoriales">Todas</option>
-                <option value="Nacional">Nacional</option>
-                <option value="Antioquia">Antioquia</option>
-                <option value="Atlántico">Atlántico</option>
-                <option value="Bogotá">Bogotá</option>
-                <option value="Valle del Cauca">Valle del Cauca</option>
+                <option value="Sede Central">🏛️ Sede Central</option>
+                {seccionalesKanban.map((s) => (
+                  <option key={s.id} value={s.nombre}>
+                    📍 {s.nombre}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="gap-1.5 border-2 border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00] hover:text-white font-bold transition-all text-sm px-3 py-2"
               onClick={handleExportarTodo}
             >
               <Download className="w-4 h-4" />
               Exportar
             </Button>
-
-            {vistaActiva === 'kanban' && (
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
-                <button
-                  onClick={() => setModoVista('ajustado')}
-                  className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
-                    modoVista === 'ajustado' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
-                  }`}
-                >
-                  Compacto
-                </button>
-                <button
-                  onClick={() => setModoVista('confortable')}
-                  className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
-                    modoVista === 'confortable' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
-                  }`}
-                >
-                  Confortable
-                </button>
-              </div>
-            )}
           </div>
         </Card>
 
@@ -3398,13 +3388,11 @@ export function GestionAuditoriasKanbanSimple() {
                       <span className="text-sm md:text-base">→</span>
                     </div>
                   </div>
-                  
-                  {/* Sombras laterales - Indican contenido oculto */}
-                  <div className="hidden md:block absolute left-0 top-0 bottom-6 w-6 md:w-8 bg-gradient-to-r from-white via-gray-100/60 to-transparent z-10 pointer-events-none" />
-                  <div className="hidden md:block absolute right-0 top-0 bottom-6 w-6 md:w-8 bg-gradient-to-l from-white via-gray-100/60 to-transparent z-10 pointer-events-none" />
-                  
+
+                  {/* Bordes laterales sutiles — sin blur ni gradientes borrosos */}
+
                   {/* Indicador de posición - Minimapa visual */}
-                  <div className="hidden md:flex lg:hidden absolute bottom-8 left-1/2 -translate-x-1/2 z-30 gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full shadow-lg border border-gray-200">
+                  <div className="hidden md:flex lg:hidden absolute bottom-8 left-1/2 -translate-x-1/2 z-30 gap-1 bg-white px-2 py-1 rounded-full shadow-lg border border-gray-200">
                     {[0, 1, 2, 3, 4].map((index) => (
                       <div
                         key={index}
@@ -3417,326 +3405,97 @@ export function GestionAuditoriasKanbanSimple() {
                   </div>
                 </>
               )}
-              
+
               {/* Indicador de scroll a la derecha - Solo en desktop con modo confortable */}
-              {showScrollIndicator && modoVista === 'confortable' && (
-                <div className="hidden lg:block absolute right-0 top-0 bottom-6 w-24 bg-gradient-to-l from-white via-gray-50/80 to-transparent z-20 pointer-events-none">
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-bounce">
-                    <div className="flex items-center gap-2 bg-gradient-to-r from-[#2962FF] to-[#003DA5] text-white px-4 py-2 rounded-full text-sm font-bold shadow-2xl border-2 border-white">
-                      <span className="text-lg">→</span>
-                      <span>Deslizar</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <div 
+                <>{/* Indicador de scroll removido — diseño limpio sin blur */}</>
+
+              <div
                 ref={scrollContainerRef}
-                className="overflow-x-auto overflow-y-hidden pb-3 px-2 md:px-3 scroll-smooth"
+                className="gestion-auditorias-kanban-scroll overflow-x-auto overflow-y-hidden pb-3 px-2 md:px-3 scroll-smooth"
                 style={{
                   scrollbarWidth: 'thin',
                   scrollbarColor: '#2962FF #E5E7EB',
                   WebkitOverflowScrolling: 'touch',
-                  ...(typeof window !== 'undefined' && window.innerWidth >= 768 
-                    ? { 
-                        height: window.innerHeight <= 800 
-                          ? 'calc(100vh - 200px)'  // Pantallas muy pequeñas
-                          : window.innerHeight <= 900 
-                            ? 'calc(100vh - 220px)'  // 12" típicas
-                            : window.innerHeight <= 1080
-                              ? 'calc(100vh - 260px)'  // HD
-                              : 'calc(100vh - 300px)'  // 4K
-                      }
+                  ...(typeof window !== 'undefined' && window.innerWidth >= 768
+                    ? {
+                      height: window.innerHeight <= 800
+                        ? 'calc(100vh - 120px)'  // Pantallas muy pequeñas
+                        : window.innerHeight <= 900
+                          ? 'calc(100vh - 130px)'  // 12" típicas
+                          : window.innerHeight <= 1080
+                            ? 'calc(100vh - 140px)'  // HD
+                            : 'calc(100vh - 160px)'  // 4K
+                    }
                     : {})
                 }}
               >
-                <style>{`
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* SCROLL HORIZONTAL (Navegación entre columnas) - SIEMPRE VISIBLE */
-                  /* ══════════════════════════════════════════════════════════ */
-                  .overflow-x-auto {
-                    overflow-x: auto !important;
-                    overflow-y: hidden !important;
-                    -webkit-overflow-scrolling: touch !important;
-                  }
-                  
-                  /* CRÍTICO: En tablets/desktop NUNCA hacer wrap */
-                  @media (min-width: 768px) {
-                    .overflow-x-auto > div {
-                      flex-wrap: nowrap !important;
-                      display: flex !important;
-                    }
-                  }
-                  
-                  .overflow-x-auto::-webkit-scrollbar {
-                    height: 12px;
-                    display: block !important;
-                  }
-                  .overflow-x-auto::-webkit-scrollbar-track {
-                    background: #F3F4F6;
-                    border-radius: 8px;
-                    margin: 0 8px;
-                  }
-                  .overflow-x-auto::-webkit-scrollbar-thumb {
-                    background: linear-gradient(to right, #2962FF, #003DA5);
-                    border-radius: 8px;
-                    border: 2px solid #F3F4F6;
-                  }
-                  .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-                    background: linear-gradient(to right, #003DA5, #2962FF);
-                  }
-                  
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* SCROLL VERTICAL (Dentro de cada columna) - UNIFICADO */
-                  /* ══════════════════════════════════════════════════════════ */
-                  .overflow-y-auto::-webkit-scrollbar {
-                    width: 8px;
-                    display: block !important;
-                  }
-                  .overflow-y-auto::-webkit-scrollbar-track {
-                    background: #F9FAFB;
-                    border-radius: 8px;
-                  }
-                  .overflow-y-auto::-webkit-scrollbar-thumb {
-                    background: linear-gradient(to bottom, #F97316, #F57C00);
-                    border-radius: 8px;
-                    border: 2px solid #F9FAFB;
-                  }
-                  .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-                    background: linear-gradient(to bottom, #EA580C, #F97316);
-                  }
-                  
-                  /* Optimización responsive para diferentes pantallas */
-                  @media (max-width: 640px) {
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 10px;
-                    }
-                  }
-                  
-                  @media (min-width: 768px) and (max-width: 1279px) {
-                    /* Tablets y pantallas 10-11 pulgadas */
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 14px;
-                    }
-                    .overflow-x-auto::-webkit-scrollbar-track {
-                      background: #E5E7EB;
-                    }
-                    .overflow-x-auto::-webkit-scrollbar-thumb {
-                      border: 3px solid #E5E7EB;
-                    }
-                  }
-                  
-                  @media (min-width: 1280px) {
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 14px;
-                    }
-                  }
-                  
-                  @media (min-width: 3840px) {
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 18px;
-                    }
-                  }
-                  
-                  /* Mejorar scroll en móvil y tablets */
-                  @media (max-width: 1023px) {
-                    .overflow-x-auto, .overflow-y-auto {
-                      -webkit-overflow-scrolling: touch;
-                      scrollbar-width: thin;
-                    }
-                  }
-                  
-                  /* Prevenir colapso de columnas y mantener tamaño estable */
-                  @media (min-width: 768px) {
-                    .md\\:flex-1 {
-                      flex-grow: 1;
-                      flex-shrink: 1;
-                      flex-basis: 0%;
-                      min-width: 264px;
-                    }
-                    
-                    /* Asegurar min-width en columnas Kanban */
-                    .md\\:min-w-\\[264px\\] {
-                      min-width: 264px !important;
-                    }
-                  }
-                  
-                  /* Asegurar que el contenedor no cambie de tamaño */
-                  .space-y-3 > *, .space-y-4 > *, .space-y-5 > * {
-                    flex-shrink: 0;
-                  }
-                  
-                  /* Optimización específica para tablets portrait (700-768px) */
-                  @media (min-width: 640px) and (max-width: 767px) {
-                    /* Mantener layout vertical en tablets portrait */
-                    .flex-col {
-                      width: 100%;
-                    }
-                    
-                    /* Reducir padding en tablets portrait */
-                    .p-3, .p-4 {
-                      padding: 0.75rem;
-                    }
-                    
-                    /* Ajustar fuentes para mejor legibilidad */
-                    .text-xs {
-                      font-size: 0.75rem;
-                    }
-                  }
-                  
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* SISTEMA DE SCROLL DUAL - TABLETS Y DESKTOP (768px+) */
-                  /* ══════════════════════════════════════════════════════════ */
-                  @media (min-width: 768px) {
-                    /* Contenedor principal: SOLO scroll horizontal */
-                    .overflow-x-auto {
-                      overflow-x: auto !important;
-                      overflow-y: hidden !important;
-                      display: flex !important;
-                    }
-                    
-                    /* Columnas: altura adaptativa - se controla vía inline style */
-                    .flex.flex-col.bg-white.rounded-xl {
-                      display: flex;
-                      flex-direction: column;
-                    }
-                    
-                    /* Asegurar que el contenedor de tarjetas use flex-1 */
-                    .flex-1.overflow-y-auto {
-                      flex: 1;
-                      overflow-y: auto !important;
-                      overflow-x: hidden;
-                    }
-                  }
-                  
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* OPTIMIZACIONES RESPONSIVE PARA PANTALLAS PEQUEÑAS/MEDIANAS */
-                  /* ══════════════════════════════════════════════════════════ */
-                  
-                  /* Tablet pequeña (768-1023px): Diseño compacto */
-                  @media (min-width: 768px) and (max-width: 1023px) {
-                    /* Espaciado reducido */
-                    .space-y-3 {
-                      gap: 0.5rem !important;
-                    }
-                    
-                    .p-3 {
-                      padding: 0.5rem !important;
-                    }
-                  }
-                  
-                  /* Tablet (1024-1365px): Diseño medio */
-                  @media (min-width: 1024px) and (max-width: 1365px) {
-                    .space-y-3 {
-                      gap: 0.625rem !important;
-                    }
-                  }
-                  
-                  /* Pantallas con altura ≤ 900px: Optimizar espacio vertical */
-                  @media (min-width: 768px) and (max-height: 900px) {
-                    /* Reducir espaciado vertical */
-                    .space-y-3 {
-                      gap: 0.5rem !important;
-                    }
-                    
-                    .space-y-4 {
-                      gap: 0.625rem !important;
-                    }
-                    
-                    /* Padding más compacto */
-                    .p-3 {
-                      padding: 0.625rem !important;
-                    }
-                    
-                    .p-4 {
-                      padding: 0.75rem !important;
-                    }
-                    
-                    /* Scrollbar horizontal delgado */
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 8px !important;
-                    }
-                    
-                    /* Headers más compactos */
-                    .border-b-2 {
-                      padding-top: 0.5rem !important;
-                      padding-bottom: 0.5rem !important;
-                    }
-                  }
-                  
-                  /* Optimización para pantallas 10-11-12 pulgadas (768-1440px) */
-                  @media (min-width: 768px) and (max-width: 1440px) {
-                    /* Asegurar scroll visible */
-                    .overflow-x-auto {
-                      padding-bottom: 1rem;
-                    }
-                    
-                    /* 🔥 FORZAR: Columnas NO se comprimen NUNCA */
-                    .bg-white.rounded-xl.shadow-lg {
-                      flex-shrink: 0 !important;
-                      flex-grow: 0 !important;
-                    }
-                  }
-                  
-                  /* En móvil: sin restricciones de altura */
-                  @media (max-width: 767px) {
-                    .overflow-x-auto, .flex-1 {
-                      height: auto !important;
-                      max-height: none !important;
-                    }
-                  }
-                  
-                  @keyframes fadeInOut {
-                    0%, 100% { opacity: 0.3; }
-                    50% { opacity: 0.8; }
-                  }
-                `}</style>
-                <div 
-                  className={`flex pb-2 ${
-                    modoVista === 'ajustado' 
-                      ? 'flex-col md:flex-row gap-3 md:gap-2 lg:gap-3 md:items-stretch md:h-full w-full' 
-                      : 'flex-col md:flex-row gap-3 md:gap-3 lg:gap-4 xl:gap-4 md:items-start md:h-full w-full'
-                  }`}
+                <div
+                  className={`flex pb-2 ${modoVista === 'ajustado'
+                      ? 'flex-col md:flex-row gap-2 md:gap-2 lg:gap-3 xl:gap-4 md:items-stretch md:h-full w-full'
+                      : 'flex-col md:flex-row gap-3 md:gap-3 lg:gap-4 xl:gap-6 md:items-start md:h-full w-full'
+                    }`}
                   style={{
                     // ✅ SOLUCIÓN V5: Contenedor fluido sin restricciones
                     // Permite que las columnas flex-1 se distribuyan proporcionalmente
                   }}
                 >
                   {/* 🚀 MODO AJUSTADO: Todas las columnas visibles sin scroll | MODO CONFORTABLE: Scroll horizontal */}
-              {columnasKanban.map((columna) => {
-                const auditoriasColumna = auditoriasFiltradas.filter(
-                  (aud) => aud.estado === columna.id
-                );
+                  {columnasKanban.map((columna) => {
+                    const auditoriasColumna = auditoriasFiltradas.filter((aud) => {
+                      const audEstado = (aud.estado || '').toLowerCase().trim();
+                      const colId = (columna.id || '').toLowerCase().trim();
+                      // Normalizar acentos para comparación robusta
+                      const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                      const audNorm = normalize(audEstado);
+                      const colNorm = normalize(colId);
+                      
+                      // ✅ Columna "Programa Anual": agrupar variaciones de nombre
+                      if (colNorm.includes('programa anual') || colNorm.includes('plan anual')) {
+                        return audNorm === 'programa anual' || audNorm === 'plan anual';
+                      }
+                      
+                      // ✅ Columna "Planeación" / "Planificación": SOLO auditorías en planeación, NO programa anual
+                      if (colNorm === 'planificacion' || colNorm === 'planeacion') {
+                        return (
+                          audNorm === 'planificacion' ||
+                          audNorm === 'planeacion'
+                        );
+                      }
+                      
+                      // Para otras columnas: comparación directa normalizada
+                      return audNorm === colNorm;
+                    });
 
-                return (
-                  <ColumnaKanban
-                    key={columna.id}
-                    columna={columna}
-                    auditorias={auditoriasColumna}
-                    onVerDetalle={handleVerDetalle}
-                    onVerNotas={handleVerNotas}
-                    onVerHistorial={handleVerHistorial}
-                    onDrop={handleDrop}
-                    colapsada={columnasColapsadas.has(columna.id)}
-                    onToggleColapso={() => toggleColumnaColapsada(columna.id)}
-                    onCambiarEstado={handleCambiarEstado}
-                    onAsignarAuditor={handleAsignarAuditor}
-                    onEnviarAprobacion={handleEnviarAprobacion}
-                    onExportar={handleExportar}
-                    onArchivar={handleArchivar}
-                    onEliminar={handleEliminar}
-                    onCrearPlan={handleCrearPlan}
-                    puedeCrearPlan={puedeMostrarCrearPlan}
-                    onEditar={handleEditarAuditoria}
-                    tarjetasColapsadas={tarjetasColapsadas}
-                    onToggleColapsoTarjeta={toggleTarjetaColapsada}
-                    contarHallazgos={contarHallazgos}
-                    contarHallazgosCriticos={contarHallazgosCriticos}
-                    contarTareasPendientes={contarTareasPendientes}
-                    modoVista={modoVista}
-                  />
-                );
-              })}
+                    return (
+                      <ColumnaKanban
+                        key={columna.id}
+                        columna={columna}
+                        auditorias={auditoriasColumna}
+                        onVerDetalle={handleVerDetalle}
+                        onVerNotas={handleVerNotas}
+                        onVerHistorial={handleVerHistorial}
+                        onDrop={handleDrop}
+                        colapsada={columnasColapsadas.has(columna.id)}
+                        onToggleColapso={() => toggleColumnaColapsada(columna.id)}
+                        onCambiarEstado={handleCambiarEstado}
+                        onAsignarAuditor={handleAsignarAuditor}
+                        onEnviarAprobacion={handleEnviarAprobacion}
+                        onExportar={handleExportar}
+                        onArchivar={handleArchivar}
+                        onEliminar={handleEliminar}
+                        onCrearPlan={handleCrearPlan}
+                        puedeCrearPlan={puedeMostrarCrearPlan}
+                        onEditar={handleEditarAuditoria}
+                        tarjetasColapsadas={tarjetasColapsadas}
+                        onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                        contarHallazgos={contarHallazgos}
+                        contarHallazgosCriticos={contarHallazgosCriticos}
+                        contarTareasPendientes={contarTareasPendientes}
+                        contarMisTareasPendientes={contarMisTareasPendientes}
+                        modoVista={modoVista}
+                      />
+                    );
+                  })}
                 </div>
               </div>
 
@@ -3748,30 +3507,22 @@ export function GestionAuditoriasKanbanSimple() {
                   {/* Botones de navegación discretos — aparecen sutilmente al costado */}
                   <motion.button
                     onClick={() => navegarColumna('prev')}
-                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-6 h-12 rounded-r-lg opacity-30 hover:opacity-80 transition-opacity"
-                    style={{
-                      background: 'rgba(0,0,0,0.15)',
-                      color: '#374151'
-                    }}
+                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-16 rounded-r-lg bg-orange-100/90 text-orange-600 border border-orange-200 opacity-80 hover:opacity-100 hover:bg-orange-200 transition-all shadow-md"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     title="Columna anterior"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-5 h-5" />
                   </motion.button>
 
                   <motion.button
                     onClick={() => navegarColumna('next')}
-                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-6 h-12 rounded-l-lg opacity-30 hover:opacity-80 transition-opacity"
-                    style={{
-                      background: 'rgba(0,0,0,0.15)',
-                      color: '#374151'
-                    }}
+                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-16 rounded-l-lg bg-orange-100/90 text-orange-600 border border-orange-200 opacity-80 hover:opacity-100 hover:bg-orange-200 transition-all shadow-md"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     title="Columna siguiente"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-5 h-5" />
                   </motion.button>
 
                 </>
@@ -3781,442 +3532,365 @@ export function GestionAuditoriasKanbanSimple() {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════ */}
-        {/* VISTA LISTA - RESPONSIVE COMPLETA                             */}
+        {/* VISTA LISTA - PREMIUM TABLE LAYOUT                            */}
         {/* ═══════════════════════════════════════════════════════════════ */}
         {vistaActiva === 'lista' && (
-          <div className="space-y-3 sm:space-y-4">
-            {auditoriasFiltradas.map((auditoria) => (
-              <motion.div
-                key={auditoria.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-              >
-                <Card className="overflow-hidden hover:shadow-xl transition-all">
-                  <div className="p-3 sm:p-4 lg:p-5">
-                    {/* HEADER - RESPONSIVE */}
-                    <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-                      <div className="flex-1 w-full sm:w-auto">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <div className="flex items-center gap-2 text-gray-600">
-                            <FileText className="w-4 h-4 flex-shrink-0" style={{ color: '#1e5da8' }} />
-                            <span className="text-xs sm:text-sm font-semibold">{auditoria.codigo}</span>
-                          </div>
-                          <span className="text-gray-400">•</span>
-                          <span className="text-xs text-gray-500">Auditoría</span>
-                          {/* Semáforo */}
-                          <div 
-                            className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{
-                              background: auditoria.semaforo === 'verde' ? '#10B981' :
-                                         auditoria.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444'
-                            }}
-                            title={`Estado: ${auditoria.semaforo}`}
-                          />
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden md:overflow-visible">
+            <div className="overflow-x-auto md:overflow-visible">
+              <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+                <thead className="bg-gray-50/70">
+                  <tr>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Auditoría
+                    </th>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Fase
+                    </th>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Auditor Líder
+                    </th>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Cronograma
+                    </th>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">
+                      Progreso / Tiempo
+                    </th>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">
+                      Métricas
+                    </th>
+                    <th scope="col" className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {auditoriasFiltradas.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <List className="w-10 h-10 text-gray-300" />
+                          <p className="font-semibold text-gray-500">No se encontraron auditorías</p>
+                          <Button size="sm" variant="outline" onClick={() => setModalFormularioOpen(true)}>
+                            Crear auditoría
+                          </Button>
                         </div>
-                        <h3 className="font-bold text-sm sm:text-base lg:text-lg text-gray-900 mb-2 line-clamp-2">{auditoria.titulo}</h3>
-                        {!tarjetasColapsadas.has(auditoria.id) && (
-                          <>
-                            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 mb-2">{auditoria.descripcion}</p>
-                            {/* Fechas - STACK EN MÓVIL */}
-                            <div className="flex flex-col xs:flex-row items-start xs:items-center gap-1 xs:gap-3 text-xs text-gray-500">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3 flex-shrink-0" />
-                                <span>Inicio: {auditoria.fechaInicio}</span>
-                              </div>
-                              <span className="hidden xs:inline">→</span>
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3 flex-shrink-0" />
-                                <span>Fin: {auditoria.fechaFin}</span>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      {/* BOTÓN TOGGLE Y BADGE - STACK EN MÓVIL */}
-                      <div className="flex sm:flex-col items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleTarjetaColapsada(auditoria.id);
-                          }}
-                          className="p-2 rounded hover:bg-gray-100 transition-colors"
-                          title={tarjetasColapsadas.has(auditoria.id) ? "Expandir" : "Colapsar"}
-                        >
-                          {tarjetasColapsadas.has(auditoria.id) ? (
-                            <Maximize2 className="w-4 h-4 text-gray-600" />
-                          ) : (
-                            <Minimize2 className="w-4 h-4 text-gray-600" />
-                          )}
-                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    auditoriasFiltradas.map((auditoria) => {
+                      const riesgoColor = auditoria.riesgo === 'Alto' ? 'bg-red-50 text-red-700 border-red-200' :
+                        auditoria.riesgo === 'Medio' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200';
                         
-                        <Badge 
-                          style={{
-                            background: auditoria.estado === 'Plan Anual' ? '#EEF2FF' :
-                                       auditoria.estado === 'Planeación' ? '#EFF6FF' :
-                                       auditoria.estado === 'Ejecución' ? '#FEF3C7' :
-                                       auditoria.estado === 'Comunicación' ? '#DBEAFE' :
-                                       auditoria.estado === 'Seguimiento' ? '#E0E7FF' : '#D1FAE5',
-                            color: auditoria.estado === 'Plan Anual' ? '#3730A3' :
-                                   auditoria.estado === 'Planeación' ? '#1E40AF' :
-                                   auditoria.estado === 'Ejecución' ? '#B45309' :
-                                   auditoria.estado === 'Comunicación' ? '#1E3A8A' :
-                                   auditoria.estado === 'Seguimiento' ? '#3730A3' : '#065F46',
-                            border: 'none'
-                          }}
-                        >
-                          {auditoria.estado}
-                        </Badge>
-                      </div>
-                    </div>
+                      const prColor = auditoria.prioridad === 'crítica' ? 'bg-red-100 text-red-800' :
+                        auditoria.prioridad === 'alta' ? 'bg-orange-50 text-orange-700' :
+                          auditoria.prioridad === 'media' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700';
 
-                    {/* CONTENIDO COMPLETO - SOLO SI NO ESTÁ COLAPSADA */}
-                    {!tarjetasColapsadas.has(auditoria.id) && (
-                      <>
-                        {/* AUDITORES */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-200">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <User className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Auditor Líder:</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#1e5da8' }}>
-                            {auditoria.auditorLider.iniciales}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{auditoria.auditorLider.nombre}</p>
-                            <p className="text-xs text-gray-500">{auditoria.auditorLider.tipoIdentificacion} {auditoria.auditorLider.numeroIdentificacion}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <User className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Auditor Asignado:</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#2a6dbd' }}>
-                            {auditoria.auditorAsignado.iniciales}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{auditoria.auditorAsignado.nombre}</p>
-                            <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* RIESGO, TIPO, PRIORIDAD Y TERRITORIAL */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 pb-4 border-b border-gray-200">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <AlertCircle className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Calificación del Riesgo:</span>
-                        </div>
-                        <Badge style={{
-                          background: auditoria.riesgo === 'Alto' ? '#FEE2E2' : auditoria.riesgo === 'Medio' ? '#FEF3C7' : '#DCFCE7',
-                          color: auditoria.riesgo === 'Alto' ? '#991B1B' : auditoria.riesgo === 'Medio' ? '#92400E' : '#166534',
-                          border: 'none'
-                        }} className="text-xs">
-                          {auditoria.calificacionRiesgo || `Riesgo ${auditoria.riesgo}`}
-                        </Badge>
-                      </div>
-                      
-                      {auditoria.tipo && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Shield className="w-4 h-4 text-gray-500" />
-                            <span className="text-xs text-gray-500">Tipo:</span>
-                          </div>
-                          <Badge style={{
-                            background: auditoria.tipo === 'territorial' ? '#D1FAE5' :
-                                       auditoria.tipo === 'especial' ? '#FEE2E2' : '#E0E7FF',
-                            color: auditoria.tipo === 'territorial' ? '#065F46' :
-                                   auditoria.tipo === 'especial' ? '#991B1B' : '#3730A3',
-                            border: 'none'
-                          }} className="text-xs capitalize">
-                            {auditoria.tipo === 'territorial' ? 'Territorial' :
-                             auditoria.tipo === 'especial' ? 'Especial' : 'Regular'}
-                          </Badge>
-                        </div>
-                      )}
-                      
-                      {auditoria.prioridad && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <AlertCircle className="w-4 h-4 text-gray-500" />
-                            <span className="text-xs text-gray-500">Prioridad:</span>
-                          </div>
-                          <Badge style={{
-                            background: auditoria.prioridad === 'crítica' ? '#FEE2E2' :
-                                       auditoria.prioridad === 'alta' ? '#FED7AA' :
-                                       auditoria.prioridad === 'media' ? '#FEF3C7' : '#DBEAFE',
-                            color: auditoria.prioridad === 'crítica' ? '#991B1B' :
-                                   auditoria.prioridad === 'alta' ? '#9A3412' :
-                                   auditoria.prioridad === 'media' ? '#92400E' : '#1E40AF',
-                            border: 'none'
-                          }} className="text-xs capitalize">
-                            {auditoria.prioridad}
-                          </Badge>
-                        </div>
-                      )}
-                      
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Target className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Territorial:</span>
-                        </div>
-                        <div className="px-3 py-1.5 rounded-md text-sm font-semibold inline-block" style={{ background: '#D1FAE5', color: '#065F46' }}>
-                          {auditoria.territorial}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ÁREA OBJETIVO (si existe) */}
-                    {auditoria.areaObjetivo && (
-                      <div className="mb-4 pb-4 border-b border-gray-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Target className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Área Objetivo:</span>
-                        </div>
-                        <p className="text-sm font-semibold text-gray-900">{auditoria.areaObjetivo}</p>
-                      </div>
-                    )}
-
-                    {/* OBJETIVOS Y EQUIPO */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-200">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Target className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Objetivos:</span>
-                          <Badge variant="outline" className="text-xs">
-                            {auditoria.objetivos?.length || 0}
-                          </Badge>
-                        </div>
-                        {auditoria.objetivos && auditoria.objetivos.length > 0 ? (
-                          <ul className="space-y-1">
-                            {auditoria.objetivos.slice(0, 2).map((objetivo, idx) => (
-                              <li key={objetivo.id} className="flex items-start gap-2 text-xs text-gray-600">
-                                <span className="text-blue-600 mt-0.5">{idx + 1}.</span>
-                                <span className="line-clamp-1">{objetivo.descripcion}</span>
-                              </li>
-                            ))}
-                            {auditoria.objetivos.length > 2 && (
-                              <li className="text-xs text-gray-500 italic">
-                                +{auditoria.objetivos.length - 2} más...
-                              </li>
-                            )}
-                          </ul>
-                        ) : (
-                          <p className="text-xs text-gray-400 italic">Sin objetivos definidos</p>
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <User className="w-4 h-4 text-gray-500" />
-                          <span className="text-xs text-gray-500">Equipo Auditor:</span>
-                          <Badge variant="outline" className="text-xs">
-                            {auditoria.equipoAuditores?.length || 0}
-                          </Badge>
-                        </div>
-                        {auditoria.equipoAuditores && auditoria.equipoAuditores.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {auditoria.equipoAuditores.slice(0, 3).map((auditor, idx) => {
-                              // Manejar tanto string como objeto
-                              const nombreAuditor = typeof auditor === 'string' ? auditor : (auditor.nombre || `A${auditor.personaId || idx + 1}`);
-                              const iniciales = nombreAuditor.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                              return (
-                                <div key={idx} className="px-2 py-1 rounded text-xs font-medium" style={{ background: '#EFF6FF', color: '#1E40AF' }}>
-                                  {iniciales}
+                      return (
+                        <tr key={auditoria.id} className="hover:bg-blue-50/20 transition-colors">
+                          {/* 1. Código y Título */}
+                          <td className="px-6 py-4">
+                            <div className="flex items-start gap-3">
+                              <FileText className="w-5 h-5 text-[#1e5da8] mt-0.5 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <span className="font-bold text-[10px] text-[#1e5da8] bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                                    {auditoria.codigo}
+                                  </span>
+                                  <span 
+                                    className="w-2.5 h-2.5 rounded-full inline-block" 
+                                    style={{
+                                      background: auditoria.semaforo === 'verde' ? '#10B981' :
+                                        auditoria.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444'
+                                    }}
+                                    title={'Semáforo: ' + auditoria.semaforo}
+                                  />
                                 </div>
-                              );
-                            })}
-                            {auditoria.equipoAuditores.length > 3 && (
-                              <div className="px-2 py-1 rounded text-xs font-medium" style={{ background: '#F3F4F6', color: '#6B7280' }}>
-                                +{auditoria.equipoAuditores.length - 3}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-400 italic">Sin equipo asignado</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* ÚLTIMA ACTUACIÓN */}
-                    <div className="mb-4 pb-4 border-b border-gray-200">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Clock className="w-4 h-4 text-gray-500" />
-                        <span className="text-xs text-gray-500">Última actuación:</span>
-                      </div>
-                      <p className="text-sm text-gray-700 ml-6">{auditoria.ultimaActuacion}</p>
-                    </div>
-
-                    {/* ⚠️ ALERTA: Tareas Pendientes (VISTA LISTA) */}
-                    {contarTareasPendientes(auditoria.id) > 0 && (
-                      <div className="mb-4 bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5 animate-pulse" />
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between gap-4 mb-2">
-                              <div className="flex-1">
-                                <p className="text-sm text-amber-900 mb-1">
-                                  <strong>⚠️ Tareas pendientes de la fase "{auditoria.estado}"</strong>
-                                </p>
-                                <p className="text-xs text-amber-700 mb-2">
-                                  Faltan <strong>{contarTareasPendientes(auditoria.id)} tareas</strong> por completar antes de avanzar al siguiente estado
-                                </p>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <div className="flex-1 bg-amber-200 rounded-full h-2 overflow-hidden">
-                                    <div 
-                                      className="h-full bg-amber-600 rounded-full transition-all"
-                                      style={{ width: `${((contarTareas(auditoria.id) - contarTareasPendientes(auditoria.id)) / Math.max(contarTareas(auditoria.id), 1)) * 100}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-xs text-amber-800 font-semibold whitespace-nowrap">
-                                    {contarTareasCompletadas(auditoria.id)}/{contarTareas(auditoria.id)} completadas
+                                <span 
+                                  onClick={() => handleVerDetalle(auditoria)}
+                                  className="font-bold text-gray-900 line-clamp-1 hover:text-[#1e5da8] transition-colors cursor-pointer text-sm"
+                                  title={auditoria.titulo}
+                                >
+                                  {auditoria.titulo}
+                                </span>
+                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                  <span className={'text-[10px] px-1.5 py-0.5 rounded-md font-medium border ' + riesgoColor}>
+                                    {auditoria.riesgo || 'Riesgo Medio'}
+                                  </span>
+                                  <span className={'text-[10px] px-1.5 py-0.5 rounded-md font-medium capitalize ' + prColor}>
+                                    {auditoria.prioridad || 'Media'}
                                   </span>
                                 </div>
                               </div>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  setAuditoriaSeleccionada(auditoria);
-                                  setModalExpedienteOpen(true);
-                                }}
-                                className="flex-shrink-0 gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-                              >
-                                <Target className="w-4 h-4" />
-                                Ver Actividades
-                              </Button>
                             </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                          </td>
 
-                    {/* MÉTRICAS */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                      <div className="text-center p-3 rounded-lg" style={{ background: '#EFF6FF' }}>
-                        <Clock className="w-4 h-4 mx-auto mb-1" style={{ color: '#1e5da8' }} />
-                        <p className="text-xs text-gray-600 mb-1">Días</p>
-                        <p className="font-bold" style={{ color: '#1e5da8' }}>{auditoria.diasRestantes || 0}</p>
-                      </div>
-                      <div className="text-center p-3 rounded-lg" style={{ background: '#F0FDF4' }}>
-                        <CheckSquare className="w-4 h-4 mx-auto mb-1 text-green-600" />
-                        <p className="text-xs text-gray-600 mb-1">Tareas</p>
-                        <p className="font-bold text-green-700">{contarTareas(auditoria.id)}</p>
-                      </div>
-                      <div className="text-center p-3 rounded-lg" style={{ background: '#FEF3C7' }}>
-                        <FileText className="w-4 h-4 mx-auto mb-1 text-yellow-600" />
-                        <p className="text-xs text-gray-600 mb-1">Docs</p>
-                        <p className="font-bold text-yellow-700">{auditoria.documentos || 0}</p>
-                      </div>
-                      <div className="text-center p-3 rounded-lg" style={{ background: '#E0E7FF' }}>
-                        <FileText className="w-4 h-4 mx-auto mb-1 text-indigo-600" />
-                        <p className="text-xs text-gray-600 mb-1">Inform.</p>
-                        <p className="font-bold text-indigo-700">{auditoria.informes || 0}</p>
-                      </div>
-                      <div className="text-center p-3 rounded-lg" style={{ background: '#FEE2E2' }}>
-                        <TrendingUp className="w-4 h-4 mx-auto mb-1 text-red-600" />
-                        <p className="text-xs text-gray-600 mb-1">Tiempo</p>
-                        <p className="font-bold text-red-700">{auditoria.porcentajeTiempo || 0}%</p>
-                      </div>
-                    </div>
+                          {/* 2. Fase */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <Badge
+                              style={{
+                                background: auditoria.estado === 'Programa Anual' ? '#EEF2FF' :
+                                  auditoria.estado === 'Planeación' ? '#EFF6FF' :
+                                    auditoria.estado === 'Ejecución' ? '#FEF3C7' :
+                                      auditoria.estado === 'Comunicación' ? '#DBEAFE' :
+                                        auditoria.estado === 'Seguimiento' ? '#E0E7FF' : '#D1FAE5',
+                                color: auditoria.estado === 'Programa Anual' ? '#3730A3' :
+                                  auditoria.estado === 'Planeación' ? '#1E40AF' :
+                                    auditoria.estado === 'Ejecución' ? '#B45309' :
+                                      auditoria.estado === 'Comunicación' ? '#1E3A8A' :
+                                        auditoria.estado === 'Seguimiento' ? '#3730A3' : '#065F46',
+                                border: 'none'
+                              }}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm"
+                            >
+                              {auditoria.estado}
+                            </Badge>
+                          </td>
 
-                    {/* PROGRESO */}
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-gray-600">Progreso</span>
-                        <span className="text-xs font-semibold">{auditoria.progreso}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div className="h-2.5 rounded-full" style={{ 
-                          width: `${auditoria.progreso}%`,
-                          background: auditoria.progreso < 30 ? '#DC2626' : auditoria.progreso < 70 ? '#F59E0B' : '#10B981'
-                        }} />
-                      </div>
-                    </div>
+                          {/* 3. Auditor Líder */}
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-bold flex-shrink-0" style={{ background: '#1e5da8' }}>
+                                {auditoria.auditorLider.iniciales || 'PA'}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-gray-900 truncate max-w-[150px]">{auditoria.auditorLider.nombre}</p>
+                                <p className="text-[10px] text-gray-500 truncate max-w-[150px]">Líder</p>
+                              </div>
+                            </div>
+                          </td>
 
-                    {/* ACCIONES */}
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" className="gap-2 flex-1 sm:flex-none" style={{ background: '#F97316' }} onClick={() => handleVerDetalle(auditoria)}>
-                        <Eye className="w-4 h-4" />
-                        Ver Expediente
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        className="gap-2 flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white" 
-                        onClick={() => {
-                          setAuditoriaSeleccionada(auditoria);
-                          setModalExpedienteOpen(true);
-                        }}
-                        title="Ver actividades del proceso de auditoría"
-                      >
-                        <Target className="w-4 h-4" />
-                        Proceso de Auditoría
-                      </Button>
-                      
-                      {/* Crear Plan: exclusivo de la etapa Comunicación */}
-                      {puedeMostrarCrearPlan(auditoria) && (
-                        <Button 
-                          size="sm" 
-                          className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 
-                          onClick={() => handleCrearPlan(auditoria)}
-                          title="Crear Plan de Mejoramiento para los hallazgos identificados"
-                        >
-                          <Target className="w-4 h-4" />
-                          Crear Plan de Mejoramiento
-                        </Button>
-                      )}
-                      
-                      <Button size="sm" variant="outline" className="gap-2 flex-1 sm:flex-none" onClick={() => handleEditarAuditoria(auditoria)}>
-                        <Edit className="w-4 h-4" />
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleCambiarEstado(auditoria)} title="Cambiar estado">
-                        <RefreshCw className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => { setAuditoriaSeleccionada(auditoria); setModalNotasOpen(true); }} title="Notas">
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleVerHistorial(auditoria)} title="Historial">
-                        <History className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => { setAuditoriaSeleccionada(auditoria); setModalInicioAuditoriaOpen(true); }} title="Iniciar Auditoría">
-                        <Clock className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleAsignarAuditor(auditoria)} title="Asignar Auditor">
-                        <UserPlus className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2 text-red-600 hover:text-red-700" onClick={() => handleEliminar(auditoria)} title="Eliminar">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                      </>
-                    )}
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-            
-            {/* ESTADO VACÍO */}
-            {auditoriasFiltradas.length === 0 && (
-              <Card className="p-12">
-                <EmptyState
-                  icon={List}
-                  title="No hay auditorías"
-                  description="No se encontraron auditorías que coincidan con los filtros aplicados."
-                  actionLabel="Crear auditoría"
-                  onAction={() => setModalFormularioOpen(true)}
-                />
-              </Card>
-            )}
+                          {/* 4. Cronograma */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex flex-col text-xs text-gray-600 gap-0.5">
+                              <div className="flex items-center gap-1 font-medium">
+                                <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                                <span>{auditoria.fechaInicio} al {auditoria.fechaFin}</span>
+                              </div>
+                              <span className={'text-[10px] font-semibold flex items-center gap-1 ' + (
+                                auditoria.diasRestantes <= 5 ? 'text-red-600' :
+                                  auditoria.diasRestantes <= 15 ? 'text-amber-600' : 'text-green-600'
+                              )}>
+                                <Clock className="w-3 h-3" />
+                                {auditoria.diasRestantes} días restantes
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* 5. Progreso / Tiempo */}
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex justify-between w-24 text-[10px] font-bold text-gray-600">
+                                <span>Prog: {auditoria.progreso}%</span>
+                                <span>T: {auditoria.porcentajeTiempo}%</span>
+                              </div>
+                              <div className="w-24 bg-gray-200 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full" style={{
+                                  width: auditoria.progreso + '%',
+                                  background: auditoria.progreso < 30 ? '#DC2626' : auditoria.progreso < 70 ? '#F59E0B' : '#10B981'
+                                }} />
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 6. Métricas */}
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <div className="px-2 py-1 bg-gray-100 rounded text-xs font-bold text-gray-700 flex items-center gap-1" title="Tareas">
+                                <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                                {contarTareas(auditoria.id)}
+                              </div>
+                              <div className="px-2 py-1 bg-gray-100 rounded text-xs font-bold text-gray-700 flex items-center gap-1" title="Documentos">
+                                <FileText className="w-3.5 h-3.5 text-amber-600" />
+                                {auditoria.documentos || 0}
+                              </div>
+                              <div className="px-2 py-1 bg-gray-100 rounded text-xs font-bold text-gray-700 flex items-center gap-1" title="Informes">
+                                <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                {auditoria.informes || 0}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 7. Acciones */}
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5 relative">
+                              <Button 
+                                size="sm" 
+                                style={{ background: '#FF6B2C', color: '#FFFFFF' }} 
+                                className="px-2.5 py-1 text-xs font-bold gap-1 shadow-sm font-bold bg-[#FF6B2C] hover:bg-[#E0561A]"
+                                onClick={() => handleVerDetalle(auditoria)}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Ver</span>
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="px-2.5 py-1 text-xs font-bold gap-1 shadow-sm"
+                                onClick={() => handleEditarAuditoria(auditoria)}
+                                disabled={auditoria.estado === 'Finalizada'}
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                                <span>Editar</span>
+                              </Button>
+                              
+                              {/* Botón menú desplegable de acciones secundarias */}
+                              <div className="relative">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDropdownListaId(dropdownListaId === auditoria.id ? null : auditoria.id);
+                                  }}
+                                  className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 text-gray-600 bg-white"
+                                  title="Más acciones"
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </button>
+                                
+                                {dropdownListaId === auditoria.id && (
+                                  <>
+                                    <div 
+                                      className="fixed inset-0 z-40" 
+                                      onClick={() => setDropdownListaId(null)}
+                                    />
+                                    <motion.div 
+                                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      transition={{ duration: 0.15, ease: 'easeOut' }}
+                                      className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1 text-left overflow-hidden"
+                                    >
+                                      {/* Crear plan */}
+                                      {puedeMostrarCrearPlan(auditoria) && (
+                                        <button
+                                          onClick={() => {
+                                            setDropdownListaId(null);
+                                            handleCrearPlan(auditoria);
+                                          }}
+                                          className="w-full px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                        >
+                                          <Target className="w-3.5 h-3.5" />
+                                          Crear Plan de Mejoramiento
+                                        </button>
+                                      )}
+                                      
+                                      {/* Cambiar estado */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleCambiarEstado(auditoria);
+                                        }}
+                                        disabled={auditoria.estado === 'Finalizada'}
+                                        className={'w-full px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-blue-50/50 hover:text-blue-700 hover:border-l-2 hover:border-[#1e5da8] flex items-center gap-2.5 transition-all duration-150 ' + (auditoria.estado === 'Finalizada' ? 'opacity-40 cursor-not-allowed' : '')}
+                                      >
+                                        <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                                        Cambiar Estado
+                                      </button>
+                                      
+                                      {/* Asignar auditor */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleAsignarAuditor(auditoria);
+                                        }}
+                                        disabled={auditoria.estado === 'Finalizada'}
+                                        className={'w-full px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-blue-50/50 hover:text-blue-700 hover:border-l-2 hover:border-[#1e5da8] flex items-center gap-2.5 transition-all duration-150 ' + (auditoria.estado === 'Finalizada' ? 'opacity-40 cursor-not-allowed' : '')}
+                                      >
+                                        <UserPlus className="w-3.5 h-3.5 text-indigo-500" />
+                                        Asignar Auditor
+                                      </button>
+
+                                      {/* Aceptar hallazgos */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleEnviarAprobacion(auditoria);
+                                        }}
+                                        disabled={auditoria.estado !== 'Comunicación' && auditoria.estado !== 'Seguimiento'}
+                                        className={'w-full px-4 py-2.5 text-xs font-semibold text-green-600 hover:bg-green-50 hover:border-l-2 hover:border-green-600 flex items-center gap-2.5 transition-all duration-150 ' + (auditoria.estado !== 'Comunicación' && auditoria.estado !== 'Seguimiento' ? 'opacity-40 cursor-not-allowed' : '')}
+                                      >
+                                        <Send className="w-3.5 h-3.5 text-green-600" />
+                                        Aceptar Hallazgos
+                                      </button>
+
+                                      {/* Exportar */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleExportar(auditoria);
+                                        }}
+                                        disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual'}
+                                        className={'w-full px-4 py-2.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 hover:border-l-2 hover:border-blue-600 flex items-center gap-2.5 transition-all duration-150 ' + (auditoria.estado === 'Planeación' || auditoria.estado === 'Programa Anual' ? 'opacity-40 cursor-not-allowed' : '')}
+                                      >
+                                        <FileDown className="w-3.5 h-3.5 text-blue-600" />
+                                        Exportar Informe
+                                      </button>
+
+                                      {/* Archivar */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleArchivar(auditoria);
+                                        }}
+                                        disabled={auditoria.estado !== 'Finalizada'}
+                                        className={'w-full px-4 py-2.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 hover:border-l-2 hover:border-orange-600 flex items-center gap-2.5 transition-all duration-150 ' + (auditoria.estado !== 'Finalizada' ? 'opacity-40 cursor-not-allowed' : '')}
+                                      >
+                                        <Archive className="w-3.5 h-3.5 text-orange-600" />
+                                        Archivar Auditoría
+                                      </button>
+
+                                      {/* Notas */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          setAuditoriaSeleccionada(auditoria);
+                                          setModalNotasOpen(true);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-blue-50/50 hover:text-blue-700 hover:border-l-2 hover:border-[#1e5da8] flex items-center gap-2.5 transition-all duration-150"
+                                      >
+                                        <MessageSquare className="w-3.5 h-3.5 text-purple-500" />
+                                        Notas
+                                      </button>
+
+                                      {/* Trazabilidad */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleVerHistorial(auditoria);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-blue-50/50 hover:text-blue-700 hover:border-l-2 hover:border-[#1e5da8] flex items-center gap-2.5 transition-all duration-150"
+                                      >
+                                        <History className="w-3.5 h-3.5 text-emerald-500" />
+                                        Trazabilidad
+                                      </button>
+
+                                      <div className="border-t border-gray-100 my-1" />
+
+                                      {/* Eliminar */}
+                                      <button
+                                        onClick={() => {
+                                          setDropdownListaId(null);
+                                          handleEliminar(auditoria);
+                                        }}
+                                        disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual'}
+                                        className={'w-full px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-l-2 hover:border-red-600 flex items-center gap-2.5 transition-all duration-150 ' + (auditoria.estado !== 'Planeación' && auditoria.estado !== 'Programa Anual' ? 'opacity-40 cursor-not-allowed' : '')}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                                        Eliminar Auditoría
+                                      </button>
+                                    </motion.div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
-
         {/* MODAL DE EXPEDIENTE COMPLETO */}
         {modalExpedienteOpen && (
           <ExpedienteAuditoriaCompleto
@@ -4224,17 +3898,26 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaDataInicial={auditoriaSeleccionada}
             isOpen={modalExpedienteOpen}
             tabInicial={(() => {
+              if (faseFoco) {
+                console.log('[Kanban] Aplicando fase focal:', faseFoco);
+                const fase = faseFoco.toLowerCase();
+                if (fase === 'ejecucion' || fase === 'ejecución') return 'ejecucion';
+                if (fase === 'planeacion' || fase === 'planeación') return 'planeacion';
+                if (fase === 'comunicacion' || fase === 'comunicación') return 'comunicacion';
+                return fase;
+              }
               const e = (auditoriaSeleccionada?.estado || '').toLowerCase();
               if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
               if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
               if (e.includes('comunicacion') || e.includes('comunicación')) return 'comunicacion';
-              if (e.includes('seguimiento')) return 'documentacion';
-              if (e.includes('finalizada')) return 'historial';
+              if (e.includes('seguimiento')) return 'seguimiento';
+              if (e.includes('finalizada')) return 'finalizada';
               return 'general';
             })()}
             onClose={() => {
               setModalExpedienteOpen(false);
               setAuditoriaSeleccionada(null);
+              setFaseFoco(null); // Limpiar fase al cerrar
             }}
             onComunicacionCompletada={recargarAuditorias}
           />
@@ -4324,9 +4007,12 @@ export function GestionAuditoriasKanbanSimple() {
                 id: auditoriaParaEditar.id,
                 codigo: auditoriaParaEditar.codigo,
                 nombre: auditoriaParaEditar.titulo,
-                tipo: auditoriaParaEditar.territorial || 'SEDE',
-                proceso: auditoriaParaEditar.descripcion,
+                tipo: auditoriaParaEditar.tipo || '',
+                proceso: (auditoriaParaEditar as any).procesoAuditado || auditoriaParaEditar.areaObjetivo || auditoriaParaEditar.descripcion,
                 responsable: auditoriaParaEditar.auditorLider?.nombre || 'Sin asignar',
+                responsableAreaNombre: (auditoriaParaEditar as any).responsableAreaNombre,
+                responsableAreaCargo: (auditoriaParaEditar as any).responsableAreaCargo,
+                responsableAreaEmail: (auditoriaParaEditar as any).responsableAreaEmail,
                 // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
                 // Etapa 1: Planeación
                 fechaInicio: auditoriaParaEditar.fechaInicio,
@@ -4352,9 +4038,14 @@ export function GestionAuditoriasKanbanSimple() {
               // Convertir datos del modal al formato esperado por handleActualizarAuditoria
               const formData = {
                 titulo: data.nombre,
-                descripcion: data.proceso || data.alcance || '',
-                territorial: data.tipo,
+                descripcion: data.alcance || '',
+                territorial: auditoriaParaEditar.territorial || 'SEDE CENTRAL',
+                tipo: data.tipo,
+                procesoAuditado: data.proceso,
                 riesgo: auditoriaParaEditar.riesgo || 'Medio',
+                responsableAreaNombre: data.responsableAreaNombre,
+                responsableAreaCargo: data.responsableAreaCargo,
+                responsableAreaEmail: data.responsableAreaEmail,
                 // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
                 // Etapa 1: Planeación - usar fechaInicioPlaneacion o fechaInicio
                 fechaInicio: (data as any).fechaInicioPlaneacion || data.fechaInicio,
@@ -4369,7 +4060,7 @@ export function GestionAuditoriasKanbanSimple() {
                 objetivos: (data as any).objetivos || [],
                 criterios: (data as any).criterios || []
               };
-              
+
               handleActualizarAuditoria(formData as any);
             }}
           />
@@ -4381,15 +4072,6 @@ export function GestionAuditoriasKanbanSimple() {
             isOpen={modalInicioAuditoriaOpen}
             auditoria={(() => {
               // DEBUG: Ver TODA la auditoría seleccionada (no solo fechas)
-              console.log('[InicioAuditoriaWizard] TODA auditoriaSeleccionada:', JSON.stringify(auditoriaSeleccionada, null, 2));
-              console.log('[InicioAuditoriaWizard] Fechas específicas:', {
-                fechaInicio: auditoriaSeleccionada.fechaInicio,
-                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
-                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
-                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
-                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
-                fechaFin: auditoriaSeleccionada.fechaFin,
-              });
               return {
                 id: auditoriaSeleccionada.id,
                 codigo: auditoriaSeleccionada.codigo,
@@ -4398,22 +4080,39 @@ export function GestionAuditoriasKanbanSimple() {
                 territorial: auditoriaSeleccionada.territorial,
                 areaAuditable: auditoriaSeleccionada.areaObjetivo || 'Control Interno',
                 procesoNombre: auditoriaSeleccionada.areaObjetivo || auditoriaSeleccionada.titulo,
+                responsableAreaNombre: auditoriaSeleccionada.responsableAreaNombre || 'Sin responsable asignado',
+                responsableAreaCargo: auditoriaSeleccionada.responsableAreaCargo || 'Responsable de Área Auditada',
+                responsableAreaEmail: auditoriaSeleccionada.responsableAreaEmail || '',
+                // Mantener el objeto anidado por retrocompatibilidad con la interfaz en InicioAuditoriaWizardWorldClass
                 responsableArea: {
-                  nombre: 'Responsable del Área',
-                  cargo: 'Director',
-                  email: 'responsable@esap.edu.co'
+                  nombre: auditoriaSeleccionada.responsableAreaNombre || 'Sin responsable asignado',
+                  cargo: auditoriaSeleccionada.responsableAreaCargo || 'Responsable del Área Auditada',
+                  email: auditoriaSeleccionada.responsableAreaEmail || '',
                 },
                 auditorLider: {
                   nombre: auditoriaSeleccionada.auditorLider?.nombre || 'Sin asignar',
                   cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
                   email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
                 },
-                equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
-                  {
-                    nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
-                    cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
-                  }
-                ] : [],
+                equipoAuditores: [
+                  // Incluir el auditor asignado principal (si no es "Por asignar")
+                  ...(auditoriaSeleccionada.auditorAsignado && auditoriaSeleccionada.auditorAsignado.nombre !== 'Por asignar' ? [{
+                    nombre: auditoriaSeleccionada.auditorAsignado.nombre,
+                    cargo: auditoriaSeleccionada.auditorAsignado.cargo || 'Auditor'
+                  }] : []),
+                  // Incluir el equipo adicional (vienen como objetos {personaId, nombre, cargo} o strings)
+                  ...(Array.isArray(auditoriaSeleccionada.equipoAuditores)
+                    ? auditoriaSeleccionada.equipoAuditores
+                      .filter(a => {
+                        const name = typeof a === 'string' ? a : (a.nombre || '');
+                        return name && name !== auditoriaSeleccionada.auditorAsignado?.nombre;
+                      })
+                      .map(a => ({
+                        nombre: typeof a === 'string' ? a : (a.nombre || 'Auditor'),
+                        cargo: typeof a === 'object' ? (a.cargo || 'Auditor') : 'Auditor'
+                      }))
+                    : [])
+                ],
                 // Cronograma de 3 etapas - fechas reales
                 fechaInicio: auditoriaSeleccionada.fechaInicio,
                 fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
@@ -4431,11 +4130,20 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             onIniciar={async (auditoria) => {
+              // ✅ Verificación de seguridad: Plan Anual debe estar aprobado/vigente
+              const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+              if (!planAprobado) {
+                toast.error('No se puede iniciar la auditoría', {
+                  description: 'El Plan Anual de Auditoría aún no ha sido aprobado. Apruebe el plan primero.',
+                });
+                return;
+              }
+
               // ✅ Conectar con backend para cambiar fase a "Planeación" (primera fase)
               console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
-              
+
               const exito = await cambiarFaseBackend(auditoria.id, 'Planeación');
-              
+
               if (exito) {
                 setModalInicioAuditoriaOpen(false);
                 setAuditoriaSeleccionada(null);
@@ -4471,32 +4179,43 @@ export function GestionAuditoriasKanbanSimple() {
             auditorActualId={auditoriaSeleccionada.auditorLiderId}
             onAsignar={async (auditorId) => {
               console.log('Auditor asignado:', auditorId);
-              // Actualizar auditoría en el backend
+              // Actualizar auditoría en el backend - asignar a ambos roles por defecto en este flujo
               const exito = await actualizarAuditoriaBackend(auditoriaSeleccionada.id, {
-                auditorLiderId: auditorId
+                auditorLiderId: auditorId,
+                auditorAsignadoId: auditorId
               });
               if (exito) {
                 // ✅ Actualizar también el estado local con los datos del auditor
                 const auditorSeleccionado = auditoresBackend?.find(a => String(a.id) === String(auditorId));
                 if (auditorSeleccionado) {
-                  setAuditorias(prev => prev.map(aud => 
-                    aud.id === auditoriaSeleccionada.id 
+                  setAuditorias(prev => prev.map(aud =>
+                    aud.id === auditoriaSeleccionada.id
                       ? {
-                          ...aud,
-                          auditorLiderId: auditorId, // ✅ Guardar también el ID (UUID string)
-                          auditorLider: {
-                            nombre: auditorSeleccionado.nombre,
-                            cargo: auditorSeleccionado.cargo || 'Auditor',
-                            iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-                            tipoIdentificacion: 'CC' as const,
-                            numeroIdentificacion: ''
-                          }
-                        } as any
+                        ...aud,
+                        auditorLiderId: auditorId,
+                        auditorAsignadoId: auditorId,
+                        auditorLider: {
+                          nombre: auditorSeleccionado.nombre,
+                          cargo: auditorSeleccionado.cargo || 'Auditor',
+                          iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+                          tipoIdentificacion: 'CC' as const,
+                          numeroIdentificacion: ''
+                        },
+                        auditorAsignado: {
+                          nombre: auditorSeleccionado.nombre,
+                          cargo: auditorSeleccionado.cargo || 'Auditor',
+                          iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+                          tipoIdentificacion: 'CC' as const,
+                          numeroIdentificacion: ''
+                        }
+                      } as any
                       : aud
                   ));
                 }
                 setModalAsignarAuditorOpen(false);
                 setAuditoriaSeleccionada(null);
+                // Recargar desde backend para asegurar sincronización completa
+                await recargarAuditorias();
               }
             }}
             auditoresDisponibles={auditoresBackend}
@@ -4536,6 +4255,5 @@ export function GestionAuditoriasKanbanSimple() {
           />
         )*/}
       </div>
-    </DndProvider>
   );
 }

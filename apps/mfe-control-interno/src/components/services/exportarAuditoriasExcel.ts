@@ -322,8 +322,10 @@ export async function exportarAuditoriasExcel(
     const link = document.createElement('a');
     const nombreArchivo = `Auditorias_OCI_${new Date().toISOString().split('T')[0]}.xlsx`;
     link.href = url;
-    link.download = nombreArchivo;
+    link.setAttribute('download', nombreArchivo);
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
 
     console.log('✅ Excel de auditorías generado exitosamente');

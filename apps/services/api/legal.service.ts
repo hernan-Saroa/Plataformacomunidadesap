@@ -260,6 +260,23 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${anexadoId}/desanexar`, { usuario });
     }
 
+    /**
+     * Notifica a todos los usuarios que tengan un rol específico (ej: JEFE_GESTION_LEGAL)
+     * sobre un expediente. El backend resuelve los usuarios reales y envía la
+     * notificación in-app + email opcional.
+     */
+    async notifyExpedienteToRole(expedienteId: string, payload: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/notify-role`, payload);
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);
@@ -323,6 +340,8 @@ export class LegalService {
         responsable?: string;
         estado?: string;
         observaciones?: string;
+        documentosAsociados?: string[];
+        metadata?: any;
         file?: File;
     }): Promise<Actuacion> {
         if (data.file) {
@@ -334,9 +353,34 @@ export class LegalService {
             if (data.responsable) formData.append('responsable', data.responsable);
             if (data.estado) formData.append('estado', data.estado);
             if (data.observaciones) formData.append('observaciones', data.observaciones);
+            if (data.documentosAsociados) {
+                formData.append('documentosAsociados', typeof data.documentosAsociados === 'string' ? data.documentosAsociados : JSON.stringify(data.documentosAsociados));
+            }
+            if (data.metadata) {
+                formData.append('metadata', typeof data.metadata === 'string' ? data.metadata : JSON.stringify(data.metadata));
+            }
             return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
+    }
+
+    async enviarOtpActuacion(expedienteId: string, actuacionId: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/enviar-otp`, {});
+    }
+
+    async autorizarActuacion(expedienteId: string, actuacionId: string, otp: string, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('otp', otp);
+        formData.append('file', file);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar`, formData);
+    }
+
+    async devolverActuacion(expedienteId: string, actuacionId: string, observaciones: string, skipStageUpdate?: boolean): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/devolver`, { observaciones, skipStageUpdate });
+    }
+
+    async deleteActuacion(expedienteId: string, id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${id}`);
     }
 
     // Abogados
@@ -350,9 +394,6 @@ export class LegalService {
 
 
 
-    async createAbogado(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
-    }
 
     // ==================== AUDIENCIAS ====================
     async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
@@ -430,6 +471,12 @@ export class LegalService {
 
     async actualizarDocumento(id: string, data: Partial<Documento>): Promise<Documento> {
         return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}`, data);
+    }
+
+    async actualizarDocumentoArchivo(id: string, file: File): Promise<Documento> {
+        const formData = new FormData();
+        formData.append('archivo', file);
+        return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}/upload`, formData);
     }
 
     async eliminarDocumento(id: string): Promise<void> {
@@ -595,6 +642,10 @@ export class LegalService {
         return apiClient.upload<any>(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}/replace`, formData);
     }
 
+    async actualizarDocumentoConsulta(documentoId: string, data: { firmado?: boolean; nombre?: string; descripcion?: string }): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/consultas-juridicas/documentos/${documentoId}`, data);
+    }
+
     getDocumentosConsultaDownloadUrl(consultaId: string): string {
         const baseUrl = getServiceUrl('legal');
         // Direct mode: localhost:3008/consultas-juridicas/...
@@ -718,7 +769,16 @@ export class LegalService {
         return apiClient.put<any>(`${SERVICE_PREFIX}/pei/indicador/${id}`, data);
     }
 
-    async registrarAvanceIndicador(id: string, data: any): Promise<any> {
+    async registrarAvanceIndicador(id: string, data: any, file?: File): Promise<any> {
+        // Bug 6a: si hay archivo, enviamos como multipart al endpoint que ya acepta `evidencia`.
+        if (file) {
+            const fd = new FormData();
+            if (data?.valor !== undefined) fd.append('valor', String(data.valor));
+            if (data?.observaciones !== undefined) fd.append('observaciones', data.observaciones);
+            if (data?.usuarioId) fd.append('usuarioId', data.usuarioId);
+            fd.append('evidencia', file);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, fd);
+        }
         return apiClient.post<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, data);
     }
 
@@ -799,12 +859,90 @@ export class LegalService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
     }
 
-    async addSeguimientoPlan(id: string, data: { descripcionAvance: string; porcentajeReportado: number }): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/seguimiento`, data);
+    /**
+     * Bug 5: registra avance del plan, opcionalmente con archivo de soporte
+     * en una sola llamada multipart/form-data.
+     */
+    async addSeguimientoPlan(
+        id: string,
+        data: { descripcionAvance: string; porcentajeReportado: number; file?: File; titulo?: string; uploadedBy?: string }
+    ): Promise<any> {
+        if (data.file) {
+            const fd = new FormData();
+            fd.append('descripcionAvance', data.descripcionAvance);
+            fd.append('porcentajeReportado', String(data.porcentajeReportado));
+            fd.append('file', data.file);
+            if (data.titulo) fd.append('titulo', data.titulo);
+            if (data.uploadedBy) fd.append('uploadedBy', data.uploadedBy);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/seguimiento`, fd);
+        }
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/seguimiento`, {
+            descripcionAvance: data.descripcionAvance,
+            porcentajeReportado: data.porcentajeReportado,
+        });
     }
 
     async addEvidenciaPlan(id: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/evidencias`, data);
+    }
+
+    // ==================== Bug 5c: HALLAZGOS DEL PLAN ====================
+    async getHallazgosPlan(planId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/${planId}/hallazgos`);
+    }
+
+    async createHallazgoPlan(planId: string, data: {
+        nombre: string;
+        descripcion?: string;
+        porcentajeAvance?: number;
+        createdBy?: string;
+        file?: File;
+    }): Promise<any> {
+        const fd = new FormData();
+        fd.append('nombre', data.nombre);
+        if (data.descripcion) fd.append('descripcion', data.descripcion);
+        fd.append('porcentajeAvance', String(data.porcentajeAvance ?? 0));
+        if (data.createdBy) fd.append('createdBy', data.createdBy);
+        if (data.file) fd.append('file', data.file);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${planId}/hallazgos`, fd);
+    }
+
+    async updateHallazgoPlan(hallazgoId: string, data: {
+        nombre?: string;
+        descripcion?: string;
+        porcentajeAvance?: number;
+        file?: File;
+    }): Promise<any> {
+        // Para edición sin archivo usamos PATCH JSON. Si hay archivo, se sube
+        // primero con el endpoint de creación de archivo y se actualiza la URL,
+        // pero por simplicidad: si hay archivo, eliminamos y recreamos (uso típico).
+        // En edición sin archivo:
+        if (!data.file) {
+            return apiClient.patch<any>(`${SERVICE_PREFIX}/planes-mejoramiento/hallazgos/${hallazgoId}`, data);
+        }
+        // Con archivo: usamos fetch directo con PATCH multipart
+        const fd = new FormData();
+        if (data.nombre !== undefined) fd.append('nombre', data.nombre);
+        if (data.descripcion !== undefined) fd.append('descripcion', data.descripcion);
+        if (data.porcentajeAvance !== undefined) fd.append('porcentajeAvance', String(data.porcentajeAvance));
+        fd.append('file', data.file);
+        const baseUrl = (apiClient as any).baseURL || '';
+        const headers: Record<string, string> = {};
+        const token = (apiClient as any).getAuthToken?.();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const resp = await fetch(`${baseUrl}${SERVICE_PREFIX}/planes-mejoramiento/hallazgos/${hallazgoId}`, {
+            method: 'PATCH',
+            body: fd,
+            headers,
+            credentials: 'include',
+        });
+        if (!resp.ok) throw new Error(`Error ${resp.status}: ${resp.statusText}`);
+        const json = await resp.json();
+        return json.data !== undefined ? json.data : json;
+    }
+
+    async deleteHallazgoPlan(hallazgoId: string): Promise<any> {
+        return apiClient.delete<any>(`${SERVICE_PREFIX}/planes-mejoramiento/hallazgos/${hallazgoId}`);
     }
 
     // ==================== PLANES MEJORAMIENTO - ARCHIVADO ====================
@@ -855,6 +993,15 @@ export class LegalService {
 
     async desanexarJuzgamientoProceso(radicado: string, usuario?: string): Promise<any> {
         return apiClient.post(`${SERVICE_PREFIX}/juzgamiento/${radicado}/desanexar`, { usuario });
+    }
+
+    /**
+     * Archiva un proceso disciplinario. Como juzgamiento y defensa comparten la
+     * tabla `expedientes`, reutilizamos el endpoint de archivar expediente.
+     * @param expedienteId UUID real del expediente (proceso.uuid en el frontend)
+     */
+    async archivarJuzgamientoProceso(expedienteId: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/archivar`, { motivo, usuario });
     }
 }
 
@@ -921,6 +1068,22 @@ class OCService {
     // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    async createOrganismoControl(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`, data);
+    }
+
+    async updateOrganismoControl(id: number | string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`, data);
+    }
+
+    async deleteOrganismoControl(id: number | string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`);
+    }
+
+    async syncOrganismosControl(organismos: any[]): Promise<any[]> {
+        return apiClient.post<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/sync`, organismos);
     }
 
     // Catálogo de tipos de requerimiento
@@ -1604,9 +1767,8 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        const token = sessionStorage.getItem('esap_auth_token');
         const response = await fetch(url, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: 'include',
         });
         if (!response.ok) throw new Error('Error descargando soporte');
 
@@ -1663,6 +1825,18 @@ export class ProcesosCoactivosService {
             console.error(`Error updateConfiguration(${key}):`, error);
             throw error;
         }
+    }
+
+    // =========================================================================
+    // REPORTES Y ESTADÍSTICAS
+    // =========================================================================
+
+    async getReportesStats(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/reportes/stats`);
+    }
+
+    async getReporteData(reportId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/reportes/data/${reportId}`);
     }
 }
 

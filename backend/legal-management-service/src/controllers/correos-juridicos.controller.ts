@@ -14,13 +14,15 @@ import { CorreosJuridicosService } from '../services/correos-juridicos.service';
 import type { EmailFilters } from '../services/correos-juridicos.service';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 
-// DTO as class for decorator compatibility
+// DTO as class for decorator compatibility (must be a class, not imported interface)
 export class SendEmailDto {
-    to: string;
+    to: string | string[];
     cc?: string[];
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    requestReadReceipt?: boolean;
+    requestDeliveryReceipt?: boolean;
 }
 
 @Controller('correos')
@@ -45,12 +47,67 @@ export class CorreosJuridicosController {
         return this.correosService.reclassifyAll();
     }
 
+    // ===================================================================
+    //  TRACKING ENDPOINTS — MUST be before :id routes to avoid conflicts
+    // ===================================================================
+
     /**
-     * Test Microsoft Graph connection
+     * Tracking Pixel — registra apertura de correo por destinatario externo.
+     * Retorna una imagen GIF 1x1 transparente.
      */
-    @Get('test-connection')
-    async testConnection(): Promise<{ success: boolean; message: string }> {
-        return this.correosService.testConnection();
+    @Get('track/open/:token')
+    async trackOpen(
+        @Param('token') token: string,
+        @Res() res: any,
+        @Query('_') _cacheBust?: string,
+    ) {
+        const ip = res.req?.headers?.['x-forwarded-for'] || res.req?.socket?.remoteAddress || 'unknown';
+        const userAgent = res.req?.headers?.['user-agent'] || 'unknown';
+
+        this.correosService.processTrackingPixel(token, ip, userAgent).catch(() => {});
+
+        const pixel = Buffer.from(
+            'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            'base64',
+        );
+
+        res.setHeader('Content-Type', 'image/gif');
+        res.setHeader('Content-Length', pixel.length);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(pixel);
+    }
+
+    /**
+     * Tracked Document Download — registra apertura de documento y sirve el archivo.
+     */
+    @Get('track/download/:token')
+    async trackDownload(
+        @Param('token') token: string,
+        @Res() res: any,
+    ) {
+        const ip = res.req?.headers?.['x-forwarded-for'] || res.req?.socket?.remoteAddress || 'unknown';
+        const userAgent = res.req?.headers?.['user-agent'] || 'unknown';
+
+        try {
+            const result = await this.correosService.processTrackingDownload(token, ip, userAgent);
+
+            if (!result) {
+                return res.status(HttpStatus.NOT_FOUND).json({ message: 'Documento no encontrado o enlace expirado' });
+            }
+
+            const buffer = Buffer.from(result.contentBytes, 'base64');
+            const isViewable = result.contentType === 'application/pdf' || result.contentType?.startsWith('image/');
+            const disposition = isViewable ? 'inline' : 'attachment';
+
+            res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `${disposition}; filename="${result.name}"`);
+            res.setHeader('Content-Length', buffer.length);
+            res.send(buffer);
+        } catch (error) {
+            return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Error al descargar el documento' });
+        }
     }
 
     /**
@@ -269,15 +326,4 @@ export class CorreosJuridicosController {
         );
         return { success: result.success, correo: result.correo };
     }
-
-    /**
-     * Trigger Batch Backfill for unclassified emails
-     */
-    @Post('batch-classify')
-    @HttpCode(HttpStatus.OK)
-    async batchClassify(@Body() body: { limit?: number }): Promise<{ processed: number; updated: number }> {
-        return this.correosService.batchClassifyBackfill(body.limit || 50);
-    }
 }
-
-

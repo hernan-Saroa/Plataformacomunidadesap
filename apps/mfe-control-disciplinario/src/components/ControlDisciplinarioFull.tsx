@@ -12,7 +12,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 // ✅ Importar todos los módulos especializados
 import { GestionProfesionalesWorldClass } from './GestionProfesionalesWorldClass'; // ✅ RF007 WORLD CLASS - Diseño actualizado
@@ -37,7 +38,26 @@ export interface ResultadoRevision {
   fecha: string;
 }
 
-const BORRADORES_INICIALES: BorradorPendiente[] = [
+const BORRADORES_INICIALES: BorradorPendiente[] = [];
+const getAuthUserRenderKey = () => {
+  const user = authService.getCurrentUser() as any;
+  if (!user) return 'anonymous';
+
+  const userId = user.id_user ?? user.userId ?? user.id ?? user.sub ?? user.email ?? 'unknown';
+  const roles = Array.isArray(user.roles)
+    ? user.roles
+        .map((role: any) => typeof role === 'string' ? role : role?.code || role?.name || '')
+        .filter(Boolean)
+        .sort()
+    : [];
+  const permissions = Array.isArray(user.permissions)
+    ? user.permissions.filter(Boolean).sort()
+    : [];
+
+  return [userId, roles.join(','), permissions.join(',')].join('|');
+};
+
+const BORRADORES_INICIALES_MOCK: BorradorPendiente[] = [
   {
     id: 'b1',
     numeroProceso: 'P-120-2025',
@@ -107,56 +127,74 @@ export function ControlDisciplinarioFull() {
   const [navegandoDesdeProfesional, setNavegandoDesdeProfesional] = useState(false);
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
+  const [authUserRenderKey, setAuthUserRenderKey] = useState(getAuthUserRenderKey);
+
+  useEffect(() => {
+    const handleAuthUserChanged = () => {
+      setAuthUserRenderKey(getAuthUserRenderKey());
+      setFiltroProfesional(null);
+    };
+
+    handleAuthUserChanged();
+    window.addEventListener('esap:auth-user-changed', handleAuthUserChanged);
+
+    return () => {
+      window.removeEventListener('esap:auth-user-changed', handleAuthUserChanged);
+    };
+  }, []);
+
+  const cargarAutosEnRevision = useCallback(async () => {
+    try {
+      const todos = await disciplinaryService.getAllAutos();
+      const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
+      const pliegosAprobados = todos.filter((a: any) =>
+        a.estado === 'APROBADO' &&
+        (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
+      );
+      const autosAMostrar = [...enRevision, ...pliegosAprobados];
+      if (autosAMostrar.length > 0) {
+        const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
+          id: `auto-${auto.id}`,
+          autoId: auto.id,
+          procesoId: auto.processId || auto.process?.id,
+          numeroProceso: auto.process?.radicadoProceso || auto.processId,
+          titulo: (auto.tipo || '').replace(/_/g, ' '),
+          plantilla: auto.tipo || '',
+          version: auto.currentVersion || 1,
+          fechaEnvio: auto.createdAt,
+          profesional: {
+            nombre: auto.process?.abogadoAsignadoNombre || 'Profesional',
+            email: '',
+          },
+          observacionesProfesional: auto.comentarios || '',
+          contenido: auto.contenido || '',
+          denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
+          etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
+          prioridad: 'media' as const,
+          estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
+          historial: [{
+            id: `h-${auto.id}`,
+            tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
+            usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
+            fecha: auto.createdAt,
+            descripcion: auto.estado === 'APROBADO'
+              ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
+              : 'Auto enviado a revisión del Jefe OCID',
+          }],
+          tiempoEspera: '',
+        }));
+        setBorradores(borradoresReales);
+        console.log("borradoresReales", borradoresReales)
+      }
+    } catch {
+      // Si falla la carga, conservar los datos de demostración
+    }
+  }, []);
 
   // Cargar autos reales con estado REVISION_JEFE desde el backend
   useEffect(() => {
-    const cargarAutosEnRevision = async () => {
-      try {
-        const todos = await disciplinaryService.getAllAutos();
-        const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
-        const pliegosAprobados = todos.filter((a: any) =>
-          a.estado === 'APROBADO' &&
-          (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
-        );
-        const autosAMostrar = [...enRevision, ...pliegosAprobados];
-        if (autosAMostrar.length > 0) {
-          const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
-            id: `auto-${auto.id}`,
-            autoId: auto.id,
-            numeroProceso: auto.process?.radicadoProceso || auto.processId,
-            titulo: (auto.tipo || '').replace(/_/g, ' '),
-            plantilla: auto.tipo || '',
-            version: auto.currentVersion || 1,
-            fechaEnvio: auto.createdAt,
-            profesional: {
-              nombre: auto.process?.abogadoAsignadoNombre || 'Profesional',
-              email: '',
-            },
-            observacionesProfesional: auto.comentarios || '',
-            contenido: auto.contenido || '',
-            denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
-            etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
-            prioridad: 'media' as const,
-            estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
-            historial: [{
-              id: `h-${auto.id}`,
-              tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
-              usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
-              fecha: auto.createdAt,
-              descripcion: auto.estado === 'APROBADO'
-                ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
-                : 'Auto enviado a revisión del Jefe OCID',
-            }],
-            tiempoEspera: '',
-          }));
-          setBorradores(borradoresReales);
-        }
-      } catch {
-        // Si falla la carga, conservar los datos de demostración
-      }
-    };
     cargarAutosEnRevision();
-  }, []);
+  }, [cargarAutosEnRevision]);
   
   // ✅ NUEVO: Estado para solicitudes de reasignación
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
@@ -232,7 +270,7 @@ export function ControlDisciplinarioFull() {
     if (!hasPermissionBySection[currentSection]) {
       setCurrentSection(getFirstAllowedSection());
     }
-  }, [currentSection]);
+  }, [currentSection, authUserRenderKey]);
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
@@ -507,7 +545,7 @@ export function ControlDisciplinarioFull() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
       moduleDescription="Sistema de Gestión"
@@ -526,6 +564,7 @@ export function ControlDisciplinarioFull() {
       {/* Contenido Principal */}
       {currentSection === 'dashboard' && (
         <DashboardKanbanOperativo 
+          key={authUserRenderKey}
           onNavigateToExpediente={() => setCurrentSection('expediente')} 
           filtroProfesionalId={filtroProfesional}
           onEnviarARevision={handleEnviarARevisionGlobal}
@@ -539,6 +578,7 @@ export function ControlDisciplinarioFull() {
           solicitudesReasignacion={solicitudesReasignacion}
           onAprobar={handleAprobarBorrador}
           onDevolver={handleDevolverBorrador}
+          onRefresh={cargarAutosEnRevision}
           onSendJuridica={handleSendJuridica}
           onAprobarReasignacion={handleAprobarReasignacion}
           onRechazarReasignacion={handleRechazarReasignacion}

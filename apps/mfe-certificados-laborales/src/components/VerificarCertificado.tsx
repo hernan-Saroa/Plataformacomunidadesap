@@ -78,8 +78,8 @@ export function VerificarCertificado() {
             'No se pudo verificar el certificado';
           setError(message);
           setCertificado(null);
-          toast.error('Error de verificacion', {
-            description: 'El certificado no existe o el codigo es invalido'
+          toast.error('Error de verificación', {
+            description: 'El certificado no existe o el código es inválido'
           });
           return;
         }
@@ -203,7 +203,7 @@ export function VerificarCertificado() {
           certificado?.observations,
         templateType: certificado?.template_type || certificado?.templateType,
         includeCodeLabel: true,
-        codeLabel: 'Codigo',
+        codeLabel: 'Código',
       })
     : '';
   const tipoVinculacion = certificado?.position_category || certificado?.positionCategory || certificado?.tipo_vinculacion || '';

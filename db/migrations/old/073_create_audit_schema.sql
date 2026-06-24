@@ -179,5 +179,5 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trigger_create_partition_before_insert
 BEFORE INSERT ON audit.request_logs
 FOR EACH STATEMENT
-EXECUTE FUNCTION audit.create_monthly_partition();
+EXECUTE FUNCTION audit.request_logs_partition_trigger();
 

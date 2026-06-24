@@ -42,20 +42,6 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: certificate_downloads; Type: TABLE; Schema: academic_registration; Owner: -
---
-
-CREATE TABLE academic_registration.certificate_downloads (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    certificate_id uuid NOT NULL,
-    download_date timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    ip_address character varying(50),
-    user_agent text,
-    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
-);
-
-
---
 -- Name: certificate_template_config; Type: TABLE; Schema: academic_registration; Owner: -
 --
 
@@ -269,8 +255,6 @@ CREATE TABLE academic_registration.graduation_certificates (
     status character varying(50) DEFAULT 'VALID'::character varying,
     issue_date date DEFAULT CURRENT_DATE,
     expiry_date date,
-    revocation_date timestamp without time zone,
-    revocation_reason text,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     created_by character varying(255),
@@ -309,9 +293,7 @@ CREATE TABLE academic_registration.signers (
     full_name character varying(255) NOT NULL,
     "position" character varying(255) NOT NULL,
     department character varying(255),
-    email character varying(255),
     signature_url text,
-    signature_filename character varying(255),
     is_active boolean DEFAULT true,
     is_primary boolean DEFAULT false,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
@@ -355,14 +337,6 @@ COMMENT ON TABLE academic_registration.template_config_changes IS 'Historial de 
 --
 
 ALTER TABLE ONLY academic_registration.certificate_template_config ALTER COLUMN id SET DEFAULT nextval('academic_registration.certificate_template_config_id_seq'::regclass);
-
-
---
--- Name: certificate_downloads certificate_downloads_pkey; Type: CONSTRAINT; Schema: academic_registration; Owner: -
---
-
-ALTER TABLE ONLY academic_registration.certificate_downloads
-    ADD CONSTRAINT certificate_downloads_pkey PRIMARY KEY (id);
 
 
 --
@@ -532,20 +506,6 @@ CREATE INDEX idx_certificates_verification ON academic_registration.graduation_c
 
 
 --
--- Name: idx_downloads_certificate_id; Type: INDEX; Schema: academic_registration; Owner: -
---
-
-CREATE INDEX idx_downloads_certificate_id ON academic_registration.certificate_downloads USING btree (certificate_id);
-
-
---
--- Name: idx_downloads_date; Type: INDEX; Schema: academic_registration; Owner: -
---
-
-CREATE INDEX idx_downloads_date ON academic_registration.certificate_downloads USING btree (download_date);
-
-
---
 -- Name: idx_graduates_diploma_number; Type: INDEX; Schema: academic_registration; Owner: -
 --
 
@@ -683,14 +643,6 @@ CREATE TRIGGER update_signers_updated_at BEFORE UPDATE ON academic_registration.
 --
 
 CREATE TRIGGER update_template_config_updated_at BEFORE UPDATE ON academic_registration.certificate_template_config FOR EACH ROW EXECUTE FUNCTION academic_registration.update_updated_at_column();
-
-
---
--- Name: certificate_downloads certificate_downloads_certificate_id_fkey; Type: FK CONSTRAINT; Schema: academic_registration; Owner: -
---
-
-ALTER TABLE ONLY academic_registration.certificate_downloads
-    ADD CONSTRAINT certificate_downloads_certificate_id_fkey FOREIGN KEY (certificate_id) REFERENCES academic_registration.graduation_certificates(id);
 
 
 --

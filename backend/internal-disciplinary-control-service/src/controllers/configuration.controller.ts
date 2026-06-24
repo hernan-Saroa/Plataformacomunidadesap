@@ -1,6 +1,11 @@
-import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile, HttpException, HttpStatus, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { existsSync } from 'fs';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
@@ -10,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+import { StorageService } from '../services/storage.service';
 
 @Controller('configuration')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,6 +32,7 @@ export class ConfigurationController {
         private reglasRepo: Repository<ReglaAlerta>,
         @InjectRepository(DisciplinaryProfessional)
         private professionalRepo: Repository<DisciplinaryProfessional>,
+        private storageService: StorageService,
     ) { }
 
     // --- AVAILABLE ROLES (Punto 1: Dinámico) ---
@@ -264,6 +271,50 @@ export class ConfigurationController {
                 }
             });
             return await this.systemConfigRepo.save(defaultConfig);
+        }
+    }
+
+    // --- FIRMA DEL JEFE ---
+
+    @Post('firma-jefe')
+    @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID')
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadFirmaJefe(@UploadedFile() file: Express.Multer.File) {
+        if (!file) {
+            throw new HttpException('No se proporcionó archivo', HttpStatus.BAD_REQUEST);
+        }
+        if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.mimetype)) {
+            throw new HttpException('Solo se permiten imágenes PNG o JPG', HttpStatus.BAD_REQUEST);
+        }
+        const ext = file.mimetype === 'image/png' ? 'png' : 'jpg';
+        const targetPath = this.storageService.getFullPath(`firma_jefe.${ext}`);
+        const otherExt = ext === 'png' ? 'jpg' : 'png';
+        const otherPath = this.storageService.getFullPath(`firma_jefe.${otherExt}`);
+        try { await fs.unlink(otherPath); } catch {}
+        await fs.writeFile(targetPath, file.buffer);
+        return { message: 'Firma guardada correctamente', filename: `firma_jefe.${ext}` };
+    }
+
+    @Get('firma-jefe/existe')
+    async firmaJefeExiste() {
+        const pngPath = this.storageService.getFullPath('firma_jefe.png');
+        const jpgPath = this.storageService.getFullPath('firma_jefe.jpg');
+        return { existe: existsSync(pngPath) || existsSync(jpgPath) };
+    }
+
+    @Get('firma-jefe')
+    @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID')
+    getFirmaJefe(@Res() res: Response) {
+        const pngPath = this.storageService.getFullPath('firma_jefe.png');
+        const jpgPath = this.storageService.getFullPath('firma_jefe.jpg');
+        if (existsSync(pngPath)) {
+            res.setHeader('Content-Type', 'image/png');
+            res.sendFile(pngPath);
+        } else if (existsSync(jpgPath)) {
+            res.setHeader('Content-Type', 'image/jpeg');
+            res.sendFile(jpgPath);
+        } else {
+            res.status(404).json({ message: 'No hay firma configurada' });
         }
     }
 }

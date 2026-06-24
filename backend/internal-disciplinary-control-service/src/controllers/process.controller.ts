@@ -15,6 +15,7 @@ import {
   Res,
   HttpException,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -35,13 +36,16 @@ import { UpdateDisciplinaryProcessDto } from '../dtos/update-disciplinary-proces
 import { RemitirPorCompetenciaDto, RemisionPorCompetenciaResponseDto } from '../dtos/remitir-competencia.dto';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import {
-  DEFAULT_UPLOAD_DIR,
   StorageService,
   buildStoredFileName,
   ensureUploadDirExists,
+  getProcessStorageRelativePath,
+  getProcessUploadDir,
+  getUploadRootDir,
 } from '../services/storage.service';
 import type { Request, Response } from 'express';
 import * as fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -50,6 +54,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+import { PermissionsService } from '../auth/services/permissions.service';
+import JSZip from 'jszip';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -59,6 +65,7 @@ const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
   'CONTROL_DISCIPLINARIO',
   'JEFE_OCID',
   'JEFE_DE_LA_OCID',
+  'SECRETARIA_RADICADOR',
 ]);
 
 type AuthenticatedRequest = Request & {
@@ -73,10 +80,10 @@ const PROCESS_DOCUMENT_UPLOAD_OPTIONS = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {
       try {
-        const uploadDir = path.resolve(process.cwd(), ensureUploadDirExists(DEFAULT_UPLOAD_DIR));
+        const uploadDir = path.resolve(ensureUploadDirExists(getUploadRootDir()));
         cb(null, uploadDir);
       } catch (error) {
-        cb(error as Error, path.resolve(process.cwd(), DEFAULT_UPLOAD_DIR));
+        cb(error as Error, path.resolve(getUploadRootDir()));
       }
     },
     filename: (_req, file, cb) => {
@@ -99,6 +106,7 @@ export class ProcessController {
     private storageService: StorageService,
     private autoService: AutoService,
     private httpService: HttpService,
+    private permissionsService: PermissionsService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -141,13 +149,40 @@ export class ProcessController {
     return false;
   }
 
-  private getSensitiveAccessContext(req: AuthenticatedRequest): {
+  /**
+   * Verifica si el usuario tiene el permiso granular que permite ver TODOS los expedientes
+   * (CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_VIEW_ALL).
+   * Consulta real contra la tabla auth.permission usando los roles del token.
+   */
+  private async hasExpedienteViewAllPermission(req: AuthenticatedRequest): Promise<boolean> {
+    const normalizedRoles = Array.from(this.extractNormalizedRoles(req));
+    if (normalizedRoles.length === 0) return false;
+
+    // Fast path para super admins (ya cubierto por roles legacy, pero por si acaso)
+    if (normalizedRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))) {
+      return true;
+    }
+
+    const userPermissions = await this.permissionsService.getPermissionsByRoles(normalizedRoles);
+
+    return userPermissions.some(perm =>
+      perm === 'control-disciplinario.expediente-electronico.view_all' ||
+      perm.endsWith('expediente-electronico.view_all'),
+    );
+  }
+
+  private async getSensitiveAccessContext(req: AuthenticatedRequest): Promise<{
     fullAccess: boolean;
+    canViewAllExpedientes: boolean;
     userId?: string;
     email?: string;
-  } {
+  }> {
+    const legacyFullAccess = this.hasFullSensitiveAccess(req);
+    const canViewAll = legacyFullAccess || await this.hasExpedienteViewAllPermission(req);
+
     return {
-      fullAccess: this.hasFullSensitiveAccess(req),
+      fullAccess: legacyFullAccess || canViewAll,
+      canViewAllExpedientes: canViewAll,
       userId: req.user?.userId,
       email: req.user?.email,
     };
@@ -158,7 +193,7 @@ export class ProcessController {
     processId: string,
     includeAutos = false,
   ): Promise<void> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return;
@@ -203,7 +238,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ) {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.getProcessStatistics(id);
@@ -280,7 +315,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('radicado') radicado: string,
   ): Promise<DisciplinaryProcess> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.findByRadicado(radicado);
@@ -452,7 +487,7 @@ export class ProcessController {
           );
         }
 
-        rutaRelativa = file.filename;
+        rutaRelativa = await this.moveUploadedFileToProcessDir(file, proceso.radicadoProceso);
         console.log('✅ Archivo guardado en:', rutaRelativa);
 
         nombreDocumento = body.nombre || file.originalname;
@@ -785,6 +820,32 @@ export class ProcessController {
     }
   }
 
+  private async moveUploadedFileToProcessDir(
+    file: Express.Multer.File,
+    radicadoProceso: string,
+  ): Promise<string> {
+    const targetDir = getProcessUploadDir(radicadoProceso);
+    ensureUploadDirExists(targetDir);
+
+    const targetPath = path.join(targetDir, path.basename(file.filename));
+    if (path.resolve(file.path) !== path.resolve(targetPath)) {
+      try {
+        await fsPromises.rename(file.path, targetPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') {
+          throw error;
+        }
+
+        await fsPromises.copyFile(file.path, targetPath);
+        await fsPromises.unlink(file.path);
+      }
+    }
+
+    file.path = targetPath;
+    file.destination = targetDir;
+    return getProcessStorageRelativePath(radicadoProceso, file.filename);
+  }
+
   /**
    * Listar documentos del proceso
    */
@@ -938,8 +999,49 @@ export class ProcessController {
         };
       });
 
+      // Incluir archivos adjuntos originales de la noticia (para que aparezcan en el expediente electrónico)
+      const documentosAdjuntosNoticia: any[] = [];
+      if (proceso.news && Array.isArray((proceso.news as any).adjuntos) && (proceso.news as any).adjuntos.length > 0) {
+        (proceso.news as any).adjuntos.forEach((adjPath: string, index: number) => {
+          const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+          const tamaño = 'N/A';
+          const fecha = (proceso.news as any).createdAt?.toISOString() || new Date().toISOString();
+          documentosAdjuntosNoticia.push({
+            id: `adj-noticia-${(proceso.news as any).id || id}-${index}`,
+            nombre: filename,
+            archivoNombre: filename,
+            tipo: 'otro',
+            etapa: 'Recepción (Noticia Inicial)',
+            version: 1,
+            tamaño,
+            fechaCarga: fecha,
+            usuarioCarga: 'Radicador',
+            descripcion: 'Archivo adjunto a la noticia disciplinaria original',
+            url: null,
+            urlExterna: null,
+            downloadUrl: `/files/${filename}`,
+            processId: id,
+            fileType: 'application/octet-stream',
+            fileSize: 0,
+            versiones: [{
+              numero: 1,
+              fecha,
+              usuario: 'Radicador',
+              cambios: 'Adjunto de noticia inicial',
+              tamaño,
+              downloadUrl: `/files/${filename}`,
+            }],
+            metadatos: {
+              firmado: false,
+              notificado: false,
+              esAutoDigital: false,
+            },
+          });
+        });
+      }
+
       // Combinar y ordenar por fecha
-      const todosDocumentos = [...documentosEvidencia, ...documentosAutos].sort((a, b) => {
+      const todosDocumentos = [...documentosEvidencia, ...documentosAutos, ...documentosAdjuntosNoticia].sort((a, b) => {
         return new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime();
       });
 
@@ -1092,12 +1194,16 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Query('abogadoId') abogadoId: string,
   ): Promise<DisciplinaryProcess[]> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
+    
+    console.log('abogadoId',abogadoId);
+    
 
     if (access.fullAccess) {
       if (!abogadoId) {
         throw new HttpException('abogadoId es requerido', HttpStatus.BAD_REQUEST);
       }
+      console.log('resultados',await this.processService.findByAbogadoId(abogadoId));
 
       return await this.processService.findByAbogadoId(abogadoId);
     }
@@ -1106,6 +1212,28 @@ export class ProcessController {
       access.userId,
       access.email,
     );
+  }
+
+  /**
+   * Obtener todas las noticias RADICADA con documentos adjuntos
+   * Estas noticias no tienen proceso asociado aún
+   */
+  @Get('radicated-news')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Obtener Noticias Radicadas',
+    description: 'Retorna las noticias en estado RADICADA que no tienen proceso asociado (con o sin adjuntos)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de noticias radicadas con documentos',
+  })
+  async getRadicatedNewsWithDocuments(@Req() req: AuthenticatedRequest) {
+    const access = await this.getSensitiveAccessContext(req);
+    if (!access.fullAccess) {
+      return [];
+    }
+    return await this.processService.findRadicatedNewsWithDocuments();
   }
 
   /**
@@ -1122,7 +1250,7 @@ export class ProcessController {
     type: [DisciplinaryProcess],
   })
   async getAll(@Req() req: AuthenticatedRequest): Promise<DisciplinaryProcess[]> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.findAll();
@@ -1150,9 +1278,9 @@ export class ProcessController {
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async getById(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<DisciplinaryProcess> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.findById(id, true);
@@ -1236,20 +1364,65 @@ export class ProcessController {
       const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
       console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
 
-      const emailPayload = {
-        to: dto.emailDestinatario,
-        subject: `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`,
-        text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-        html: emailHtml,
-      };
+      const subject = `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`;
 
-      console.log('📧 [RemitirCompetencia] Enviando correo a:', dto.emailDestinatario);
+      let subjectFinal = subject;
+      let attachmentName: string | undefined;
+      let attachmentBase64: string | undefined;
+      let attachmentContentType = 'application/zip';
 
-      const response = await firstValueFrom(
-        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
-      );
+      const adjuntos = (noticia as any).adjuntos as string[] | undefined;
+      if (adjuntos && Array.isArray(adjuntos) && adjuntos.length > 0) {
+        try {
+          const zip = new JSZip();
+          for (const adjunto of adjuntos) {
+            try {
+              const filename = adjunto.includes('/') ? adjunto.split('/').pop()! : adjunto;
+              const filePath = this.storageService.getFullPath(adjunto);
+              const fileBuffer = await fsPromises.readFile(filePath);
+              zip.file(filename, fileBuffer);
+            } catch (adjuntoError) {
+              console.error(`⚠️ [RemitirCompetencia] Error leyendo adjunto ${adjunto}:`, adjuntoError);
+            }
+          }
+          const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+          attachmentName = `adjuntos_${dto.radicado || noticia.radicado}.zip`;
+          attachmentBase64 = zipBuffer.toString('base64');
+          subjectFinal = `${subject} (${adjuntos.length} archivo(s) adjunto(s))`;
+          console.log(`📎 [RemitirCompetencia] ZIP creado con ${adjuntos.length} archivo(s)`);
+        } catch (zipError) {
+          console.error(`⚠️ [RemitirCompetencia] Error creando ZIP:`, zipError);
+        }
+      }
 
-      console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);
+      const remindersBaseUrl = (notificationsServiceUrl || '').replace(/\/+$/, '');
+
+      if (attachmentBase64 && attachmentName) {
+        const emailPayload: any = {
+          to: dto.emailDestinatario,
+          subject: subjectFinal,
+          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+          html: emailHtml,
+          attachmentName,
+          attachmentBase64,
+          attachmentContentType,
+        };
+        const responseWithAttachment = await firstValueFrom(
+          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send-with-attachment`, emailPayload),
+        );
+        console.log('📧 [RemitirCompetencia] Correo con ZIP enviado:', responseWithAttachment.data);
+      } else {
+        const emailPayload = {
+          to: dto.emailDestinatario,
+          subject: subjectFinal,
+          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+          html: emailHtml,
+        };
+        const response = await firstValueFrom(
+          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload),
+        );
+        console.log('📧 [RemitirCompetencia] Correo enviado:', response.data);
+      }
 
       // 5. Generar número RC
       const anio = new Date().getFullYear();
@@ -1420,47 +1593,48 @@ export class ProcessController {
     }
   }
 
-  /**
-   * Enviar correo electrónico
-   */
-  @Post('send-email')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Enviar Correo Electrónico',
-    description: 'Envía un correo electrónico usando el servicio de notificaciones',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Correo enviado exitosamente',
-  })
-  @ApiResponse({ status: 400, description: 'Datos inválidos' })
-  @ApiResponse({ status: 500, description: 'Error interno del servidor' })
-  async sendEmail(@Body() emailData: { to: string; subject: string; body?: string; html?: string }) {
-    try {
-      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
+/**
+    * Enviar correo electrónico
+    */
+   @Post('send-email')
+   @HttpCode(HttpStatus.OK)
+   @ApiOperation({
+     summary: 'Enviar Correo Electrónico',
+     description: 'Envía un correo electrónico usando el servicio de notificaciones',
+   })
+   @ApiResponse({
+     status: 200,
+     description: 'Correo enviado exitosamente',
+   })
+   @ApiResponse({ status: 400, description: 'Datos inválidos' })
+   @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+   async sendEmail(@Body() emailData: { to: string; subject: string; body?: string; html?: string }) {
+     try {
+       const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
 
-      const emailPayload = {
-        to: emailData.to,
-        subject: emailData.subject,
-        text: emailData.body,
-        html: emailData.html,
-      };
+       const emailPayload = {
+         to: emailData.to,
+         subject: emailData.subject,
+         text: emailData.body,
+         html: emailData.html,
+       };
 
-      console.log('📧 [ProcessController] Enviando correo a:', emailData.to);
+       console.log('📧 [ProcessController] Enviando correo a:', emailData.to);
 
-      const response = await firstValueFrom(
-        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
-      );
+       const response = await firstValueFrom(
+         this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
+       );
 
-      console.log('📧 [ProcessController] Correo enviado exitosamente:', response.data);
+       console.log('📧 [ProcessController] Correo enviado exitosamente:', response.data);
 
-      return { success: true, message: 'Correo enviado exitosamente' };
-    } catch (error) {
-      console.error('📧 [ProcessController] Error al enviar correo:', error);
-      throw new HttpException(
-        `Error al enviar correo: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-}
+       return { success: true, message: 'Correo enviado exitosamente' };
+     } catch (error) {
+       console.error('📧 [ProcessController] Error al enviar correo:', error);
+       throw new HttpException(
+         `Error al enviar correo: ${error.message}`,
+         HttpStatus.INTERNAL_SERVER_ERROR,
+       );
+     }
+   }
+
+ }

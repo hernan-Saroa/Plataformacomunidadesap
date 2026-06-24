@@ -3,10 +3,7 @@
  * Diseño premium SAP Fiori/Microsoft Dynamics style
  */
 
-import { Card } from '@esap-mfe/shared-ui/card';
-import { Button } from '@esap-mfe/shared-ui/button';
-import { Badge } from '@esap-mfe/shared-ui/badge';
-import { Input } from '@esap-mfe/shared-ui/input';
+import { Card, Button, Badge, Input, Toaster, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import {
   FileText, Upload, Eye, Download, Share2, CheckCircle,
   Clock, AlertCircle, Users, Search, Filter, PenTool,
@@ -15,7 +12,7 @@ import {
   ChevronLeft, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { useState } from 'react';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { VisorDocumentoFirmaOTP } from './VisorDocumentoFirmaOTP';
 import { ModalCompartirFirma } from './ModalCompartirFirma';
@@ -291,36 +288,23 @@ export function ModuloFirmaElectronicaWorldClass() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
-    <div className="min-h-screen bg-white">
+    <Toaster position="bottom-right" richColors />
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header Premium World-Class */}
-      <div className="bg-white border-b-2 border-gray-100 px-6 py-6 sticky top-0 z-10 shadow-sm">
+      <ResponsiveHeader
+        key="header"
+        title="Firma Electrónica de Documentos"
+        description="Gestión integral con firma digital y trazabilidad completa"
+        icon={PenTool}
+        primaryAction={{
+          label: "Subir Documento",
+          icon: Upload,
+          onClick: () => setMostrarModalSubir(true),
+          variant: "primary",
+        }}
+      />
+      <div className="px-1 py-1">
         <div className="max-w-[1600px] mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
-                <PenTool className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Firma Electrónica de Documentos
-                </h1>
-                <p className="text-sm text-gray-600">
-                  Gestión integral con firma digital y trazabilidad completa
-                </p>
-              </div>
-            </div>
-
-            <Button
-              onClick={() => setMostrarModalSubir(true)}
-              size="lg"
-              className="font-semibold shadow-lg"
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Subir Documento
-            </Button>
-          </div>
 
           {/* Stats Cards - Inline */}
           <div className="grid grid-cols-4 gap-4">
@@ -383,7 +367,7 @@ export function ModuloFirmaElectronicaWorldClass() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-[1600px] mx-auto px-6 py-6">
+      <div className="max-w-[1600px] mx-auto px-1 py-1">
         {/* Barra de Herramientas Premium - NUEVA */}
         <div className="mb-6 flex gap-3">
           <Button

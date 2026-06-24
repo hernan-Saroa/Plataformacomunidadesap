@@ -44,32 +44,7 @@ const tiposActa = [
   'Audiencia de Fallo'
 ];
 
-// Datos mock de actas (REDUCIDOS)
-const actasMock = [
-  {
-    id: 1,
-    tipo: 'Audiencia Inicial',
-    numero: 'ACTA-AUD-001-2024',
-    fecha: '12/12/2024',
-    hora: '10:00 AM - 11:30 AM',
-    lugar: 'Juzgado Administrativo',
-    presidente: 'Dra. Juez Titular',
-    participantes: [
-      'Juez',
-      'Apoderado ESAP',
-      'Secretaria Judicial'
-    ],
-    resumen: 'Acta de ejemplo para referencia',
-    decisiones: [
-      'Se admite la demanda presentada',
-    ],
-    estado: 'Firmada',
-    estadoColor: 'green',
-    archivo: 'acta_ejemplo.pdf',
-    tamaño: '1.8 MB',
-    duracion: '1h 30min'
-  },
-];
+
 
 export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasProps) {
   const [actas, setActas] = useState<any[]>([]);
@@ -189,16 +164,8 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       toast.info('Iniciando descarga...');
       const fileUrl = getFileUrl(acta.archivoUrl);
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -343,16 +310,8 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 

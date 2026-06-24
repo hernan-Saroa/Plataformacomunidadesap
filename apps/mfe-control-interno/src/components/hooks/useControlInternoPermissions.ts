@@ -126,7 +126,7 @@ const MAPA_PERMISOS: Record<string, string> = {
   'roles-permisos:view': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'roles-permisos:create': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'roles-permisos:edit': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
-  'roles-permisos:delete': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
+  'roles-permisos:delete': Permissions.CONTROL_INTERNO_ROLES_DELETE,
 };
 
 // Roles que tienen TODOS los permisos (superusuarios)
@@ -163,56 +163,36 @@ export function useControlInternoPermissions(
       permisos = [...userData.permissions];
     }
     
-    // Si no hay datos en props, intentar obtener desde localStorage
+    // Si no hay datos en props, leer del caché en memoria compartido por el shell (OTIC-002)
     if (roles.length === 0 && permisos.length === 0) {
       try {
-        // Intentar primero esap_user_data (donde App.tsx guarda los datos)
-        const userDataStr = sessionStorage.getItem('esap_user_data');
-        if (userDataStr) {
-          const userDataParsed = JSON.parse(userDataStr);
-          
-          // Buscar permisos
-          if (userDataParsed.permissions) {
-            const p = Array.isArray(userDataParsed.permissions) ? userDataParsed.permissions : [userDataParsed.permissions];
-            permisos.push(...p);
+        // window.__esap_auth_cache es el puente en-memoria que setea el shell tras verifyToken/login
+        const windowUser = (window as any).__esap_auth_cache;
+        if (windowUser) {
+          const userRoles: any[] = Array.isArray(windowUser.roles) ? windowUser.roles : [];
+
+          const roleCodes = userRoles
+            .map((r: any) => (typeof r === 'string' ? r : r?.code || ''))
+            .filter(Boolean);
+          roles.push(...roleCodes);
+
+          // Permisos directos del usuario
+          if (Array.isArray(windowUser.permissions)) {
+            permisos.push(...windowUser.permissions.filter(Boolean));
           }
-          
-          // Buscar roles
-          if (userDataParsed.roles) {
-            const r = Array.isArray(userDataParsed.roles) ? userDataParsed.roles : [userDataParsed.roles];
-            roles.push(...r);
-          }
-        }
-        
-        // Si aún no hay datos, intentar esap-sesion-activa
-        if (roles.length === 0 && permisos.length === 0) {
-          const sesion = sessionStorage.getItem('esap-sesion-activa');
-          if (sesion) {
-            const sesionData = JSON.parse(sesion);
-            
-            // Buscar roles
-            if (sesionData.roles) {
-              const r = Array.isArray(sesionData.roles) ? sesionData.roles : [sesionData.roles];
-              roles.push(...r);
-            }
-            if (sesionData.user?.roles) {
-              const r = Array.isArray(sesionData.user.roles) ? sesionData.user.roles : [sesionData.user.roles];
-              roles.push(...r);
-            }
-            
-            // Buscar permisos
-            if (sesionData.permissions) {
-              const p = Array.isArray(sesionData.permissions) ? sesionData.permissions : [sesionData.permissions];
-              permisos.push(...p);
-            }
-            if (sesionData.user?.permissions) {
-              const p = Array.isArray(sesionData.user.permissions) ? sesionData.user.permissions : [sesionData.user.permissions];
-              permisos.push(...p);
-            }
-          }
+
+          // Permisos dentro de cada rol
+          const rolePerms = userRoles.flatMap((r: any) =>
+            Array.isArray(r?.permissions)
+              ? r.permissions
+                  .map((p: any) => (typeof p === 'string' ? p : p?.code || ''))
+                  .filter(Boolean)
+              : [],
+          );
+          permisos.push(...rolePerms);
         }
       } catch (error) {
-        console.warn('⚠️ [useControlInternoPermissions] Error al leer sesión:', error);
+        console.warn('⚠️ [useControlInternoPermissions] Error al leer caché de usuario:', error);
       }
     }
     

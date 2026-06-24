@@ -13,18 +13,22 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ChevronLeft, Save, Send, AlertCircle, Plus, Trash2, Calculator,
+  ChevronLeft, ChevronRight, Save, Send, AlertCircle, Plus, Trash2, Calculator,
   BookOpen, FlaskConical, Globe, Briefcase, CheckCircle2, Info,
-  ChevronDown, RotateCcw, AlertTriangle, Search, Shield, Clock, MessageSquare
+  ChevronDown, RotateCcw, AlertTriangle, Search, Shield, Clock, MessageSquare,
+  Paperclip, FileUp, FileCheck2, X as XIcon
 } from 'lucide-react';
 import {
   savePTA, getPTAById, getCatalogoProgramas, getCatalogoAsignaturas,
   getCatalogoTerritoriales, getCatalogoCetaps,
   getCatalogoActividadesInvestigacion, getCatalogoActividadesExtension,
   getCatalogoActividadesComplementarias, getCatalogoActividadesAcademicoAdmin,
-  getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension
+  getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
+  requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
+  getRUNDDocente
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
+import { getBancoDocenteById } from '../../../services/api/ptaApi';
 import { toast } from 'sonner';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
@@ -33,6 +37,73 @@ import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
+
+function DocumentosPendientesAlert({ documentosPendientes }: { documentosPendientes: any[] }) {
+  return null; // Temporarily deactivated - not blocking UI
+  const [expanded, setExpanded] = useState(false);
+  
+  if (!documentosPendientes || documentosPendientes.length === 0) return null;
+  
+  return (
+    <div className="p-4 rounded-xl bg-orange-50 border border-orange-200 shadow-sm relative overflow-hidden w-full transition-all duration-300">
+      <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-400"></div>
+      
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center shrink-0">
+            <Shield className="w-4 h-4 text-orange-600" />
+          </div>
+          <div>
+            <h3 className="text-[14px] font-bold text-orange-900 m-0 leading-tight">
+              Soportes de Carpeta Digital Incompletos
+            </h3>
+            <p className="m-0 mt-0.5 text-[12.5px] text-orange-800 font-medium">
+              Faltan {documentosPendientes.length} documentos obligatorios.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 lg:ml-auto shrink-0">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="px-3 py-2 rounded-lg bg-orange-100/50 hover:bg-orange-100 text-orange-800 text-[12px] font-bold border border-orange-200/50 transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            {expanded ? 'Ocultar detalles' : 'Ver pendientes'}
+          </button>
+          
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('portal-view-change', { detail: { view: 'carpeta-digital' } }));
+            }}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg border-none cursor-pointer transition-colors shadow-sm text-[12.5px] flex items-center gap-1.5"
+          >
+            Ir a Carpeta
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 pt-4 border-t border-orange-200/60 pl-2 lg:pl-14">
+          <p className="text-[12.5px] text-orange-800/90 font-medium mb-3">
+            Para poder enviar a revisión tu PTA, debes cargar:
+          </p>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+            {documentosPendientes.map((doc) => (
+              <div key={doc.campo_rund} className="px-3 py-1.5 bg-white border border-orange-200 rounded-lg text-[11.5px] font-semibold text-orange-900 flex items-center gap-2 shadow-sm">
+                <AlertCircle className="w-3 h-3 text-orange-500" />
+                <span className="uppercase">{doc.campo_rund.replace(/_/g, ' ')}</span>
+                <span className="text-orange-300 mx-0.5">—</span>
+                <span className="text-orange-700 font-medium">{doc.tipo_documento_soporte}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 interface PTAFormProps {
   onBack: () => void;
@@ -72,6 +143,9 @@ interface InvestigacionProyecto {
   horas_solicitadas: number;
   fecha_inicio: string;
   fecha_fin: string;
+  resolucion_nombre: string;
+  resolucion_archivo?: File | null;
+  resolucion_archivo_url?: string; // URL del archivo ya guardado
 }
 
 interface InvestigacionActividad {
@@ -84,6 +158,9 @@ interface InvestigacionActividad {
   horas_total: number;
   fecha_inicio: string;
   fecha_fin: string;
+  resolucion_nombre: string;
+  resolucion_archivo?: File | null;
+  resolucion_archivo_url?: string;
 }
 
 interface ExtensionActividad {
@@ -302,14 +379,17 @@ function calcHorasProgramables(tipoVinc: string, dedicacion: string, semanas?: n
   const tipo = TIPOS_VINCULACION.find(t => t.codigo === tipoVinc);
   if (!tipo) return dedicacion === 'Medio Tiempo' ? 400 : 800;
   if (tipo.calculo === 'fijo') {
-    // Use DB-configured horas base when available
+    // Excepción RN-003: No aplica proporcionalidad para docentes Carrera1 (Acuerdo 009/2004)
     if (tipo.codigo === 'CARRERA_009') {
       const base = rules?.horas_base_carrera_009 || tipo.horas_tc || 720;
       return dedicacion === 'Medio Tiempo' ? Math.round(base / 2) : base;
     }
-    // CARRERA_003 and PERIODO_PRUEBA use 003 base
+    // CARRERA_003 and PERIODO_PRUEBA apply proportionality RN-003
     const base = rules?.horas_base_carrera_003 || tipo.horas_tc || 800;
-    return dedicacion === 'Medio Tiempo' ? Math.round(base / 2) : base;
+    const baseDedicacion = dedicacion === 'Medio Tiempo' ? Math.round(base / 2) : base;
+    const semanasPeriodo = rules?.semanas_periodo || 20;
+    const sEfectivas = semanas || semanasPeriodo;
+    return Math.round((sEfectivas / semanasPeriodo) * baseDedicacion);
   }
   const hSem = dedicacion === 'Medio Tiempo' ? (rules?.horas_semanales_mt || 20) : (rules?.horas_semanales_tc || 40);
   return hSem * (semanas || 20);
@@ -328,13 +408,16 @@ const ROLES_INVESTIGACION_HORAS: Record<string, number> = {
   'ENLACE TERRITORIAL DE INVESTIGACIONES': 200,
 };
 
-const DEFAULT_EXT_SECCIONES = [
-  { key: 'capacitacion', label: 'Capacitación (SNPI)', color: '#059669', orden: 1 },
-  { key: 'seleccion', label: 'Selección (SNPI)', color: '#0284C7', orden: 2 },
-  { key: 'fortalecimiento', label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3 },
-  { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4 },
-  { key: 'investigacion_aplicada', label: 'Investigación Aplicada', color: '#15803D', orden: 5 },
-  { key: 'alto_gobierno', label: 'Alto Gobierno (EAG)', color: '#B45309', orden: 6 },
+// Fallback sincrónico que coincide con los defaults del backend (pta.service.ts).
+// Elimina la race condition: el formulario conoce el multiplicador x2 de capacitación
+// desde el primer render, antes de que responda la API.
+const DEFAULT_EXT_SECCIONES: Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number }> = [
+  { key: 'capacitacion',         label: 'Capacitación (SNPI)',    color: '#059669', orden: 1, multiplicador: 2 },
+  { key: 'seleccion',            label: 'Selección (SNPI)',        color: '#0284C7', orden: 2, multiplicador: 1 },
+  { key: 'fortalecimiento',      label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3, multiplicador: 1 },
+  { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4, multiplicador: 1 },
+  { key: 'investigacion_aplicada', label: 'Investigación Aplicada',    color: '#15803D', orden: 5, multiplicador: 1 },
+  { key: 'alto_gobierno',        label: 'Alto Gobierno (EAG)',    color: '#B45309', orden: 6, multiplicador: 1 },
 ];
 
 // ═══ COMPONENT ═══════════════════════════════════════════════════════
@@ -352,7 +435,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [slotNode, setSlotNode] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    setSlotNode(document.getElementById('portal-left-sidebar-slot'));
+    const el = document.getElementById('portal-left-sidebar-slot');
+    if (el) setSlotNode(el);
   }, []);
 
   // Catálogos
@@ -362,7 +446,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [cetapsMap, setCetapsMap] = useState<Record<string, any[]>>({});
   const [actInvestigacion, setActInvestigacion] = useState<any[]>([]);
   const [actExtension, setActExtension] = useState<any>(null);
-  const [extSecciones, setExtSecciones] = useState<Array<{ key: string; label: string; color: string; orden: number }>>(DEFAULT_EXT_SECCIONES);
+  const [extSecciones, setExtSecciones] = useState<Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number }>>(DEFAULT_EXT_SECCIONES);
   const [actComplementarias, setActComplementarias] = useState<any[]>([]);
   const [actAcadAdmin, setActAcadAdmin] = useState<any[]>([]);
   const [rolesInvestigacion, setRolesInvestigacion] = useState<any[]>([]);
@@ -394,10 +478,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [showFirmaDocente, setShowFirmaDocente] = useState(false);
   const [pendingDocenteAccion, setPendingDocenteAccion] = useState<'via_save' | 'avanzar_sin_cambios' | null>(null);
   const [docenteName, setDocenteName] = useState('');
+  const [requestingFirmaCode, setRequestingFirmaCode] = useState(false);
+  const [firmaVerificationId, setFirmaVerificationId] = useState('');
+  const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
+  // Modal de confirmación PTA incompleto (reemplaza window.confirm nativo)
+  const [showConfirmIncompleto, setShowConfirmIncompleto] = useState(false);
+  const [confirmIncompletoData, setConfirmIncompletoData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+
   // Legacy — conservados por compatibilidad
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
   const [savedPtaIdForSignature, setSavedPtaIdForSignature] = useState('');
-  const [targetEstado, setTargetEstado] = useState('Pendiente Jefatura');
+  const [targetEstado, setTargetEstado] = useState('PENDIENTE_APROBACION');
 
   // Recalcular horas cuando cambia tipo vinculación
   const tipoVincData = TIPOS_VINCULACION.find(t => t.codigo === tipoVinculacion);
@@ -415,6 +506,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [invProyecto, setInvProyecto] = useState<InvestigacionProyecto>({
     nombre: '', codigo: '', grupo: '', linea: '', rol: '',
     horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '',
+    resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '',
   });
   const [invActividades, setInvActividades] = useState<InvestigacionActividad[]>([]);
   const [extActividades, setExtActividades] = useState<ExtensionActividad[]>([]);
@@ -423,6 +515,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const [activeSection, setActiveSection] = useState<'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin'>('docencia');
   const [extSubseccion, setExtSubseccion] = useState('capacitacion');
+  const [documentosPendientes, setDocumentosPendientes] = useState<any[]>([]);
+
+  useEffect(() => {
+    const activeDocenteId = userPersonId || docenteIdFromPta;
+    if (!activeDocenteId) return;
+    getRUNDDocente(activeDocenteId)
+      .then((res) => {
+        if (res.success && res.data) {
+          const criticos = ['DOCUMENTO_IDENTIDAD', 'VINCULACION', 'DEDICACION', 'ACTO_ADMINISTRATIVO'];
+          const validaciones = Array.isArray(res.data) ? res.data : (res.data.validaciones || []);
+          const noAceptados = validaciones.filter((v: any) =>
+            criticos.includes(v.campo_rund) && v.estado_documento !== 'Aceptado'
+          );
+          setDocumentosPendientes(noAceptados);
+        }
+      })
+      .catch((err) => console.error('Error fetching RUND documents checklist:', err));
+  }, [userPersonId, docenteIdFromPta]);
 
   // Load catálogos
   useEffect(() => {
@@ -448,12 +558,40 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (roles.success) setRolesInvestigacion(roles.data);
       if (config.success && config.data) setPtaRules(config.data);
       if (secciones.success && Array.isArray(secciones.data) && secciones.data.length > 0) {
-        const sorted = [...secciones.data].sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0));
+        // Merge: la config en BD puede no traer 'multiplicador'. El backend hardcodea
+        // capacitación x2 al calcular horas, así que rellenamos el multiplicador desde
+        // los defaults por key para que el formulario coincida con el cálculo real.
+        const merged = secciones.data.map((s: any) => {
+          const def = DEFAULT_EXT_SECCIONES.find(d => d.key === s.key);
+          const mult = (s.multiplicador && s.multiplicador > 1)
+            ? s.multiplicador
+            : (def?.multiplicador || 1);
+          return { ...s, multiplicador: mult };
+        });
+        const sorted = merged.sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0));
         setExtSecciones(sorted);
         setExtSubseccion(sorted[0]?.key || 'capacitacion');
       }
     });
   }, []);
+
+  // Cuando extSecciones carga, corregir actividades cuyas horas no fueron multiplicadas
+  // por race condition (actividad agregada antes de que llegara la config del backend)
+  useEffect(() => {
+    if (!extSecciones.length) return;
+    setExtActividades(prev => prev.map(e => {
+      const secConfig = extSecciones.find(s => s.key === e.seccion);
+      const mult = secConfig?.multiplicador || 1;
+      if (mult <= 1) return e;
+      const ejec = Number(e.horas_ejecutadas ?? 0);
+      const horas = Number(e.horas ?? 0);
+      // Si horas === horas_ejecutadas en una sección con multiplicador, no se aplicó el x2
+      if (ejec > 0 && horas === ejec) {
+        return { ...e, horas: ejec * mult };
+      }
+      return e;
+    }));
+  }, [extSecciones]);
 
   const loadingCetapsRef = useRef<Set<string>>(new Set());
 
@@ -488,7 +626,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     getPTAById(ptaId).then(res => {
       if (res.success && res.data) {
         const d = res.data;
-        setPeriodo(d.periodo || '2026-1');
+        setPeriodo(d.periodo || '2025-2');
         setDedicacion(d.dedicacion || 'Tiempo Completo');
         setTipoVinculacion(d.tipo_vinculacion || 'CARRERA_003');
         setSemanasVinculacion(d.semanas_vinculacion || 20);
@@ -499,24 +637,84 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         setAsignaturas(d.asignaturas || []);
         setInvProyecto(d.investigacion_proyecto || invProyecto);
         setInvActividades(d.investigacion_actividades || []);
-        setExtActividades(d.extension_actividades || []);
+        // Normalizar actividades de extensión al cargar: aplicar multiplicador x2 si no se hizo
+        // (puede pasar con PTAs guardados antes del fix o en race condition)
+        const rawExtActs: ExtensionActividad[] = d.extension_actividades || [];
+        const normalizedExtActs = rawExtActs.map(e => {
+          const secConfig = extSecciones.find(s => s.key === e.seccion);
+          const mult = secConfig?.multiplicador || 1;
+          if (mult <= 1) return e;
+          const ejec = Number(e.horas_ejecutadas ?? 0);
+          const horas = Number(e.horas ?? 0);
+          if (ejec > 0 && horas === ejec) {
+            // Guardado sin multiplicar (simple input) → corregir
+            return { ...e, horas: ejec * mult };
+          }
+          if (ejec === 0 && horas > 0) {
+            // Solo horas seteado (formato antiguo) → tratar como ejecutadas
+            return { ...e, horas_ejecutadas: horas, horas: horas * mult };
+          }
+          return e;
+        });
+        setExtActividades(normalizedExtActs);
         setComplementarias(d.complementarias || []);
         setAcademicoAdmin(d.academico_admin || []);
         setObservacionesDocente(d.observaciones_docente || '');
         if (d.camposModificadosPorRevisor) setCamposModificados(d.camposModificadosPorRevisor);
         // Guardar docente_id del PTA para usarlo en modo admin
         if (d.docente_id) setDocenteIdFromPta(d.docente_id);
+      } else {
+        toast.error('No se pudo cargar el PTA.');
       }
       setLoadingPta(false);
     });
   }, [ptaId]);
 
-  // Load Docente User Profile to prepopulate defaults
+  // Load active period for new PTA
   useEffect(() => {
-    if (!userPersonId) return;
-    getPerfilPortal(userPersonId).then(res => {
-      if (res && res.success && res.data) {
-        const p = res.data;
+    if (ptaId) return;
+    (async () => {
+      try {
+        const activePer = await getActivePeriodoAcademico();
+        if (activePer && activePer.codigo) {
+          setPeriodo(activePer.codigo);
+        }
+      } catch (err) {
+        console.error('Error fetching active period:', err);
+      }
+    })();
+  }, [ptaId]);
+
+    // Load Docente User Profile and Banco Docentes info to prepopulate defaults
+    useEffect(() => {
+      const activeDocenteId = userPersonId || docenteIdFromPta;
+      if (!activeDocenteId) return;
+      Promise.all([
+        getPerfilPortal(activeDocenteId).catch(() => null),
+        getBancoDocenteById(activeDocenteId).catch(() => null)
+      ]).then(([resPerfil, resBanco]) => {
+        let p: any = {};
+        
+        if (resPerfil && resPerfil.success && resPerfil.data) {
+          p = { ...p, ...resPerfil.data };
+        }
+        
+        if (resBanco && resBanco.success && resBanco.data) {
+          const bd = resBanco.data;
+          p.territorial_id = bd.territorial_id || bd.territorialId || p.territorial_id;
+          p.sede_id = bd.cetap_id || bd.cetapId || p.sede_id;
+          p.nombre = bd.nombre_completo || bd.nombreCompleto || p.nombre;
+          p.dedicacion = bd.dedicacion || p.dedicacion;
+          
+          let mappedTipoVinc = bd.tipo_vinculacion || bd.tipoVinculacion;
+          if (mappedTipoVinc === 'CARRERA') {
+             const regNorm = bd.regimen_normativo || bd.regimenNormativo;
+             if (regNorm === '009/2004') mappedTipoVinc = 'CARRERA_009';
+             else if (regNorm === '003/2018') mappedTipoVinc = 'CARRERA_003';
+          }
+          p.tipoVinculacion = mappedTipoVinc || p.tipoVinculacion;
+        }
+
         // Territorial y CETAP: siempre se cargan del perfil (son fijos del docente)
         const tId = p.territorial_id || p.territorialId;
         if (tId) {
@@ -539,9 +737,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             setHorasAProgramar(calcHorasProgramables(p.tipoVinculacion || 'CARRERA_003', p.dedicacion, semanasVinculacion, ptaRules));
           }
         }
-      }
-    }).catch(console.error);
-  }, [userPersonId, ptaId, loadCetaps, semanasVinculacion]);
+      }).catch(console.error);
+    }, [userPersonId, docenteIdFromPta, ptaId, loadCetaps, semanasVinculacion, ptaRules]);
 
   // ═══ SOLAPAMIENTO (necesario antes de calcular hDocencia) ════════════════
   const docenciaOverlapInfo = useMemo(() => {
@@ -590,8 +787,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   );
 
   const hExtension = useMemo(() =>
-    extActividades.reduce((t, e) => t + (e.horas || 0), 0),
-    [extActividades]
+    extActividades.reduce((t, e) => {
+      const secConfig = extSecciones.find(s => s.key === e.seccion);
+      const mult = secConfig?.multiplicador || 1;
+      // Siempre calcular desde horas_ejecutadas para evitar inconsistencias
+      // cuando horas no fue correctamente multiplicado (race condition con extSecciones)
+      const ejec = Number(e.horas_ejecutadas ?? e.horas ?? 0);
+      return t + (mult > 1 ? ejec * mult : (Number(e.horas) || 0));
+    }, 0),
+    [extActividades, extSecciones]
   );
 
   const hComplementarias = useMemo(() =>
@@ -657,11 +861,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const totalHoras = docProrr + invProrr + extProrr + compProrr + acadProrr;
   const horasRestantes = horasAProgramar - totalHoras;
-  const minHoras = Math.round(horasAProgramar * 0.9);
   const porcentaje = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
 
   // Actividad académico-admin que consume el 100% del PTA (bloquea otras secciones)
   const actividadTotalidad = academicoAdmin.find(a => a.consumeTotalidad);
+
+  const hasDocencia = asignaturas.length > 0;
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
@@ -771,6 +976,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     // REGLA 3: omitida — cuando el docente llena el proyecto, las actividades son
     // de libre registro (nombre + horas) y no aplica restricción de fomento.
 
+    // REGLA 4: Resolución obligatoria (configurable desde Configuración de Reglas)
+    if (horasProyecto > 0 && invProyecto.nombre) {
+      if (ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim()) {
+        warns.push('La resolución que respalda la investigación es obligatoria. Ingresa el N° o nombre de la resolución.');
+      }
+      if (ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url) {
+        warns.push('El archivo adjunto de la resolución es obligatorio. Carga el documento de soporte (PDF, DOC).');
+      }
+    }
+
     return warns;
   }, [invProyecto, invActividades, horasAProgramar, tipoVinculacion, ptaRules, hInvestigacion, hExtension]);
 
@@ -825,6 +1040,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           updated.nucleo_tematico = asigCat.nucleo || '';
           updated.creditos = asigCat.creditos || 3;
           updated.semestre = asigCat.semestre || 1;
+            // Map the modality from catalog to PTA Form format
+            const rawMod = String(asigCat.modalidad || '').toLowerCase();
+            let mappedMod = 'PRESENCIAL';
+            if (rawMod.includes('virtual')) mappedMod = 'VIRTUAL';
+            else if (rawMod.includes('mixta')) mappedMod = 'MIXTA';
+            updated.modalidad = mappedMod;
           // Calcular horas según fórmulas Excel (ahora ligadas al motor de configuración)
           const prog = programas.find(p => p.id === updated.programa_id);
           const progTipo = prog?.tipo || 'APT';
@@ -873,6 +1094,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     setInvActividades(prev => [...prev, {
       id: Date.now(), actividad_id: '', nombre: '', descripcion: '',
       cantidad: 1, horas_unitarias: 0, horas_total: 0, fecha_inicio: '', fecha_fin: '',
+      resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '',
     }]);
   };
 
@@ -946,6 +1168,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const cupoPta = Math.max(0, horasRestantes + (e.horas || 0)); // horas disponibles en el PTA total (reintegra las de esta actividad)
       const remainingLimit = Math.min(cupoExt, cupoPta);
       
+      // Multiplicador dinámico desde configuración de la sección
+      const secConfig = extSecciones.find(s => s.key === e.seccion);
+      const mult = (secConfig?.multiplicador && secConfig.multiplicador > 1) ? secConfig.multiplicador : 1;
+      const tieneMultiplicador = mult > 1;
+      
       const updated = { ...e, [field]: value };
       
       if (field === 'actividad_id') {
@@ -953,18 +1180,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (cat) {
           updated.nombre = cat.nombre;
           const totalCatalogo = cat.max_horas || 0;
-          const maxEjecucion = updated.seccion === 'capacitacion' ? totalCatalogo / 2 : totalCatalogo;
+          const maxEjecucion = tieneMultiplicador ? totalCatalogo / mult : totalCatalogo;
           let valEjec = maxEjecucion;
-          let valHoras = updated.seccion === 'capacitacion' ? totalCatalogo : maxEjecucion;
+          let valHoras = tieneMultiplicador ? totalCatalogo : maxEjecucion;
           
           if (valHoras > remainingLimit) {
             valHoras = remainingLimit;
-            valEjec = updated.seccion === 'capacitacion' ? valHoras / 2 : valHoras;
+            valEjec = tieneMultiplicador ? valHoras / mult : valHoras;
           }
           
           if (valHoras < 1 && remainingLimit >= 1) {
              valHoras = 1;
-             valEjec = updated.seccion === 'capacitacion' ? 0.5 : 1;
+             valEjec = tieneMultiplicador ? 1 / mult : 1;
           }
           
           updated.horas_ejecutadas = valEjec;
@@ -978,26 +1205,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         
         const cat = (actExtension?.[updated.seccion] || []).find((c: any) => c.id === updated.actividad_id);
         const defaultMax = cat
-          ? (updated.seccion === 'capacitacion' ? (cat.max_horas || 0) / 2 : (cat.max_horas || 0))
+          ? (tieneMultiplicador ? (cat.max_horas || 0) / mult : (cat.max_horas || 0))
           : 0;
         
         if (defaultMax > 0 && val > defaultMax) {
           val = defaultMax; // No mayor al default del catálogo
         }
         
-        let valHoras = updated.seccion === 'capacitacion' ? val * 2 : val;
+        let valHoras = tieneMultiplicador ? val * mult : val;
         
         if (valHoras > remainingLimit) {
           valHoras = remainingLimit;
-          val = updated.seccion === 'capacitacion' ? valHoras / 2 : valHoras;
+          val = tieneMultiplicador ? valHoras / mult : valHoras;
         }
         
         updated.horas_ejecutadas = val;
         updated.horas = valHoras;
       }
       
-      // Retrocompatibilidad si el input cambia 'horas' directamente
-      if (field === 'horas' && updated.seccion !== 'capacitacion') {
+      // Retrocompatibilidad si el input cambia 'horas' directamente (secciones sin multiplicador)
+      if (field === 'horas' && !tieneMultiplicador) {
         let val = Number(value) || 0;
         if (val < 1 && value !== '') val = 1; // Ni negativos ni 0
         
@@ -1114,7 +1341,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           if (updated.consumeTotalidad) {
             // Limpieza integral automática para evitar cruce de topes con otras secciones
             setAsignaturas([]);
-            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '' });
+            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
             setInvActividades([]);
             setExtActividades([]);
             setComplementarias([]);
@@ -1149,15 +1376,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     savingRef.current = true;
     if (!silent) { autoSaveCountdownRef.current = 120; setAutoSaveCountdown(120); }
 
-    // Validación mínima docencia: al menos 1 asignatura
-    if (enviar && asignaturas.length === 0) {
-      toast.error('Debe incluir al menos una asignatura de docencia.');
+    // Validación mínima docencia: al menos 1 asignatura con catálogo seleccionado
+    const _tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+    const _asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
+    if (enviar && !_tieneTotalidad && _asignaturasValidas.length === 0) {
+      toast.error(asignaturas.length > 0
+        ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
+        : 'Debe incluir al menos una asignatura de docencia.');
       setSaving(false);
       return;
     }
 
     // Validación: al menos una asignatura con mínimo 3 créditos
-    if (enviar && !asignaturas.some(a => (a.creditos || 0) >= 3)) {
+    if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
       setSaving(false);
       return;
@@ -1170,16 +1401,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Validación de límites de horas
-    if (enviar && totalHoras < minHoras) {
-      toast.error(`Aún faltan ${minHoras - totalHoras}h por programar para el mínimo requerido (${minHoras}h).`);
-      setSaving(false);
-      return;
-    }
+    // Validación de límites de horas — solo bloquear si se excede el tope
+    // (el caso < horasAProgramar se maneja en validateEnvioDocente con modal de confirmación)
     if (enviar && totalHoras > horasAProgramar) {
       toast.error(`Te has excedido en ${totalHoras - horasAProgramar}h programables. Verifica tu Plan.`);
       setSaving(false);
       return;
+    }
+
+    // Validación: si se seleccionó rol en investigación, los campos del proyecto son obligatorios
+    if (enviar && invProyecto.rol) {
+      const faltantes: string[] = [];
+      if (!invProyecto.nombre?.trim()) faltantes.push('nombre del proyecto');
+      if (!invProyecto.codigo?.trim()) faltantes.push('código del proyecto');
+      if (!invProyecto.grupo?.trim()) faltantes.push('grupo de investigación');
+      if (!invProyecto.linea?.trim()) faltantes.push('línea de investigación');
+      if (faltantes.length > 0) {
+        toast.error(`Completa la sección Investigación: ${faltantes.join(', ')}.`);
+        setActiveSection('investigacion');
+        setSaving(false);
+        return;
+      }
     }
 
     // Validación de reglas de negocio para Investigación
@@ -1214,7 +1456,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
     const payload = {
       id: currentPtaId || undefined,
-      docente_id: isAdminEdit ? (docenteIdFromPta || userPersonId) : userPersonId,
+      docente_id: isAdminEdit ? (docenteIdFromPta || userPersonId) : (userPersonId || docenteIdFromPta),
       docente_nombre: docenteName || undefined,
       periodo,
       dedicacion,
@@ -1230,9 +1472,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
         : undefined,
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
-      extension_actividades: extActividades.filter(e => e.actividad_id && e.actividad_id !== ''),
-      complementarias: complementarias.filter(c => c.actividad_id && c.actividad_id !== ''),
-      academico_admin: academicoAdmin.filter(c => c.actividad_id && c.actividad_id !== ''),
+      extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || e.horas_ejecutadas > 0))),
+      complementarias: complementarias.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
+      academico_admin: academicoAdmin.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       observaciones_docente: observacionesDocente,
       _reenvio: isReenvio || undefined,
     };
@@ -1277,11 +1519,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             toast.error(reenvio.message || 'Error al re-enviar el PTA');
           }
         } else {
-          // Flujo normal Borrador → Pendiente Jefatura
-          const envio = await updatePTAStatus(savedId, { estado: 'Pendiente Jefatura' });
+          // Flujo normal Borrador → PENDIENTE_APROBACION (aprobación por componentes)
+          const envio = await updatePTAStatus(savedId, { estado: 'PENDIENTE_APROBACION' });
           if (envio.success) {
-            toast.success('PTA enviado a revisión de Jefatura');
-            addNotification({ type: 'success', title: 'PTA enviado', message: 'Tu PTA fue enviado exitosamente a Pendiente Jefatura' });
+            toast.success('PTA enviado a aprobación');
+            addNotification({ type: 'success', title: 'PTA enviado', message: 'Tu PTA fue enviado exitosamente a aprobación' });
             if (envio.faltaRevisor) {
               toast.warning('Aviso: no hay evaluadores asignados para tu territorial. La revisión podría demorar.', { duration: 8000 });
             }
@@ -1310,9 +1552,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const handleFirmaDocenteCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDocente(false);
+    setFirmaVerificationId('');
+    setFirmaCorreoDestino('');
     if (currentPtaId) guardarFirmaDigitalPTA(currentPtaId, {
       hash: firmaData.hash,
-      firmado_por: firmaData.firmante || userPersonId,
+      firmado_por: firmaData.firmante || userPersonId || docenteIdFromPta,
       firmado_por_nombre: firmaData.firmante || docenteName,
       firmado_por_rol: firmaData.cargo || 'Docente',
       certificado: firmaData.certificado_id,
@@ -1335,6 +1579,115 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const ESTADOS_REVISION_DOCENTE = ['REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'];
   const isEnRevisionDocente = ESTADOS_REVISION_DOCENTE.includes(estado) || ESTADOS_REVISION_DOCENTE.includes(originalEstado);
   const isEditable = isAdminEdit || estado === 'Borrador' || originalEstado === 'Devuelto' || isEnRevisionDocente;
+
+  const validateEnvioDocente = useCallback(() => {
+    const tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+
+    const asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
+    if (!tieneTotalidad && asignaturasValidas.length === 0) {
+      toast.error(asignaturas.length > 0
+        ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
+        : 'Debe incluir al menos una asignatura de docencia.');
+      return false;
+    }
+    if (!tieneTotalidad && !asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
+      toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
+      return false;
+    }
+    if (!tieneTotalidad && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
+      const hDocenciaTotal = asignaturasValidas.reduce((t, a) => t + (a.total_horas || 0), 0);
+      if (hDocenciaTotal < horasAProgramar * 0.5) {
+        toast.error('Los profesores Ocasionales, Visitantes y Especiales deben dedicar al menos el 50% de su PTA a docencia.');
+        return false;
+      }
+    }
+    if (totalHoras > horasAProgramar) {
+      toast.error(`Excedes el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
+      return false;
+    }
+    if (invWarnings?.length > 0) {
+      toast.error('Existen errores en Investigación. Corrígelos antes de enviar.');
+      return false;
+    }
+    if (extWarnings?.length > 0) {
+      toast.error('Existen errores en Extensión. Corrígelos antes de enviar.');
+      return false;
+    }
+    if (compWarnings?.length > 0) {
+      toast.error('Existen errores en Actividades Complementarias. Corrígelos antes de enviar.');
+      return false;
+    }
+    if (acadWarnings?.length > 0) {
+      toast.error('Existen errores en Actividades Académico-Administrativas. Corrígelos antes de enviar.');
+      return false;
+    }
+    
+    if (totalHoras < horasAProgramar) {
+      const porcentajeReal = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
+      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje: porcentajeReal });
+      setShowConfirmIncompleto(true);
+      return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
+    }
+    
+    return true;
+  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, invWarnings, extWarnings, compWarnings, acadWarnings]);
+
+  const getFirmaEtapaLabel = useCallback(() => {
+    if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
+    if (estado === 'REVISION_DOCENTE_N2') return 'Revisión Docente N2';
+    return 'Envío a Aprobación';
+  }, [estado]);
+
+  const resetFirmaDocente = useCallback(() => {
+    setShowFirmaDocente(false);
+    setPendingDocenteAccion(null);
+    setFirmaVerificationId('');
+    setFirmaCorreoDestino('');
+  }, []);
+
+  const solicitarFirmaDocente = useCallback(async (accion: 'via_save' | 'avanzar_sin_cambios') => {
+    if (requestingFirmaCode) return;
+
+    setRequestingFirmaCode(true);
+    try {
+      const etapaLabel = getFirmaEtapaLabel();
+      const res = await requestPTAFirmaDocenteCode({
+        ptaId: currentPtaId,
+        docenteId: isAdminEdit ? (docenteIdFromPta || userPersonId) : (userPersonId || docenteIdFromPta),
+        periodo,
+        etapaLabel,
+      });
+
+      if (!res.success || !res.data?.verificationId) {
+        throw new Error((res as any).message || 'No se pudo enviar el código de validación.');
+      }
+
+      setFirmaVerificationId(res.data.verificationId);
+      setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
+      setPendingDocenteAccion(accion);
+      setShowFirmaDocente(true);
+      if (res.data.devCode) {
+        console.log('🔑 [PRUEBAS] Código de validación OTP recibido:', res.data.devCode);
+        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { autoClose: false });
+      }
+      toast.success('Código de validación enviado al correo registrado.');
+    } catch (error: any) {
+      setPendingDocenteAccion(null);
+      setFirmaVerificationId('');
+      setFirmaCorreoDestino('');
+      toast.error(error?.message || 'No se pudo enviar el código de validación.');
+    } finally {
+      setRequestingFirmaCode(false);
+    }
+  }, [currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, isAdminEdit, periodo, requestingFirmaCode, userPersonId]);
+
+  const verificarCodigoFirmaDocente = useCallback(async (codigo: string) => {
+    if (!firmaVerificationId) throw new Error('No hay código activo. Solicita uno nuevo.');
+    const res = await verifyPTAFirmaDocenteCode({ verificationId: firmaVerificationId, code: codigo });
+    if (!res.success) {
+      throw new Error((res as any).message || 'Código incorrecto. Verifica e intenta nuevamente.');
+    }
+  }, [firmaVerificationId]);
 
   // Tick de 1 seg: cronómetro de próximo auto-guardado + dispara el guardado al llegar a 0
   useEffect(() => {
@@ -1395,10 +1748,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const sections = [
     { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: hDocencia, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: '100%', bloqueada: !!actividadTotalidad, modificada: seccionModificada('docencia') },
-    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${ptaRules?.max_pct_investigacion || 50}%`, excede: invExcede, bloqueada: !!actividadTotalidad, modificada: seccionModificada('investigacion') },
-    { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${ptaRules?.max_pct_extension || 25}%`, excede: extExcede, bloqueada: !!actividadTotalidad, modificada: seccionModificada('extension') },
-    { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede, bloqueada: !!actividadTotalidad, modificada: seccionModificada('complementarias') },
-    { key: 'academico_admin' as const, icon: Shield, label: 'Académico-Administrativo', count: academicoAdmin.length, hours: hAcademicoAdmin, prorr: acadProrr, color: PTA_COLORS.ACAD_ADMIN, limit: actividadTotalidad ? '100%' : 'Según actividad', excede: acadExcede, modificada: seccionModificada('academico_admin') },
+    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${ptaRules?.max_pct_investigacion || 50}%`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
+    { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${ptaRules?.max_pct_extension || 25}%`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
+    { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
+    { key: 'academico_admin' as const, icon: Shield, label: 'Académico-Administrativo', count: academicoAdmin.length, hours: hAcademicoAdmin, prorr: acadProrr, color: PTA_COLORS.ACAD_ADMIN, limit: actividadTotalidad ? '100%' : 'Según actividad', excede: acadExcede, bloqueada: !hasDocencia && !actividadTotalidad, modificada: seccionModificada('academico_admin') },
   ];
 
   // Nombres del docente (territorial y CETAP fijos)
@@ -1413,14 +1766,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   };
 
   return (
-    <div className={`max-w-7xl mx-auto w-full${isAdminEdit ? ' px-6 pt-2' : ''}`}>
-      {/* Header */}
+    <div className={`mx-auto w-full pb-32 animate-in fade-in duration-500${isAdminEdit ? ' px-6 pt-2' : ''}`}>
+      {/* Header — solo título, sin botones de acción (movidos al sticky footer) */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
         <div>
           <button onClick={onBack} className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-[13px] text-gray-500 font-medium p-0 mb-1 hover:text-gray-700">
             <ChevronLeft className="w-4 h-4" /> Volver a mis PTAs
           </button>
-          <h1 className="text-[1.15rem] font-bold text-gray-900 m-0 leading-tight">
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900 m-0 leading-tight tracking-tight">
             {ptaId
               ? isEnRevisionDocente
                 ? 'Revisar PTA — Aprobado con modificaciones'
@@ -1429,118 +1782,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   : 'Editar PTA'
               : 'Crear Nuevo PTA'}
           </h1>
-          <p className="text-[12px] text-gray-500 mt-1">Periodo {periodo} - {dedicacion} - {horasAProgramar}h programables</p>
+          <p className="text-[13px] text-gray-500 mt-2 font-medium">Periodo {periodo} • {dedicacion}</p>
         </div>
-
-        {isEditable && (
-          <div className="flex flex-col sm:flex-row items-end gap-2 w-full md:w-auto">
-            {/* Indicador de auto-guardado */}
-            {!isAdminEdit && (
-              <div className="flex items-center gap-1.5 text-[11px] font-medium self-end mb-0.5"
-                style={{ color: autoSaveStatus === 'saving' ? '#D97706' : autoSaveStatus === 'saved' ? '#059669' : '#9CA3AF' }}>
-                {autoSaveStatus === 'saving' && (
-                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                )}
-                {autoSaveStatus === 'saved' && <CheckCircle2 className="w-3 h-3" />}
-                {autoSaveStatus === 'saving' && 'Guardando...'}
-                {autoSaveStatus === 'saved' && `Guardado automáticamente ${lastAutoSaveTime ? `a las ${lastAutoSaveTime.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : ''}`}
-                {autoSaveStatus === 'idle' && lastAutoSaveTime && `Guardado a las ${lastAutoSaveTime.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`}
-              </div>
-            )}
-            {/* Caso: admin editando PTA en cualquier estado */}
-            {isAdminEdit ? (
-              <button onClick={() => handleSave(false)} disabled={saving}
-                className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
-                style={{ background: '#003DA5' }}>
-                <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-            ) : isEnRevisionDocente ? (
-              <>
-                {/* Avanzar sin modificar — requiere firma antes de pasar a la siguiente fase */}
-                <button
-                  onClick={() => { setPendingDocenteAccion('avanzar_sin_cambios'); setShowFirmaDocente(true); }}
-                  disabled={saving}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:shadow hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50"
-                >
-                  <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
-                </button>
-                {/* Guardar cambios y re-enviar — requiere firma */}
-                <button
-                  onClick={() => { setPendingDocenteAccion('via_save'); setShowFirmaDocente(true); }}
-                  disabled={saving || totalHoras < minHoras}
-                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: (saving || totalHoras < minHoras) ? '#9CA3AF' : '#7C3AED' }}
-                  title={totalHoras < minHoras ? `Faltan ${minHoras - totalHoras}h por programar` : "Firma y re-envía a la misma fase para nueva aprobación"}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
-                </button>
-              </>
-            ) : (
-              <>
-                <span className={`flex items-center gap-0.5 text-[10px] font-medium ${autoSaveCountdown <= 30 ? 'text-amber-500' : 'text-gray-400'}`}>
-                  <Clock className="w-2.5 h-2.5" />
-                  Auto en {Math.floor(autoSaveCountdown / 60)}:{String(autoSaveCountdown % 60).padStart(2, '0')}
-                </span>
-                <button onClick={() => handleSave(false)} disabled={saving}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:shadow hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
-                  <Save className="w-3.5 h-3.5" /> Guardar Borrador
-                </button>
-                <button
-                  onClick={() => {
-                    if (asignaturas.length === 0) {
-                      toast.error('Debe incluir al menos una asignatura de docencia.');
-                      return;
-                    }
-                    if (!asignaturas.some(a => (a.creditos || 0) >= 3)) {
-                      toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
-                      return;
-                    }
-                    if (totalHoras < minHoras) {
-                      toast.error(`No puedes enviar. Faltan ${minHoras - totalHoras}h para el mínimo exigido.`);
-                      return;
-                    }
-                    if (totalHoras > horasAProgramar) {
-                      toast.error(`Excedes el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
-                      return;
-                    }
-                    if (invWarnings?.length > 0) {
-                      toast.error('Existen errores en Investigación. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    if (extWarnings?.length > 0) {
-                      toast.error('Existen errores en Extensión. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    if (compWarnings?.length > 0) {
-                      toast.error('Existen errores en Actividades Complementarias. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    if (acadWarnings?.length > 0) {
-                      toast.error('Existen errores en Actividades Académico-Administrativas. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    setPendingDocenteAccion('via_save');
-                    setShowFirmaDocente(true);
-                  }}
-                  disabled={saving || totalHoras < minHoras || totalHoras > horasAProgramar}
-                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.23)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                  style={{ background: (saving || totalHoras < minHoras || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}
-                  title={totalHoras < minHoras ? `Faltan horas por programar` : (totalHoras > horasAProgramar ? `Sobrecarga de horas` : "")}
-                >
-                  {originalEstado === 'Devuelto'
-                    ? <><RotateCcw className="w-3.5 h-3.5" /> Re-enviar</>
-                    : <><Send className="w-3.5 h-3.5" /> Enviar a Aprobación</>}
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Firma digital del docente — requerida antes de cada envío */}
+      {/* Firma digital del docente — requerida antes de cada envío y enviar código de aprobación por email */}
       {showFirmaDocente && (
         <FirmaDigitalPTA
           ptaId={currentPtaId || ''}
@@ -1549,14 +1795,149 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           totalHoras={totalHoras}
           firmanteNombre={docenteName}
           firmanteCargo="Docente"
+          correoDestino={firmaCorreoDestino}
+          onVerifyCodigo={verificarCodigoFirmaDocente}
           etapaLabel={
             estado === 'REVISION_DOCENTE_N1' ? 'Revisión Docente N1' :
               estado === 'REVISION_DOCENTE_N2' ? 'Revisión Docente N2' :
                 'Envío a Aprobación'
           }
           onFirmaCompleta={handleFirmaDocenteCompleta}
-          onCancelar={() => { setShowFirmaDocente(false); setPendingDocenteAccion(null); }}
+          onCancelar={resetFirmaDocente}
         />
+      )}
+
+      {/* Modal de confirmación PTA incompleto — reemplaza window.confirm nativo */}
+      {showConfirmIncompleto && confirmIncompletoData && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: '20px', maxWidth: '460px', width: '92%',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+            overflow: 'hidden', animation: 'scaleIn 0.25s ease'
+          }}>
+            {/* Header con icono de advertencia */}
+            <div style={{
+              background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%)',
+              padding: '28px 28px 20px', borderBottom: '1px solid #FDE68A',
+              display: 'flex', alignItems: 'flex-start', gap: '16px'
+            }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
+                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
+              }}>
+                <AlertTriangle style={{ width: '24px', height: '24px', color: '#fff' }} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#92400E', lineHeight: 1.3 }}>
+                  PTA Incompleto
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#B45309', fontWeight: 500 }}>
+                  El plan no alcanza las horas requeridas
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px 28px' }}>
+              {/* Indicador visual de progreso */}
+              <div style={{
+                background: '#F9FAFB', borderRadius: '14px', padding: '16px 20px',
+                border: '1px solid #E5E7EB', marginBottom: '20px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#374151' }}>
+                    {confirmIncompletoData.totalHoras}h programadas
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#9CA3AF' }}>
+                    de {confirmIncompletoData.horasRequeridas}h requeridas
+                  </span>
+                </div>
+                <div style={{
+                  width: '100%', height: '10px', borderRadius: '999px',
+                  background: '#E5E7EB', overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: `${Math.min(confirmIncompletoData.porcentaje, 100)}%`,
+                    height: '100%', borderRadius: '999px',
+                    background: confirmIncompletoData.porcentaje >= 80
+                      ? 'linear-gradient(90deg, #F59E0B, #EAB308)'
+                      : 'linear-gradient(90deg, #EF4444, #F97316)',
+                    transition: 'width 0.5s ease'
+                  }} />
+                </div>
+                <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                  <span style={{
+                    fontSize: '22px', fontWeight: 800,
+                    color: confirmIncompletoData.porcentaje >= 80 ? '#D97706' : '#DC2626'
+                  }}>
+                    {confirmIncompletoData.porcentaje}%
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '4px', fontWeight: 600 }}>
+                    completado
+                  </span>
+                </div>
+              </div>
+
+              <p style={{
+                margin: 0, fontSize: '13.5px', lineHeight: 1.65, color: '#4B5563', fontWeight: 500
+              }}>
+                Un PTA incompleto <strong style={{ color: '#DC2626' }}>incide negativamente</strong> en la evaluación de desempeño docente.
+              </p>
+              <p style={{
+                margin: '12px 0 0', fontSize: '13.5px', lineHeight: 1.65, color: '#6B7280', fontWeight: 500
+              }}>
+                ¿Desea enviarlo de todas formas?
+              </p>
+            </div>
+
+            {/* Footer con botones */}
+            <div style={{
+              padding: '0 28px 24px', display: 'flex', gap: '12px', justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => { setShowConfirmIncompleto(false); setConfirmIncompletoData(null); }}
+                style={{
+                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
+                  border: '2px solid #E5E7EB', background: '#fff', color: '#374151',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseOver={e => { (e.target as HTMLElement).style.background = '#F3F4F6'; }}
+                onMouseOut={e => { (e.target as HTMLElement).style.background = '#fff'; }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmIncompleto(false);
+                  setConfirmIncompletoData(null);
+                  solicitarFirmaDocente('via_save');
+                }}
+                style={{
+                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
+                  border: 'none', background: '#D97706', color: '#fff',
+                  cursor: 'pointer', transition: 'all 0.2s',
+                  boxShadow: '0 4px 12px rgba(217,119,6,0.3)'
+                }}
+                onMouseOver={e => { (e.target as HTMLElement).style.background = '#B45309'; }}
+                onMouseOut={e => { (e.target as HTMLElement).style.background = '#D97706'; }}
+              >
+                Sí, enviar de todas formas
+              </button>
+            </div>
+          </div>
+          <style>{`
+            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes scaleIn { from { opacity: 0; transform: scale(0.95) } to { opacity: 1; transform: scale(1) } }
+          `}</style>
+        </div>,
+        document.body
       )}
 
       {/* Banner: Revisión docente post-aprobación parcial */}
@@ -1581,16 +1962,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           {/* Botones de acción prominentes dentro del banner */}
           <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <button
-              onClick={() => { setPendingDocenteAccion('avanzar_sin_cambios'); setShowFirmaDocente(true); }}
-              disabled={saving}
+              onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')}
+              disabled={saving || requestingFirmaCode}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
               style={{ background: '#7C3AED' }}
             >
               <CheckCircle2 className="w-4 h-4" /> Confirmar y avanzar a la siguiente fase
             </button>
             <button
-              onClick={() => { setPendingDocenteAccion('via_save'); setShowFirmaDocente(true); }}
-              disabled={saving}
+              onClick={() => solicitarFirmaDocente('via_save')}
+              disabled={saving || requestingFirmaCode}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-violet-300 bg-white text-violet-700 text-sm font-bold disabled:opacity-50 cursor-pointer hover:bg-violet-50"
             >
               <RotateCcw className="w-4 h-4" /> Corregir y re-enviar al revisor
@@ -1624,7 +2005,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <ReadonlyField label="Dedicación" value={dedicacion} />
               <FormSelect label="Periodo" value={periodo} disabled={!isEditable}
                 onChange={v => setPeriodo(v)}
-                options={[{ value: '2026-1', label: '2026-1' }, { value: '2026-2', label: '2026-2' }]} />
+                options={[{ value: '2025-2', label: '2025-2' }, { value: '2026-2', label: '2026-2' }]} />
               {isAdminEdit && (
                 <div>
                   <FormInput
@@ -1660,47 +2041,149 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             </div>
           </div>
 
-          {/* Status de progreso (encima de tabs) */}
-          <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800'
-              : totalHoras >= minHoras ? 'bg-green-50 border-green-200 text-green-800'
-                : 'bg-blue-50 border-blue-200 text-blue-800'
-            }`}>
-            {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              : totalHoras >= minHoras ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
-              <span className="font-bold">
-                {totalHoras > horasAProgramar
-                  ? `Excede por ${totalHoras - horasAProgramar}h. Verifica tu Plan.`
-                  : totalHoras >= minHoras
-                    ? 'Carga completa o dentro del mínimo. Listo para enviar.'
-                    : `Faltan ${minHoras - totalHoras}h por programar para el mínimo requerido (${minHoras}h).`}
-              </span>
-              <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
-            </div>
-          </div>
+          {/* Layout de una sola columna: tabs horizontales + contenido */}
+          <div className="flex flex-col gap-5 items-start w-full">
 
-          {/* Tabs */}
-          <div className="flex flex-wrap gap-2 bg-gray-50/50 backdrop-blur-2xl rounded-[1.25rem] p-1.5 border border-gray-200/50 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-            {sections.map(s => (
-              <button key={s.key} onClick={() => setActiveSection(s.key)}
-                className={`flex items-center justify-center gap-2.5 px-3 py-3 rounded-xl border-none text-[13px] transition-all whitespace-nowrap cursor-pointer flex-auto ${activeSection === s.key
-                    ? 'text-gray-900 font-black bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)] scale-[1.01]'
-                    : s.bloqueada
-                      ? 'text-gray-300 font-bold bg-transparent cursor-default opacity-60'
-                      : 'text-gray-500 font-bold hover:bg-white/60 hover:text-gray-800 bg-transparent'
+            {/* ─── CONTENIDO PRINCIPAL ─── */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0 w-full">
+              <DocumentosPendientesAlert documentosPendientes={documentosPendientes} />
+
+              {/* Status banner */}
+              <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
+                  <span className="font-bold">
+                    {totalHoras > horasAProgramar ? `Excede por ${totalHoras - horasAProgramar}h. Verifica tu Plan.` : totalHoras >= horasAProgramar ? 'Carga completa o dentro del mínimo. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
+                  </span>
+                  <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+                </div>
+              </div>
+
+              {/* ─── TABS HORIZONTALES (Módulos del PTA) ─── */}
+              <div className="w-full bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-[0_2px_12px_rgb(0,0,0,0.03)] p-1.5">
+                <div className="flex flex-wrap gap-1">
+                  {sections.map(s => (
+                    <button key={s.key} onClick={() => setActiveSection(s.key)}
+                      className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border-none text-[12px] transition-all duration-200 cursor-pointer relative ${
+                        activeSection === s.key
+                          ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-bold text-gray-900'
+                          : s.bloqueada
+                            ? 'text-gray-400 bg-transparent cursor-default opacity-50'
+                            : 'text-gray-600 font-medium bg-transparent hover:bg-gray-50 hover:text-gray-900'
+                      }`}>
+                      <div className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center relative"
+                        style={{ backgroundColor: activeSection === s.key ? `${s.color}20` : 'transparent' }}>
+                        <s.icon className="w-3.5 h-3.5" style={{ color: activeSection === s.key ? s.color : '#9CA3AF' }} />
+                      </div>
+                      <span className="truncate">{s.label}</span>
+                      <span className={`text-[10px] font-bold tabular-nums ${
+                        activeSection === s.key ? 'text-gray-500' : s.excede ? 'text-red-500' : 'text-gray-400'
+                      }`}>{s.hours}h</span>
+                      {s.excede && <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />}
+                      {s.bloqueada && s.key !== 'academico_admin' && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />}
+                      {s.modificada && <span title="Modificado por el revisor" className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse shrink-0" />}
+                      {activeSection === s.key && (
+                        <div className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full" style={{ backgroundColor: s.color }} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+          {/* ─── PROGRESO DEL PTA (renderizado en sidebar izquierdo del portal via createPortal) ─── */}
+          {(() => {
+            const progressContent = (
+              <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 overflow-hidden shadow-[0_4px_20px_rgb(0,0,0,0.04)]">
+                <div className="px-5 py-4 bg-gradient-to-b from-white to-gray-50/30 border-b border-gray-100">
+                  <h3 className="text-[11px] font-black tracking-[0.15em] text-[#003DA5] flex items-center gap-2 uppercase m-0">
+                    <Calculator className="w-3.5 h-3.5" /> Progreso del PTA
+                  </h3>
+                </div>
+                <div className="p-5">
+                  <div className="text-center mb-5">
+                    <div className="relative w-[100px] h-[100px] mx-auto flex items-center justify-center" style={{height: '100px'}}>
+                      {(() => {
+                        const r = 42;
+                        const circ = 2 * Math.PI * r;
+                        const fill = (Math.min(porcentaje, 100) / 100) * circ;
+                        return (
+                          <svg width="100" height="100" viewBox="0 0 100 100" style={{ display: 'block' }} className="absolute inset-0 drop-shadow-sm">
+                            <circle cx="50" cy="50" r={r} fill="none" stroke="#F1F5F9" strokeWidth="7" />
+                            <circle cx="50" cy="50" r={r} fill="none"
+                              stroke={porcentaje > 100 ? '#EF4444' : porcentaje >= 80 ? '#10B981' : '#2563EB'}
+                              strokeWidth="7" strokeLinecap="round"
+                              strokeDasharray={`${fill} ${circ}`}
+                              transform="rotate(-90 50 50)"
+                              style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                          </svg>
+                        );
+                      })()}
+                      <div className="relative z-10 flex flex-col items-center justify-center">
+                        <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-[#003DA5] to-blue-400 tracking-tighter">
+                          {porcentaje}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {sections.map(s => (
+                      <div key={s.key} className="flex justify-between items-center">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                          <span className="text-[11px] text-gray-600 truncate">{s.label}</span>
+                          {s.excede && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {s.hours !== s.prorr && (
+                            <span className="text-[10px] text-gray-400 line-through">{s.hours}h</span>
+                          )}
+                          <span className="text-[11px] font-bold text-gray-900">{s.prorr}h</span>
+                          <span className="text-[10px] text-gray-400">({s.limit})</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="my-3 h-px bg-gray-200/70" />
+                  <div className="flex justify-between items-center">
+                    <span className="text-[12px] font-bold text-gray-900">Total</span>
+                    <span className="text-base font-extrabold text-[#003DA5]">{totalHoras}h</span>
+                  </div>
+                  <div className="flex justify-between items-center mt-0.5">
+                    <span className="text-[10px] text-gray-400">Máximo</span>
+                    <span className="text-[10px] text-gray-400">{horasAProgramar}h</span>
+                  </div>
+                  <div className={`mt-3 p-2.5 rounded-lg border text-[10px] leading-relaxed flex items-start gap-1.5 ${
+                    totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800'
+                    : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800'
+                    : 'bg-blue-50 border-blue-200 text-blue-800'
                   }`}>
-                <s.icon className={`w-4 h-4 ${activeSection === s.key ? '' : 'opacity-70'}`} style={{ color: activeSection === s.key ? s.color : undefined }} />
-                <span>{s.label}</span>
-                {(s as any).bloqueada && s.key !== 'academico_admin' && <AlertTriangle className="w-3.5 h-3.5 text-amber-400 ml-0.5" />}
-                {s.excede && <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse ml-0.5" />}
-                {s.modificada && <span title="Modificado por el revisor" className="w-2 h-2 rounded-full bg-violet-500 animate-pulse ml-0.5 inline-block" />}
-                <span className={`text-[0.65rem] tracking-wider font-extrabold px-2 py-0.5 ml-1 rounded-full ${activeSection === s.key ? 'bg-gray-100 text-gray-800' : 'bg-gray-200/50 text-gray-400'}`}>
-                  {s.count}
-                </span>
-              </button>
-            ))}
-          </div>
+                    {totalHoras > horasAProgramar ? <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                      : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5" />
+                      : <Info className="w-3 h-3 shrink-0 mt-0.5" />}
+                    <span>
+                      {totalHoras > horasAProgramar
+                        ? `Excede por ${totalHoras - horasAProgramar}h`
+                        : totalHoras >= horasAProgramar
+                          ? 'Carga completa. Listo para enviar.'
+                          : `Faltan ${horasAProgramar - totalHoras}h por programar.`}
+                    </span>
+                  </div>
+                  {(invExcede || extExcede || compExcede || acadExcede) && (
+                    <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800">
+                      <div className="font-semibold mb-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Prorrateo aplicado
+                      </div>
+                      {invExcede && <div>Invest: {hInvestigacion}h→{invProrr}h</div>}
+                      {extExcede && <div>Ext: {hExtension}h→{extProrr}h</div>}
+                      {compExcede && <div>Comp: {hComplementarias}h→{compProrr}h</div>}
+                      {acadExcede && <div>Acad: {hAcademicoAdmin}h→{acadProrr}h</div>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+            return slotNode ? createPortal(progressContent, slotNode) : null;
+          })()}
 
           {/* Active section */}
           <div className="bg-white rounded-3xl border border-gray-200/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8">
@@ -1713,6 +2196,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 <p className="text-xs text-gray-500">
                   La actividad <span className="font-semibold text-amber-700">«{actividadTotalidad.nombre}»</span> consume el 100% del PTA ({horasAProgramar}h).<br />
                   Elimínala desde la sección Académico-Administrativo para desbloquear.
+                </p>
+              </div>
+            )}
+
+            {/* Overlay de sección bloqueada por falta de asignaturas en Docencia */}
+            {!actividadTotalidad && !hasDocencia && activeSection !== 'docencia' && activeSection !== 'academico_admin' && (
+              <div className="p-12 text-center flex flex-col items-center justify-center min-h-[350px] animate-in fade-in duration-300">
+                <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mb-4 border border-amber-200">
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                </div>
+                <h3 className="text-base font-bold text-gray-900 mb-2">Sección Inhabilitada</h3>
+                <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed text-center">
+                  De acuerdo con las reglas de negocio del PTA, debe configurar al menos una asignatura en la sección de <span className="font-bold text-[#003DA5]">Docencia Directa</span> antes de poder registrar actividades en otros componentes.
                 </p>
               </div>
             )}
@@ -1760,159 +2256,232 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const territorialNombre = territoriales.find(t => t.id === asig.territorial_id)?.nombre
                           || (asig.territorial_id === defaultTerritorial ? defaultTerritorialNombre : asig.territorial_id || '—');
 
+                        const catAsig = asignaturasCat.find(ac => String(ac.id) === String(asig.asignatura_id));
+                        const displayNucleo = catAsig?.nucleo || asig.nucleo_tematico || '—';
+                        const displaySemestre = catAsig?.semestre || asig.semestre || '—';
+                        const displayCreditos = catAsig?.creditos != null ? catAsig.creditos : asig.creditos != null ? asig.creditos : 0;
+                        const displayModalidad = asig.modalidad || 'PRESENCIAL';
+
                         return (
                           <div key={asig.id}
-                            className={`p-4 rounded-xl border relative transition-all duration-300 ${
+                            className={`p-4 md:p-5 rounded-2xl border relative transition-all duration-300 group ${
                               tieneConflicto
-                                ? 'border-red-400 bg-red-50/60 shadow-[0_0_0_3px_rgba(239,68,68,0.12)] border-l-4 border-l-red-500'
+                                ? 'border-red-200 bg-red-50/30 shadow-sm border-l-4 border-l-red-500 hover:shadow-md'
                                 : bloqueadaPorTerritorial
-                                  ? 'border-gray-200 bg-gray-50 opacity-70'
+                                  ? 'border-gray-200 bg-gray-50/80 opacity-75'
                                   : isComplete
-                                    ? 'border-gray-200 bg-white shadow-sm border-l-4 border-l-green-500'
-                                    : 'border-blue-300 bg-blue-50/50 shadow-[0_0_0_3px_rgba(59,130,246,0.1)]'
+                                    ? 'border-slate-200 bg-white shadow-sm border-l-4 border-l-emerald-500 hover:shadow-md hover:border-slate-300'
+                                    : 'border-blue-200 bg-blue-50/30 shadow-[0_0_0_3px_rgba(59,130,246,0.08)]'
                             }`}>
 
-                            <div className="flex items-center gap-2 mb-4">
-                              {isEditable && !bloqueadaPorTerritorial && (
-                                <button onClick={() => handleRemoveAsig(asig.id)} title="Eliminar Asignatura"
-                                  className="absolute top-3 right-3 min-w-[36px] min-h-[36px] p-2 rounded-lg border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-600 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/50">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              <div className={`text-sm font-black tracking-tight flex items-center gap-2.5 flex-1 ${tieneConflicto ? 'text-red-700' : isComplete ? 'text-gray-900' : 'text-blue-700'}`}>
+                            {/* Card Header */}
+                            <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100/80">
+                              <div className="flex items-center gap-2.5 flex-wrap">
                                 {tieneConflicto ? (
-                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600">
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 shadow-sm">
                                     <AlertTriangle className="w-3.5 h-3.5" />
                                   </div>
                                 ) : isComplete ? (
-                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-600">
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 shadow-sm">
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                   </div>
                                 ) : (
-                                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shadow-[0_0_0_4px_rgba(59,130,246,0.2)]" />
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 shadow-sm">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                                  </div>
                                 )}
-                                Asignatura {idx + 1}
+                                <span className={`text-[15px] font-extrabold tracking-tight ${tieneConflicto ? 'text-red-700' : isComplete ? 'text-slate-800' : 'text-blue-700'}`}>
+                                  Asignatura {idx + 1}
+                                </span>
                                 {tieneConflicto && (
-                                  <span className="text-[0.6rem] uppercase tracking-widest font-black px-2.5 py-1 bg-red-500/10 text-red-600 border border-red-500/30 rounded-full ml-1 flex items-center gap-1">
-                                    ⚠ Cruce de fechas — no suma horas
+                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-red-100 text-red-700 rounded-md ml-1 flex items-center gap-1 shadow-sm">
+                                    ⚠ Cruce de fechas
                                   </span>
                                 )}
                                 {!isComplete && !bloqueadaPorTerritorial && !tieneConflicto && (
-                                  <span className="text-[0.55rem] uppercase tracking-widest font-black px-2.5 py-1 bg-blue-500/10 text-blue-600 border border-blue-500/20 rounded-full ml-1">
-                                    Por completar
+                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md ml-1 shadow-sm">
+                                    En progreso
                                   </span>
                                 )}
                                 {bloqueadaPorTerritorial && (
-                                  <span className="text-[0.6rem] font-semibold px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full border border-gray-200 flex items-center gap-1">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200 text-slate-600 rounded-md flex items-center gap-1 shadow-sm">
                                     🔒 {territorialNombre}
                                   </span>
                                 )}
                               </div>
+
+                              {isEditable && !bloqueadaPorTerritorial && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveAsig(asig.id)}
+                                  title="Eliminar Asignatura"
+                                  className="w-8 h-8 rounded-lg border border-transparent bg-slate-50 text-slate-400 cursor-pointer flex items-center justify-center hover:text-red-600 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all outline-none group-hover:border-slate-200 focus:ring-2 focus:ring-red-500/50"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
 
-                            {/* Row 1: Territorial editable + cascada CETAP → Programa → Asignatura */}
-                            <div className={`grid grid-cols-1 md:grid-cols-2 ${hasCetapsAsig ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-4 mb-4 pr-10`}>
-                              {/* TERRITORIAL — ahora editable */}
+                            {/* Main Selects Grid: 4 columns on desktop to save vertical space */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                               <FormSelect
                                 label="Territorial *"
                                 value={asig.territorial_id}
                                 disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'territorial_id', v)}
                                 options={territoriales.map(t => ({ value: t.id, label: t.nombre }))}
-                                placeholder="Seleccionar territorial..."
+                                placeholder="Seleccionar..."
                               />
-                              {/* CETAP — dinámico según territorial de la asignatura */}
                               {hasCetapsAsig ? (
                                 <FormSelect label="CETAP" value={asig.cetap_id} disabled={!rowEditable}
                                   onChange={v => handleAsigChange(asig.id, 'cetap_id', v)}
                                   options={listaCetapsAsig.map((c: any) => ({ value: c.id, label: c.nombre }))}
-                                  placeholder="Seleccionar CETAP..." />
+                                  placeholder="Seleccionar..." />
                               ) : cetapsCargadosAsig ? (
                                 <div className="flex flex-col">
-                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
-                                  <div className="px-3 py-2 rounded-xl bg-gray-50/40 border border-dashed border-gray-200 text-[12px] text-gray-400 italic min-h-[36px] flex items-center">Sin CETAPs</div>
+                                  <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] text-slate-400 italic min-h-[36px] flex items-center">Sin CETAPs</div>
                                 </div>
                               ) : tIdAsig ? (
                                 <div className="flex flex-col">
-                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
-                                  <div className="px-3 py-2 rounded-xl bg-gray-50/40 border border-dashed border-gray-200 text-[12px] text-gray-400 italic min-h-[36px] flex items-center">Cargando...</div>
+                                  <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] text-slate-400 italic min-h-[36px] flex items-center">Cargando...</div>
                                 </div>
-                              ) : null}
+                              ) : (
+                                <div className="flex flex-col hidden md:flex">
+                                  {/* Empty placeholder to maintain grid layout when no territorial selected */}
+                                </div>
+                              )}
+
                               <FormSelect label="Programa" value={asig.programa_id} disabled={!rowEditable || !programaHabilitado}
                                 onChange={v => handleAsigChange(asig.id, 'programa_id', v)}
                                 options={programas.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }))}
-                                placeholder={programaHabilitado ? 'Seleccionar...' : hasCetapsAsig ? 'Seleccione CETAP' : 'Seleccione territorial'} />
+                                placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />
                               <FormSelect label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || !asig.programa_id}
                                 onChange={v => handleAsigChange(asig.id, 'asignatura_id', v)}
                                 options={getAsignaturasFiltradas(asig.programa_id).map(a => ({ value: a.id, label: a.nombre }))}
-                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Seleccione programa'} />
+                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
                             </div>
 
-                            {/* Row 2: Campos calculados + modalidad + fechas */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3 mb-3">
-                              <ReadonlyField label="Núcleo" value={asig.nucleo_tematico || '—'} />
-                              <ReadonlyField label="Semestre" value={asig.semestre ? `${asig.semestre}` : '—'} />
-                              <ReadonlyField label="Créditos" value={`${asig.creditos}`} />
-                              <FormInput label="Estudiantes" type="number" value={asig.total_estudiantes} disabled={!rowEditable}
-                                onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
-                              <ReadonlyField label="Horas Base" value={`${asig.horas_base}h`} />
-                              <div>
-                                <label className="block text-[0.68rem] font-semibold text-gray-500 mb-0.5">Total Horas</label>
-                                <div className={`px-2 py-1.5 rounded-md text-sm font-bold text-center ${tieneConflicto ? 'bg-red-50 border border-red-300 text-red-600 line-through' : 'bg-blue-50 border border-blue-200 text-[#003DA5]'}`}>
-                                  {asig.total_horas}h{tieneConflicto ? ' (excluido)' : ''}
+                            {/* Read-only Metrics Panel */}
+                            {asig.asignatura_id && (
+                              <div className="rounded-xl bg-slate-50 border border-slate-200/60 p-3 mb-4 transition-all duration-300">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                  {/* Núcleo Temático - Takes more space */}
+                                  <div className="flex flex-col col-span-2 sm:col-span-3 lg:col-span-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">
+                                      Núcleo Temático
+                                    </span>
+                                    <span className="text-[12px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 min-h-[34px] flex items-center shadow-sm truncate" title={displayNucleo}>
+                                      {displayNucleo}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Smaller metric blocks */}
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">Semestre</span>
+                                    <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center shadow-sm">
+                                      {displaySemestre}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">Créditos</span>
+                                    <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center shadow-sm">
+                                      {displayCreditos}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">Horas Base</span>
+                                    <span className="text-[12px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center shadow-sm">
+                                      {asig.horas_base}h
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Total Horas Highlight */}
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1 text-center">
+                                      Total Horas
+                                    </span>
+                                    <span className={`text-[13px] font-extrabold rounded-lg px-2 py-1.5 min-h-[34px] flex items-center justify-center border shadow-sm ${
+                                      tieneConflicto 
+                                        ? 'bg-red-50 border-red-200 text-red-600 line-through' 
+                                        : 'bg-blue-50/80 border-blue-200 text-blue-700'
+                                    }`}>
+                                      {asig.total_horas}h{tieneConflicto ? '*' : ''}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                              {/* Modalidad */}
-                              <FormSelect label="Modalidad" value={asig.modalidad || 'PRESENCIAL'} disabled={!rowEditable}
-                                onChange={v => handleAsigChange(asig.id, 'modalidad', v)}
-                                options={[
-                                  { value: 'PRESENCIAL', label: 'Presencial' },
-                                  { value: 'VIRTUAL', label: 'Virtual' },
-                                  { value: 'MIXTA', label: 'Mixta' },
-                                ]} />
-                            </div>
+                            )}
 
-                            {/* Row 3: Fechas de la actividad */}
-                            <div className="grid grid-cols-2 gap-3 mb-3">
+                            {/* Additional Info: Dates & Students */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-1">
                               <FormInput label="Fecha inicio" type="date" value={asig.fecha_inicio || ''} disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_inicio', v)} />
                               <FormInput label="Fecha fin" type="date" value={asig.fecha_fin || ''} disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_fin', v)} />
+                              <FormInput label="Estudiantes" type="number" value={asig.total_estudiantes} disabled={!rowEditable}
+                                onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
+                              
+                              {/* Modalidad moved here to save space */}
+                              {asig.asignatura_id && (
+                                <div className="flex flex-col">
+                                  <span className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">Modalidad</span>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] font-semibold text-slate-600 min-h-[36px] flex items-center shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)]">
+                                    {displayModalidad === 'PRESENCIAL' ? 'Presencial'
+                                     : displayModalidad === 'VIRTUAL' ? 'Virtual'
+                                     : displayModalidad === 'MIXTA' ? 'Mixta'
+                                     : displayModalidad || 'Presencial'}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
-                            {/* Row 4: Observaciones toggle */}
+                            {/* Observaciones */}
                             {rowEditable && (
-                              <div className="mt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAsigChange(asig.id, '_showObs', !asig._showObs)}
-                                  className={`text-[0.7rem] font-semibold px-3 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
-                                    asig.observaciones
-                                      ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                      : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
-                                  }`}
-                                >
-                                  <MessageSquare className="w-3 h-3" />
-                                  {asig.observaciones ? `Obs: ${asig.observaciones.length}/50` : '+ Observación'}
-                                </button>
-                                {asig._showObs && (
-                                  <div className="mt-2">
-                                    <FormInput
-                                      label={`Observación (${(asig.observaciones || '').length}/50 caracteres)`}
+                              <div className="mt-3 pt-3 border-t border-slate-100/80">
+                                {!asig._showObs ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAsigChange(asig.id, '_showObs', true)}
+                                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                      asig.observaciones
+                                        ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm'
+                                        : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 shadow-sm'
+                                    }`}
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                    {asig.observaciones ? `Observación: ${asig.observaciones.length}/50` : '+ Agregar Observación'}
+                                  </button>
+                                ) : (
+                                  <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase ml-1">
+                                        Observación ({ (asig.observaciones || '').length }/50)
+                                      </label>
+                                      <button onClick={() => handleAsigChange(asig.id, '_showObs', false)} className="text-slate-400 hover:text-slate-600">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <input
+                                      type="text"
                                       value={asig.observaciones || ''}
                                       disabled={!rowEditable}
-                                      onChange={v => handleAsigChange(asig.id, 'observaciones', v.slice(0, 50))}
+                                      onChange={e => handleAsigChange(asig.id, 'observaciones', e.target.value.slice(0, 50))}
                                       placeholder="Ej: Grupo nocturno, requiere sala específica..."
+                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-[12px] font-medium text-slate-700 outline-none transition-all shadow-sm placeholder:text-slate-400"
                                     />
                                   </div>
                                 )}
                               </div>
                             )}
-                            {/* Mostrar observaciones en modo no editable si existen */}
                             {!rowEditable && asig.observaciones && (
-                              <div className="mt-2 text-xs text-gray-500 italic flex items-start gap-1">
-                                <MessageSquare className="w-3 h-3 mt-0.5 shrink-0" />
-                                {asig.observaciones}
+                              <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600 flex items-start gap-2 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                                <div>
+                                  <span className="font-bold text-slate-700 block uppercase text-[9px] tracking-widest mb-0.5">Observación</span>
+                                  {asig.observaciones}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1925,7 +2494,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
             {/* ─── INVESTIGACIÓN ─── */}
-            {!actividadTotalidad && activeSection === 'investigacion' && (
+            {!actividadTotalidad && hasDocencia && activeSection === 'investigacion' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${ptaRules?.max_pct_investigacion || 50}% = ${horasAProgramar * ((ptaRules?.max_pct_investigacion || 50) / 100)}h)`}
                   color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} excede={invExcede} />
@@ -1950,7 +2519,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       {isEditable && (invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol || invActividades.length > 0) && (
                         <button
                           onClick={() => {
-                            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '' });
+                            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
                             setInvActividades([]);
                           }}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 bg-red-50 text-red-600 text-xs font-semibold cursor-pointer hover:bg-red-100 transition-colors">
@@ -1984,6 +2553,72 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         <ReadonlyField label="% del PTA" value={`${horasAProgramar > 0 ? ((hInvestigacion / horasAProgramar) * 100).toFixed(1) : 0}%`} />
                       </div>
                     )}
+
+                    {/* ── Resolución y soporte documental ── */}
+                    <div className="mt-3 pt-3 border-t border-purple-200/60">
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <FileCheck2 className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="text-xs font-bold text-purple-800 uppercase tracking-wide">Resolución que respalda la investigación</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <FormInput
+                          label={`N° / Nombre de la Resolución${ptaRules?.inv_resolucion_obligatoria ? ' *' : ''}`}
+                          value={invProyecto.resolucion_nombre}
+                          disabled={!isEditable}
+                          placeholder="Ej: Resolución No. 0234 de 2026"
+                          onChange={v => setInvProyecto(p => ({ ...p, resolucion_nombre: v }))}
+                        />
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">
+                            Archivo adjunto (Resolución){ptaRules?.inv_adjunto_obligatorio && <span className="text-red-500 ml-0.5">*</span>}
+                          </label>
+                          {invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url ? (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 min-h-[36px]">
+                              <Paperclip className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                              <span className="text-xs text-green-800 font-medium truncate flex-1">
+                                {invProyecto.resolucion_archivo?.name || invProyecto.resolucion_archivo_url || 'Archivo cargado'}
+                              </span>
+                              {isEditable && (
+                                <button
+                                  type="button"
+                                  onClick={() => setInvProyecto(p => ({ ...p, resolucion_archivo: null, resolucion_archivo_url: '' }))}
+                                  className="p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors"
+                                  title="Quitar archivo"
+                                >
+                                  <XIcon className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
+                              isEditable
+                                ? 'border-purple-300 bg-purple-50/30 hover:bg-purple-50 cursor-pointer'
+                                : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                            }`}>
+                              <FileUp className="w-4 h-4 text-purple-400" />
+                              <span className="text-xs text-purple-500 font-medium">
+                                {isEditable ? 'Seleccionar archivo PDF...' : 'Sin archivo'}
+                              </span>
+                              {isEditable && (
+                                <input
+                                  type="file"
+                                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                                  className="hidden"
+                                  onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      setInvProyecto(p => ({ ...p, resolucion_archivo: file, resolucion_archivo_url: '' }));
+                                    }
+                                    e.target.value = '';
+                                  }}
+                                />
+                              )}
+                            </label>
+                          )}
+                          <p className="text-[9px] text-gray-400 mt-1 ml-1">PDF, DOC, DOCX, PNG, JPG (máx 10MB)</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Actividades — modo depende de si se llenó el proyecto y si tiene rol */}
@@ -2093,6 +2728,64 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   a.id === act.id ? { ...a, fecha_fin: v } : a
                                 ))} />
                             </div>
+                            {/* ── Resolución de la actividad ── */}
+                            <div className="mt-1 pt-2 border-t border-purple-100/80">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <FormInput
+                                  label="N° / Nombre Resolución"
+                                  value={act.resolucion_nombre || ''}
+                                  disabled={!isEditable}
+                                  placeholder="Ej: Res. 0234/2026"
+                                  onChange={v => setInvActividades(prev => prev.map(a =>
+                                    a.id === act.id ? { ...a, resolucion_nombre: v } : a
+                                  ))}
+                                />
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">
+                                    Adjunto Resolución
+                                  </label>
+                                  {act.resolucion_archivo || act.resolucion_archivo_url ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 min-h-[36px]">
+                                      <Paperclip className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                                      <span className="text-xs text-green-800 font-medium truncate flex-1">
+                                        {act.resolucion_archivo?.name || act.resolucion_archivo_url || 'Archivo cargado'}
+                                      </span>
+                                      {isEditable && (
+                                        <button type="button"
+                                          onClick={() => setInvActividades(prev => prev.map(a =>
+                                            a.id === act.id ? { ...a, resolucion_archivo: null, resolucion_archivo_url: '' } : a
+                                          ))}
+                                          className="p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors"
+                                          title="Quitar archivo">
+                                          <XIcon className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
+                                      isEditable ? 'border-purple-300 bg-purple-50/30 hover:bg-purple-50 cursor-pointer' : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                    }`}>
+                                      <FileUp className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs text-purple-500 font-medium">
+                                        {isEditable ? 'Adjuntar resolución...' : 'Sin archivo'}
+                                      </span>
+                                      {isEditable && (
+                                        <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" className="hidden"
+                                          onChange={e => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                              setInvActividades(prev => prev.map(a =>
+                                                a.id === act.id ? { ...a, resolucion_archivo: file, resolucion_archivo_url: '' } : a
+                                              ));
+                                            }
+                                            e.target.value = '';
+                                          }} />
+                                      )}
+                                    </label>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2130,6 +2823,62 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 max={ptaRules?.fecha_fin_semestre || undefined}
                                 onChange={v => handleInvActChange(act.id, 'fecha_fin', v)} />
                             </div>
+                            {/* ── Resolución de la actividad ── */}
+                            <div className="mt-1 pt-2 border-t border-gray-100">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <FormInput
+                                  label="N° / Nombre Resolución"
+                                  value={act.resolucion_nombre || ''}
+                                  disabled={!isEditable}
+                                  placeholder="Ej: Res. 0234/2026"
+                                  onChange={v => handleInvActChange(act.id, 'resolucion_nombre', v)}
+                                />
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">
+                                    Adjunto Resolución
+                                  </label>
+                                  {act.resolucion_archivo || act.resolucion_archivo_url ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 min-h-[36px]">
+                                      <Paperclip className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                                      <span className="text-xs text-green-800 font-medium truncate flex-1">
+                                        {act.resolucion_archivo?.name || act.resolucion_archivo_url || 'Archivo cargado'}
+                                      </span>
+                                      {isEditable && (
+                                        <button type="button"
+                                          onClick={() => setInvActividades(prev => prev.map(a =>
+                                            a.id === act.id ? { ...a, resolucion_archivo: null, resolucion_archivo_url: '' } : a
+                                          ))}
+                                          className="p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors"
+                                          title="Quitar archivo">
+                                          <XIcon className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
+                                      isEditable ? 'border-purple-300 bg-purple-50/30 hover:bg-purple-50 cursor-pointer' : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                    }`}>
+                                      <FileUp className="w-4 h-4 text-purple-400" />
+                                      <span className="text-xs text-purple-500 font-medium">
+                                        {isEditable ? 'Adjuntar resolución...' : 'Sin archivo'}
+                                      </span>
+                                      {isEditable && (
+                                        <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" className="hidden"
+                                          onChange={e => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                              setInvActividades(prev => prev.map(a =>
+                                                a.id === act.id ? { ...a, resolucion_archivo: file, resolucion_archivo_url: '' } : a
+                                              ));
+                                            }
+                                            e.target.value = '';
+                                          }} />
+                                      )}
+                                    </label>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2154,7 +2903,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
             {/* ─── EXTENSIÓN (6 subsecciones) ─── */}
-            {!actividadTotalidad && activeSection === 'extension' && (
+            {!actividadTotalidad && hasDocencia && activeSection === 'extension' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h permitidas)`}
                   color={PTA_COLORS.EXTENSION} icon={Globe} excede={extExcede} />
@@ -2182,8 +2931,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 </div>
 
                 <div className="p-4 md:px-6 pb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-bold text-gray-800">{extSecciones.find(s => s.key === extSubseccion)?.label}</h4>
+                  {(() => {
+                    const secActual = extSecciones.find(s => s.key === extSubseccion);
+                    const secMult = secActual?.multiplicador || 1;
+                    const actsSec = extActividades.filter(e => e.seccion === extSubseccion);
+                    const horasEjecSec = actsSec.reduce((t, e) => t + (Number(e.horas_ejecutadas) || 0), 0);
+                    const horasPtaSec = secMult > 1
+                      ? horasEjecSec * secMult
+                      : actsSec.reduce((t, e) => t + (Number(e.horas) || 0), 0);
+                    const maxEjecSec = secMult > 1 ? Math.floor(maxExtLimit / secMult) : maxExtLimit;
+                    return (
+                  <div className="flex justify-between items-start mb-2 gap-2 flex-wrap">
+                    <div className="flex flex-col gap-0.5">
+                      <h4 className="text-sm font-bold text-gray-800">{secActual?.label}</h4>
+                      {secMult > 1 ? (
+                        <span className="text-xs text-emerald-700 font-semibold">
+                          ×{secMult} — {horasEjecSec}h ejecutadas = <strong>{horasPtaSec}h PTA</strong>
+                          <span className="ml-1 text-gray-400 font-normal">(máx {maxEjecSec}h ejecutadas)</span>
+                        </span>
+                      ) : horasPtaSec > 0 ? (
+                        <span className="text-xs text-gray-500">{horasPtaSec}h programadas</span>
+                      ) : null}
+                    </div>
                     {isEditable && (() => {
                       const extRemaining = Math.max(0, maxExtLimit - hExtension);
                       const ptaRemaining = Math.max(0, horasRestantes);
@@ -2191,12 +2960,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       if (cupoDisponible <= 0) return null;
                       return (
                         <button onClick={() => handleAddExtActividad(extSubseccion)}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer" style={{ background: PTA_COLORS.EXTENSION }}>
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer shrink-0" style={{ background: PTA_COLORS.EXTENSION }}>
                           <Plus className="w-3 h-3" /> Agregar
                         </button>
                       );
                     })()}
                   </div>
+                    );
+                  })()}
+
 
                   {extActividades.filter(e => e.seccion === extSubseccion).length === 0 ? (
                     <EmptyState icon={Globe} text={`Sin actividades de ${extSecciones.find(s => s.key === extSubseccion)?.label}`} small />
@@ -2214,26 +2986,44 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             <div className="flex-1">
                               <FormSelect label="Actividad" value={ext.actividad_id} disabled={!isEditable}
                                 onChange={v => handleExtActChange(ext.id, 'actividad_id', v)}
-                                options={getExtCatalog(extSubseccion)
-                                  .map((a: any) => ({ value: a.id, label: `${a.nombre} (${a.max_horas || 0}h)` }))}
+                                options={(() => {
+                                  const sMult = extSecciones.find(s => s.key === ext.seccion)?.multiplicador || 1;
+                                  return getExtCatalog(extSubseccion).map((a: any) => ({
+                                    value: a.id,
+                                    label: sMult > 1
+                                      ? `${a.nombre} (máx ${Math.floor((a.max_horas || 0) / sMult)} ejec. = ${a.max_horas || 0}h PTA)`
+                                      : `${a.nombre} (${a.max_horas || 0}h)`,
+                                  }));
+                                })()}
                                 placeholder="Seleccionar..." />
                             </div>
-                            {ext.seccion === 'capacitacion' ? (
+                            {(() => {
+                              const secMult = extSecciones.find(s => s.key === ext.seccion)?.multiplicador || 1;
+                              if (secMult > 1) {
+                                const cat = (actExtension?.[ext.seccion] || []).find((c: any) => c.id === ext.actividad_id);
+                                const maxEjecCat = cat?.max_horas ? Math.floor(cat.max_horas / secMult) : undefined;
+                                const maxEjecSec = Math.floor(maxExtLimit / secMult);
+                                const maxEjec = maxEjecCat !== undefined ? Math.min(maxEjecCat, maxEjecSec) : maxEjecSec;
+                                return (
                               <>
                                 <div className="w-24">
-                                  <FormInput label="Horas Ejec." type="number" value={ext.horas_ejecutadas || 0} disabled={!isEditable}
+                                  <FormInput label="Horas Ejec." type="number" value={ext.horas_ejecutadas || 0}
+                                    min={0} max={maxEjec} disabled={!isEditable}
                                     onChange={v => handleExtActChange(ext.id, 'horas_ejecutadas', Number(v))} />
                                 </div>
-                                <div className="w-24">
-                                  <ReadonlyField label="Total (x2)" value={`${ext.horas}h`} color={PTA_COLORS.EXTENSION} />
+                                <div className="w-28">
+                                  <ReadonlyField label={`PTA (×${secMult})`} value={`${ext.horas}h`} color={PTA_COLORS.EXTENSION} />
                                 </div>
                               </>
-                            ) : (
+                                );
+                              }
+                              return (
                               <div className="w-24">
                                 <FormInput label="Horas" type="number" value={ext.horas} disabled={!isEditable}
                                   onChange={v => handleExtActChange(ext.id, 'horas', Number(v))} />
                               </div>
-                            )}
+                            );
+                            })()}
                           </div>
                           <div className="flex flex-col sm:flex-row gap-2">
                             <div className="flex-1">
@@ -2263,7 +3053,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
             {/* ─── COMPLEMENTARIAS ─── */}
-            {!actividadTotalidad && activeSection === 'complementarias' && (
+            {!actividadTotalidad && hasDocencia && activeSection === 'complementarias' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Actividades Complementarias" subtitle={`${hComplementarias}h programadas (máx ${ptaRules?.max_pct_complementarias || 25}% = ${horasAProgramar * ((ptaRules?.max_pct_complementarias || 25) / 100)}h, máx 17 act.)`}
                   color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} excede={compExcede}
@@ -2385,6 +3175,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     return { label: 'Agregar Actividad', onClick: handleAddAcademicoAdmin };
                   })()} />
 
+                {!hasDocencia && !actividadTotalidad && (
+                  <div className="mx-4 md:mx-6 mt-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm flex items-start gap-2.5">
+                    <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Sección en modo restringido:</span> Dado que no tiene asignaturas registradas en Docencia Directa, solo se permite registrar actividades de dedicación exclusiva al 100% (ej. Comisión de Estudios, Año Sabático). Configure asignaturas en Docencia para habilitar las actividades administrativas ordinarias.
+                    </div>
+                  </div>
+                )}
+
                 {acadWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
                     {acadWarnings.map((w, i) => (
@@ -2430,6 +3229,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleAcadChange(comp.id, 'actividad_id', v)}
                                   options={actAcadAdmin
                                     .filter((a: any) => {
+                                      if (!hasDocencia && !a.consumeTotalidad) {
+                                        return false;
+                                      }
                                       const optionConstraint = getAcademicoAdminConstraint(a, ptaRules, horasAProgramar);
                                       const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (comp.horas || 0));
 
@@ -2506,122 +3308,88 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           </div>
         </div>
 
-        {/* ─── SIDEBAR RESUMEN ─── */}
-        {(() => {
-          const summaryContent = (
-            <div className="w-full shrink-0 z-10 mb-8">
-              <div className="bg-white/70 backdrop-blur-xl rounded-3xl border border-gray-200/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
-                <div className="px-6 py-5 bg-gradient-to-b from-white to-gray-50/50 border-b border-gray-100">
-                  <h3 className="text-[13px] font-black tracking-widest text-[#003DA5] flex items-center gap-2 uppercase">
-                    <Calculator className="w-4 h-4" /> Progreso del PTA
-                  </h3>
-                </div>
+        </div>{/* cierra Active section bg-white */}
+            </div>{/* cierra contenido principal flex-1 */}
+          </div>{/* cierra wrapper layout columna */}
 
-                <div className="p-6">
-                  {/* Circular progress */}
-                  <div className="text-center mb-4">
-                    <div className="relative w-[104px] h-[104px] mx-auto flex items-center justify-center">
-                      <svg width="104" height="104" viewBox="0 0 104 104" className="absolute inset-0 drop-shadow-sm">
-                        <circle cx="52" cy="52" r="44" fill="none" stroke="#F8FAFC" strokeWidth="8" />
-                        <circle cx="52" cy="52" r="44" fill="none"
-                          stroke={porcentaje > 100 ? '#EF4444' : porcentaje >= 80 ? '#10B981' : '#2563EB'}
-                          strokeWidth="8" strokeLinecap="round"
-                          strokeDasharray={`${Math.min(100, porcentaje) * 2.76} 276`}
-                          transform="rotate(-90 52 52)"
-                          style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
-                      </svg>
-                      <div className="relative z-10 flex flex-col items-center justify-center mt-1">
-                        <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-[#003DA5] to-blue-400 tracking-tighter" style={{ WebkitTextStroke: '0.5px rgba(0,0,0,0.05)' }}>
-                          {porcentaje}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Breakdown */}
-                  <div className="flex flex-col gap-2">
-                    {sections.map(s => (
-                      <div key={s.key} className="flex justify-between items-center">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full" style={{ background: s.color }} />
-                          <span className="text-xs text-gray-600">{s.label}</span>
-                          {s.excede && <AlertTriangle className="w-3 h-3 text-amber-500" />}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {s.hours !== s.prorr && (
-                            <span className="text-[0.65rem] text-gray-400 line-through">{s.hours}h</span>
-                          )}
-                          <span className="text-xs font-bold text-gray-900">{s.prorr}h</span>
-                          <span className="text-[0.65rem] text-gray-400">({s.limit})</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="my-3 h-px bg-gray-200" />
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-gray-900">Total</span>
-                    <span className="text-lg font-extrabold text-[#003DA5]">{totalHoras}h</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-xs text-gray-500">Máximo</span>
-                    <span className="text-xs text-gray-500">{horasAProgramar}h</span>
-                  </div>
-
-                  {/* Status */}
-                  <div className={`mt-3 p-2.5 rounded-lg border text-[11px] leading-relaxed flex items-start gap-1.5 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800'
-                      : totalHoras >= minHoras ? 'bg-green-50 border-green-200 text-green-800'
-                        : 'bg-blue-50 border-blue-200 text-blue-800'
-                    }`}>
-                    {totalHoras > horasAProgramar ? <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      : totalHoras >= minHoras ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        : <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
-                    <span>
-                      {totalHoras > horasAProgramar
-                        ? `Excede por ${totalHoras - horasAProgramar}h. Verifica tu Plan.`
-                        : totalHoras >= minHoras
-                          ? 'Carga completa o dentro del mínimo. Listo para enviar.'
-                          : `Faltan ${minHoras - totalHoras}h por programar para el mínimo requerido (${minHoras}h).`}
-                    </span>
-                  </div>
-
-                  {/* Prorrateo warnings */}
-                  {(invExcede || extExcede || compExcede || acadExcede) && (
-                    <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                      <div className="font-semibold mb-1 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Prorrateo aplicado
-                      </div>
-                      {invExcede && <div>Investigación: {hInvestigacion}h → {invProrr}h (50%)</div>}
-                      {extExcede && <div>Extensión: {hExtension}h → {extProrr}h (25%)</div>}
-                      {compExcede && <div>Complementarias: {hComplementarias}h → {compProrr}h (25%)</div>}
-                      {acadExcede && <div>Académico-Administrativo: {hAcademicoAdmin}h → {acadProrr}h (25%)</div>}
-                    </div>
-                  )}
-                </div>
-              </div>
+      {/* ─── STICKY FOOTER ─── */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-2xl border-t border-gray-200/50 p-4 px-6 md:px-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]" style={{borderTop: '1px solid darkgray'}}>
+        <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto w-full">
+          {/* Status compacto */}
+          <div className={`hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${totalHoras > horasAProgramar ? 'bg-red-50/80 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-blue-50/80 border-blue-200 text-blue-800'}`}>
+            {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
+            <div className="flex flex-col">
+              <span className="text-[12px] font-bold leading-tight">
+                {totalHoras > horasAProgramar ? `Excede por ${totalHoras - horasAProgramar}h` : totalHoras >= horasAProgramar ? 'Horas completas' : `Faltan ${horasAProgramar - totalHoras}h`}
+              </span>
+              <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
             </div>
-          );
+          </div>
 
-          return (
-            <>
-              {/* Si no hay slot (ej. modal de edición del backoffice), mostrar siempre */}
-              {!slotNode && (
-                <div className="w-full">
-                  {summaryContent}
+          <div className="flex-1" />
+
+          {isEditable && (
+            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+              {/* Auto-guardado */}
+              {!isAdminEdit && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium"
+                  style={{ color: autoSaveStatus === 'saving' ? '#D97706' : autoSaveStatus === 'saved' ? '#059669' : '#9CA3AF' }}>
+                  {autoSaveStatus === 'saving' && (
+                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  )}
+                  {autoSaveStatus === 'saved' && <CheckCircle2 className="w-3 h-3" />}
+                  {autoSaveStatus === 'saving' && 'Guardando...'}
+                  {autoSaveStatus === 'saved' && `Guardado a las ${lastAutoSaveTime?.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) ?? ''}`}
+                  {autoSaveStatus === 'idle' && lastAutoSaveTime && `Guardado a las ${lastAutoSaveTime.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`}
                 </div>
               )}
-              {/* Para vista móvil, alineado abajo de forma nativa */}
-              {slotNode && (
-                <div className="w-full lg:hidden">
-                  {summaryContent}
-                </div>
+
+              {isAdminEdit ? (
+                <button onClick={() => handleSave(false)} disabled={saving}
+                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
+                  style={{ background: '#003DA5' }}>
+                  <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              ) : isEnRevisionDocente ? (
+                <>
+                  <button onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')} disabled={saving || requestingFirmaCode}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
+                    <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
+                  </button>
+                  <button onClick={() => solicitarFirmaDocente('via_save')}
+                    disabled={saving || requestingFirmaCode || totalHoras > horasAProgramar}
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: (saving || requestingFirmaCode || totalHoras > horasAProgramar) ? '#9CA3AF' : '#7C3AED' }}>
+                    <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className={`hidden sm:flex items-center gap-0.5 text-[10px] font-medium ${autoSaveCountdown <= 30 ? 'text-amber-500' : 'text-gray-400'}`}>
+                    <Clock className="w-2.5 h-2.5" />
+                    Auto en {Math.floor(autoSaveCountdown / 60)}:{String(autoSaveCountdown % 60).padStart(2, '0')}
+                  </span>
+                  <button onClick={() => handleSave(false)} disabled={saving}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
+                    <Save className="w-3.5 h-3.5" /> Guardar Borrador
+                  </button>
+                  <button
+                    onClick={() => { if (!validateEnvioDocente()) return; solicitarFirmaDocente('via_save'); }}
+                    disabled={saving || requestingFirmaCode || totalHoras > horasAProgramar}
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                    style={{ background: (saving || requestingFirmaCode || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}>
+                    {requestingFirmaCode ? <><Clock className="w-3.5 h-3.5" /> Enviando...</>
+                      : originalEstado === 'Devuelto' ? <><RotateCcw className="w-3.5 h-3.5" /> Re-enviar</>
+                      : <><Send className="w-3.5 h-3.5" /> Enviar a Aprobación</>}
+                  </button>
+                </>
               )}
-              {/* Para vista desktop, incrustado en el sidebar react-portal */}
-              {slotNode ? createPortal(<div className="hidden lg:block w-[280px] xl:w-[300px] mt-6">{summaryContent}</div>, slotNode) : null}
-            </>
-          );
-        })()}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

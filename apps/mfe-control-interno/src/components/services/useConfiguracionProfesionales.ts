@@ -14,6 +14,11 @@ import {
   type ConfiguracionProfesionalOCI as ConfigBackend 
 } from './api';
 import { auditoriaService } from './auditoriaService';
+import {
+  ROLES_OCI_DEFAULT,
+  ROLES_OCIG_OPERATIVOS,
+  normalizarRolOcigOperativo,
+} from '../../config/roles-ocig-operativos';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -88,8 +93,8 @@ export interface EspecialidadOCIG {
 // Exportación de compatibilidad (se sobreescribe dinámicamente en el hook)
 export let ESPECIALIDADES_DISPONIBLES: string[] = [];
 
-// Roles OCIG (ahora siempre desde la API, con fallback por si acaso)
-export const ROLES_OCI_DEFAULT: readonly string[] = ['Jefe OCIG', 'Auditor Sénior', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico'];
+// Re-export del catálogo operativo fijo
+export { ROLES_OCI_DEFAULT, ROLES_OCIG_OPERATIVOS };
 
 // Interfaz para roles con descripción desde la BD
 export interface RolOCIG {
@@ -167,7 +172,9 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
     || (config as any).nombreCompleto
     || nombreDesdePartes(config);
 
-  const rolOCI = (config.rolOcig ?? config.rolOCI) as ConfiguracionOCI['rolOCI'];
+  const rolOCI = normalizarRolOcigOperativo(
+    config.rolOcig ?? config.rolOCI,
+  ) as ConfiguracionOCI['rolOCI'];
   return {
     id: config.id,
     usuarioId: String(config.idTercero),
@@ -219,19 +226,17 @@ export function useConfiguracionProfesionales() {
     setError(null);
     
     try {
-      // 1. Cargar roles OCIG desde la BD (no hardcodeados)
-      const responseRoles = await configuracionesProfesionalesOCIApi.getRolesOCIG();
-      if (responseRoles.data && responseRoles.data.length > 0) {
-        setRolesOCIG(responseRoles.data);
-        const nombres = responseRoles.data.map(r => r.name);
-        setRolesOCIGNames(nombres);
-        ROLES_OCI = nombres;
-        ROLES_OCIG = nombres;
-      } else {
-        setRolesOCIGNames(ROLES_OCI_DEFAULT);
-        ROLES_OCI = ROLES_OCI_DEFAULT;
-        ROLES_OCIG = ROLES_OCI_DEFAULT;
-      }
+      // 1. Catálogo operativo fijo (misma lista que expone la API roles-ocig)
+      const rolesOperativos = [...ROLES_OCIG_OPERATIVOS];
+      setRolesOCIG(
+        rolesOperativos.map((name) => ({
+          name,
+          description: '',
+        })),
+      );
+      setRolesOCIGNames(rolesOperativos);
+      ROLES_OCI = rolesOperativos;
+      ROLES_OCIG = rolesOperativos;
 
       // 2. Cargar especialidades OCIG desde la BD (no hardcodeadas)
       const responseEsp = await configuracionesProfesionalesOCIApi.getEspecialidades();
@@ -267,8 +272,9 @@ export function useConfiguracionProfesionales() {
 
       // 4. Cargar auditorías para estadísticas (Usamos el servicio centralizado que coincide con el Programa Anual)
       setCargandoAuditorias(true);
+      let auditoriasData: any[] = [];
       try {
-        const auditoriasData = await auditoriaService.listar();
+        auditoriasData = await auditoriaService.listar();
         setAuditorias(auditoriasData || []);
       } catch (err) {
         console.error('Error cargando auditorías para estadísticas:', err);
@@ -485,6 +491,10 @@ export function useConfiguracionProfesionales() {
         observaciones: config.observaciones
       });
 
+      if (!response.success) {
+        throw new Error(response.error || 'Error al agregar profesional');
+      }
+
       if (response.data) {
         const nuevaConfig = convertirConfigBackendALocal(response.data);
         setConfiguracionesOCI(prev => [...prev, nuevaConfig]);
@@ -517,6 +527,10 @@ export function useConfiguracionProfesionales() {
         observaciones: cambios.observaciones
       });
 
+      if (!response.success) {
+        throw new Error(response.error || 'Error al actualizar configuración');
+      }
+
       if (response.data) {
         const configActualizada = convertirConfigBackendALocal(response.data);
         setConfiguracionesOCI(prev => 
@@ -541,7 +555,10 @@ export function useConfiguracionProfesionales() {
         throw new Error('Configuración no encontrada');
       }
 
-      await configuracionesProfesionalesOCIApi.delete(configActual.id);
+      const response = await configuracionesProfesionalesOCIApi.delete(configActual.id);
+      if (!response.success) {
+        throw new Error(response.error || 'Error al eliminar profesional');
+      }
       
       setConfiguracionesOCI(prev => prev.filter(c => c.usuarioId !== usuarioId));
       toast.success('🗑️ Profesional removido del equipo OCI');

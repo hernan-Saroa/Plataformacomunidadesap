@@ -30,47 +30,39 @@ export interface SedesFilters {
 export interface CreateSeccionalData {
   codSeccional?: string;
   nomSeccional: string;
+  ordenVisualizacion?: number;
   idUbiSeccional?: number;
+  activo?: boolean;
 }
 
 export interface UpdateSeccionalData {
   codSeccional?: string;
   nomSeccional?: string;
+  ordenVisualizacion?: number;
   idUbiSeccional?: number;
+  activo?: boolean;
 }
 
 export interface CreateSedeData {
   codSede?: string;
   nomSede: string;
-  idGeopolitica?: number;
   idSeccional?: number;
-  dirSede?: string;
-  telSede?: string;
-  emailSede?: string;
-  capacidadEstudiantes?: number;
-  capacidadDocentes?: number;
+  idGeopolitica?: number;
+  tipo?: string;
+  latitud?: number;
+  longitud?: number;
   sedeAct?: string;
-  permiteInscripciones?: boolean;
-  permiteMatriculas?: boolean;
-  visiblePortal?: boolean;
-  observaciones?: string;
 }
 
 export interface UpdateSedeData {
   codSede?: string;
   nomSede?: string;
-  idGeopolitica?: number;
   idSeccional?: number;
-  dirSede?: string;
-  telSede?: string;
-  emailSede?: string;
-  capacidadEstudiantes?: number;
-  capacidadDocentes?: number;
+  idGeopolitica?: number;
+  tipo?: string;
+  latitud?: number;
+  longitud?: number;
   sedeAct?: string;
-  permiteInscripciones?: boolean;
-  permiteMatriculas?: boolean;
-  visiblePortal?: boolean;
-  observaciones?: string;
 }
 
 /**
@@ -289,6 +281,116 @@ export const estructuraService = {
         nombre: sede.geopolitica.nomDivGeopolitica
       } : undefined
     }));
+  },
+
+  // ============================================
+  // ASIGNACIÓN DE USUARIOS
+  // ============================================
+
+  async getUsuariosSinAsignar(): Promise<{ success: boolean; data: any[] }> {
+    return apiClient.get<{ success: boolean; data: any[] }>(`${SERVICE_PREFIX}/estructura-organizacional/usuarios/sin-asignar`);
+  },
+
+  async asignarSeleccionados(
+    ids: string[],
+    territorialId: string,
+    cetapId: string
+  ): Promise<{ success: boolean; actualizados: number }> {
+    return apiClient.post<{ success: boolean; actualizados: number }>(
+      `${SERVICE_PREFIX}/estructura-organizacional/usuarios/asignar`,
+      { ids, territorialId, cetapId }
+    );
+  },
+
+  async obtenerPeriodos(): Promise<any[]> {
+    return apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+  },
+
+  async obtenerDetallePeriodo(id: string): Promise<any> {
+    return apiClient.get<any>(`/pta/api/v1/periodos-academicos/${id}/detalle`);
+  },
+
+  /**
+   * Marca un periodo académico como activo (estado "en_curso") en todo el sistema.
+   * El backend archiva automáticamente los demás periodos.
+   */
+  async marcarPeriodoActivo(id: string): Promise<any> {
+    return apiClient.patch<any>(`/pta/api/v1/periodos-academicos/${id}`, { estado: 'en_curso' });
+  },
+
+  async importarEstructura(file: File, dryRun: boolean, skipInvalid: boolean = false, periodo?: string): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    let url = `${SERVICE_PREFIX}/estructura-import/upload-geografico?dry_run=${dryRun}&skip_invalid=${skipInvalid}`;
+    if (periodo) {
+      url += `&periodo=${encodeURIComponent(periodo)}`;
+    }
+
+    return apiClient.upload<any>(url, formData);
+  },
+
+  async descargarPlantillaEstructura(): Promise<Blob> {
+    return apiClient.getBlob(
+      `${SERVICE_PREFIX}/estructura-import/template`,
+      undefined,
+      { retries: 0 },
+    );
+  },
+
+  async obtenerEstadoSedesPeriodo(periodoCodigo: string): Promise<{
+    data: {
+      periodoCodigo: string;
+      idSedesActivas: number[];
+      // Sedes MIEMBRO del periodo (las que "pertenecen" a él). Una sede solo
+      // aparece en el periodo donde fue agregada/importada.
+      idSedesMiembro: number[];
+      totalActivas: number;
+      totalMiembro: number;
+    };
+  }> {
+    return apiClient.get(
+      `${SERVICE_PREFIX}/estructura-organizacional/periodo/${encodeURIComponent(periodoCodigo)}/sedes-estado`,
+      undefined,
+      { retries: 0 },
+    );
+  },
+
+  /**
+   * Quita una sede SOLO del periodo indicado (no la borra del catálogo maestro
+   * ni de otros periodos).
+   */
+  async quitarSedeDePeriodo(idSede: number, periodoCodigo: string): Promise<any> {
+    return apiClient.delete<any>(
+      `${SERVICE_PREFIX}/estructura-organizacional/sedes/${idSede}/periodo/${encodeURIComponent(periodoCodigo)}`,
+    );
+  },
+
+  /**
+   * Quita una seccional (con todas sus sedes) SOLO del periodo indicado.
+   */
+  async quitarSeccionalDePeriodo(idSeccional: number, periodoCodigo: string): Promise<any> {
+    return apiClient.delete<any>(
+      `${SERVICE_PREFIX}/estructura-organizacional/seccionales/${idSeccional}/periodo/${encodeURIComponent(periodoCodigo)}`,
+    );
+  },
+
+  async toggleSedePeriodStatus(idSede: number, periodoCodigo: string, activo: boolean): Promise<any> {
+    return apiClient.patch<any>(`${SERVICE_PREFIX}/estructura-organizacional/sedes/${idSede}/periodo`, {
+      periodoCodigo,
+      activo,
+    });
+  },
+
+  /**
+   * Activa/desactiva en bloque varias sedes (o todas si se omite idSedes) en un periodo.
+   */
+  async bulkToggleSedePeriodStatus(periodoCodigo: string, activo: boolean, idSedes?: number[]): Promise<any> {
+    return apiClient.patch<any>(`${SERVICE_PREFIX}/estructura-organizacional/periodo/sedes-bulk`, {
+      periodoCodigo,
+      activo,
+      idSedes,
+    });
   },
 };
 

@@ -14,9 +14,16 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+  // Static assets: alineado con multer (que escribe a ./uploads/... relativo al CWD,
+  // típicamente la raíz del service). __dirname apunta a /dist (prod) o /src (dev),
+  // por eso un único '..' nos coloca en la raíz del service, donde efectivamente
+  // existe la carpeta `uploads/`. Antes había DOS '..' que apuntaban a backend/uploads
+  // (un nivel arriba) y por eso fallaba con 404.
+  const uploadsDir = join(__dirname, '..', 'uploads');
+  app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
   });
+  console.log(`📁 Static uploads served from ${uploadsDir} -> /uploads/`);
 
   const port = process.env.PORT ?? 3003;
   await app.listen(port);

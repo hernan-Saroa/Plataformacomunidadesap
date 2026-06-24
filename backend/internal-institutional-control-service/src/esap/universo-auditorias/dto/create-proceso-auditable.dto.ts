@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, IsEnum, IsNumber, IsOptional, IsObject, ValidateNested, Min, Max, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TipoProceso, NivelRiesgo } from '../entities/proceso-auditable.entity';
+import { NivelRiesgo } from '../entities/proceso-auditable.entity';
 
 class EvaluacionRiesgoDto {
   @IsNumber()
@@ -114,8 +114,9 @@ export class CreateProcesoAuditableDto {
   @IsString()
   descripcion?: string;
 
-  @IsEnum(TipoProceso)
-  tipo: TipoProceso;
+  @IsString()
+  @IsNotEmpty()
+  tipo: string;
 
   @IsString()
   @IsNotEmpty()

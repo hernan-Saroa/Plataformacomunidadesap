@@ -15,6 +15,7 @@ import { TemplateConfigController } from './template-config.controller';
 import { TemplateConfigService } from './template-config.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 import { TechnicalBonusAssignment } from './technical-bonus-assignment.entity';
+import { TechnicalBonusTemplate } from './technical-bonus-template.entity';
 import { LaborOracleIntegrationController } from './labor-oracle-integration.controller';
 import { LaborOracleIntegrationService } from './labor-oracle-integration.service';
 
@@ -30,6 +31,7 @@ import { LaborOracleIntegrationService } from './labor-oracle-integration.servic
       TemplateConfigChange,
       Firmante,
       TechnicalBonusAssignment,
+      TechnicalBonusTemplate,
     ]),
   ],
   controllers: [

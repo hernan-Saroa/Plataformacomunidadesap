@@ -3,17 +3,25 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Query,
   Body,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { EstructuraOrganizacionalService } from './estructura-organizacional.service';
 import {
   CreateSeccionalDto,
   UpdateSeccionalDto,
   CreateSedeDto,
   UpdateSedeDto,
+  AsignarUsuariosDto,
+  ToggleSedePeriodStatusDto,
+  BulkToggleSedePeriodStatusDto,
 } from './estructura-organizacional.dto';
 
 @Controller('estructura-organizacional')
@@ -40,6 +48,18 @@ export class EstructuraOrganizacionalController {
         totalSedes: stats.totalSedes,
       },
     };
+  }
+
+  @Post('importar')
+  @UseInterceptors(FileInterceptor('file'))
+  async importarEstructura(
+    @UploadedFile() file: any,
+    @Query('periodo_codigo') periodoCodigo: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Archivo no proporcionado');
+    }
+    return this.estructuraService.importarEstructura(file.buffer, periodoCodigo);
   }
 
   // ==================== ESTADÍSTICAS ====================
@@ -121,10 +141,56 @@ export class EstructuraOrganizacionalController {
     return { data: sede, message: 'Sede actualizada exitosamente' };
   }
 
+  @Get('periodo/:periodoCodigo/sedes-estado')
+  async getSedePeriodStatus(
+    @Param('periodoCodigo') periodoCodigo: string,
+  ) {
+    const status =
+      await this.estructuraService.getSedePeriodStatus(periodoCodigo);
+    return { data: status };
+  }
+
+  @Patch('sedes/:id/periodo')
+  async toggleSedePeriodStatus(
+    @Param('id') id: string,
+    @Body() dto: ToggleSedePeriodStatusDto,
+  ) {
+    const res = await this.estructuraService.toggleSedePeriodStatus(
+      Number(id),
+      dto.periodoCodigo,
+      dto.activo,
+    );
+    return { data: res, message: 'Estado de la sede en el periodo actualizado exitosamente' };
+  }
+
+  // Activación/desactivación masiva por periodo (territorial completa o "todos")
+  @Patch('periodo/sedes-bulk')
+  async bulkToggleSedePeriodStatus(@Body() dto: BulkToggleSedePeriodStatusDto) {
+    const res = await this.estructuraService.bulkToggleSedePeriodStatus(
+      dto.periodoCodigo,
+      dto.activo,
+      dto.idSedes,
+    );
+    return { data: res, message: 'Estado de las sedes en el periodo actualizado exitosamente' };
+  }
+
   @Delete('sedes/:id')
   async deleteSede(@Param('id') id: string) {
     await this.estructuraService.deleteSede(Number(id));
     return { message: 'Sede eliminada exitosamente' };
+  }
+
+  // Quita una sede SOLO de un periodo (no la borra del catálogo maestro).
+  @Delete('sedes/:id/periodo/:periodoCodigo')
+  async removeSedeFromPeriod(
+    @Param('id') id: string,
+    @Param('periodoCodigo') periodoCodigo: string,
+  ) {
+    const res = await this.estructuraService.removeSedeFromPeriod(
+      Number(id),
+      periodoCodigo,
+    );
+    return { data: res, message: 'Sede quitada del periodo exitosamente' };
   }
 
   // ==================== SECCIONALES ====================
@@ -164,5 +230,34 @@ export class EstructuraOrganizacionalController {
   async deleteSeccional(@Param('id') id: string) {
     await this.estructuraService.deleteSeccional(Number(id));
     return { message: 'Seccional eliminada exitosamente' };
+  }
+
+  // Quita una seccional (y sus sedes) SOLO de un periodo (no del catálogo maestro).
+  @Delete('seccionales/:id/periodo/:periodoCodigo')
+  async removeSeccionalFromPeriod(
+    @Param('id') id: string,
+    @Param('periodoCodigo') periodoCodigo: string,
+  ) {
+    const res = await this.estructuraService.removeSeccionalFromPeriod(
+      Number(id),
+      periodoCodigo,
+    );
+    return { data: res, message: 'Seccional quitada del periodo exitosamente' };
+  }
+
+  // ==================== ASIGNACIÓN DE USUARIOS ====================
+
+  @Get('usuarios/sin-asignar')
+  async getUsuariosSinAsignar() {
+    return this.estructuraService.getUsuariosSinAsignar();
+  }
+
+  @Post('usuarios/asignar')
+  async asignarSeleccionados(@Body() body: AsignarUsuariosDto) {
+    return this.estructuraService.asignarSeleccionados(
+      body.ids,
+      body.territorialId,
+      body.cetapId,
+    );
   }
 }

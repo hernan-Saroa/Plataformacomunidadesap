@@ -10,7 +10,7 @@
         "@dnd-kit/core": "*",
         "@dnd-kit/sortable": "*",
         "@dnd-kit/utilities": "*",
-        "@jsr/supabase__supabase-js": "^2.49.8",
+        "@supabase/supabase-js": "^2.49.8",
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
         "@radix-ui/react-aspect-ratio": "^1.1.2",
@@ -79,7 +79,7 @@
         "tailwind-merge": "*",
         "uuid": "^13.0.0",
         "vaul": "^1.1.2",
-        "xlsx": "*"
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@types/canvas-confetti": "^1.9.0",

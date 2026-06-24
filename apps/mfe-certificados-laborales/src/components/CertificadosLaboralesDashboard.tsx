@@ -31,7 +31,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
-import { GenerarCertificadoModal } from './GenerarCertificadoModal';
+import { GenerarReporteCertificadosModal } from './GenerarReporteCertificadosModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import { PrimaTecnicaModal } from './PrimaTecnicaModal';
@@ -43,6 +43,7 @@ import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoF
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
   id: string;
+  rowKey?: string;
   consecutivo: string;
   certificateHash: string;
   qrCode: string;
@@ -53,6 +54,10 @@ interface CertificadoLaboral {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
+  technical_bonus_category?: string | null;
+  technicalBonusCategory?: string | null;
+  technical_bonuses?: any[] | null;
+  technicalBonuses?: any[] | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
@@ -93,9 +98,13 @@ interface Stats {
 interface CertificadosLaboralesDashboardProps {
   onNavigate?: (vista: string) => void;
   canManageTemplates?: boolean;
+  canEditPrima?: boolean;
+  canExportReport?: boolean;
+  canDeliver?: boolean;
+  canVerify?: boolean;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false }: CertificadosLaboralesDashboardProps) {
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canExportReport = false, canDeliver = false, canVerify = false }: CertificadosLaboralesDashboardProps) {
   const resolverTemplateType = (value?: string) => {
     const base = String(value || '').toLowerCase();
     const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -175,7 +184,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return fallback;
   };
 
-  const transformarCertificado = (cert: any): CertificadoLaboral => {
+  const transformarCertificado = (cert: any, index = 0): CertificadoLaboral => {
     const templateTypeRaw =
       cert.template_type ||
       cert.templateType ||
@@ -203,7 +212,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       observations: cert.request?.observations || cert.observations,
       templateType: templateTypeNormalizado,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
 
     const employmentStatusRaw = String(
@@ -266,9 +275,25 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           false,
         )
       : false;
+    const certificadoId = String(
+      cert.id ||
+        cert.id_certificado ||
+        cert.idCertificado ||
+        cert.id_certificate ||
+        cert.idCertificate ||
+        cert.certificate_id ||
+        cert.certificateId ||
+        cert.certificate_number ||
+        cert.certificateNumber ||
+        cert.verification_code ||
+        cert.verificationCode ||
+        `${cert.id_number || cert.employee_document || 'cert'}-${cert.created_at || cert.issuance_timestamp || index}`
+    );
+    const rowKey = `${certificadoId}-${index}`;
 
     return {
-      id: cert.id,
+      id: certificadoId,
+      rowKey,
       consecutivo: cert.certificate_number,
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
@@ -279,6 +304,20 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
       campus: cert.campus,
       technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus,
+      technical_bonus_category:
+        cert.technical_bonus_category ??
+        cert.technicalBonusCategory ??
+        cert.request?.technical_bonus_category ??
+        cert.request?.technicalBonusCategory ??
+        null,
+      technical_bonuses:
+        cert.technical_bonuses ??
+        cert.technicalBonuses ??
+        cert.request?.technical_bonuses ??
+        cert.request?.technicalBonuses ??
+        cert.template_snapshot?.technicalBonuses ??
+        cert.templateSnapshot?.technicalBonuses ??
+        null,
       incluyeSalario,
       incluyePrimaTecnica,
       templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
@@ -336,7 +375,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   // Estados para modales
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
-  const [isGenerarOpen, setIsGenerarOpen] = useState(false);
+  const [isReporteOpen, setIsReporteOpen] = useState(false);
   const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [isPrimaTecnicaOpen, setIsPrimaTecnicaOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
@@ -418,7 +457,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
@@ -508,7 +547,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         page += 1;
       }
 
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
       setCertificadosMetricas(certificadosTransformados);
     } catch (err) {
       console.error('❌ Error al cargar métricas de certificados:', err);
@@ -625,6 +664,24 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
+  const handleValidationHistoryChange = React.useCallback(
+    (certificateId: string, totalVerificaciones: number) => {
+      if (!certificateId || !Number.isFinite(totalVerificaciones)) return;
+      const nextTotal = Math.max(0, totalVerificaciones);
+      const updateCertificate = (cert: CertificadoLaboral) =>
+        cert.id === certificateId && cert.cantidadEscaneos !== nextTotal
+          ? { ...cert, cantidadEscaneos: nextTotal }
+          : cert;
+
+      setCertificadosRaw((prev) => prev.map(updateCertificate));
+      setCertificadosMetricas((prev) => prev.map(updateCertificate));
+      setSelectedCertificado((prev) =>
+        prev?.id === certificateId ? updateCertificate(prev) : prev,
+      );
+    },
+    [],
+  );
+
   const handleReenviarEmail = async (cert: CertificadoLaboral) => {
     if (processingIds.has(cert.id)) return;
     setProcessingIds(prev => new Set(prev).add(cert.id));
@@ -669,234 +726,88 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
-      {/* Header */}
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
+      {/* Header - World Class Design */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex flex-col gap-4"
       >
-        <div>
-          <div className="flex items-center gap-2 sm:gap-3 mb-2">
-            <div 
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
-              }}
-            >
-              <Briefcase className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
-            </div>
-            <h1 
-              className="font-bold tracking-tight text-2xl sm:text-3xl lg:text-[32px]"
-              style={{
-                lineHeight: '1.2',
-                letterSpacing: '-0.25px',
-                color: '#1F2937'
-              }}
-            >
-              Certificados Laborales
-            </h1>
-          </div>
-          <p 
-            className="font-normal text-sm sm:text-base"
-            style={{
-              lineHeight: '1.5',
-              color: '#6B7280'
-            }}
-          >
-            Gestión de certificados laborales solicitados por los empleados. El documento se envía automáticamente al correo registrado en la plataforma.
-          </p>
-        </div>
-
-        {/* Botones de acción - Mobile First */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => onNavigate?.('validar-qr')}
-              className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
-              style={{
-                background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                minHeight: '48px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <QrCode className="w-5 h-5" strokeWidth={2.5} />
-              <span>Validar Certificado</span>
-            </button>
-
-            <button
-              onClick={() => onNavigate?.('configuracion-plantilla')}
-              className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
-              style={{
-                background: 'linear-gradient(135deg, #F0F7FF 0%, #E0ECFF 100%)',
-                color: puedeConfigurarPlantilla ? '#1E40AF' : '#1E3A8A',
-                border: '2px solid #93C5FD',
-                borderRadius: '12px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                opacity: 1,
-                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.16)',
-                minHeight: '48px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, #DBEAFE 0%, #C7DDFF 100%)';
-                e.currentTarget.style.borderColor = '#2563EB';
-                e.currentTarget.style.color = '#1E3A8A';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 6px 14px rgba(37, 99, 235, 0.22)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, #F0F7FF 0%, #E0ECFF 100%)';
-                e.currentTarget.style.borderColor = '#93C5FD';
-                e.currentTarget.style.color = puedeConfigurarPlantilla ? '#1E40AF' : '#1E3A8A';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(37, 99, 235, 0.16)';
-              }}
-            >
-              <span className="w-6 h-6 rounded-md bg-white/80 border border-blue-200 flex items-center justify-center">
-                <Settings className="w-4 h-4" strokeWidth={2.2} />
-              </span>
-              <span className="hidden sm:inline">{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
-              <span className="sm:hidden">Plantilla</span>
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:ml-auto">
-            <button
-              onClick={() => fetchCertificados(true)}
-              disabled={isRefreshing}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#10B981',
-                border: '2px solid #10B981',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: isRefreshing ? 'not-allowed' : 'pointer',
-                opacity: isRefreshing ? 0.6 : 1
-              }}
-              onMouseEnter={(e) => {
-                if (!isRefreshing) {
-                  e.currentTarget.style.background = '#F0FDF4';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <motion.div
-                animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
-                transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
+        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+            <div className="flex items-start gap-3 md:gap-4">
+              <div 
+                className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#EBF0FA' }}
               >
-                <RefreshCw className="w-5 h-5" strokeWidth={2} />
-              </motion.div>
-              <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
-            </button>
-
-            <button
-              onClick={() => setIsPrimaTecnicaOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#4338CA',
-                border: '2px solid #C4B5FD',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(67, 56, 202, 0.08)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#EEF2FF';
-                e.currentTarget.style.borderColor = '#A5B4FC';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.borderColor = '#C4B5FD';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <span className="w-5 h-5 rounded-full bg-indigo-100/80 border border-indigo-200 flex items-center justify-center flex-shrink-0">
-                <Percent className="w-3.5 h-3.5" strokeWidth={2.4} />
-              </span>
-              <span>Prima Tecnica</span>
-            </button>
-
-            <button
-              onClick={() => setIsGenerarOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#003DA5',
-                border: '2px solid #003DA5',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#F0F6FF';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <Download className="w-5 h-5" strokeWidth={2} />
-              <span>Exportar</span>
-            </button>
-
-            <button
-              onClick={() => setIsHistorialOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
-              style={{
-                background: '#FFFFFF',
-                color: '#F97316',
-                border: '2px solid #F97316',
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#FFF7ED';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <History className="w-5 h-5 scale-110 flex-shrink-0" strokeWidth={2.3} />
-              <span>Ver historial</span>
-            </button>
+                <Briefcase className="w-5 h-5 md:w-6 md:h-6 text-[#003DA5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg md:text-xl font-bold text-gray-900 tracking-tight">
+                  Certificados Laborales
+                </h1>
+                <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
+                  Gestión de certificados laborales solicitados por los empleados
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canVerify && (
+                <button
+                  onClick={() => onNavigate?.('validar-qr')}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5"
+                  title="Validar Certificado"
+                >
+                  <QrCode className="w-4 h-4 flex-shrink-0" />
+                  <span>Validar Certificado</span>
+                </button>
+              )}
+              <button
+                onClick={() => onNavigate?.('configuracion-plantilla')}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                title={puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}
+              >
+                <Settings className="w-4 h-4 flex-shrink-0" />
+                <span>{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
+              </button>
+              <button
+                onClick={() => fetchCertificados(true)}
+                disabled={isRefreshing}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                title="Actualizar"
+              >
+                <RefreshCw className={`w-4 h-4 flex-shrink-0 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
+              </button>
+              {canEditPrima && (
+                <button
+                  onClick={() => setIsPrimaTecnicaOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                  title="Prima técnica y/o coordinación"
+                >
+                  <Percent className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">Prima técnica</span>
+                </button>
+              )}
+              {canExportReport && (
+                <button
+                  onClick={() => setIsReporteOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white"
+                  title="Exportar"
+                >
+                  <Download className="w-4 h-4 flex-shrink-0" />
+                  <span>Exportar</span>
+                </button>
+              )}
+              <button
+                onClick={() => setIsHistorialOpen(true)}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
+                title="Ver historial"
+              >
+                <History className="w-4 h-4 flex-shrink-0" />
+                <span>Ver historial</span>
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>
@@ -1163,7 +1074,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               Cargando certificados...
             </h3>
             <p className="text-sm text-gray-600">
-              Por favor espera un momento
+              Por favor, espera un momento
             </p>
           </div>
         ) : error ? (
@@ -1237,14 +1148,22 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatedCertificados.map((cert) => (
-                    <React.Fragment key={cert.id}>
+                  {paginatedCertificados.map((cert, index) => (
+                    <React.Fragment key={cert.rowKey || `${cert.id}-${index}`}>
                       <tr
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        className={`cursor-pointer transition-colors ${
+                          expandedCertId === cert.id
+                            ? 'bg-[#EEF6FF]'
+                            : 'hover:bg-gray-50'
+                        }`}
                         onClick={() => handleVerDetalle(cert)}
                       >
                         {/* Estado */}
-                        <td className="px-4 py-4 whitespace-nowrap">
+                        <td
+                          className={`px-4 py-4 whitespace-nowrap border-l-4 ${
+                            expandedCertId === cert.id ? 'border-l-[#003DA5]' : 'border-l-transparent'
+                          }`}
+                        >
                           {getEstadoBadge(cert.estado)}
                         </td>
 
@@ -1348,6 +1267,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                                   <Download className="w-4 h-4 mr-2" />
                                   Descargar certificado
                                 </DropdownMenuItem>
+                                {canDeliver && (
                                 <DropdownMenuItem
                                   onClick={(e) => { e.stopPropagation(); handleReenviarEmail(cert); }}
                                   disabled={processingIds.has(cert.id)}
@@ -1355,6 +1275,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                                   <Mail className="w-4 h-4 mr-2" />
                                   Reenviar certificado
                                 </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
@@ -1363,11 +1284,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
-                        <tr>
-                          <td colSpan={9} className="p-0 bg-gray-50">
+                        <tr className="bg-blue-50/30">
+                          <td colSpan={9} className="border-l-4 border-l-[#003DA5] bg-gradient-to-br from-[#F8FBFF] via-white to-slate-50 p-0">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
+                              onValidationHistoryChange={handleValidationHistoryChange}
                             />
                           </td>
                         </tr>
@@ -1426,14 +1348,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         />
       )}
 
-      <GenerarCertificadoModal
-        isOpen={isGenerarOpen}
-        onClose={() => setIsGenerarOpen(false)}
-        onSuccess={(nuevoCert) => {
-          toast.success('Certificado generado exitosamente');
-          setIsGenerarOpen(false);
-        }}
-        certificados={certificados}
+      <GenerarReporteCertificadosModal
+        isOpen={isReporteOpen}
+        onClose={() => setIsReporteOpen(false)}
       />
 
       <ModalHistorialCertificados

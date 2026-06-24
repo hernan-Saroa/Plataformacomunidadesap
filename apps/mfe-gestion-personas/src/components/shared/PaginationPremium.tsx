@@ -7,6 +7,8 @@ interface PaginationPremiumProps {
   onPageChange: (page: number) => void;
   itemsPerPage: number;
   totalItems: number;
+  onItemsPerPageChange?: (items: number) => void;
+  itemsPerPageOptions?: number[];
 }
 
 export function PaginationPremium({
@@ -14,7 +16,9 @@ export function PaginationPremium({
   totalPages,
   onPageChange,
   itemsPerPage,
-  totalItems
+  totalItems,
+  onItemsPerPageChange,
+  itemsPerPageOptions = [10, 20, 50, 100]
 }: PaginationPremiumProps) {
   // Protección contra valores inválidos
   const safeTotalPages = totalPages > 0 ? totalPages : 1;
@@ -62,11 +66,29 @@ export function PaginationPremium({
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-      {/* Info de items */}
-      <div className="text-sm text-gray-600">
-        Mostrando <span className="font-bold text-gray-900">{startItem}</span> a{' '}
-        <span className="font-bold text-gray-900">{endItem}</span> de{' '}
-        <span className="font-bold text-gray-900">{safeTotalItems}</span> resultados
+      {/* Info de items y selector */}
+      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+        <div>
+          Mostrando <span className="font-bold text-gray-900">{safeTotalItems > 0 ? startItem : 0}</span> a{' '}
+          <span className="font-bold text-gray-900">{endItem}</span> de{' '}
+          <span className="font-bold text-gray-900">{safeTotalItems}</span> resultados
+        </div>
+        
+        {onItemsPerPageChange && (
+          <div className="flex items-center gap-2 border-l border-gray-300 pl-4">
+            <label htmlFor="itemsPerPage" className="text-gray-500">Filas por página:</label>
+            <select
+              id="itemsPerPage"
+              value={safeItemsPerPage}
+              onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+              className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-[#003DA5] focus:border-[#003DA5] p-1.5 cursor-pointer outline-none"
+            >
+              {itemsPerPageOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Controles de paginación */}

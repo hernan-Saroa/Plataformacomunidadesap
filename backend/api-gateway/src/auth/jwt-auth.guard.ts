@@ -1,4 +1,4 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from './public.decorator';
@@ -6,14 +6,6 @@ import type { Request } from 'express';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  private readonly methodScopedPublicPatterns = [
-    {
-      method: 'POST',
-      pattern:
-        /^\/registro-academico\/api\/v\d+\/certificates\/descargas(?:\?.*)?$/i,
-    },
-  ];
-
   private readonly defaultPublicPatterns = [
     /^\/auth\/api\/v\d+\/login/i,
     /^\/auth\/api\/v\d+\/new-person/i,
@@ -21,6 +13,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/auth\/api\/v\d+\/forgot-password/i,
     /^\/auth\/api\/v\d+\/reset-password/i,
     /^\/auth\/api\/v\d+\/verify-reset-code/i,
+    /^\/auth\/api\/v\d+\/login-settings/i,
     /^\/certificados\/api\/v\d+\/validate/i,
     /^\/certificates\/api\/v\d+\/validate/i,
     // Autoservicio certificados laborales (públicos)
@@ -40,6 +33,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/generar-codigo/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/empresa/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-revision-con-soporte/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/qr/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/numero/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/estadisticas/i,
@@ -73,6 +67,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request>();
 
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     if (this.isPublic(context) || this.matchesPublicPath(request)) {
       return true;
     }
@@ -80,11 +78,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  private isPublic(context: ExecutionContext) {
-    console.log('DEBUG [JwtAuthGuard] isPublic called');
-console.log('Handler:', context.getHandler());
-console.log('Class:', context.getClass());
+  handleRequest(err, user, _info) {
+    if (err || !user) {
+      throw err || new UnauthorizedException();
+    }
+    return user;
+  }
 
+  private isPublic(context: ExecutionContext) {
     return this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -92,17 +93,7 @@ console.log('Class:', context.getClass());
   }
 
   private matchesPublicPath(req: Request): boolean {
-    const method = (req.method || '').toUpperCase();
     const requestPath = this.normalizePath(req.originalUrl);
-    const methodScopedMatch = this.methodScopedPublicPatterns.some(
-      ({ method: allowedMethod, pattern }) =>
-        method === allowedMethod && pattern.test(requestPath),
-    );
-
-    if (methodScopedMatch) {
-      return true;
-    }
-
     const configured = (process.env.JWT_PUBLIC_PATHS || '')
       .split(',')
       .map((p) => p.trim())

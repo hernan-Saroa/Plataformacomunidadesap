@@ -38,6 +38,17 @@ interface MulterFile {
   path: string;
   buffer: Buffer;
 }
+
+const safeHeaderFilename = (filename?: string | null): string => {
+  const sanitized = (filename || 'documento')
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/["\\;\r\n]/g, '_')
+    .trim();
+
+  return sanitized || 'documento';
+};
+
 import { DocumentosService } from './documentos.service';
 import { CreateDocumentoDto } from './dto/create-documento.dto';
 import { UpdateDocumentoDto } from './dto/update-documento.dto';
@@ -61,7 +72,14 @@ export class DocumentosController {
     @Query('tipoDocumento') tipoDocumento?: string,
     @Query('etapa') etapa?: string,
     @Query('search') search?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
+    @Query('planAnualId') planAnualId?: string,
+    @Query('bibliotecaOnly') bibliotecaOnly?: string,
   ) {
+    const vigenciaNum =
+      planAnualVigencia != null && planAnualVigencia !== ''
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
     return this.documentosService.findAll({
       auditoriaId,
       hallazgoId,
@@ -69,6 +87,9 @@ export class DocumentosController {
       tipoDocumento,
       etapa,
       search,
+      planAnualId,
+      planAnualVigencia: Number.isNaN(vigenciaNum) ? undefined : vigenciaNum,
+      bibliotecaOnly: bibliotecaOnly === 'true',
     });
   }
 
@@ -184,6 +205,10 @@ export class DocumentosController {
       planMejoramientoId: body.planMejoramientoId || undefined,
       documentoBibliotecaId: body.documentoBibliotecaId || undefined,
       visibleAuditoriaId: body.visibleAuditoriaId || undefined,
+      planAnualVigencia: body.planAnualVigencia
+        ? parseInt(body.planAnualVigencia, 10)
+        : undefined,
+      planAnualId: body.planAnualId || undefined,
       nombreArchivo: file.originalname,
       tipoMime: file.mimetype,
       tamanioBytes: file.size,
@@ -254,11 +279,12 @@ export class DocumentosController {
     }
 
     // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+    const safeFilename = safeHeaderFilename(documento.nombreArchivo);
     const encodedFilename = encodeURIComponent(documento.nombreArchivo);
     const filenameStar = `filename*=UTF-8''${encodedFilename}`;
     
     res.setHeader('Content-Type', `${documento.tipoMime}; charset=utf-8`);
-    res.setHeader('Content-Disposition', `attachment; filename="${documento.nombreArchivo}"; ${filenameStar}`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; ${filenameStar}`);
     res.setHeader('Content-Length', documento.tamanioBytes.toString());
 
     return res.sendFile(path.resolve(documento.rutaArchivo));
@@ -287,11 +313,12 @@ export class DocumentosController {
     }
 
     // Codificar el nombre del archivo para UTF-8 (RFC 5987)
+    const safeFilename = safeHeaderFilename(documento.nombreArchivo);
     const encodedFilename = encodeURIComponent(documento.nombreArchivo);
     const filenameStar = `filename*=UTF-8''${encodedFilename}`;
     
     res.setHeader('Content-Type', `${documento.tipoMime}; charset=utf-8`);
-    res.setHeader('Content-Disposition', `inline; filename="${documento.nombreArchivo}"; ${filenameStar}`);
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"; ${filenameStar}`);
 
     return res.sendFile(path.resolve(documento.rutaArchivo));
   }
@@ -321,4 +348,3 @@ export class DocumentosController {
     return this.documentosService.marcarSincronizado(id, body.rutaServidorG);
   }
 }
-

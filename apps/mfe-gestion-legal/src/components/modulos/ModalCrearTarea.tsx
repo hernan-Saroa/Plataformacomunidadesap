@@ -100,6 +100,9 @@ export function ModalCrearTarea({
     try {
       const diasCalc = calcularDiasRestantes(fechaVencimiento);
 
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const responsableId = uuidRegex.test(expediente.abogadoSustanciador ?? '') ? expediente.abogadoSustanciador : null;
+
       const tareaData = {
         id: tareaInicial?.id || Date.now(),
         titulo: titulo.trim(),
@@ -107,7 +110,8 @@ export function ModalCrearTarea({
         vencimiento: fechaVencimiento,
         diasRestantes: diasCalc || 0,
         prioridad,
-        responsable: responsableSeleccionado, // Usar valor directo del input text
+        responsable: responsableSeleccionado,
+        responsableId,
         estado
       };
 
