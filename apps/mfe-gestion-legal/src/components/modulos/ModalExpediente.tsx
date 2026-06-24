@@ -2640,6 +2640,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); }}
                   expedienteId={String(expediente.uuid || expediente.id)}
+                  radicadoExpediente={expediente.radicado || String(expediente.id)}
                   onReloadExpediente={() => loadActuaciones(String(expediente.uuid || expediente.id))}
                   onViewDocument={handleVerDocumento}
                   onAutoAdvanceStage={handleAutoAdvanceStage}

@@ -70,6 +70,11 @@ interface TabActuacionesExpedienteProps {
   onDeleteActuacion?: (id: string) => Promise<void> | void;
   onSendEmail?: (data: { para: string; cc?: string; asunto: string; cuerpo: string; archivos?: File[] }) => void;
   /**
+   * Consecutivo/radicado legible del proceso (p. ej. "9756492-99c5..."). Se usa en el asunto y
+   * cuerpo del correo para mostrar el número del proceso en vez del UUID interno (expedienteId).
+   */
+  radicadoExpediente?: string;
+  /**
    * Configuración de aprobación de la ETAPA ACTUAL del expediente (campo "Aprobación para entrar").
    * Si la etapa actual exige aprobación, las actuaciones quedan pendientes de firma y solo
    * el rol/usuario configurado (o un super admin) puede autorizarlas. Es dinámica: depende
@@ -98,6 +103,7 @@ export function TabActuacionesExpediente({
   onAutoAdvanceStage,
   onDeleteActuacion,
   onSendEmail,
+  radicadoExpediente,
   aprobacionEtapaActual
 }: TabActuacionesExpedienteProps) {
   const [firmaSeleccionadaUrl, setFirmaSeleccionadaUrl] = useState<string | null>(null);
@@ -220,10 +226,13 @@ export function TabActuacionesExpediente({
         }
       }
 
+      // Consecutivo legible del proceso para el correo (no el UUID interno del expediente).
+      const numeroProceso = radicadoExpediente || expedienteId || actuacion.expedienteId || '';
+
       const emailData = {
         para: '',
-        asunto: `Actuación: ${actuacion.descripcion} - Expediente #${expedienteId || actuacion.expedienteId || ''}`,
-        cuerpo: `Cordial saludo,\n\nSe remite la actuación "${actuacion.descripcion}" relacionada con el expediente #${expedienteId || actuacion.expedienteId || ''}.\n\nDetalles de la actuación:\n- Tipo: ${actuacion.tipo}\n- Fecha: ${actuacion.fecha}\n\nAtentamente,\nOficina Jurídica ESAP`,
+        asunto: `Actuación: ${actuacion.descripcion} - Expediente #${numeroProceso}`,
+        cuerpo: `Cordial saludo,\n\nSe remite la actuación "${actuacion.descripcion}" relacionada con el expediente #${numeroProceso}.\n\nDetalles de la actuación:\n- Tipo: ${actuacion.tipo}\n- Fecha: ${actuacion.fecha}\n\nAtentamente,\nOficina Jurídica ESAP`,
         archivos: filesToAttach,
       };
 

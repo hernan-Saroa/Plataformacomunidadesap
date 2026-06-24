@@ -1556,6 +1556,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 labelRegistrar="Registrar Primera Actuación"
                 onRegistrarPrimera={canRegistrarActuacion ? () => setModalNuevaActuacionOpen(true) : undefined}
                 expedienteId={proceso.id}
+                radicadoExpediente={proceso.id}
                 onDeleteActuacion={canEditProceso ? handleDeleteActuacion : undefined}
                 onReloadExpediente={() => {
                   legalService.getJuzgamientoActuaciones(proceso.id)
