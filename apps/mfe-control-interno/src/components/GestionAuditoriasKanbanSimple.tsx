@@ -4030,15 +4030,6 @@ export function GestionAuditoriasKanbanSimple() {
             isOpen={modalInicioAuditoriaOpen}
             auditoria={(() => {
               // DEBUG: Ver TODA la auditoría seleccionada (no solo fechas)
-              console.log('[InicioAuditoriaWizard] TODA auditoriaSeleccionada:', JSON.stringify(auditoriaSeleccionada, null, 2));
-              console.log('[InicioAuditoriaWizard] Fechas específicas:', {
-                fechaInicio: auditoriaSeleccionada.fechaInicio,
-                fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
-                fechaInicioEjecucion: auditoriaSeleccionada.fechaInicioEjecucion,
-                fechaFinEjecucion: auditoriaSeleccionada.fechaFinEjecucion,
-                fechaInicioComunicacion: auditoriaSeleccionada.fechaInicioComunicacion,
-                fechaFin: auditoriaSeleccionada.fechaFin,
-              });
               return {
                 id: auditoriaSeleccionada.id,
                 codigo: auditoriaSeleccionada.codigo,
