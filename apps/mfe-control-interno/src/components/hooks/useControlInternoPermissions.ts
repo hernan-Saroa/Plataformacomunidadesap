@@ -126,7 +126,7 @@ const MAPA_PERMISOS: Record<string, string> = {
   'roles-permisos:view': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'roles-permisos:create': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
   'roles-permisos:edit': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
-  'roles-permisos:delete': Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE,
+  'roles-permisos:delete': Permissions.CONTROL_INTERNO_ROLES_DELETE,
 };
 
 // Roles que tienen TODOS los permisos (superusuarios)

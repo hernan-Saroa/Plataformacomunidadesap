@@ -667,8 +667,22 @@ function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   }));
   const actBase = act as ActividadBase & { fecha_corte?: string };
   const reqAuth = leerRequiereAutorizacionJefeOCIDesdeActividad(act);
+
+  const formatearFecha = (f: any) => {
+    if (!f) return '';
+    if (f instanceof Date) return f.toISOString().split('T')[0];
+    return String(f).split('T')[0];
+  };
+
+  const fechaInicioFormateada = formatearFecha(act.fechaInicio || act.fecha_inicio);
+  const fechaFinFormateada = formatearFecha(act.fechaFin || act.fecha_fin);
+
   return {
     ...act,
+    fechaInicio: fechaInicioFormateada,
+    fechaFin: fechaFinFormateada,
+    puntosControl: puntosControlActividad,
+    frecuenciaPuntosControl: act.frecuenciaPuntosControl || act.frecuencia_puntos_control || 'trimestral',
     tareasSeguimiento: tareasConCorte,
     tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
     fechaCorte: resolverFechaCorteActividad(
@@ -909,8 +923,8 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
     }));
   }
 
-  return ROLES_DECRETO_648.map((rolDef) => {
-    const rolEdit = plan.roles.find((r) => r.numero === rolDef.numero);
+  const standardRoles = ROLES_DECRETO_648.map((rolDef) => {
+    const rolEdit = plan.roles.find((r) => (r.rol_numero ?? r.numero) === rolDef.numero);
     if (!rolEdit) {
       const actividades = getActividadesPorRol(rolDef.numero);
       return {
@@ -943,8 +957,31 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
       actividadesSeleccionadas: actividadesSeleccionadas as any,
       actividadesCustom: actividadesCustom as any,
       responsables: mapResponsablesRolDesdeBackend(rolEdit),
+      activo: rolEdit.activo !== false,
     };
   });
+
+  const customRoles = plan.roles
+    .filter((r) => (r.rol_numero ?? r.numero ?? 0) > 5)
+    .map((rolEdit) => {
+      const actividadesConfiguradas = rolEdit.actividades.map((act) =>
+        enriquecerActividadDesdeBackend(act, plan.vigencia),
+      );
+      return {
+        numero: rolEdit.rol_numero ?? rolEdit.numero,
+        nombre: rolEdit.nombre,
+        color: rolEdit.color || '#10B981',
+        icono: '⭐',
+        descripcion: rolEdit.descripcion || 'Rol creado a medida',
+        activo: rolEdit.activo !== false,
+        id: rolEdit.id,
+        actividadesSeleccionadas: [],
+        actividadesCustom: actividadesConfiguradas as any,
+        responsables: mapResponsablesRolDesdeBackend(rolEdit),
+      };
+    });
+
+  return [...standardRoles, ...customRoles];
 }
 
 function coincideAuditorConReferencia(a: Auditor, ref: Auditor | null | undefined): boolean {
@@ -1383,19 +1420,14 @@ function SelectorProfesional({
   const updatePosition = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const listMax = 260;
-      const headerApprox = 56;
       const gap = 4;
-      const spaceBelow = window.innerHeight - rect.bottom - gap;
-      const spaceAbove = rect.top - gap;
-      const openAbove = spaceBelow < listMax + headerApprox && spaceAbove > spaceBelow;
-      const available = Math.max(120, openAbove ? spaceAbove : spaceBelow) - headerApprox;
-      const listHeight = Math.min(listMax, Math.max(100, available));
+      const spaceBelow = window.innerHeight - rect.bottom - gap - 8;
+      const listHeight = Math.min(280, Math.max(120, spaceBelow - 48));
 
       setCoords({
-        top: openAbove ? rect.top - gap - headerApprox - listHeight : rect.bottom + gap,
+        top: rect.bottom + gap,
         left: rect.left,
-        width: rect.width,
+        width: Math.max(rect.width, 360),
         listMaxHeight: listHeight,
       });
     }
@@ -1695,6 +1727,7 @@ interface WizardCreacionProps {
     fechaFin: string,
     comiteAprobacion?: Auditor[],
     ordenAprobacion?: 'secuencial' | 'paralelo',
+    opciones?: { silencioso?: boolean },
   ) => Promise<boolean>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
@@ -1734,6 +1767,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
 
   const [paso, setPaso] = useState(draft?.paso || 1);
   const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
+  const [rolAEliminar, setRolAEliminar] = useState<RolConfig | null>(null);
   /** Indica si el último guardado llegó al backend (solo «Nuevo plan») */
   const [serverDraftSynced, setServerDraftSynced] = useState(false);
   const serverBorradorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1974,46 +2008,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
 
     // 2. Si no hay borrador pero hay un plan para editar, mapearlo desde el backend
     if (planAEditar && planAEditar.roles) {
-      return ROLES_DECRETO_648.map(rolDef => {
-        const rolEdit = planAEditar.roles.find(r => r.numero === rolDef.numero);
-        if (!rolEdit) {
-          // Si por alguna razón no existe el rol en el plan a editar, lo inicializamos por defecto
-          const actividades = getActividadesPorRol(rolDef.numero);
-          return {
-            ...rolDef,
-            actividadesSeleccionadas: actividades.map((act, idx) => ({
-              ...act,
-              id: `rol-${rolDef.numero}-act-${idx}`,
-              tipoEvidencia: 'SOLO_CHECK' as const,
-              fechaCorte: `${planAEditar.vigencia}-09-30`,
-              puntosControl: [],
-              frecuenciaPuntosControl: 'trimestral' as const,
-            })),
-            actividadesCustom: [],
-            responsables: []
-          };
-        }
-
-        // Mapear actividades del plan existente
-        const actividadesConfiguradas = rolEdit.actividades.map((act) =>
-          enriquecerActividadDesdeBackend(act, planAEditar.vigencia),
-        );
-
-        // Separar entre seleccionadas (del template) y custom (creadas manualmente)
-        const actividadesTemplate = getActividadesPorRol(rolDef.numero);
-        const nombresTemplate = actividadesTemplate.map(a => a.nombre);
-        
-        const actividadesSeleccionadas = actividadesConfiguradas.filter(a => nombresTemplate.includes(a.nombre));
-        const actividadesCustom = actividadesConfiguradas.filter(a => !nombresTemplate.includes(a.nombre));
-
-        return {
-          ...rolDef,
-          id: rolEdit.id,
-          actividadesSeleccionadas: actividadesSeleccionadas as any,
-          actividadesCustom: actividadesCustom as any,
-          responsables: mapResponsablesRolDesdeBackend(rolEdit),
-        };
-      });
+      return buildRolesConfigFromPlanAnual(planAEditar);
     }
 
     // Comportamiento por defecto (nuevo plan sin borrador)
@@ -2121,7 +2116,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     if (!planAEditar?.roles?.length || auditores.length === 0 || cargandoAuditores) return;
     setRolesConfig((prev) =>
       prev.map((rolCfg) => {
-        const rolPlan = planAEditar.roles.find((r) => r.numero === rolCfg.numero);
+        const rolPlan = planAEditar.roles.find((r) => (r.rol_numero ?? r.numero) === rolCfg.numero);
         const fuente = rolPlan || rolCfg;
         const resolved = resolverResponsablesRolDesdeProfesionales(fuente, auditores);
         if (resolved.length === 0) return rolCfg;
@@ -2553,19 +2548,43 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     localStorage.setItem(draftKey, JSON.stringify(borrador));
     setLastSaved(new Date());
 
-    if (planAEditar) return;
-
     if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
-    serverBorradorTimerRef.current = setTimeout(() => {
-      wizardBorradorApi.save(borrador)
-        .then(() => {
-          setServerDraftSynced(true);
-          setLastSaved(new Date());
-        })
-        .catch((err: unknown) => {
-          console.warn('[Wizard Plan Anual] Autoguardado en servidor falló:', err);
+    serverBorradorTimerRef.current = setTimeout(async () => {
+      // Si el paso 1 tiene los campos mínimos requeridos, guardamos/creamos directamente el plan en la base de datos en estado 'borrador'
+      if (onGuardarBorrador && jefeSeleccionado && fechaInicio && fechaFin) {
+        try {
+          const ok = await onGuardarBorrador(
+            vigencia,
+            jefeSeleccionado,
+            rolesConfig,
+            fechaInicio,
+            fechaFin,
+            comiteAprobacion,
+            ordenAprobacion,
+            { silencioso: true }
+          );
+          if (ok) {
+            setServerDraftSynced(true);
+            setLastSaved(new Date());
+          } else {
+            setServerDraftSynced(false);
+          }
+        } catch (err) {
+          console.warn('[Wizard Plan Anual] Autoguardado en BD falló:', err);
           setServerDraftSynced(false);
-        });
+        }
+      } else if (!planAEditar) {
+        // Fallback: Si no se puede guardar en BD todavía (faltan campos en Paso 1), guardar en borrador temporal del Wizard
+        wizardBorradorApi.save(borrador)
+          .then(() => {
+            setServerDraftSynced(true);
+            setLastSaved(new Date());
+          })
+          .catch((err: unknown) => {
+            console.warn('[Wizard Plan Anual] Autoguardado en servidor falló:', err);
+            setServerDraftSynced(false);
+          });
+      }
     }, 2800);
 
     return () => {
@@ -2906,6 +2925,64 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         </div>,
         document.body
       )}
+
+      {/* Modal de confirmación de eliminación de rol personalizado */}
+      {rolAEliminar && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 backdrop-blur-sm transition-opacity"
+            style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)' }}
+            aria-label="Cancelar"
+            onClick={() => setRolAEliminar(null)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md flex flex-col z-10 overflow-hidden"
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900">
+                    ¿Eliminar rol personalizado?
+                  </h3>
+                  <p className="text-sm text-slate-600 mt-2">
+                    ¿Está seguro de que desea eliminar el <strong className="font-semibold text-slate-900">"{rolAEliminar.nombre}"</strong>? Se perderán permanentemente todas las actividades y tareas asociadas a este rol.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRolAEliminar(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors shadow-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nuevaConfig = rolesConfig.filter(r => r.numero !== rolAEliminar.numero);
+                  handleRolesChange(nuevaConfig);
+                  setRolAEliminar(null);
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg transition-colors shadow-sm shadow-red-100"
+              >
+                Confirmar eliminación
+              </button>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
+
       {/* Header */}
       <div className="border-b-2 border-gray-200 px-8 py-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
@@ -3118,6 +3195,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 auditores={auditores}
                 jefeOCI={jefeSeleccionado}
                 soloLectura={enModoSoloConsulta}
+                setRolAEliminar={setRolAEliminar}
               />
             )}
             {paso === 3 && (
@@ -3556,6 +3634,7 @@ function Paso2({
   auditores,
   jefeOCI,
   soloLectura = false,
+  setRolAEliminar,
 }: { 
   rolesConfig: RolConfig[]; 
   onRolesChange: (config: RolConfig[]) => void;
@@ -3564,6 +3643,7 @@ function Paso2({
   auditores: Auditor[];
   jefeOCI?: Auditor | null;
   soloLectura?: boolean;
+  setRolAEliminar: (rol: RolConfig) => void;
 }) {
   const [rolExpandido, setRolExpandido] = useState<number | string | null>(1);
   const [mostrarFormActividad, setMostrarFormActividad] = useState<number | string | null>(null);
@@ -4087,6 +4167,21 @@ function Paso2({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {!soloLectura && rol.numero > 5 && puedeRealizar('roles-permisos', 'delete') && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log("🗑️ Clicked delete button for role:", rol);
+                        toast.info(`Abriendo confirmación para eliminar: ${rol.nombre}`);
+                        setRolAEliminar(rol);
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Eliminar rol personalizado"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                   <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ 
                     backgroundColor: rol.color + '20', 
                     color: rol.color 
@@ -5510,10 +5605,10 @@ function Paso2({
             onRolesChange([...rolesConfig, newRolConfig as any]);
             setRolExpandido(newRolNumero);
           }}
-          className="w-full py-6 mt-6 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-2xl text-gray-500 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition-all flex flex-col items-center justify-center gap-2 font-medium shadow-sm hover:shadow-md"
+          className="w-full py-3.5 mt-4 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 font-medium shadow-sm hover:shadow-md"
         >
-          <Plus className="w-8 h-8" />
-          <span className="text-lg font-bold">Añadir Rol Personalizado</span>
+          <Plus className="w-5 h-5" />
+          <span className="text-sm font-bold">Añadir Rol Personalizado</span>
         </button>
       )}
 
@@ -5611,14 +5706,14 @@ function Paso3({
   }, 0);
 
   return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-      <div className="text-center mb-8">
-        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3">
+      <div className="text-center mb-3">
+        <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-2 ${
           soloLectura ? 'bg-slate-200' : 'bg-green-100'
         }`}>
-          <Check className={`w-8 h-8 ${soloLectura ? 'text-slate-600' : 'text-green-600'}`} />
+          <Check className={`w-6 h-6 ${soloLectura ? 'text-slate-600' : 'text-green-600'}`} />
         </div>
-        <h2 className={`text-3xl font-bold mb-3 ${soloLectura ? 'text-slate-800' : 'text-gray-900'}`}>Confirmación</h2>
+        <h2 className={`text-2xl font-bold mb-1 ${soloLectura ? 'text-slate-800' : 'text-gray-900'}`}>Confirmación</h2>
         <p className={soloLectura ? 'text-slate-600' : 'text-gray-600'}>
           {soloLectura
             ? 'Solo consulta: resumen del plan y comité aprobador (sin modificar).'
@@ -5632,7 +5727,7 @@ function Paso3({
         </div>
       )}
 
-      <div className={`rounded-xl border-2 p-8 ${soloLectura ? 'bg-slate-50 border-slate-300' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-xl border-2 p-5 ${soloLectura ? 'bg-slate-50 border-slate-300' : 'bg-white border-gray-200'}`}>
         <h3 className="font-bold text-gray-900 mb-4">Resumen del plan</h3>
         <div className="space-y-3 text-sm">
           <div className="flex justify-between py-2 border-b border-gray-200">
@@ -5645,7 +5740,12 @@ function Paso3({
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
             <span className="text-gray-600">Roles configurados:</span>
-            <span className="font-bold text-gray-900">5 roles obligatorios</span>
+            <span className="font-bold text-gray-900">
+              {rolesConfig.length} roles ({rolesConfig.filter((r) => r.numero > 5).length > 0
+                ? `5 obligatorios + ${rolesConfig.filter((r) => r.numero > 5).length} personalizados`
+                : '5 obligatorios'}
+              )
+            </span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
             <span className="text-gray-600">Total actividades:</span>
@@ -5671,7 +5771,7 @@ function Paso3({
         </div>
 
         {/* COMIT0 DE APROBACIN */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
+        <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h4 className="font-bold text-gray-900 flex items-center gap-2">
@@ -5710,7 +5810,7 @@ function Paso3({
           <div className={`rounded-xl p-5 shadow-inner border ${
             soloLectura ? 'bg-slate-100 border-slate-300' : 'bg-blue-50 border-blue-100'
           }`}>
-            <div className={`grid grid-cols-1 gap-8 ${soloLectura ? '' : 'md:grid-cols-2'}`}>
+            <div className={`grid grid-cols-1 gap-4 ${soloLectura ? '' : 'md:grid-cols-2'}`}>
               
               {/* Buscador */}
               {!soloLectura && (
@@ -5734,7 +5834,7 @@ function Paso3({
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 leading-tight bg-white/50 p-2 rounded border border-blue-100">
-                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen usuarios con permiso <code className="text-[9px]">control-interno.plan-anual.approve</code>. El orden importa si el flujo es secuencial.
+                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador PAI</code>. El orden importa si el flujo es secuencial.
                 </p>
               </div>
               )}
@@ -6812,30 +6912,168 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
         )}
 
+        {/* ═══ BANNER DE APROBACIÓN PENDIENTE ═══ */}
+        {(() => {
+          // Verificar si el usuario actual es aprobador de este plan
+          const equipo: any[] = (plan as any).equipoAprobacion
+            || (plan as any).equipo_aprobacion
+            || [];
+          if (!Array.isArray(equipo) || equipo.length === 0 || !currentUser) return null;
+
+          const userEmail = (currentUser.email || currentUser.dir_email || '').toLowerCase().trim();
+          const userId = String(currentUser.idPerson || currentUser.id_person || currentUser.id || '').toLowerCase();
+
+          const esAprobadorDelPlan = equipo.some((m: any) => {
+            const mEmail = (m.email || '').toLowerCase().trim();
+            const mId = String(m.id || '').toLowerCase();
+            return (userEmail && mEmail === userEmail) || (userId && mId === userId);
+          });
+
+          if (!esAprobadorDelPlan) return null;
+
+          // Determinar si el plan necesita acción del aprobador
+          const estadoPlan = (plan.estado || '').toUpperCase().replace(/-/g, '_');
+          const necesitaAprobacion = estadoPlan === 'EN_REVISION';
+          const esBorrador = estadoPlan === 'BORRADOR';
+
+          if (necesitaAprobacion) {
+            return (
+              <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-4 shadow-sm animate-pulse-subtle">
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-amber-300">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-amber-900">
+                    ⚠️ Aprobación pendiente — Se requiere tu firma
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    El Plan Anual de Auditoría <strong>{plan.vigencia}</strong> está en revisión y necesita tu aprobación como miembro del Comité PAI. 
+                    Dirígete a la pestaña <strong>"Aprobación"</strong> para revisar y firmar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSeccion('aprobar')}
+                  className="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-md hover:shadow-lg whitespace-nowrap"
+                >
+                  <FileCheck className="w-4 h-4" />
+                  Ir a Aprobar
+                </button>
+              </div>
+            );
+          }
+
+          if (esBorrador) {
+            return (
+              <div className="mt-4 bg-blue-50 border-2 border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 border border-blue-300">
+                  <Users className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-blue-900">
+                    📋 Estás asignado como aprobador de este plan
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    Cuando el responsable envíe el Plan Anual {plan.vigencia} al comité de aprobación, recibirás una notificación para revisar y firmar.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+
+          return null;
+        })()}
+
         {/* Tabs - Filtradas según permisos */}
-        <div className="flex gap-2 border-b border-gray-200">
-          {[
-            { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: puedeVerGestion },
-            { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: puedeVerAprobacion }
-          ].filter(tab => tab.visible).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSeccion(tab.id as any)}
-              className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {(() => {
+          // Calcular estado de alerta para la pestaña Aprobación
+          const estadoPlanNorm = (plan.estado || '').toUpperCase().replace(/-/g, '_');
+          const equipoTab: any[] = (plan as any).equipoAprobacion || (plan as any).equipo_aprobacion || [];
+          const historialTab: any[] = (plan as any).historialAprobaciones || [];
+          
+          // Verificar si el usuario actual es aprobador
+          const userEmailTab = (currentUser?.email || currentUser?.person?.email || currentUser?.dir_email || '').toLowerCase().trim();
+          const userIdTab = String(currentUser?.idPerson || currentUser?.id_person || currentUser?.id || '').toLowerCase();
+          const esAprobadorTab = Array.isArray(equipoTab) && equipoTab.some((m: any) => {
+            const mEmail = (m.email || '').toLowerCase().trim();
+            const mId = String(m.id || '').toLowerCase();
+            return (userEmailTab && mEmail === userEmailTab) || (userIdTab && mId === userIdTab);
+          });
+
+          // Determinar tipo de alerta
+          let alertaAprobacion: { tipo: 'urgente' | 'pendiente' | 'info' | null; texto: string } = { tipo: null, texto: '' };
+          
+          if (estadoPlanNorm === 'EN_REVISION' && esAprobadorTab) {
+            // Verificar si el usuario ya votó
+            const yaVoto = historialTab.some((h: any) => {
+              const hEmail = (h.auditorEmail || h.email || '').toLowerCase().trim();
+              const hId = String(h.auditorId || h.id || '').toLowerCase();
+              return (
+                (h.estado === 'APROBADA' || h.estado === 'OBSERVADA') &&
+                ((userEmailTab && hEmail === userEmailTab) || (userIdTab && hId === userIdTab))
+              );
+            });
+            if (!yaVoto) {
+              alertaAprobacion = { tipo: 'urgente', texto: 'Tu firma es requerida' };
+            }
+          } else if (estadoPlanNorm === 'EN_REVISION') {
+            alertaAprobacion = { tipo: 'pendiente', texto: 'En revisión del comité' };
+          } else if (estadoPlanNorm === 'DEVUELTO') {
+            alertaAprobacion = { tipo: 'pendiente', texto: 'Devuelto con observaciones' };
+          } else if (estadoPlanNorm === 'BORRADOR' && equipoTab.length > 0) {
+            alertaAprobacion = { tipo: 'info', texto: 'Pendiente de envío' };
+          }
+
+          return (
+            <div className="flex gap-2 border-b border-gray-200">
+              {[
+                { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: puedeVerGestion, alerta: null },
+                { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: puedeVerAprobacion, alerta: alertaAprobacion.tipo ? alertaAprobacion : null }
+              ].filter(tab => tab.visible).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSeccion(tab.id as any)}
+                  className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all relative ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                  {/* Badge de notificación */}
+                  {tab.alerta && (
+                    <span 
+                      className={`inline-flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all ${
+                        tab.alerta.tipo === 'urgente'
+                          ? 'bg-red-100 text-red-700 border border-red-300 shadow-sm shadow-red-100'
+                          : tab.alerta.tipo === 'pendiente'
+                          ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                          : 'bg-blue-100 text-blue-600 border border-blue-200'
+                      }`}
+                      title={tab.alerta.texto}
+                    >
+                      {tab.alerta.tipo === 'urgente' && (
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                        </span>
+                      )}
+                      {tab.alerta.tipo === 'pendiente' && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      )}
+                      {tab.alerta.texto}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         </div>{/* cierre max-w-7xl */}
       </div>
 
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} onSolicitarEliminarPlan={solicitarEliminarPlan} puedeEliminarPlan={puedeEliminarPlanEnUI} />}
-            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} aprobadoresComite={aprobadoresComite} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key={`gestion-${plan.id}`} plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} onSolicitarEliminarPlan={solicitarEliminarPlan} puedeEliminarPlan={puedeEliminarPlanEnUI} />}
+            {seccion === 'aprobar' && <SeccionAprobacion key={`aprobar-${plan.id}`} plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} aprobadoresComite={aprobadoresComite} />}
           </AnimatePresence>
         </div>
       </div>
@@ -11101,6 +11339,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     esResponsableDelPlan,
     puedeEditarPlan,
     estadoPlan: plan.estado,
+    ordenAprobacion: plan.ordenAprobacion,
     emailSesion,
     emailResponsablePlan,
     coincidenEmails: emailSesion === emailResponsablePlan,
@@ -11117,11 +11356,19 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
 
   const [modalObservacion, setModalObservacion] = useState<{ isOpen: boolean, auditorId: string | null, texto: string }>({ isOpen: false, auditorId: null, texto: '' });
-  const [modalSubsanar, setModalSubsanar] = useState({ isOpen: false, texto: '' });
+  const [modalSubsanar, setModalSubsanar] = useState<{
+    isOpen: boolean;
+    texto: string;
+    selectedAuditorIds: string[];
+  }>({
+    isOpen: false,
+    texto: '',
+    selectedAuditorIds: []
+  });
 
   const [modalOTPConfig, setModalOTPConfig] = useState<{
     isOpen: boolean;
-    accion: 'enviar_comite' | 'aprobar_auditor' | null;
+    accion: 'enviar_comite' | 'aprobar_auditor' | 'activar_plan' | null;
     auditorId: string | null;
     userName: string;
     userEmail: string;
@@ -11135,13 +11382,64 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     detalle: '',
   });
 
+  const [totalProcesosRegistrados, setTotalProcesosRegistrados] = useState<number | null>(null);
+  const [totalAuditoriasRegistradas, setTotalAuditoriasRegistradas] = useState<number | null>(null);
+  const [cargandoValidacionesExtra, setCargandoValidacionesExtra] = useState(false);
+
+  const vigenciaPlan = plan.vigencia ?? (plan as any).año ?? new Date().getFullYear();
+
+  useEffect(() => {
+    const cargarValidacionesExtra = async () => {
+      setCargandoValidacionesExtra(true);
+      try {
+        // 1. Cargar procesos
+        const procesos = await controlInternoService.getProcesosAuditables();
+        setTotalProcesosRegistrados(procesos ? procesos.length : 0);
+
+        // 2. Cargar auditorías para la vigencia del plan
+        const auditorias = await controlInternoService.getAuditorias({ planAnualVigencia: vigenciaPlan });
+        setTotalAuditoriasRegistradas(auditorias ? auditorias.length : 0);
+      } catch (error) {
+        console.error('Error cargando validaciones extra para envío:', error);
+        setTotalProcesosRegistrados(0);
+        setTotalAuditoriasRegistradas(0);
+      } finally {
+        setCargandoValidacionesExtra(false);
+      }
+    };
+
+    if (plan.id && (plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO')) {
+      cargarValidacionesExtra();
+    }
+  }, [plan.id, vigenciaPlan, plan.estado]);
+
   const [isEditingCommittee, setIsEditingCommittee] = useState(false);
-  const [comiteDraft, setComiteDraft] = useState<Auditor[]>(plan.equipoAprobacion || []);
-  const [ordenDraft, setOrdenDraft] = useState<'secuencial' | 'paralelo'>(plan.ordenAprobacion || 'secuencial');
+
+  // ✅ NORMALIZACIÓN: El backend devuelve snake_case (equipo_aprobacion, orden_aprobacion)
+  //    pero el frontend usa camelCase (equipoAprobacion, ordenAprobacion).
+  //    Normalizar ambos formatos para evitar inconsistencias.
+  const ordenAprobacionNorm: 'secuencial' | 'paralelo' = (
+    plan.ordenAprobacion 
+    || (plan as any).orden_aprobacion 
+    || 'secuencial'
+  ) as 'secuencial' | 'paralelo';
+
+  // Sobreescribir el campo normalizado en el plan para que todo el componente lo use
+  if (!plan.ordenAprobacion && (plan as any).orden_aprobacion) {
+    plan.ordenAprobacion = ordenAprobacionNorm;
+  }
+
+  const equipoNorm: Auditor[] = plan.equipoAprobacion || (plan as any).equipo_aprobacion || [];
+  if (!plan.equipoAprobacion && (plan as any).equipo_aprobacion) {
+    plan.equipoAprobacion = equipoNorm;
+  }
+
+  const [comiteDraft, setComiteDraft] = useState<Auditor[]>(equipoNorm);
+  const [ordenDraft, setOrdenDraft] = useState<'secuencial' | 'paralelo'>(ordenAprobacionNorm);
   const [isTraceExpanded, setIsTraceExpanded] = useState(true);
 
   // Aplicar el comité real o usar vacío
-  const equipo = plan.equipoAprobacion || [];
+  const equipo = equipoNorm;
   
   const currentUserIsMember = equipo.some(a => {
     const emA = (a.email || '').trim().toLowerCase();
@@ -11205,13 +11503,14 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     };
   }, [plan.estado, plan.ordenAprobacion, equipo, historial, emailSesion, idsSesion]);
 
-  const cambiarEstadoGeneral = async (nuevoEstado: EstadoPlan, historialPersonalizado?: any[]) => {
+  const cambiarEstadoGeneral = async (nuevoEstado: EstadoPlan, historialPersonalizado?: any[], firmaActivacionData?: any) => {
     const arrHistorial = historialPersonalizado || plan.historialAprobaciones || historial;
     const planActualizado = {
       ...plan,
       estado: nuevoEstado,
       historialAprobaciones: arrHistorial,
-      fechaAprobacion: nuevoEstado === 'APROBADO' ? new Date().toISOString() : plan.fechaAprobacion
+      fechaAprobacion: nuevoEstado === 'APROBADO' ? new Date().toISOString() : plan.fechaAprobacion,
+      ...(firmaActivacionData ? { firmaActivacion: firmaActivacionData } : {}),
     };
     onActualizar(planActualizado);
     setGuardando(true);
@@ -11219,7 +11518,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       const estadoBackend = ESTADO_PLAN_A_BACKEND[nuevoEstado];
       const payload: any = { 
         estado: estadoBackend as any,
-        equipo_aprobacion: arrHistorial
+        equipo_aprobacion: arrHistorial,
+        ...(firmaActivacionData ? { firma_activacion: firmaActivacionData } : {}),
       };
       
       const res = await planAnualApi.update(plan.id, payload);
@@ -11329,7 +11629,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       return;
     }
     if (fueDevuelto) {
-      setModalSubsanar({ isOpen: true, texto: '' });
+      const openAuditorIds = historial.filter(h => h.estado === 'OBSERVADA').map(h => h.auditorId);
+      setModalSubsanar({ 
+        isOpen: true, 
+        texto: '', 
+        selectedAuditorIds: openAuditorIds 
+      });
     } else {
       const sessionUser = (window as any).__esap_auth_cache || {};
       setModalOTPConfig({
@@ -11348,24 +11653,92 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       ejecutarAprobacionReal(modalOTPConfig.auditorId, metadata);
     } else if (modalOTPConfig.accion === 'enviar_comite') {
       cambiarEstadoGeneral('EN_REVISION');
+    } else if (modalOTPConfig.accion === 'activar_plan') {
+      // Activar el plan con la firma electrónica del Jefe OCI
+      const historialConFirmaActivacion = historial.map(h => ({ ...h }));
+      // Guardar metadata de activación en el plan (se persiste en backend vía firma_activacion)
+      const planConFirma = {
+        ...plan,
+        firmaActivacion: metadata,
+        fechaActivacion: metadata.fechaFirma,
+      };
+      onActualizar(planConFirma);
+      cambiarEstadoGeneral('VIGENTE', historialConFirmaActivacion, metadata);
+      toast.success('¡Plan Activado con Firma Electrónica!', { 
+        description: `Firmado por ${metadata.firmante} el ${new Date(metadata.fechaFirma).toLocaleString('es-CO')}` 
+      });
     }
+  };
+
+  const handleActivarPlanOTP = () => {
+    const sessionUser = (window as any).__esap_auth_cache || {};
+    setModalOTPConfig({
+      isOpen: true,
+      accion: 'activar_plan',
+      auditorId: null,
+      userName: sessionUser.nombre || plan.jefeOCI?.nombre || plan.responsable || 'Jefe OCI',
+      userEmail: sessionUser.email || plan.jefeOCI?.email || '',
+      detalle: `Activación del Plan Anual de Auditoría ${plan.vigencia || ''}`,
+    });
   };
 
   const handleConfirmarSubsanacion = () => {
     if (!modalSubsanar.texto.trim()) return;
+    if (modalSubsanar.selectedAuditorIds.length === 0) {
+      toast.error('Debe seleccionar al menos una observación para subsanar');
+      return;
+    }
     
-    // Convertir de OBSERVADA a PENDIENTE, guardando el comentario de subsanación
+    // Convertir SOLO las seleccionadas de OBSERVADA a PENDIENTE, guardando el comentario de subsanación
     const nuevoHistorial = historial.map(h => 
-      h.estado === 'OBSERVADA' 
+      h.estado === 'OBSERVADA' && modalSubsanar.selectedAuditorIds.includes(h.auditorId)
         ? { ...h, estado: 'PENDIENTE' as const, respuestaSubsanacion: modalSubsanar.texto, fechaRespuesta: new Date().toISOString() } 
         : h
     );
     
-    setModalSubsanar({ isOpen: false, texto: '' });
-    toast.success('Subsanación enviada exitosamente', { description: 'El plan regresó a fase de revisión de firmas.' });
+    setModalSubsanar({ isOpen: false, texto: '', selectedAuditorIds: [] });
+
+    // Verificar si aún quedan observaciones sin responder
+    const observacionesPendientes = nuevoHistorial.filter(h => h.estado === 'OBSERVADA');
     
-    // Al re-enviarlo por subsanación no requiere firma OTP, va directo a revisión
-    cambiarEstadoGeneral('EN_REVISION', nuevoHistorial);
+    if (observacionesPendientes.length > 0) {
+      // Aún hay observaciones sin responder → guardar respuesta parcial pero mantener en DEVUELTO
+      toast.success('Respuesta registrada', { 
+        description: `Quedan ${observacionesPendientes.length} observación(es) sin responder. Responda todas para re-enviar al comité.` 
+      });
+      cambiarEstadoGeneral('DEVUELTO', nuevoHistorial);
+    } else {
+      // Todas las observaciones fueron respondidas → enviar a revisión
+      toast.success('Subsanación enviada exitosamente', { description: 'El plan regresó a fase de revisión de firmas.' });
+      // Al re-enviarlo por subsanación no requiere firma OTP, va directo a revisión
+      cambiarEstadoGeneral('EN_REVISION', nuevoHistorial);
+    }
+  };
+
+  /**
+   * Determina el estado final del plan en base al historial de votos.
+   * - En modo PARALELO: el plan permanece EN_REVISION hasta que TODOS hayan votado.
+   *   Solo cuando todos votaron: si todos APROBADA → APROBADO; si alguno OBSERVADA → DEVUELTO.
+   * - En modo SECUENCIAL: una observación devuelve inmediatamente; una aprobación avanza al siguiente.
+   */
+  const resolverEstadoSegunVotos = (nuevoHistorial: typeof historial): EstadoPlan => {
+    const isParalelo = plan.ordenAprobacion !== 'secuencial';
+    const todosVotaron = nuevoHistorial.every(h => h.estado === 'APROBADA' || h.estado === 'OBSERVADA');
+    const todosAprobaron = nuevoHistorial.every(h => h.estado === 'APROBADA');
+    const algunoObservo = nuevoHistorial.some(h => h.estado === 'OBSERVADA');
+
+    if (isParalelo) {
+      // Paralelo: esperar a que todos voten
+      if (!todosVotaron) return 'EN_REVISION';
+      if (todosAprobaron) return 'APROBADO';
+      // Todos votaron y al menos uno observó
+      return 'DEVUELTO';
+    } else {
+      // Secuencial: una observación devuelve inmediatamente
+      if (algunoObservo) return 'DEVUELTO';
+      if (todosAprobaron) return 'APROBADO';
+      return 'EN_REVISION';
+    }
   };
 
   const ejecutarAprobacionReal = (auditorId: string, metadata: FirmaElectronicaMetadata) => {
@@ -11378,12 +11751,11 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       } : h
     );
     
-    if (nuevoHistorial.every(h => h.estado === 'APROBADA')) {
-      cambiarEstadoGeneral('APROBADO', nuevoHistorial);
-    } else {
-      // Guardar trazabilidad intermedia sin cambiar el estado general (sigue EN_REVISION)
-      cambiarEstadoGeneral('EN_REVISION', nuevoHistorial);
+    const nuevoEstado = resolverEstadoSegunVotos(nuevoHistorial);
+    if (nuevoEstado === 'APROBADO') {
+      toast.success('¡Plan Aprobado!', { description: 'Todas las firmas del comité han sido registradas.' });
     }
+    cambiarEstadoGeneral(nuevoEstado, nuevoHistorial);
   };
 
   const handleRechazarObservacion = () => {
@@ -11396,10 +11768,15 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     );
     
     setModalObservacion({ isOpen: false, auditorId: null, texto: '' });
-    toast.error('Plan devuelto con observaciones', { description: 'El plan regresó a fase de ajustes.' });
-    
-    // Almacenar forzosamente la observación en el payload del equipo
-    cambiarEstadoGeneral('DEVUELTO', nuevoHistorial);
+
+    const nuevoEstado = resolverEstadoSegunVotos(nuevoHistorial);
+    if (nuevoEstado === 'DEVUELTO') {
+      toast.error('Plan devuelto con observaciones', { description: 'Todos los miembros han votado y el plan regresó a fase de ajustes.' });
+    } else {
+      // Paralelo: el plan sigue en revisión, se registra la observación de este miembro
+      toast.warning('Observación registrada', { description: 'El plan continúa en revisión mientras los demás miembros del comité emiten su voto.' });
+    }
+    cambiarEstadoGeneral(nuevoEstado, nuevoHistorial);
   };
 
   const exportarTrazabilidadAprobacionExcel = async () => {
@@ -11511,7 +11888,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   const actividadesAsignadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.responsable !== null).length, 0);
   const porcentajeAsignacion = totalActividades ? Math.round((actividadesAsignadas / totalActividades) * 100) : 0;
 
-  const puedeEnviarRevision = porcentajeAsignacion === 100 && equipo.length > 0;
+  const tieneProcesos = totalProcesosRegistrados !== null ? totalProcesosRegistrados > 0 : false;
+  const tieneAuditorias = totalAuditoriasRegistradas !== null ? totalAuditoriasRegistradas > 0 : false;
+  // Validaciones de procesos y auditorías solo aplican al PRIMER envío (BORRADOR).
+  // Cuando el plan fue DEVUELTO (subsanación), estas condiciones ya se cumplieron al enviarlo inicialmente.
+  const validacionesExtraRequeridas = fueDevuelto ? true : (tieneProcesos && tieneAuditorias);
+  const puedeEnviarRevision = porcentajeAsignacion === 100 && equipo.length > 0 && validacionesExtraRequeridas;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6 relative">
@@ -11590,8 +11972,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
             {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && !isEditingCommittee && (
               <button 
                 onClick={() => {
-                  setComiteDraft(plan.equipoAprobacion || []);
-                  setOrdenDraft(plan.ordenAprobacion || 'secuencial');
+                  setComiteDraft(equipoNorm);
+                  setOrdenDraft(ordenAprobacionNorm);
                   setIsEditingCommittee(true);
                 }}
                 className="text-blue-600 text-sm font-bold hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-blue-100"
@@ -11849,7 +12231,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           {/* Status badge  premium pill */}
                           <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border backdrop-blur-sm transition-all ${
                             isAprobado ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white border-green-400 shadow-sm shadow-green-200' :
-                            isObservado ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white border-red-400 shadow-sm shadow-red-200' :
+                            isObservado ? 'bg-red-600 text-white border-red-600 shadow-sm shadow-red-200' :
                             isActiveTurn ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white border-blue-400 shadow-md shadow-blue-200 animate-pulse' :
                             'bg-gray-50 text-gray-400 border-gray-200'
                           }`}>
@@ -11946,8 +12328,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
         </div>
       </div>
 
-      {/* Checklist de validación (Solo modo borrador/devuelto) */}
-      {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && (
+      {/* Checklist de validación (Solo modo borrador — primer envío) */}
+      {plan.estado === 'BORRADOR' && puedeEditarPlan && (
         <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Validación para envío a comité</h2>
           <div className="space-y-3">
@@ -11958,6 +12340,30 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
             <div className="flex items-center gap-3">
               {porcentajeAsignacion === 100 ? <CheckCircle2 className="w-5 h-5 text-green-600" /> : <AlertCircle className="w-5 h-5 text-orange-600" />}
               <span className="text-gray-700">Responsables asignados: <strong>{actividadesAsignadas}/{totalActividades}</strong> ({porcentajeAsignacion}%)</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {totalProcesosRegistrados === null ? (
+                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+              ) : totalProcesosRegistrados > 0 ? (
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              )}
+              <span className="text-gray-700">
+                Al menos un proceso registrado: <strong>{totalProcesosRegistrados ?? 0} proceso(s)</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              {totalAuditoriasRegistradas === null ? (
+                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+              ) : totalAuditoriasRegistradas > 0 ? (
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              )}
+              <span className="text-gray-700">
+                Al menos una auditoría creada para esta vigencia: <strong>{totalAuditoriasRegistradas ?? 0} auditoría(s)</strong>
+              </span>
             </div>
           </div>
         </div>
@@ -12003,7 +12409,49 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
             </div>
           )}
 
-          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !puedeEnviarComiteComoResponsable && (
+          {/* === BLOQUE DEVUELTO: Responder observaciones pendientes === */}
+          {fueDevuelto && puedeEditarPlan && historial.some(h => h.estado === 'OBSERVADA') && (
+            <div className="space-y-3 w-full">
+              <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+                  <div className="text-sm leading-relaxed flex-1">
+                    <p className="font-bold text-amber-900 mb-1">
+                      Observaciones pendientes de respuesta ({historial.filter(h => h.estado === 'OBSERVADA').length})
+                    </p>
+                    <p className="text-amber-900/90 text-xs">
+                      Debe responder todas las observaciones del comité antes de poder re-enviar el plan a revisión.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={handleEnviarComiteOTP}
+                disabled={guardando} 
+                className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                Responder Observaciones del Comité
+              </button>
+            </div>
+          )}
+
+          {/* === BLOQUE DEVUELTO: Todas respondidas, re-enviar === */}
+          {fueDevuelto && puedeEditarPlan && !historial.some(h => h.estado === 'OBSERVADA') && puedeEnviarComiteComoResponsable && (
+            <div className="space-y-2 w-full">
+              <button 
+                onClick={handleEnviarComiteOTP}
+                disabled={!puedeEnviarRevision || guardando} 
+                className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                Subsanar y Re-enviar a Comité de Aprobación (Firma)
+              </button>
+            </div>
+          )}
+
+          {/* === BLOQUE BORRADOR: Primer envío (sin observaciones previas) === */}
+          {plan.estado === 'BORRADOR' && !fueDevuelto && puedeEditarPlan && !puedeEnviarComiteComoResponsable && (
             <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl space-y-4 text-amber-950">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
@@ -12039,18 +12487,38 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               </button>
             </div>
           )}
-          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && puedeEnviarComiteComoResponsable && (
-            <button onClick={handleEnviarComiteOTP} disabled={!puedeEnviarRevision || guardando} className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
-              {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
-              {fueDevuelto ? 'Subsanar y Re-enviar a Comité de Aprobación (Firma)' : 'Enviar a Comité de Aprobación (Firma)'}
-            </button>
+          {plan.estado === 'BORRADOR' && !fueDevuelto && puedeEditarPlan && puedeEnviarComiteComoResponsable && (
+            <div className="space-y-2 w-full">
+              <button 
+                onClick={handleEnviarComiteOTP} 
+                disabled={!puedeEnviarRevision || guardando || cargandoValidacionesExtra} 
+                className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                Enviar a Comité de Aprobación (Firma)
+              </button>
+              {!puedeEnviarRevision && !cargandoValidacionesExtra && (
+                <p className="text-xs text-red-600 text-center font-semibold mt-1">
+                  ⚠️ No se puede enviar a aprobación. Verifique que el plan tenga 100% de responsables asignados, al menos un proceso registrado en el Universo Auditable y al menos una auditoría creada para esta vigencia.
+                </p>
+              )}
+            </div>
           )}
 
           {plan.estado === 'APROBADO' && puedeActivarPlan && (
-            <button onClick={() => cambiarEstadoGeneral('VIGENTE')} disabled={guardando} className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 shadow-md">
-              <CheckCircle2 className="w-5 h-5" />
-              Activar Plan (Hacer Vigente)
-            </button>
+            <div className="space-y-2 w-full">
+              <button 
+                onClick={handleActivarPlanOTP} 
+                disabled={guardando} 
+                className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 shadow-md"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                Activar Plan con Firma Electrónica (OTP)
+              </button>
+              <p className="text-xs text-gray-500 text-center">
+                Se requiere verificación OTP para activar el plan. La firma electrónica quedará registrada en el documento.
+              </p>
+            </div>
           )}
           
           {plan.estado === 'APROBADO' && !puedeActivarPlan && (
@@ -12343,8 +12811,44 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100 italic">
                 Dado que el plan ya fue firmado por usted y las firmas previas aún son vinculantes, su re-envío de ajustes omitirá una doble validación de OTP y pasará de inmediato a la fase de revisión.
               </p>
+
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Selecciona la(s) observación(es) a responder:
+                </label>
+                <div className="space-y-2 max-h-36 overflow-y-auto border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  {historial.filter(h => h.estado === 'OBSERVADA').map((obs) => {
+                    const isChecked = modalSubsanar.selectedAuditorIds.includes(obs.auditorId);
+                    return (
+                      <label key={obs.auditorId} className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-100/50 p-1.5 rounded transition-colors border border-transparent hover:border-gray-200">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setModalSubsanar(prev => {
+                              const newIds = checked 
+                                ? [...prev.selectedAuditorIds, obs.auditorId]
+                                : prev.selectedAuditorIds.filter(id => id !== obs.auditorId);
+                              return { ...prev, selectedAuditorIds: newIds };
+                            });
+                          }}
+                          className="mt-1 rounded text-green-600 focus:ring-green-500 border-gray-300 w-4 h-4 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                          <span className="font-bold text-gray-900 text-xs">{obs.auditorNombre}</span>
+                          <p className="text-xs text-gray-600 bg-white border border-gray-200 p-2 rounded mt-1 italic font-normal leading-relaxed">
+                            "{obs.observacion}"
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               <textarea
-                className="w-full h-32 p-3 border-2 border-gray-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-100 outline-none resize-none text-sm transition-all"
+                className="w-full h-24 p-3 border-2 border-gray-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-100 outline-none resize-none text-sm transition-all"
                 placeholder="Detalle exactamente los ajustes que ha realizado en respuesta a las observaciones planteadas..."
                 value={modalSubsanar.texto}
                 onChange={(e) => setModalSubsanar(prev => ({ ...prev, texto: e.target.value }))}
@@ -12352,13 +12856,13 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               />
               <div className="flex gap-3 justify-end mt-6">
                 <button 
-                  onClick={() => setModalSubsanar({ isOpen: false, texto: '' })} 
+                  onClick={() => setModalSubsanar({ isOpen: false, texto: '', selectedAuditorIds: [] })} 
                   className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                 >
                   Cancelar
                 </button>
                 <button 
-                  disabled={!modalSubsanar.texto.trim()} 
+                  disabled={!modalSubsanar.texto.trim() || modalSubsanar.selectedAuditorIds.length === 0} 
                   onClick={handleConfirmarSubsanacion} 
                   className="px-5 py-2.5 font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
                 >

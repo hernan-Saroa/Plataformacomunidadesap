@@ -273,10 +273,8 @@ export class AuditoriasService {
 
     auditorias.forEach(aud => {
       const isNameUuid = aud.responsableAreaNombre && this.isValidUUID(String(aud.responsableAreaNombre));
-      const isRespUuid = aud.responsable && this.isValidUUID(String(aud.responsable));
-      if (isNameUuid) responsableUuids.add(String(aud.responsableAreaNombre));
-      else if (isRespUuid) {
-        responsableUuids.add(String(aud.responsable));
+      if (isNameUuid) {
+        responsableUuids.add(String(aud.responsableAreaNombre));
       }
       // Si no tiene nombre pero sí email, buscar por email
       if ((!aud.responsableAreaNombre || aud.responsableAreaNombre.trim() === '') && aud.responsableAreaEmail && aud.responsableAreaEmail.includes('@')) {
@@ -288,9 +286,8 @@ export class AuditoriasService {
       const detailsMap = await this.getPersonasDetailsMap(Array.from(responsableUuids));
       auditorias.forEach(aud => {
         const isNameUuid = aud.responsableAreaNombre && this.isValidUUID(String(aud.responsableAreaNombre));
-        const isRespUuid = aud.responsable && this.isValidUUID(String(aud.responsable));
-        const targetUuid = isNameUuid ? String(aud.responsableAreaNombre) : (isRespUuid ? String(aud.responsable) : null);
-        if (targetUuid) {
+        if (isNameUuid) {
+          const targetUuid = String(aud.responsableAreaNombre);
           const details = detailsMap.get(targetUuid.toLowerCase());
           if (details) {
             aud.responsableAreaNombre = details.nombre;

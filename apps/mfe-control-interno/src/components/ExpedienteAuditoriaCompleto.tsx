@@ -727,7 +727,7 @@ export function ExpedienteAuditoriaCompleto({
           },
 
           metadata: {
-            creadoPor: data.responsable || 'Sistema',
+            creadoPor: data.auditorLider?.nombre || data.auditorLider || data.responsableAreaNombre || (/^[0-9a-f]{8}-/.test(data.responsable || '') ? 'Sistema' : data.responsable) || 'Sistema',
             fechaCreacion: new Date(data.createdAt || data.fechaInicio),
             ultimaModificacion: new Date(data.updatedAt || Date.now()),
             modificadoPor: 'Sistema',
@@ -1931,6 +1931,8 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
     responsableAreaNombre: auditoria.responsableArea?.nombre || '',
     responsableAreaCargo: auditoria.responsableArea?.cargo || '',
     responsableAreaEmail: auditoria.responsableArea?.email || '',
+    fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
+    fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
   });
 
   // ✅ Sincronizar editData cuando llegan datos reales del backend
@@ -1957,6 +1959,8 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
+      fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
+      fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
     });
   }, [auditoria.id, auditoria.descripcion, auditoria.alcance, auditoria.metodologia, auditoria.objetivos?.length]);
   const [newItem, setNewItem] = useState<Record<string, string>>({});
@@ -2133,6 +2137,8 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
+      fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
+      fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
     });
     setIsEditing(false);
   };
@@ -2353,15 +2359,45 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
           </div>
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Tipo de Auditoría</p>
-            <p className="text-sm font-bold text-gray-900">{auditoria.tipo}</p>
+            {isEditing ? (
+              <select
+                value={editData.tipo}
+                onChange={(e) => handleFieldChange('tipo', e.target.value)}
+                className="text-sm font-bold text-gray-900 border border-gray-200 rounded-md px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+              >
+                <option value="Regular">Regular</option>
+                <option value="Territorial">Territorial</option>
+                <option value="Especial">Especial</option>
+              </select>
+            ) : (
+              <p className="text-sm font-bold text-gray-900">{auditoria.tipo}</p>
+            )}
           </div>
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Periodo</p>
-            <p className="text-sm font-bold text-gray-900">
-              {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
-              {' – '}
-              {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </p>
+            {isEditing ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  value={editData.fechaInicio}
+                  onChange={(e) => handleFieldChange('fechaInicio', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+                />
+                <span className="text-gray-400 text-xs">–</span>
+                <input
+                  type="date"
+                  value={editData.fechaFin}
+                  onChange={(e) => handleFieldChange('fechaFin', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+                />
+              </div>
+            ) : (
+              <p className="text-sm font-bold text-gray-900">
+                {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                {' – '}
+                {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-[11px] text-gray-500 mb-1 font-medium">Nivel de Riesgo</p>
@@ -2565,6 +2601,9 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
                         })}
                       </div>
                     )}
+                    {mostrarSugerenciasResponsable && (
+                      <div className="h-44 pointer-events-none" />
+                    )}
                   </div>
                 )}
               </div>
@@ -2720,17 +2759,35 @@ function TabGeneral({ auditoria, readOnly, onReload }: { auditoria: Auditoria; r
 
           {/* Fechas */}
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="text-center p-3 bg-blue-50/60 rounded-lg border border-blue-100">
+            <div className="text-center p-3 bg-blue-50/60 rounded-lg border border-blue-100 flex flex-col justify-center">
               <p className="text-[10px] text-gray-400 font-medium mb-1">Inicio</p>
-              <p className="text-xs font-black text-gray-900">
-                {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </p>
+              {isEditing ? (
+                <input
+                  type="date"
+                  value={editData.fechaInicio}
+                  onChange={(e) => handleFieldChange('fechaInicio', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full text-center"
+                />
+              ) : (
+                <p className="text-xs font-black text-gray-900">
+                  {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+              )}
             </div>
-            <div className="text-center p-3 bg-purple-50/60 rounded-lg border border-purple-100">
+            <div className="text-center p-3 bg-purple-50/60 rounded-lg border border-purple-100 flex flex-col justify-center">
               <p className="text-[10px] text-gray-400 font-medium mb-1">Fin Estimado</p>
-              <p className="text-xs font-black text-gray-900">
-                {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </p>
+              {isEditing ? (
+                <input
+                  type="date"
+                  value={editData.fechaFin}
+                  onChange={(e) => handleFieldChange('fechaFin', e.target.value)}
+                  className="text-xs font-bold text-gray-900 border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 w-full text-center"
+                />
+              ) : (
+                <p className="text-xs font-black text-gray-900">
+                  {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+              )}
             </div>
           </div>
 
