@@ -339,18 +339,44 @@ const ORDEN_FASES_EXPEDIENTE: EstadoAuditoria[] = [
   'finalizada',
 ];
 
-const parseLocalDate = (dateInput: any): Date => {
-  if (!dateInput) return new Date();
-  if (dateInput instanceof Date) return dateInput;
+const toValidDate = (dateInput: any): Date | null => {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return Number.isNaN(dateInput.getTime()) ? null : dateInput;
+  }
   const dateStr = String(dateInput).trim();
   const parts = dateStr.split('T')[0].split('-');
   if (parts.length === 3) {
     const y = parseInt(parts[0], 10);
     const m = parseInt(parts[1], 10) - 1;
     const d = parseInt(parts[2], 10);
-    return new Date(y, m, d);
+    const localDate = new Date(y, m, d);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
   }
-  return new Date(dateStr);
+  const parsedDate = new Date(dateStr);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
+const parseLocalDate = (dateInput: any): Date => {
+  return toValidDate(dateInput) ?? new Date();
+};
+
+const formatDateInputValue = (dateInput: any): string => {
+  const date = toValidDate(dateInput);
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateLabel = (
+  dateInput: any,
+  options: Intl.DateTimeFormatOptions,
+  fallback = 'Sin fecha',
+): string => {
+  const date = toValidDate(dateInput);
+  return date ? date.toLocaleDateString('es-CO', options) : fallback;
 };
 
 const TAB_REQUIERE_FASE: Partial<Record<TabActiva, EstadoAuditoria>> = {
@@ -1308,9 +1334,9 @@ export function ExpedienteAuditoriaCompleto({
   }, [isOpen, auditoria?.id, auditoria?.estado]);
 
   const diasRestantes = useMemo(() => {
-    if (!auditoria?.cronograma?.fechaFin) return 0;
+    const fin = toValidDate(auditoria?.cronograma?.fechaFin);
+    if (!fin) return 0;
     const hoy = new Date();
-    const fin = new Date(auditoria.cronograma.fechaFin);
     const diff = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
   }, [auditoria?.cronograma?.fechaFin]);
@@ -1948,8 +1974,8 @@ function TabGeneral({
     responsableAreaNombre: auditoria.responsableArea?.nombre || '',
     responsableAreaCargo: auditoria.responsableArea?.cargo || '',
     responsableAreaEmail: auditoria.responsableArea?.email || '',
-    fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
-    fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
+    fechaInicio: formatDateInputValue(auditoria.cronograma?.fechaInicio),
+    fechaFin: formatDateInputValue(auditoria.cronograma?.fechaFin),
   });
 
   // ✅ Sincronizar editData cuando llegan datos reales del backend
@@ -1976,8 +2002,8 @@ function TabGeneral({
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
-      fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
-      fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
+      fechaInicio: formatDateInputValue(auditoria.cronograma?.fechaInicio),
+      fechaFin: formatDateInputValue(auditoria.cronograma?.fechaFin),
     });
   }, [auditoria.id, auditoria.descripcion, auditoria.alcance, auditoria.metodologia, auditoria.objetivos?.length]);
   const [newItem, setNewItem] = useState<Record<string, string>>({});
@@ -2133,7 +2159,23 @@ function TabGeneral({
           : [];
       const objetivosGuardados = toTextArray(auditoriaGuardada?.objetivos);
       const criteriosGuardados = toTextArray(auditoriaGuardada?.criterios);
-
+      const fechaInicioActualizada =
+        toValidDate(auditoriaGuardada?.fechaInicio ?? editData.fechaInicio) ??
+        toValidDate(auditoria.cronograma?.fechaInicio) ??
+        new Date();
+      const fechaFinActualizada =
+        toValidDate(auditoriaGuardada?.fechaFin ?? editData.fechaFin) ??
+        toValidDate(auditoria.cronograma?.fechaFin) ??
+        fechaInicioActualizada;
+      const duracionDiasActualizada = Math.max(
+        0,
+        Math.ceil((fechaFinActualizada.getTime() - fechaInicioActualizada.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      const diasTranscurridosActualizados = Math.max(
+        0,
+        Math.ceil((Date.now() - fechaInicioActualizada.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      console.log('TabGeneral - Guardado:', auditoria);
       onAuditoriaUpdated?.({
         ...auditoria,
         nombre: auditoriaGuardada?.nombre ?? editData.nombre ?? auditoria.nombre,
@@ -2165,6 +2207,13 @@ function TabGeneral({
         controlesAplicar: Array.isArray(auditoriaGuardada?.controlesAplicar)
           ? auditoriaGuardada.controlesAplicar
           : editData.controlesAplicar,
+        cronograma: {
+          ...auditoria.cronograma,
+          fechaInicio: fechaInicioActualizada,
+          fechaFin: fechaFinActualizada,
+          duracionDias: duracionDiasActualizada,
+          diasTranscurridos: diasTranscurridosActualizados,
+        },
         metadata: {
           ...auditoria.metadata,
           ultimaModificacion: auditoriaGuardada?.updatedAt ? new Date(auditoriaGuardada.updatedAt) : new Date(),
@@ -2203,8 +2252,8 @@ function TabGeneral({
       responsableAreaNombre: auditoria.responsableArea?.nombre || '',
       responsableAreaCargo: auditoria.responsableArea?.cargo || '',
       responsableAreaEmail: auditoria.responsableArea?.email || '',
-      fechaInicio: auditoria.cronograma?.fechaInicio ? new Date(auditoria.cronograma.fechaInicio).toISOString().split('T')[0] : '',
-      fechaFin: auditoria.cronograma?.fechaFin ? new Date(auditoria.cronograma.fechaFin).toISOString().split('T')[0] : '',
+      fechaInicio: formatDateInputValue(auditoria.cronograma?.fechaInicio),
+      fechaFin: formatDateInputValue(auditoria.cronograma?.fechaFin),
     });
     setIsEditing(false);
   };
@@ -2459,9 +2508,9 @@ function TabGeneral({
               </div>
             ) : (
               <p className="text-sm font-bold text-gray-900">
-                {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                {formatDateLabel(auditoria.cronograma?.fechaInicio, { day: '2-digit', month: 'short' })}
                 {' – '}
-                {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                {formatDateLabel(auditoria.cronograma?.fechaFin, { day: '2-digit', month: 'short', year: 'numeric' })}
               </p>
             )}
           </div>
@@ -2836,7 +2885,7 @@ function TabGeneral({
                 />
               ) : (
                 <p className="text-xs font-black text-gray-900">
-                  {new Date(auditoria.cronograma.fechaInicio).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {formatDateLabel(auditoria.cronograma?.fechaInicio, { day: '2-digit', month: 'short', year: 'numeric' })}
                 </p>
               )}
             </div>
@@ -2851,7 +2900,7 @@ function TabGeneral({
                 />
               ) : (
                 <p className="text-xs font-black text-gray-900">
-                  {new Date(auditoria.cronograma.fechaFin).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {formatDateLabel(auditoria.cronograma?.fechaFin, { day: '2-digit', month: 'short', year: 'numeric' })}
                 </p>
               )}
             </div>

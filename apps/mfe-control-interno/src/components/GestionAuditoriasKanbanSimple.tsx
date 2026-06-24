@@ -3277,10 +3277,11 @@ export function GestionAuditoriasKanbanSimple() {
         {/* ALERTA — Plan Anual pendiente de aprobación                   */}
         {/* ═══════════════════════════════════════════════════════════════ */}
         {(() => {
-          const planAprobado = isPlanAprobado(vigenciaCtx?.planActivo?.estado);
+          const estadoPlan = vigenciaCtx?.planActivo?.estado;
+          const planAprobado = isPlanAprobado(estadoPlan);
           if (!planAprobado && !vigenciaCtx?.loading && vigenciaCtx?.planActivo) {
             return (
-              <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-300 rounded-xl shadow-sm">
+              <div className="flex items-start gap-3 p-2 bg-amber-50 border border-amber-300 rounded-xl shadow-sm">
                 <div className="flex-shrink-0 mt-0.5">
                   <AlertCircle className="w-5 h-5 text-amber-600" />
                 </div>
@@ -3289,7 +3290,7 @@ export function GestionAuditoriasKanbanSimple() {
                     Plan Anual pendiente de aprobación
                   </p>
                   <p className="text-xs text-amber-700 mt-0.5">
-                    El Plan Anual de Auditoría (Vigencia {vigenciaCtx.vigencia}) se encuentra en estado <strong>{estadoPlan === 'EN_REVISION' ? 'En Revisión' : estadoPlan === 'BORRADOR' ? 'Borrador' : estadoPlan === 'DEVUELTO' ? 'Devuelto' : estadoPlan || 'Pendiente'}</strong>. 
+                    El Plan Anual de Auditoría (Vigencia {vigenciaCtx.vigencia}) se encuentra en estado <strong>{etiquetaEstadoPlan(estadoPlan)}</strong>.
                     Debe ser aprobado por el Comité PAI antes de poder iniciar auditorías.
                   </p>
                 </div>
