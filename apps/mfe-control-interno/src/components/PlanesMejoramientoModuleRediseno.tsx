@@ -934,9 +934,9 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         {columnasKanban.map((columna) => {
         // Normalizar estados del backend (minúsculas) a columnas Kanban (MAYÚSCULAS)
         const estadoToColumna: Record<string, string> = {
-          // BORRADOR y FORMULACION NO aparecen en backoffice (el auditado los maneja en portal)
-          borrador: '__AUDITADO__',
-          FORMULACION: '__AUDITADO__',
+          // Los planes en borrador (formulación) y revisión deben aparecer en la primera columna del backoffice
+          borrador: 'SUSCRIPCION_Y_FORMULACION',
+          FORMULACION: 'SUSCRIPCION_Y_FORMULACION',
           // Solo REVISION aparece en la primera columna del backoffice
           revision: 'SUSCRIPCION_Y_FORMULACION',
           REVISION: 'SUSCRIPCION_Y_FORMULACION',

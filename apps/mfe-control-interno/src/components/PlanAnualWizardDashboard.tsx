@@ -11892,7 +11892,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   const tieneAuditorias = totalAuditoriasRegistradas !== null ? totalAuditoriasRegistradas > 0 : false;
   // Validaciones de procesos y auditorías solo aplican al PRIMER envío (BORRADOR).
   // Cuando el plan fue DEVUELTO (subsanación), estas condiciones ya se cumplieron al enviarlo inicialmente.
-  const validacionesExtraRequeridas = fueDevuelto ? true : (tieneProcesos && tieneAuditorias);
+  const validacionesExtraRequeridas = fueDevuelto ? true : tieneProcesos;
   const puedeEnviarRevision = porcentajeAsignacion === 100 && equipo.length > 0 && validacionesExtraRequeridas;
 
   return (
@@ -12353,18 +12353,6 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 Al menos un proceso registrado: <strong>{totalProcesosRegistrados ?? 0} proceso(s)</strong>
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              {totalAuditoriasRegistradas === null ? (
-                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-              ) : totalAuditoriasRegistradas > 0 ? (
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              )}
-              <span className="text-gray-700">
-                Al menos una auditoría creada para esta vigencia: <strong>{totalAuditoriasRegistradas ?? 0} auditoría(s)</strong>
-              </span>
-            </div>
           </div>
         </div>
       )}
@@ -12499,7 +12487,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               </button>
               {!puedeEnviarRevision && !cargandoValidacionesExtra && (
                 <p className="text-xs text-red-600 text-center font-semibold mt-1">
-                  ⚠️ No se puede enviar a aprobación. Verifique que el plan tenga 100% de responsables asignados, al menos un proceso registrado en el Universo Auditable y al menos una auditoría creada para esta vigencia.
+                  ⚠️ No se puede enviar a aprobación. Verifique que el plan tenga 100% de responsables asignados y al menos un proceso registrado en el Universo Auditable.
                 </p>
               )}
             </div>

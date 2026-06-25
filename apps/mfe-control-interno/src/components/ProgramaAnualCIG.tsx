@@ -963,6 +963,8 @@ function ModalNuevaAuditoria({ onClose }: { onClose: () => void }) {
         tipo: auditoria.tipo?.toLowerCase() || 'gestion',
         objetivo: auditoria.objetivo || '',
         alcance: auditoria.alcance || '',
+        periodoInicio: auditoria.periodoInicio || undefined,
+        periodoFin: auditoria.periodoFin || undefined,
         procesoId: auditoria.areaAuditable?.id || null,
         procesoNombre: auditoria.areaAuditable?.nombre || '',
         areaAuditable: auditoria.areaAuditable?.nombre || '',
