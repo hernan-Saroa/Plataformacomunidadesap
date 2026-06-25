@@ -64,6 +64,28 @@ export class NotificationClientService {
   }
 
   /**
+   * Resuelve los detalles (id_user y correo) de un usuario a partir de un identificador
+   * que puede ser id_user, public_id o id_person. Mismo patrón que notifyUserById.
+   */
+  async getUserDetailsById(userId: string): Promise<{ id_user: string; email: string } | null> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT u.id_user::text AS id_user, COALESCE(p.dir_email, u.username) AS email
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE (u.id_user::text = $1 OR u.public_id::text = $1 OR u.id_person::text = $1)
+           AND COALESCE(u.is_active, true) = true
+         LIMIT 1`,
+        [userId],
+      );
+      return rows[0] || null;
+    } catch (err: any) {
+      this.logger.error(`[notifyUser] Error resolviendo email de usuario "${userId}": ${err?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Envía una notificación in-app a todos los usuarios que tengan un rol específico.
    */
   async notifyByRole(roleCode: string, dto: Omit<SendNotificationDto, 'id_usuario_destinatario'>): Promise<void> {
