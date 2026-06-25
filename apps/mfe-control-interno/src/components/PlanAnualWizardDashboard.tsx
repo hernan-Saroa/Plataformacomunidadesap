@@ -1771,6 +1771,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
   /** Indica si el último guardado llegó al backend (solo «Nuevo plan») */
   const [serverDraftSynced, setServerDraftSynced] = useState(false);
   const serverBorradorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastServerAutosaveSignatureRef = useRef<string | null>(null);
   /** Evita fusionar dos veces si cambian props tras el primer montaje */
   const mergeWizardDesdeServidorHecho = useRef(false);
   const wizardHydrationCompletedRef = useRef(false);
@@ -1802,6 +1803,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     () => (planesExistentes || []).filter((p) => !planAEditar || p.id !== planAEditar.id),
     [planesExistentes, planAEditar],
   );
+  const planAEditarId = planAEditar?.id ?? null;
   /** Vigencias con plan ya formalizado (no borrador): no se puede crear otro. */
   const vigenciasBloqueadas = useMemo(
     () =>
@@ -2548,7 +2550,21 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     localStorage.setItem(draftKey, JSON.stringify(borrador));
     setLastSaved(new Date());
 
+    const serverAutosaveSignature = JSON.stringify({
+      paso,
+      vigencia,
+      fechaInicio,
+      fechaFin,
+      ordenAprobacion,
+      jefeSeleccionado,
+      rolesConfig,
+      comiteAprobacion,
+      planAEditarId,
+    });
+
     if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
+    if (lastServerAutosaveSignatureRef.current === serverAutosaveSignature) return;
+
     serverBorradorTimerRef.current = setTimeout(async () => {
       // Si el paso 1 tiene los campos mínimos requeridos, guardamos/creamos directamente el plan en la base de datos en estado 'borrador'
       if (onGuardarBorrador && jefeSeleccionado && fechaInicio && fechaFin) {
@@ -2564,6 +2580,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
             { silencioso: true }
           );
           if (ok) {
+            lastServerAutosaveSignatureRef.current = serverAutosaveSignature;
             setServerDraftSynced(true);
             setLastSaved(new Date());
           } else {
@@ -2577,6 +2594,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         // Fallback: Si no se puede guardar en BD todavía (faltan campos en Paso 1), guardar en borrador temporal del Wizard
         wizardBorradorApi.save(borrador)
           .then(() => {
+            lastServerAutosaveSignatureRef.current = serverAutosaveSignature;
             setServerDraftSynced(true);
             setLastSaved(new Date());
           })
@@ -2599,7 +2617,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     jefeSeleccionado,
     rolesConfig,
     comiteAprobacion,
-    planAEditar,
+    planAEditarId,
     isSubmitting,
     showSuccessModal,
     draftKey,

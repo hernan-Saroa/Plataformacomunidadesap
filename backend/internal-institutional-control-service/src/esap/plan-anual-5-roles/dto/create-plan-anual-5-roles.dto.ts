@@ -1,4 +1,6 @@
-import { IsInt, IsString, IsNotEmpty, IsOptional, Min, Max, IsUUID, IsDateString, IsArray } from 'class-validator';
+import { IsInt, IsString, IsNotEmpty, IsOptional, Min, Max, Matches, IsDateString, IsArray } from 'class-validator';
+
+const POSTGRES_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class CreatePlanAnual5RolesDto {
   @IsInt()
@@ -11,7 +13,7 @@ export class CreatePlanAnual5RolesDto {
   responsable: string;
 
   @IsOptional()
-  @IsUUID('all')
+  @Matches(POSTGRES_UUID_RE, { message: 'responsable_id must be a UUID' })
   responsable_id?: string;
 
   @IsOptional()
