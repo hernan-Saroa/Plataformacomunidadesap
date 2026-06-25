@@ -128,11 +128,10 @@ function ComboboxPersonas({
           e.stopPropagation();
           if (!disabled && !cargando) setIsOpen((v) => !v);
         }}
-        className={`w-full px-3 py-2.5 border rounded-lg text-sm text-left flex justify-between items-center gap-2 bg-white transition-colors ${
-          disabled || cargando
+        className={`w-full px-3 py-2.5 border rounded-lg text-sm text-left flex justify-between items-center gap-2 bg-white transition-colors ${disabled || cargando
             ? 'border-gray-200 text-gray-400 cursor-not-allowed'
             : 'border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50/50'
-        }`}
+          }`}
       >
         <span className="truncate flex-1">{labelBoton}</span>
         {cargando ? (
@@ -438,7 +437,7 @@ function parseReunionToForm(
     observaciones?: string;
     documentoBibliotecaId?: string | null;
   } | null
-  | undefined,
+    | undefined,
   personas: PersonaOpcion[] = [],
 ): {
   fecha: string;
@@ -593,7 +592,7 @@ function FormReunionBase({
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
               />
             </div>
-            
+
             {archivos && archivos.length > 0 && (
               <div className="mt-4 space-y-2">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Archivos adjuntos ({archivos.length})</p>
@@ -735,11 +734,11 @@ export function ModalReunionApertura({
   const modal = (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent
-          layer="nested"
-          className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
-          style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
-          {...propsDialogEvitarCerrarCombobox}
-        >
+        layer="nested"
+        className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
+        style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+        {...propsDialogEvitarCerrarCombobox}
+      >
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-1.5 text-base">
             <Users className="w-4 h-4" />
@@ -930,11 +929,11 @@ export function ModalReunionCierre({
   const modal = (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent
-          layer="nested"
-          className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
-          style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
-          {...propsDialogEvitarCerrarCombobox}
-        >
+        layer="nested"
+        className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
+        style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+        {...propsDialogEvitarCerrarCombobox}
+      >
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-1.5 text-base">
             <Users className="w-4 h-4" />

@@ -38,13 +38,12 @@ export function getRemoteEntryPath(appDir) {
 }
 
 export function getRemoteDefinitions(mode = 'serve') {
-  // Siempre usar rutas relativas — el proxy de Vite (shell) ya redirige
-  // /remotes/<mfe>/... al puerto local correcto. Esto permite que usuarios
-  // externos (Cloudflare tunnel) carguen los MFEs a través del mismo origen.
   return Object.fromEntries(
     remoteApps.map((app) => [
       app.federationName,
-      getRemoteEntryPath(app.appDir),
+      mode === 'serve'
+        ? `http://localhost:${app.devPort}${getRemoteEntryPath(app.appDir)}`
+        : getRemoteEntryPath(app.appDir),
     ]),
   );
 }
