@@ -752,7 +752,7 @@ export function RolePermissionsEditor({
         );
 
         if (isSuperAdmin) {
-          // Super Admin: marcar todos los permisos con perfil Jefe para Registro Académico
+          // Super Admin: marcar todos los permisos con perfil Jefe para Verificación de títulos
           const { permissions: allIds, academicProfile } = selectAllPermissions(mappedModules);
           setPermissionModules(mappedModules);
           setSelectedPermissions(allIds);
@@ -836,7 +836,7 @@ export function RolePermissionsEditor({
       !activeAcademicProfile &&
       !selectedPermissions.has(permission.id)
     ) {
-      toast.warning('Selecciona un perfil de Registro Académico', {
+      toast.warning('Selecciona un perfil de Verificación de títulos', {
         description: 'Primero elige Jefe, Aprobador o Revisor. Luego puedes marcar los opcionales de ese perfil.',
       });
       return;
@@ -861,7 +861,7 @@ export function RolePermissionsEditor({
         removeAcademicPermissions(newPermissions);
         setActiveAcademicProfileId(null);
         toast.warning('Permiso necesario', {
-          description: `Ese permiso es necesario para ser ${activeAcademicProfile.label}. Al quitarlo se desmarca el perfil y se retiran los permisos de Registro Académico.`,
+          description: `Ese permiso es necesario para ser ${activeAcademicProfile.label}. Al quitarlo se desmarca el perfil y se retiran los permisos de Verificación de títulos.`,
         });
       }
     } else {
@@ -910,13 +910,13 @@ export function RolePermissionsEditor({
         selectedAcademicPermissions.forEach((permission) => newPermissions.delete(permission.id));
         setSelectedPermissions(newPermissions);
         setHasChanges(true);
-        toast.info('Permisos de Registro Académico retirados', {
+        toast.info('Permisos de Verificación de títulos retirados', {
           description: 'Para volver a asignarlos, selecciona primero Jefe, Aprobador o Revisor.',
         });
         return;
       }
 
-      toast.warning('Selecciona un perfil de Registro Académico', {
+      toast.warning('Selecciona un perfil de Verificación de títulos', {
         description: 'Primero elige Jefe, Aprobador o Revisor para marcar permisos de este módulo.',
       });
       return;
@@ -944,7 +944,7 @@ export function RolePermissionsEditor({
         removeAcademicPermissions(newPermissions);
         setActiveAcademicProfileId(null);
         toast.warning('Perfil desmarcado', {
-          description: `Quitaste permisos necesarios para ser ${activeAcademicProfile.label}. Se retiraron los permisos de Registro Académico.`,
+          description: `Quitaste permisos necesarios para ser ${activeAcademicProfile.label}. Se retiraron los permisos de Verificación de títulos.`,
         });
       }
     } else {
@@ -953,7 +953,7 @@ export function RolePermissionsEditor({
         toast.info(activeAcademicProfile ? 'Permisos fuera del perfil omitidos' : 'Permisos académicos omitidos', {
           description: activeAcademicProfile
             ? `No se marcaron ${blockedAcademicCount} permisos fuera del máximo de ${activeAcademicProfile.label}.`
-            : `No se marcaron ${blockedAcademicCount} permisos de Registro Académico porque requieren Jefe, Aprobador o Revisor.`,
+            : `No se marcaron ${blockedAcademicCount} permisos de Verificación de títulos porque requieren Jefe, Aprobador o Revisor.`,
         });
       }
     }
@@ -969,7 +969,7 @@ export function RolePermissionsEditor({
       removeAcademicPermissions(newPermissions);
       setActiveAcademicProfileId(null);
       toast.info(`${profile.label} desmarcado`, {
-        description: 'Se retiraron los permisos de Registro Académico. Selecciona otro perfil para volver a asignarlos.',
+        description: 'Se retiraron los permisos de Verificación de títulos. Selecciona otro perfil para volver a asignarlos.',
       });
     } else {
       Array.from(newPermissions).forEach((permissionId) => {
@@ -994,14 +994,14 @@ export function RolePermissionsEditor({
     setHasChanges(true);
   };
 
-  // Marcar todos los permisos (perfil Jefe para Registro Académico)
+  // Marcar todos los permisos (perfil Jefe para Verificación de títulos)
   const handleSelectAll = () => {
     const { permissions: allIds, academicProfile } = selectAllPermissions(permissionModules);
     setSelectedPermissions(allIds);
     setActiveAcademicProfileId(academicProfile);
     setHasChanges(true);
     toast.success('Permisos disponibles marcados', {
-      description: 'Se seleccionaron los permisos modificables. Perfil "Jefe" aplicado para Registro Académico.',
+      description: 'Se seleccionaron los permisos modificables. Perfil "Jefe" aplicado para Verificación de títulos.',
     });
   };
 
@@ -1077,7 +1077,7 @@ export function RolePermissionsEditor({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-extrabold text-slate-900">
-            Perfil de Registro Académico
+            Perfil de Verificación de títulos
           </p>
           <p className="text-xs font-semibold text-slate-500">
             {activeAcademicProfile
@@ -1311,7 +1311,7 @@ export function RolePermissionsEditor({
                                     isReadOnly
                                       ? 'Permiso inhabilitado temporalmente para Certificados Laborales'
                                       : academicState === 'profile-required'
-                                      ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Registro Académico'
+                                      ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Verificación de títulos'
                                       : academicState === 'outside'
                                         ? `Permiso fuera del máximo de ${activeAcademicProfile?.label}`
                                         : undefined
@@ -1392,7 +1392,7 @@ export function RolePermissionsEditor({
                             isReadOnly
                               ? 'Permiso inhabilitado temporalmente para Certificados Laborales'
                               : academicState === 'profile-required'
-                              ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Registro Académico'
+                              ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Verificación de títulos'
                               : academicState === 'outside'
                                 ? `Permiso fuera del máximo de ${activeAcademicProfile?.label}`
                                 : undefined

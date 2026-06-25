@@ -206,7 +206,7 @@ FROM (VALUES
   ('graduates.generate_certificate', 'Generar Certificado', 'Emitir certificado de título', 'graduates'),
   ('graduates.verify_certificate', 'Verificar Certificado', 'Validar autenticidad mediante QR', 'graduates'),
   ('graduates.revoke_certificate', 'Revocar Certificado', 'Anular certificado emitido', 'graduates'),
-  ('graduates.view_academic_record', 'Ver Registro Académico', 'Consultar historial académico', 'graduates'),
+  ('graduates.view_academic_record', 'Verificación de títulos', 'Consultar historial académico', 'graduates'),
   ('graduates.edit_academic_record', 'Editar Registro', 'Modificar datos académicos', 'graduates'),
   ('graduates.export', 'Exportar Graduados', 'Descargar datos de graduados', 'graduates'),
   ('graduates.view_stats', 'Ver Estadísticas', 'Consultar métricas de graduados', 'graduates'),

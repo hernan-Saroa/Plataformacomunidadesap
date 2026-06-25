@@ -215,7 +215,7 @@ const PROCESOS_INSTITUCIONALES_FALLBACK = [
   'Capacitación',
   'Evaluación Desempeño',
   'Admisiones',
-  'Registro Académico',
+  'Verificación de títulos',
   'Infraestructura TI',
   'Archivo y Correspondencia',
   'PQRS',

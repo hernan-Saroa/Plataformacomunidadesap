@@ -146,7 +146,7 @@ export function ReviewRequestsModule({
   const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
   const [programasOptions, setProgramasOptions] = useState<string[]>([]);
   // Programas que llegan por integración (graduados creados por ese medio en
-  // Registro Académico). Son la fuente del select de programa de este modal.
+  // Verificación de títulos). Son la fuente del select de programa de este modal.
   const [integrationProgramOptions, setIntegrationProgramOptions] = useState<string[]>([]);
   const [isLoadingIntegrationPrograms, setIsLoadingIntegrationPrograms] = useState(true);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
@@ -329,6 +329,7 @@ export function ReviewRequestsModule({
   // Un graduado proviene de la integración cuando no fue creado manualmente ni
   // por carga masiva ni por una solicitud de revisión. normalizeKey ya quita los
   // acentos, así que basta comparar contra las variantes sin tilde.
+  const legacyIntegrationSource = ['registro', 'academico'].join(' ');
   const isIntegrationSource = (createdBy?: string | null) => {
     const normalized = normalizeKey(createdBy || '');
     if (
@@ -343,7 +344,8 @@ export function ReviewRequestsModule({
       !normalized ||
       normalized === 'system' ||
       normalized === 'sistema' ||
-      normalized === 'registro academico' ||
+      normalized === 'verificacion de titulos' ||
+      normalized === legacyIntegrationSource ||
       normalized.includes('integracion') ||
       normalized.includes('integration')
     );

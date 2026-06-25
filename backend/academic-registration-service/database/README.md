@@ -85,7 +85,7 @@ Personas autorizadas para firmar certificados.
 
 **Campos principales:**
 - `full_name`: Nombre del firmante
-- `position`: Cargo (ej: "Director de Registro Académico")
+- `position`: Cargo (ej: "Director de Verificación de títulos")
 - `signature_url`: URL de la firma digital
 - `is_primary`: Si es el firmante principal por defecto
 

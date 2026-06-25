@@ -25,7 +25,7 @@
  * 9. Certificados Laborales
  * 10. Gestión Profesoral
  * 11. Control Interno
- * 12. Verificación de Títulos
+ * 12. Verificación de títulos
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -70,7 +70,7 @@ type ReportCategory =
   | 'certificados-lab'    // Certificados Laborales
   | 'profesoral'          // Gestión Profesoral
   | 'control-interno'     // Control Interno
-  | 'verificacion'        // Verificación de Títulos
+  | 'verificacion'        // Verificación de títulos
   | 'gestion-legal';      // Gestión Legal (SIGL)
 
 type ExportFormat = 'csv' | 'excel' | 'pdf' | 'json';
