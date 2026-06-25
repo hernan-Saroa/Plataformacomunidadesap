@@ -107,6 +107,8 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
       const person = initialData.person || {};
       const finalNameParts = (initialData.fullName || person.full_name)?.split(' ') || nameParts;
 
+      console.log('🔍 [CREATE USER] INITIAL DATA:', initialData);
+
       setFormData({
         ...formData,
         firstName: initialData.firstName || person.first_name || finalNameParts[0] || '',
@@ -116,7 +118,7 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         email: initialData.email || person.email || '',
         phone: initialData.phone || person.phone || '',
         gender: initialData.gender || person.gender || '',
-        birthDate: initialData.birthDate || person.birth_date || '',
+        birthDate: (initialData.birthDate || person.birth_date || '')?.split('T')[0] || '',
         address: initialData.address || person.address || '',
         city: initialData.city || person.city || '',
         empresaContratista: initialData.empresaContratista || person.empresa_contratista || '',
@@ -204,7 +206,7 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         errorMessage = 'El teléfono debe contener exactamente 10 dígitos numéricos.';
       }
 
-      if (!formData.city) newErrors.city = 'Requerido';
+      // if (!formData.city) newErrors.city = 'Requerido';
       
       if (!formData.birthDate) {
         newErrors.birthDate = 'Requerido';
@@ -381,7 +383,7 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                         <input type="tel" maxLength={10} value={formData.phone} onChange={(e) => handleChange('phone', e.target.value.replace(/\D/g, ''))} className={inputClass(!!errors.phone)} placeholder="10 dígitos" />
                       </div>
                       <div>
-                        <InputLabel label="Ciudad" required />
+                        <InputLabel label="Ciudad" />
                         <input type="text" value={formData.city} onChange={(e) => handleChange('city', e.target.value)} className={inputClass(!!errors.city)} placeholder="Ej: Bogotá D.C." />
                       </div>
                       <div className="md:col-span-3">
@@ -427,7 +429,7 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                         </div>
                       )}
 
-                      <div className="md:col-span-2">
+                      <div className="md:col-span-2" style={{ display: 'none' }}>
                         <InputLabel label="Programa Académico" />
                         <select value={formData.program} onChange={(e) => handleChange('program', e.target.value)} className={inputClass(!!errors.program)}>
                           <option value="">Seleccionar programa...</option>
