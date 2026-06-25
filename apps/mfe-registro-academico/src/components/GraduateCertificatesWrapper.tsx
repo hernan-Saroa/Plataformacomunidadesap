@@ -133,7 +133,7 @@ export function GraduateCertificatesWrapper({
       {/* Header */}
       <ResponsiveHeader
         key="header"
-        title="Verificación de Títulos"
+        title="Verificación de títulos"
         description="Gestiona solicitudes de revisión y certificados generados"
         icon={FileSearch}
       />

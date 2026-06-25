@@ -813,7 +813,7 @@ export function SolicitarCertificadoPublico({ onBack }: SolicitarCertificadoPubl
               <h3 className="text-white font-semibold mb-4">Servicios</h3>
               <ul className="space-y-2 text-sm">
                 <li><a href="#" className="hover:text-white transition-colors">Vinculaciones</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Verificación de Títulos</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Verificación de títulos</a></li>
                 <li><a href="#" className="hover:text-white transition-colors">Certificados Laborales</a></li>
               </ul>
             </div>

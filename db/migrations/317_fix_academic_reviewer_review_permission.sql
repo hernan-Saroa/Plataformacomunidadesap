@@ -1,4 +1,4 @@
--- MIGRATION 317: Asegurar permiso de trabajo de revision para el rol Revisor de Registro Academico.
+-- MIGRATION 317: Asegurar permiso de trabajo de revision para el rol Revisor de Verificación de títulos.
 
 BEGIN;
 
