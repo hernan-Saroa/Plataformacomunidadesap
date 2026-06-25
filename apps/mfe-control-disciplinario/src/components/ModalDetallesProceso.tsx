@@ -4922,7 +4922,7 @@ export function ModalDetallesProceso({
                                     <p className="text-[10px] text-gray-700 mt-1 leading-relaxed">{h.motivo}</p>
                                     <div className="flex items-center gap-3 mt-1">
                                       <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
-                                        <Calendar className="w-2.5 h-2.5" />{new Date(h.fecha).toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                        <Calendar className="w-2.5 h-2.5" />{formatFechaActuacion(h.fecha)}
                                       </span>
                                       <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
                                         <User className="w-2.5 h-2.5" />{h.responsable}
