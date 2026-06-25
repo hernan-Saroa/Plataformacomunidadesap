@@ -179,9 +179,9 @@ export function ExpedienteCompartidoPage() {
   };
 
   // Detectar si es dispositivo móvil
-  const isMobile = () => {
-    return window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  };
+  // const isMobile = () => {
+  //   return window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // };
 
   const getDocumentoFileName = (doc: Documento): string => {
     return doc.archivoNombre || doc.nombre || doc.downloadUrl || doc.url || doc.urlExterna || 'documento';
@@ -329,7 +329,7 @@ export function ExpedienteCompartidoPage() {
 
       // En móviles, abrir archivos pesados de audio/video en nueva pestaña.
       const previewType = getFileType(getDocumentoFileName(doc), blob.type || doc.fileType);
-      if (isMobile() && (previewType === 'video' || previewType === 'audio')) {
+      if (isMobile && (previewType === 'video' || previewType === 'audio')) {
         window.open(downloadUrl, '_blank', 'noopener,noreferrer');
         setShowModalVisor(false);
         toast.info('Documento abierto en nueva pestaña');
