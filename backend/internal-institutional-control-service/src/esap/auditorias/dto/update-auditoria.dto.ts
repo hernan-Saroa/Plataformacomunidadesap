@@ -1,5 +1,5 @@
 import {
-  IsString,
+  IsString, IsNumber,
   IsEnum,
   IsDateString,
   IsInt,
@@ -252,4 +252,17 @@ export class UpdateAuditoriaDto {
   @IsBoolean()
   @IsOptional()
   activa?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  periodoInicio?: string;
+
+  @IsDateString()
+  @IsOptional()
+  periodoFin?: string;
+
+  @IsNumber()
+  @IsOptional()
+  presupuestoEstimado?: number;
+
 }

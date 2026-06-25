@@ -3058,6 +3058,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               setDashboardSeccionForzada(null);
               setPlanAEditar(undefined);
               await recargarPlan();
+              vigenciaContext?.refetch?.();
               setVista('dashboard');
             }}
             planesExistentes={planesAnteriores}
@@ -3072,7 +3073,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             key="dashboard"
             plan={planActual}
             onActualizar={setPlanActual}
-            onRefetchPlan={recargarPlan}
+            onRefetchPlan={async () => {
+              await recargarPlan();
+              vigenciaContext?.refetch?.();
+            }}
             onVolver={() => setVista('inicio')}
             onAbrirRol4={() => {
               if (onNavegarModulo) {

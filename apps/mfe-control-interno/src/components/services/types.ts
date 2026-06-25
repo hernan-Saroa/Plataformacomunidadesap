@@ -167,6 +167,11 @@ export interface AuditoriaProgramada {
     comunicacion: { inicio: string; fin: string; duracionDias: number };
   };
   
+  // Datos adicionales
+  periodoInicio?: string;
+  periodoFin?: string;
+  presupuestoEstimado?: number;
+
   estado: EstadoAuditoriaProgramada;
   observaciones: string;
   
