@@ -3027,10 +3027,6 @@ export function ModalDetallesProceso({
     handleFilesSelected(e.dataTransfer.files);
   }, [handleFilesSelected]);
 
-  const pct             = Math.min(proceso.porcentajeTiempo, 100);
-  const diasTranscurridos = pct < 100
-    ? Math.max(0, Math.round(proceso.diasRestantes * pct / (100 - pct)))
-    : Math.max(0, -proceso.diasRestantes);
   const sc              = SEMAFORO[proceso.semaforo] ?? SEMAFORO.rojo;
   const ec              = etapaColor(proceso.etapaActual);
   const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
@@ -3904,25 +3900,20 @@ export function ModalDetallesProceso({
             </button>
           </div>
 
-          {/* ══ BARRA PROGRESO ══ */}
+          {/* ══ SEMÁFORO DE TIEMPO ══ */}
           <div className="px-5 py-2.5 border-b border-gray-100 flex-shrink-0">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-bold text-gray-600">Progreso del Proceso</span>
-              <span className="text-[11px] font-black" style={{ color: proceso.porcentajeTiempo > 100 ? '#EF4444' : '#2962FF' }}>
-                {proceso.porcentajeTiempo}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-              <motion.div className="h-full rounded-full" style={{ backgroundColor: barColor }}
-                initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }} />
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-gray-400">{diasTranscurridos} días transcurridos</span>
-              <span className="text-[10px] font-semibold"
-                style={{ color: proceso.diasRestantes < 0 ? '#EF4444' : '#6B7280' }}>
-                {proceso.diasRestantes < 0
-                  ? `${Math.abs(proceso.diasRestantes)}d vencido`
-                  : `${proceso.diasRestantes}d restantes`}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: barColor }} />
+                <span className="text-[13px] font-black" style={{ color: proceso.diasRestantes < 0 ? '#EF4444' : sc.text }}>
+                  {proceso.diasRestantes < 0
+                    ? `${Math.abs(proceso.diasRestantes)} días vencido`
+                    : `${proceso.diasRestantes} días restantes`}
+                </span>
+              </div>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border"
+                style={{ backgroundColor: sc.bg, borderColor: sc.border, color: sc.text }}>
+                {sc.label}
               </span>
             </div>
           </div>
