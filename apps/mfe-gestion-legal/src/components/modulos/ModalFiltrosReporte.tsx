@@ -217,23 +217,23 @@ export function ModalFiltrosReporte({ open, onClose, expedientes, filtroTipoActu
 
         {/* Contexto de tipo de proceso */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm">
-          <span className="text-blue-600 font-semibold">Tipo de proceso base:</span>{' '}
+          <span className="text-blue-600 font-semibold">Medio de control base:</span>{' '}
           <span className="font-bold text-blue-800">{nombreTipoActual}</span>
           <span className="text-blue-500 ml-2">({expedientes.length} expedientes)</span>
         </div>
 
         <div className="space-y-5 mt-2">
 
-          {/* Medio de Control */}
+          {/* Jurisdicción */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Medio de Control</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jurisdicción</label>
             <select
               value={filtros.medioControl}
               onChange={e => set('medioControl', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {mediosControlDisponibles.map(m => (
-                <option key={m} value={m}>{m === 'TODOS' ? 'Todos los medios de control' : m}</option>
+                <option key={m} value={m}>{m === 'TODOS' ? 'Todas las jurisdicciones' : m}</option>
               ))}
             </select>
           </div>

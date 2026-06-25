@@ -185,7 +185,7 @@ export function ModuloDefensaJudicialV3() {
         usuarioArchivo: exp.usuarioArchivo || 'Sistema',
         motivoArchivo: exp.motivoArchivo || 'Sin motivo especificado',
         metadatos: {
-          'Tipo Proceso': exp.tipoProceso || 'No especificado',
+          'Medio de Control': exp.tipoProceso || 'No especificado',
           'Juzgado': exp.juzgadoConocimiento || 'No asignado',
           'Cuantía': exp.cuantia ? `$${exp.cuantia.toLocaleString()}` : 'No especificada',
           'Etapa': exp.etapaProcesal || exp.etapa || 'No especificada'
@@ -1173,11 +1173,11 @@ export function ModuloDefensaJudicialV3() {
               },
               {
                 type: 'select',
-                label: 'Tipo de Proceso',
+                label: 'Medio de Control',
                 value: filtroTipo,
                 onChange: setFiltroTipo,
                 options: [
-                  { value: 'TODOS', label: 'Todos los tipos' },
+                  { value: 'TODOS', label: 'Todos los medios de control' },
                   ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
                 ]
               },
