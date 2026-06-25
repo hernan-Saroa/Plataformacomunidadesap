@@ -99,6 +99,7 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
               {renderInputRow("max_pct_investigacion", "Máximo Porcentaje Investigación", "Límite superior del porcentaje de tiempo asignado a investigación sobre el PTA total.", true)}
               {renderInputRow("max_pct_extension", "Máximo Porcentaje Extensión", "Límite superior extendido disponible en la bolsa sobre la extensión social o consultoría del PTA.", true)}
               {renderInputRow("max_pct_complementarias", "Máximo Porcentaje Complementarias", "Tasa máxima porcentual permitida para actividades opcionales.", true)}
+              {renderInputRow("max_pct_inv_ext_combinado", "Máximo Investigación + Extensión (Enlace/Director)", "Tope combinado de investigación y extensión para Enlace Territorial y Director de Grupo sobre el PTA total.", true)}
               {renderInputRow("dias_cierre_concertacion", "Fecha Límite Concertación", "Plazo máximo para los docentes luego del inicio de clases para someter su PTA a revisión en días contados.", false, "días")}
               {renderInputRow("dias_verificacion_posterior", "Plazo Jefaturas Regionales", "Días hábiles correspondientes después de iniciar clases para dar feedback al docente.", false, "días")}
             </div>

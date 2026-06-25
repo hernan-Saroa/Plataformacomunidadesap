@@ -340,7 +340,13 @@ function getConstraintErrorMessage(nombre: string, horas: number, constraint: Ho
 
 // ═══ MOTOR DE CÁLCULO FRONTEND (réplica Excel) ═══════════════════
 
-function calcHorasBase(asigNombre: string, programaTipo: string, creditos: number, rules?: any): number {
+function calcHorasBase(asigNombre: string, programaTipo: string, creditos: number, rules?: any, programaId?: string): number {
+  // Override por programa (Matriz Paramétrica — TabDocencia). Si el admin configuró este
+  // programa específico, su base manda sobre los defaults por categoría.
+  const progCfg = programaId ? rules?.docencia_por_programa?.[String(programaId)] : undefined;
+  if (progCfg && Number(progCfg.base) > 0) {
+    return progCfg.esVariable ? creditos * Number(progCfg.base) : Number(progCfg.base);
+  }
   // Seminario Sede Central: bloque fijo (128h default)
   if (asigNombre.includes('Seminario De Énfasis')) return rules?.docencia_base_seminario_sc || 128;
   // Pregrado Sede Central (AP/EP): bloque fijo (64h default)
@@ -353,10 +359,15 @@ function calcHorasBase(asigNombre: string, programaTipo: string, creditos: numbe
   return creditos * (rules?.docencia_base_apt || 16);
 }
 
-function calcTotalHoras(asigNombre: string, horasBase: number, rules?: any): number {
+function calcTotalHoras(asigNombre: string, horasBase: number, rules?: any, programaId?: string): number {
   if (asigNombre === 'Opciones De Grado AP') return 20;
   if (asigNombre === 'Seminario De Opciones De Grado APT') return 144;
-  return horasBase * (rules?.criterio_multiplicador_docencia || 3);
+  // Multiplicador por programa (Matriz Paramétrica) si existe; si no, el global de config.
+  const progCfg = programaId ? rules?.docencia_por_programa?.[String(programaId)] : undefined;
+  const mult = (progCfg && Number(progCfg.multiplicador) > 0)
+    ? Number(progCfg.multiplicador)
+    : (rules?.criterio_multiplicador_docencia || 3);
+  return horasBase * mult;
 }
 
 function prorratear(total: number, base: number, pct: number): number {
@@ -558,13 +569,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (roles.success) setRolesInvestigacion(roles.data);
       if (config.success && config.data) setPtaRules(config.data);
       if (secciones.success && Array.isArray(secciones.data) && secciones.data.length > 0) {
-        // Merge: la config en BD puede no traer 'multiplicador'. El backend hardcodea
-        // capacitación x2 al calcular horas, así que rellenamos el multiplicador desde
-        // los defaults por key para que el formulario coincida con el cálculo real.
+        // El multiplicador de la config (ext_secciones[].multiplicador) es la fuente de verdad
+        // y el backend ya lo aplica. Solo usamos el default por key si la config NO trae el campo,
+        // respetando un multiplicador explícito (incluido 1) configurado por el admin.
         const merged = secciones.data.map((s: any) => {
           const def = DEFAULT_EXT_SECCIONES.find(d => d.key === s.key);
-          const mult = (s.multiplicador && s.multiplicador > 1)
-            ? s.multiplicador
+          const mult = (s.multiplicador != null && Number(s.multiplicador) > 0)
+            ? Number(s.multiplicador)
             : (def?.multiplicador || 1);
           return { ...s, multiplicador: mult };
         });
@@ -966,10 +977,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return n.includes('ENLACE TERRITORIAL') || n.includes('DIRECTOR DE GRUPO') || n.includes('DIRECTOR GRUPO');
     });
     if (tieneEnlaceODir) {
-      const maxCruzado = Math.round(horasAProgramar * 0.5);
+      const pctCruzado = (ptaRules?.max_pct_inv_ext_combinado ?? 50) / 100;
+      const maxCruzado = Math.round(horasAProgramar * pctCruzado);
       const sumaInvExt = hInvestigacion + hExtension;
       if (sumaInvExt > maxCruzado) {
-        warns.push(`Enlace/Director: investigación+extensión (${sumaInvExt}h) excede el 50% del PTA (${maxCruzado}h).`);
+        warns.push(`Enlace/Director: investigación+extensión (${sumaInvExt}h) excede el ${ptaRules?.max_pct_inv_ext_combinado ?? 50}% del PTA (${maxCruzado}h).`);
       }
     }
 
@@ -1049,8 +1061,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           // Calcular horas según fórmulas Excel (ahora ligadas al motor de configuración)
           const prog = programas.find(p => p.id === updated.programa_id);
           const progTipo = prog?.tipo || 'APT';
-          updated.horas_base = calcHorasBase(asigCat.nombre, progTipo, asigCat.creditos || 3, ptaRules);
-          updated.total_horas = calcTotalHoras(asigCat.nombre, updated.horas_base, ptaRules);
+          updated.horas_base = calcHorasBase(asigCat.nombre, progTipo, asigCat.creditos || 3, ptaRules, updated.programa_id);
+          updated.total_horas = calcTotalHoras(asigCat.nombre, updated.horas_base, ptaRules, updated.programa_id);
           updated.porcentaje_pta = horasAProgramar > 0
             ? Number(((updated.total_horas / horasAProgramar) * 100).toFixed(1)) : 0;
         }
@@ -1472,7 +1484,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
         : undefined,
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
-      extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || e.horas_ejecutadas > 0))),
+      extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
       complementarias: complementarias.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       academico_admin: academicoAdmin.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       observaciones_docente: observacionesDocente,
@@ -1668,7 +1680,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       setShowFirmaDocente(true);
       if (res.data.devCode) {
         console.log('🔑 [PRUEBAS] Código de validación OTP recibido:', res.data.devCode);
-        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { autoClose: false });
+        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
       }
       toast.success('Código de validación enviado al correo registrado.');
     } catch (error: any) {
@@ -2460,7 +2472,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                         Observación ({ (asig.observaciones || '').length }/50)
                                       </label>
                                       <button onClick={() => handleAsigChange(asig.id, '_showObs', false)} className="text-slate-400 hover:text-slate-600">
-                                        <X className="w-3 h-3" />
+                                        <XIcon className="w-3 h-3" />
                                       </button>
                                     </div>
                                     <input

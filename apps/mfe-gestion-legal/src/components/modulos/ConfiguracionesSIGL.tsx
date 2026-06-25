@@ -63,8 +63,8 @@ const CAMPOS_POR_PASO = [
     nombre: 'Paso 1: Datos del Proceso Judicial',
     campos: [
       { id: 'numeroRadicado', label: 'Número de Radicado', defaultObligatorio: true, defaultVisible: true, fixed: true },
-      { id: 'medioControl', label: 'Medio de Control', defaultObligatorio: true, defaultVisible: true },
-      { id: 'tipoProcesoJudicial', label: 'Tipo de Proceso', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'medioControl', label: 'Jurisdicción', defaultObligatorio: true, defaultVisible: true },
+      { id: 'tipoProcesoJudicial', label: 'Medio de Control', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'etapaProcesal', label: 'Etapa Procesal', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'cuantia', label: 'Cuantía (COP)', defaultObligatorio: false, defaultVisible: true },
     ]
@@ -586,8 +586,8 @@ export function ConfiguracionesSIGL() {
 
     const nuevoTipo: TipoProcesoJudicial = {
       id: `tipo-${Date.now()}`,
-      nombre: 'Nuevo Tipo de Proceso',
-      descripcion: 'Descripción del nuevo tipo de proceso judicial',
+      nombre: 'Nuevo Medio de Control',
+      descripcion: 'Descripción del nuevo medio de control',
       plazo: 10,
       alertaDias: 3,
       activo: true,
@@ -600,8 +600,8 @@ export function ConfiguracionesSIGL() {
     ));
     setShowModalAgregarTipoProceso(false);
 
-    toast.success('Tipo de proceso agregado correctamente', {
-      description: 'Se ha agregado un nuevo tipo de proceso judicial',
+    toast.success('Medio de control agregado correctamente', {
+      description: 'Se ha agregado un nuevo medio de control',
       duration: 3000
     });
   };
@@ -624,8 +624,8 @@ export function ConfiguracionesSIGL() {
     ));
     setShowModalEliminarTipoProceso(false);
 
-    toast.success('Tipo de proceso eliminado correctamente', {
-      description: `"${tipoProcesoAEliminar.nombre}" ha sido eliminado de los tipos de procesos judiciales`,
+    toast.success('Medio de control eliminado correctamente', {
+      description: `"${tipoProcesoAEliminar.nombre}" ha sido eliminado de los medios de control`,
       duration: 3000
     });
 
@@ -652,8 +652,8 @@ export function ConfiguracionesSIGL() {
 
     const nuevoMedio: MedioControl = {
       id: `medio-${Date.now()}`,
-      nombre: 'Nuevo Medio de Control',
-      descripcion: 'Descripción del nuevo medio de control',
+      nombre: 'Nueva Jurisdicción',
+      descripcion: 'Descripción de la nueva jurisdicción',
       activo: true,
       orden: (moduloActual.mediosControl?.length || 0) + 1,
     };
@@ -664,8 +664,8 @@ export function ConfiguracionesSIGL() {
         : m
     ));
 
-    toast.success('Medio de control agregado correctamente', {
-      description: 'Se ha agregado un nuevo medio de control',
+    toast.success('Jurisdicción agregada correctamente', {
+      description: 'Se ha agregado una nueva jurisdicción',
       duration: 3000
     });
   };
@@ -680,8 +680,8 @@ export function ConfiguracionesSIGL() {
         : m
     ));
 
-    toast.success('Medio de control eliminado correctamente', {
-      description: `"${medio.nombre}" ha sido eliminado de los medios de control`,
+    toast.success('Jurisdicción eliminada correctamente', {
+      description: `"${medio.nombre}" ha sido eliminada de las jurisdicciones`,
       duration: 3000
     });
   };
@@ -2136,10 +2136,10 @@ export function ConfiguracionesSIGL() {
                       <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                          Tipos de Procesos Judiciales
+                          Medios de Control
                         </h2>
                         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                          Define los tipos de procesos que estarán disponibles en el formulario de Nueva Demanda
+                          Define los medios de control que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -2156,7 +2156,7 @@ export function ConfiguracionesSIGL() {
                             }}
                           >
                             <Plus className="w-4 h-4" />
-                            <span>Agregar Tipo</span>
+                            <span>Agregar Medio</span>
                           </button>
                         )}
                         <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
@@ -2187,7 +2187,7 @@ export function ConfiguracionesSIGL() {
                               value={tipo.nombre}
                               onChange={(e) => actualizarTipoProceso(tipo.id, { nombre: e.target.value })}
                               className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="Nombre del tipo de proceso"
+                              placeholder="Nombre del medio de control"
                             />
                             {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
                               <button
@@ -2206,7 +2206,7 @@ export function ConfiguracionesSIGL() {
                               value={tipo.descripcion}
                               onChange={(e) => actualizarTipoProceso(tipo.id, { descripcion: e.target.value })}
                               className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                              placeholder="Descripción del tipo de proceso..."
+                              placeholder="Descripción del medio de control..."
                               rows={2}
                             />
                           </div>
@@ -2767,7 +2767,7 @@ export function ConfiguracionesSIGL() {
                                     Campos Adicionales Dinámicos:
                                   </label>
                                   <p className="text-[11px] text-gray-500">
-                                    Agrega campos personalizados para este tipo de proceso judicial en pasos específicos del formulario.
+                                    Agrega campos personalizados para este medio de control en pasos específicos del formulario.
                                   </p>
                                 </div>
                                 {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT) && (
@@ -2797,7 +2797,7 @@ export function ConfiguracionesSIGL() {
                                 {(!tipo.camposAdicionalesConfig || tipo.camposAdicionalesConfig.length === 0) ? (
                                   <div className="text-center py-8 bg-white rounded-lg border border-dashed border-gray-300 p-6">
                                     <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                                    <p className="text-xs text-gray-400 font-medium">No hay campos adicionales configurados para este tipo de proceso.</p>
+                                    <p className="text-xs text-gray-400 font-medium">No hay campos adicionales configurados para este medio de control.</p>
                                     <p className="text-[10px] text-gray-400 mt-1">Haz clic en "Agregar Campo" para crear uno nuevo.</p>
                                   </div>
                                 ) : (
@@ -3261,10 +3261,10 @@ export function ConfiguracionesSIGL() {
                       <div className="flex-1">
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                           <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                          Medios de Control
+                          Jurisdicciones
                         </h2>
                         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                          Define los medios de control que estarán disponibles en el formulario de Nueva Demanda
+                          Define las jurisdicciones que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -3280,7 +3280,7 @@ export function ConfiguracionesSIGL() {
                           }}
                         >
                           <Plus className="w-4 h-4" />
-                          <span>Agregar Medio</span>
+                          <span>Agregar Jurisdicción</span>
                         </button>
                         <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
                           {expandedSections.mediosControl ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -3309,7 +3309,7 @@ export function ConfiguracionesSIGL() {
                               value={medio.nombre}
                               onChange={(e) => actualizarMedioControl(medio.id, { nombre: e.target.value })}
                               className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="Nombre del medio de control"
+                              placeholder="Nombre de la jurisdicción"
                             />
                             <button
                               onClick={() => eliminarMedioControl(medio.id)}
@@ -3325,7 +3325,7 @@ export function ConfiguracionesSIGL() {
                               value={medio.descripcion}
                               onChange={(e) => actualizarMedioControl(medio.id, { descripcion: e.target.value })}
                               className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                              placeholder="Descripción del medio de control..."
+                              placeholder="Descripción de la jurisdicción..."
                               rows={2}
                             />
                           </div>
@@ -4038,9 +4038,9 @@ export function ConfiguracionesSIGL() {
             <div className="p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Agregar Tipo de Proceso</h3>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Medio de Control</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    ¿Desea agregar un nuevo tipo de proceso judicial?
+                    ¿Desea agregar un nuevo medio de control?
                   </p>
                 </div>
                 <button
@@ -4053,7 +4053,7 @@ export function ConfiguracionesSIGL() {
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
-                  Se creará un nuevo tipo de proceso con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
+                  Se creará un nuevo medio de control con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
                 </p>
               </div>
 
@@ -4072,7 +4072,7 @@ export function ConfiguracionesSIGL() {
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
                 >
-                  Agregar Tipo
+                  Agregar Medio
                 </button>
               </div>
             </div>
@@ -4087,9 +4087,9 @@ export function ConfiguracionesSIGL() {
             <div className="p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Proceso</h3>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Medio de Control</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    ¿Está seguro de eliminar el siguiente tipo de proceso?
+                    ¿Está seguro de eliminar el siguiente medio de control?
                   </p>
                 </div>
                 <button
@@ -4102,7 +4102,7 @@ export function ConfiguracionesSIGL() {
 
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
-                  Tipo: "{tipoProcesoAEliminar.nombre}"
+                  Medio: "{tipoProcesoAEliminar.nombre}"
                 </p>
                 <p className="text-xs text-red-700 mb-3">
                   {tipoProcesoAEliminar.descripcion}
@@ -4123,7 +4123,7 @@ export function ConfiguracionesSIGL() {
                   onClick={confirmarEliminarTipoProceso}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
                 >
-                  Eliminar Tipo
+                  Eliminar Medio
                 </button>
               </div>
             </div>

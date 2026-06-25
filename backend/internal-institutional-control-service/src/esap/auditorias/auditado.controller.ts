@@ -395,7 +395,9 @@ export class AuditadoController {
   async findMisHallazgos(@Param('id') id: string, @Req() req: any) {
     const usuario = this.getUsuarioFromReq(req);
     await this.auditoriasService.assertAuditadoOwnership(id, usuario);
-    return this.hallazgosService.findByAuditoria(id);
+    const hallazgos = await this.hallazgosService.findByAuditoria(id);
+    // Filtrar los hallazgos en estado Borrador para que no los vea el área auditada
+    return hallazgos.filter(h => (h.estado || '').toLowerCase() !== 'borrador');
   }
 
   /**

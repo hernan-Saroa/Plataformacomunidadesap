@@ -235,6 +235,15 @@ export class Auditoria {
   supervisorAsignadoId?: string | null;
 
   // Campos adicionales del formulario
+  @Column({ name: 'periodo_inicio', type: 'date', nullable: true })
+  periodoInicio?: Date;
+
+  @Column({ name: 'periodo_fin', type: 'date', nullable: true })
+  periodoFin?: Date;
+
+  @Column({ name: 'presupuesto_estimado', type: 'numeric', precision: 15, scale: 2, nullable: true })
+  presupuestoEstimado?: number;
+
   @Column({ type: 'text', nullable: true })
   alcance?: string;
 

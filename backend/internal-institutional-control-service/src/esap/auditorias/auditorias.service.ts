@@ -1053,6 +1053,13 @@ export class AuditoriasService {
       ? this.parseDateOnly(createDto.fechaInicioComunicacion)
       : undefined;
 
+    const periodoInicio = createDto.periodoInicio
+      ? this.parseDateOnly(createDto.periodoInicio)
+      : undefined;
+    const periodoFin = createDto.periodoFin
+      ? this.parseDateOnly(createDto.periodoFin)
+      : undefined;
+
     // Validar que fechaFin sea posterior a fechaInicio
     if (fechaFin < fechaInicio) {
       throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
@@ -1109,6 +1116,9 @@ export class AuditoriasService {
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
+      periodoInicio: periodoInicio,
+      periodoFin: periodoFin,
+      presupuestoEstimado: createDto.presupuestoEstimado,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
       estadoKanban: this.normalizeEstadoKanban(createDto.estadoKanban),
     };
@@ -1425,6 +1435,19 @@ export class AuditoriasService {
       auditoria.fechaInicioComunicacion = updateDto.fechaInicioComunicacion
         ? this.parseDateOnly(updateDto.fechaInicioComunicacion)
         : undefined;
+    }
+    if (updateDto.periodoInicio !== undefined) {
+      auditoria.periodoInicio = updateDto.periodoInicio
+        ? this.parseDateOnly(updateDto.periodoInicio)
+        : undefined;
+    }
+    if (updateDto.periodoFin !== undefined) {
+      auditoria.periodoFin = updateDto.periodoFin
+        ? this.parseDateOnly(updateDto.periodoFin)
+        : undefined;
+    }
+    if (updateDto.presupuestoEstimado !== undefined) {
+      auditoria.presupuestoEstimado = updateDto.presupuestoEstimado;
     }
     if (updateDto.progreso !== undefined) auditoria.progreso = updateDto.progreso;
     if (updateDto.prioridad) auditoria.prioridad = updateDto.prioridad as PrioridadAuditoria;

@@ -2757,7 +2757,7 @@ function TabPlanMejoramientoAuditado({
                                 disabled={ocupado}
                                 value={dr.obs}
                                 onChange={(e) => setDraft(accion.id, { obs: e.target.value })}
-                                rows={2}
+                                rows={6}
                                 placeholder="Describe el avance de esta acción..."
                                 style={{
                                   borderRadius: 8,
