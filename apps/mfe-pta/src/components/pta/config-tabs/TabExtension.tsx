@@ -89,106 +89,20 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-blue-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
                 <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">1</span>
-                Dirección de Capacitación (Tabla 5)
+                Tope Global de Extensión
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
             </summary>
-            <div className="p-4 border-t border-slate-100 flex flex-col md:grid md:grid-cols-2 gap-3 bg-blue-50/10">
-              {renderInputRow("ext_max_horas_enlace", "Tope Global Extensión (Horas)", "Límite en horas para toda la extensión.", "h")}
-              {renderInputRow("ext_max_pct_enlace", "Tope Global Extensión (%)", "% respecto al total del PTA.", "%")}
-              {renderInputRow("ext_talleres_ejec_base", "Orientación Talleres", "Base horaria.", "h")}
-              {renderInputRow("ext_seminarios_ejec_base", "Orientación Seminarios", "Base horaria", "h")}
-              {renderInputRow("ext_cursos_ejec_max", "Cursos Ejec. Máxima", "Hasta 64h totales (ver ref).", "h")}
-              {renderInputRow("ext_diplomados_ejec_max", "Diplomados Ejec. Máx", "Hasta 80h de ejecución.", "h")}
-              
-              {/* Construction Component - Placeholder disabled */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl shadow-sm gap-4 opacity-50 cursor-not-allowed">
-                <div className="flex-1">
-                  <h4 className="text-[13px] font-bold text-slate-600 leading-tight mb-1">Construcción Contenidos</h4>
-                  <p className="text-[11px] text-red-500 font-bold leading-tight">Pendiente de actualización normativa</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="number" value={0} disabled className="w-24 bg-slate-100 border border-slate-200 text-slate-500 font-bold rounded-lg px-3 py-2 text-center" />
-                </div>
-              </div>
+            <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-blue-50/10">
+              {renderInputRow("ext_max_horas_enlace", "Tope Global Extensión (Horas)", "Límite máximo de horas para el Enlace de extensión. Los topes por actividad se configuran abajo en cada sección.", "h")}
             </div>
           </details>
 
-          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden">
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-amber-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">2</span>
-                Dirección de Procesos de Selección (Tablas 6, 7, 8)
-              </span>
-              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-            </summary>
-            <div className="p-4 border-t border-slate-100 flex flex-col md:grid md:grid-cols-2 gap-3 bg-amber-50/10">
-              {renderInputRow("ext_sel_revision_prueba", "Revisión Estruct. Prueba", "Hora por capacitación/sesión.", "h")}
-              {renderInputRow("ext_sel_validacion_prueba", "Validación Sesión", "Horas por sesión val.", "h")}
-              {renderInputRow("ext_sel_construccion_casos", "Construcción Casos", "4 horas por caso.", "h")}
-              {renderInputRow("ext_sel_revision_casos", "Revisión Casos", "3 horas por caso.", "h")}
-              {renderInputRow("ext_sel_item_validacion", "Validación Ítems", "1 hora por revisión de ítem.", "h")}
-              {renderInputRow("ext_sel_analisis_evidencias", "Análisis Evidencias", "Hora y media semanal.", "h")}
-              {renderInputRow("ext_sel_jurado_con_cal", "Jurado de Prueba", "Calificar documento (3h).", "h")}
-              {renderInputRow("ext_sel_jurado_apt_vir", "Aptitud Oral / Visual", "Sustentación (2h).", "h")}
-            </div>
-          </details>
-
-          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden">
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-emerald-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">3</span>
-                Dirección Fortalecimiento Gestión Estatal (Tablas 9-12)
-              </span>
-              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-            </summary>
-            <div className="p-4 border-t border-slate-100 flex flex-col md:grid md:grid-cols-2 gap-3 bg-emerald-50/10">
-              {/* Asistencia Tecnica */}
-              {renderInputRow("ext_fag_asistencia_tecnica", "Retroalim. Asistencia Téc", "PDET y 5/6a categoría (80h).", "h")}
-              {renderInputRow("ext_fag_bateria_indicadores", "Batería Indicadores", "Medición de resultados (80h).", "h")}
-              
-              {/* Rediseño inst */}
-              {renderInputRow("ext_fag_red_plan_1", "Rediseño (Plan Inv 1)", "Asesoría técnica prep info (40h).", "h")}
-              {renderInputRow("ext_fag_red_analisis_1", "Rediseño (Análisis Est)", "Análisis interno/externo (80h).", "h")}
-              {renderInputRow("ext_fag_red_arq_1", "Rediseño (Arquit Inst)", "Arquitectura, procesos (100h).", "h")}
-
-              {/* Laboratorios FIJO / VAR */}
-              {renderInputRow("ext_lab_fijo_participacion", "Laboratorio (Particip. Fija)", "Representación, Foros (100h).", "h")}
-              {renderInputRow("ext_lab_fijo_administrativo", "Laboratorio (Coord. Fija)", "Gestión administrativa (120h).", "h")}
-              {renderInputRow("ext_lab_var_planear", "Laboratorio (Planeación)", "Elaboración de docs técnicos (80h).", "h")}
-              
-              {/* Investigacion Aplicada T12 */}
-              {renderInputRow("ext_inv_doc_tec_max", "Inv. Aplicada (Docs Téc)", "Máximo doc. técnico (60h).", "h")}
-              {renderInputRow("ext_inv_prod_nuevo_con_max", "Inv. Apli (Nuevo Conoc.)", "Categoría MInciencias (60h).", "h")}
-              {renderInputRow("ext_inv_prod_apropiacion_max", "Inv. Apli (Apropiación Soc.)", "Divulgación de la ciencia (60h).", "h")}
-            </div>
-          </details>
-
-          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden">
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-rose-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-rose-100 text-rose-700 flex items-center justify-center font-black text-xs">4</span>
-                Escuela de Alto Gobierno (Tabla 13)
-              </span>
-              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-            </summary>
-            <div className="p-4 border-t border-slate-100 flex flex-col md:grid md:grid-cols-2 gap-3 bg-rose-50/10">
-              {renderInputRow("ext_eag_coaching_min", "Coaching Directivo Min", "Desde 80h.", "h")}
-              {renderInputRow("ext_eag_coaching_max", "Coaching Directivo Max", "Hasta 200h.", "h")}
-              {renderInputRow("ext_eag_formacion_min", "Formación Estratégica Min", "Desde 80h.", "h")}
-              {renderInputRow("ext_eag_formacion_max", "Formación Estratégica Max", "Hasta 200h.", "h")}
-              {renderInputRow("ext_eag_gestion_con_min", "Gestión del Conocimiento Min", "Desde 80h.", "h")}
-              {renderInputRow("ext_eag_gestion_con_max", "Gestión del Conocimiento Max", "Hasta 200h.", "h")}
-              {renderInputRow("ext_eag_desarrollo_con_min", "Desarrollo de Contenidos Min", "Desde 40h.", "h")}
-              {renderInputRow("ext_eag_desarrollo_con_max", "Desarrollo de Contenidos Max", "Hasta 120h.", "h")}
-            </div>
-          </details>
-
-          {/* ── SECCIÓN 5: Secciones y Actividades de Extensión (Configurables) ── */}
+          {/* ── Secciones y Actividades de Extensión — única fuente de topes por actividad (max_horas) ── */}
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-violet-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-violet-100 text-violet-700 flex items-center justify-center font-black text-xs">5</span>
+                <span className="w-6 h-6 rounded bg-violet-100 text-violet-700 flex items-center justify-center font-black text-xs">2</span>
                 Secciones y Actividades de Extensión
                 <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{secciones.length} secciones</span>
               </span>
