@@ -26,6 +26,7 @@ import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
+import { buildServiceAssetUrl } from '../../../config/environment';
 import { toast } from 'sonner';
 
 // Tipos locales para UI
@@ -464,11 +465,32 @@ export function SeccionHallazgosExpediente({
     const nombre = evidencia.nombre || evidencia.nombreArchivoOriginal || evidencia;
     const tipo = evidencia.tipoMime || evidencia.tipo || '';
     
-    // Construir URL del servidor
+    // Construir URL del servidor según el ambiente actual (dev, qa, pre, prod)
     let url = evidencia.rutaArchivo;
-    if (url && !url.startsWith('http')) {
-      // URL relativa, agregar base del servidor
-      url = `http://localhost:3007/${url.replace(/\\/g, '/')}`;
+    if (url) {
+      url = String(url).replace(/\\/g, '/').trim();
+
+      if (/^https?:\/\//i.test(url)) {
+        try {
+          const parsedUrl = new URL(url);
+          const esLocalhost = ['localhost', '127.0.0.1', '::1'].includes(parsedUrl.hostname);
+
+          url = esLocalhost
+            ? buildServiceAssetUrl(
+                'control-institucional',
+                `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`,
+              )
+            : url;
+        } catch {
+          // Mantener la URL original si no se puede parsear.
+        }
+      } else if (url.startsWith('/services/')) {
+        url = `${window.location.origin}${url}`;
+      } else if (url.startsWith('/control-institucional/')) {
+        url = buildServiceAssetUrl('control-institucional', url.replace(/^\/control-institucional/, ''));
+      } else {
+        url = buildServiceAssetUrl('control-institucional', url);
+      }
     }
     
     // Determinar si es PDF o imagen
