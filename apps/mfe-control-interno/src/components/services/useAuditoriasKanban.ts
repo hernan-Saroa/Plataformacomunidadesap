@@ -107,6 +107,7 @@ export interface AuditoriaKanban {
   responsableAreaNombre?: string;
   responsableAreaCargo?: string;
   responsableAreaEmail?: string;
+  presupuestoEstimado?: string | number;
 }
 
 export interface CriterioAuditoria {
@@ -354,8 +355,8 @@ function formatearFecha(fecha: string): string {
  * Mapea tipo del backend (respeta el tipo dinámico configurado)
  */
 function mapearTipo(tipo?: string): TipoAuditoria {
-  if (!tipo) return 'regular';
-  return tipo.toLowerCase();
+  if (!tipo) return 'Regular';
+  return tipo;
 }
 
 /**
@@ -519,6 +520,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     responsableAreaNombre: auditoriaBackend.responsableAreaNombre || auditoriaBackend.responsable_area_nombre || undefined,
     responsableAreaCargo: auditoriaBackend.responsableAreaCargo || auditoriaBackend.responsable_area_cargo || undefined,
     responsableAreaEmail: auditoriaBackend.responsableAreaEmail || auditoriaBackend.responsable_area_email || undefined,
+    presupuestoEstimado: auditoriaBackend.presupuestoEstimado,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
     planAnualAño:

@@ -170,7 +170,7 @@ const generarLogsMock = () => {
       }
     },
     
-    // ========== GRADUADOS Y REGISTRO ACADÉMICO ==========
+    // ========== GRADUADOS Y VERIFICACIÓN DE TÍTULOS ==========
     {
       accion: 'crear',
       descripcion: 'Registrar nuevo graduado: María Fernanda López',
@@ -383,7 +383,7 @@ const generarLogsMock = () => {
       registroId: 'conc-jur-2026-018',
       modulo: 'Gestión Legal',
       cambios: {
-        despues: { codigo: 'CJ-2026-018', tema: 'Normatividad Académica', solicitante: 'Registro Académico', estado: 'EN_REVISION' }
+        despues: { codigo: 'CJ-2026-018', tema: 'Normatividad Académica', solicitante: 'Verificación de títulos', estado: 'EN_REVISION' }
       }
     },
     

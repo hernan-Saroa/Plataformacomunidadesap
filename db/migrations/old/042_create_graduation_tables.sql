@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS academic_registration.signers (
 
     -- Información del firmante
     full_name VARCHAR(255) NOT NULL,
-    position VARCHAR(255) NOT NULL, -- Ej: "Director de Registro Académico"
+    position VARCHAR(255) NOT NULL, -- Ej: "Director de Verificación de títulos"
     department VARCHAR(255),
     email VARCHAR(255),
 
@@ -368,9 +368,9 @@ INSERT INTO academic_registration.signers (
     is_primary
 ) VALUES (
     uuid_generate_v4(),
-    'Director de Registro Académico',
-    'Director(a) de Registro Académico',
-    'Registro Académico',
+    'Director de Verificación de títulos',
+    'Director(a) de Verificación de títulos',
+    'Verificación de títulos',
     true,
     true
 ) ON CONFLICT DO NOTHING;

@@ -1079,12 +1079,15 @@ export class ProcessService {
 
     const procesoGuardado = await this.processRepository.save(proceso);
 
+    const profesionalAprobador = await this.professionalRepository.findOne({ where: { idUser: aprobadoPorId } });
+    const nombreAprobador = profesionalAprobador?.nombreCompleto || aprobadoPorId;
+
     await this.actuacionesRepository.save({
       processId: id,
       tipo: 'cambio_etapa',
       etapa: nuevaEtapa,
       descripcion: `Cambio de etapa aprobado mediante auto de apertura. Etapa anterior: ${etapaAnterior}.`,
-      responsableNombre: aprobadoPorId,
+      responsableNombre: nombreAprobador,
       fechaActuacion: fechaAprobacion,
       observaciones: `Etapa anterior: ${etapaAnterior} | Nueva etapa: ${nuevaEtapa}`,
     });

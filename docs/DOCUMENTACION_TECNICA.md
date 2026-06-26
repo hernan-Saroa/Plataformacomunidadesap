@@ -157,7 +157,7 @@ La plataforma ComUNIdadESAP es una aplicación de página única (Single Page Ap
 | Certificados | Completo | Emisión y validación de certificados laborales y académicos con códigos QR para verificación pública y plantillas personalizables | certification-service |
 | Reportería | Completo | Generación de reportes en PDF, Excel y dashboards interactivos con métricas en tiempo real y exportación de datos | academic-registration-service, certification-service, internal-disciplinary-control-service, internal-institutional-control-service, audit-service |
 | Portal Unificado | Completo | Dashboard responsivo que se adapta dinámicamente según el rol del usuario, mostrando widgets relevantes y accesos directos | Frontend React |
-| Micro-Frontends | En Migración | Arquitectura modular con múltiples módulos activos organizados en dominios (admin, alertas, auditoría, autenticación, disciplinario, firma electrónica, gestión legal, registro académico) y migración incremental planificada | Frontend modular |
+| Micro-Frontends | En Migración | Arquitectura modular con múltiples módulos activos organizados en dominios (admin, alertas, auditoría, autenticación, disciplinario, firma electrónica, gestión legal, verificación de títulos) y migración incremental planificada | Frontend modular |
 
 ## 3. REQUISITOS NO FUNCIONALES
 
@@ -279,7 +279,7 @@ La estructura del proyecto sigue una organización modular y escalable, separand
 │   ├── mfe-control-interno/       # Micro-frontend de Control Interno
 │   ├── mfe-firma-electronica/     # Micro-frontend de Firma Electrónica
 │   ├── mfe-gestion-legal/         # Micro-frontend de Gestión Legal
-│   ├── mfe-registro-academico/    # Micro-frontend de Registro Académico
+│   ├── mfe-registro-academico/    # Micro-frontend de Verificación de títulos
 │   └── ...                        # Otros MFE específicos
 ├── packages/                      # Paquetes y librerías compartidas
 │   ├── shared-ui/                 # Componentes de UI compartidos
@@ -288,7 +288,7 @@ La estructura del proyecto sigue una organización modular y escalable, separand
 ├── backend/                       # Microservicios del backend
 │   ├── api-gateway/               # API Gateway principal
 │   ├── auth-service/              # Servicio de autenticación
-│   ├── academic-registration-service/ # Servicio de registro académico
+│   ├── academic-registration-service/ # Servicio de verificación de títulos
 │   ├── academic-work-plan-service/    # Servicio de planes de trabajo
 │   ├── certification-service/     # Servicio de certificación
 │   ├── internal-disciplinary-control-service/ # Control disciplinario
@@ -529,7 +529,7 @@ La **Capa de Presentación** (Presentation Layer) representa la interfaz de usua
 
 La **Capa de Aplicación** (Application Layer) actúa como punto de entrada unificado a través del API Gateway, que implementa middlewares críticos como autenticación JWT, rate limiting para protección contra ataques DoS, y enrutamiento inteligente hacia los microservicios apropiados. Esta capa garantiza que todas las requests sean validadas y autorizadas antes de llegar a los servicios de negocio.
 
-La **Capa de Servicios** (Service Layer) contiene los 11 microservicios especializados, cada uno enfocado en un dominio funcional específico como autenticación, registro académico, certificación, auditorías institucionales, procesos disciplinarios y notificaciones. Esta arquitectura permite el escalado independiente de cada servicio según sus necesidades de carga y recursos.
+La **Capa de Servicios** (Service Layer) contiene los 11 microservicios especializados, cada uno enfocado en un dominio funcional específico como autenticación, verificación de títulos, certificación, auditorías institucionales, procesos disciplinarios y notificaciones. Esta arquitectura permite el escalado independiente de cada servicio según sus necesidades de carga y recursos.
 
 La **Capa de Datos** (Data Layer) maneja toda la persistencia de información utilizando PostgreSQL en una configuración multi-tenant con esquemas separados por servicio, Redis para cache distribuido de sesiones y datos temporales, y MinIO para almacenamiento de archivos como PDFs y documentos. Esta capa asegura la integridad y disponibilidad de los datos críticos del sistema.
 
@@ -1116,7 +1116,7 @@ System_Boundary(backend, "Backend Layer") {
     Container(api_gateway, "API Gateway", "NestJS, Express", "Enrutamiento centralizado, autenticación, rate limiting")
 
     Container(auth_svc, "Auth Service", "NestJS, PostgreSQL", "Autenticación JWT, RBAC, gestión de usuarios")
-    Container(academic_reg_svc, "Academic Registration", "NestJS, PostgreSQL", "Registro académico, graduados, certificados")
+    Container(academic_reg_svc, "Academic Registration", "NestJS, PostgreSQL", "Verificación de títulos, graduados, certificados")
     Container(academic_work_svc, "Academic Work Plan", "NestJS, PostgreSQL", "Planes de trabajo académico (PTA)")
     Container(cert_svc, "Certification Service", "NestJS, PostgreSQL", "Emisión y validación de certificados")
     Container(internal_control_svc, "Internal Control", "NestJS, PostgreSQL", "Auditorías institucionales")
@@ -1205,7 +1205,7 @@ Rel(cert_svc, storage, "HTTP", "Certificados generados")
   - Validación de sesiones persistentes
   - Integración con LDAP/Active Directory (futuro)
 
-**3. Academic Registration Service (Registro Académico)**
+**3. Academic Registration Service (Verificación de títulos)**
 - **Base de datos**: Esquema `academic_registration` en PostgreSQL
 - **Funcionalidades**:
   - Gestión de graduados y registros académicos
@@ -1465,7 +1465,7 @@ El backoffice administrativo está compuesto por aproximadamente 322 módulos es
 | **Comunidad** | `/CommunityAnnouncementsModuleUnified.tsx` | Gestión de anuncios institucionales, eventos comunitarios y comunicaciones masivas |
 | **Control Interno** | `/control-interno/` | Módulo completo de auditorías institucionales con equipos auditor y planes de mejoramiento |
 | **Control Disciplinario** | `/disciplinario/` | Procesos disciplinarios formales con workflows complejos y gestión documental |
-| **Registro Académico** | `/GraduatesManagementModule.tsx` | Gestión de graduados, certificados de grado y validación académica |
+| **Verificación de títulos** | `/GraduatesManagementModule.tsx` | Gestión de graduados, certificados de grado y validación académica |
 | **Gestión Legal** | `/gestion-legal/` | Procesos legales institucionales, contratos y asesoría jurídica |
 | **Firma Electrónica** | `/firma-electronica/` | Sistema de firma digital para documentos institucionales |
 

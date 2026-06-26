@@ -49,7 +49,7 @@ VALUES
 ('users', 'Usuarios y Personas', 'Gestión de usuarios, personas y vinculaciones del sistema', 'Users', '#3b82f6', 1, 'backoffice'),
 ('organization', 'Estructura Organizacional', 'Gestión de territoriales, sedes y jerarquía institucional', 'Building2', '#10b981', 2, 'backoffice'),
 ('programs', 'Programas Académicos', 'Gestión de programas, pensum y oferta académica', 'GraduationCap', '#8b5cf6', 3, 'backoffice'),
-('students', 'Estudiantes', 'Gestión de estudiantes, matrículas y registro académico', 'UserCheck', '#06b6d4', 4, 'backoffice'),
+('students', 'Estudiantes', 'Gestión de estudiantes, matrículas y verificación de títulos', 'UserCheck', '#06b6d4', 4, 'backoffice'),
 ('graduates', 'Graduados', 'Gestión de graduados, títulos y verificación de grados', 'Award', '#14b8a6', 5, 'backoffice'),
 ('professors', 'Gestión Profesoral', 'Gestión de docentes, carga académica y contratos', 'BookOpen', '#f59e0b', 6, 'backoffice'),
 ('calendar', 'Calendario Académico', 'Gestión del calendario académico y periodos', 'Calendar', '#ef4444', 7, 'backoffice'),

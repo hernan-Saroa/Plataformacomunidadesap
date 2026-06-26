@@ -68,7 +68,7 @@ Retira columnas sin flujo vigente del esquema `academic_registration`.
 |---|---|---|
 | `user_info` | Estaba mapeada en entidad, pero no se poblaba ni se consumia. El historial conserva `metadata`, `changed_by` y `changed_at`. | Sin uso activo de `userInfo` despues de retirar el mapeo TypeORM. |
 
-## Registro academico
+## Verificación de títulos
 
 ### Tabla `academic_registration.graduation_certificates`
 
@@ -93,7 +93,7 @@ Retira columnas sin flujo vigente del esquema `academic_registration`.
 - Se actualizo `db/init/004_certification_ddl_20260129_215540.sql` para que los despliegues nuevos no creen las columnas retiradas.
 - Se actualizo `docs/diccionario-datos-backend.md` para retirar `template_config_changes.user_info`.
 
-### Registro academico
+### Verificación de títulos
 
 - Se creo `db/migrations/327_drop_unused_academic_registration_columns.sql`.
 - Se retiraron `revocationDate` y `revocationReason` de `GraduationCertificate`.
@@ -143,7 +143,7 @@ Certificados laborales:
   - Recibido: `Running Microservice Certification Service`
   - Este fallo no esta relacionado con las columnas retiradas.
 
-Registro academico:
+Verificación de títulos:
 - `npm test -- --runInBand` no ejecuta pruebas por configuracion de Jest:
   - `Module ts-jest in the transform option was not found`
   - `<rootDir>` apunta a `backend/academic-registration-service/src`

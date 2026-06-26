@@ -3075,7 +3075,7 @@ export class GraduationCertificatesService {
                     <tr><td style="height:4px;background-color:#818CF8;font-size:0;line-height:0;">&nbsp;</td></tr>
                     <tr><td style="padding:22px 28px 18px 28px;">
                       <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                        <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                        <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                         <td align="right"><span style="background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Verificación de Título</span></td>
                       </tr></table>
                     </td></tr>
@@ -3228,7 +3228,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Aviso de solicitud</span></td>
                     </tr></table>
                   </td></tr>
@@ -3373,7 +3373,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Aviso de solicitud</span></td>
                     </tr></table>
                   </td></tr>
@@ -6067,7 +6067,7 @@ export class GraduationCertificatesService {
       `Iniciamos la revisión de tu solicitud ${requestNumber}.\n` +
       `Documento consultado: ${idNumber || 'No informado'}.\n` +
       `Fecha de actualización: ${formattedUpdateDate}.\n\n` +
-      `El equipo de Registro Académico se encuentra validando la información. Te notificaremos el siguiente avance al mismo correo.`;
+      `El equipo de Verificación de títulos se encuentra validando la información. Te notificaremos el siguiente avance al mismo correo.`;
 
     const safeRequesterName = safe(requesterName);
     const safeRequestNumber = safe(requestNumber);
@@ -6084,7 +6084,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Revisión iniciada</span></td>
                     </tr></table>
                   </td></tr>
@@ -6094,7 +6094,7 @@ export class GraduationCertificatesService {
             <tr>
               <td style="padding:32px 28px 8px 28px;">
                 <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Iniciamos la revisión de tu solicitud</h1>
-                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, el equipo de Registro Académico inició la validación de la información consultada.</p>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, el equipo de Verificación de títulos inició la validación de la información consultada.</p>
                 <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
                   <tr><td style="padding:16px 20px;">
                     <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Estado de la solicitud</p>
@@ -6184,7 +6184,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCA5A5;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Solicitud rechazada</span></td>
                     </tr></table>
                   </td></tr>
