@@ -3,29 +3,151 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-// TODO: Implementar rolesService cuando el backend esté listo
-// import { rolesService } from '../services/api';
-import type { Role, Permission, CreateRoleDTO, UpdateRoleDTO, FilterParams } from '../types';
+import { rolesService } from '../services/api/roles.service';
+import type {
+  CreateRoleRequest,
+  Permission as BackendPermission,
+  RoleFilters,
+  SystemRole,
+  UpdateRoleRequest,
+} from '../services/api/roles.service';
 import { toast } from 'sonner';
-import { ROLES_SISTEMA } from '../components/admin/RolesYPermisosActualizado';
 
-// Mock data temporal hasta que el backend esté listo
-const mockRolesService = {
-  getRoles: async (filters: any) => ({ data: ROLES_SISTEMA }),
-  getAllPermissions: async () => [],
-  getPermissionsByCategory: async () => ({}),
-  createRole: async (data: any) => ({ id: '1', displayName: data.displayName }),
-  updateRole: async (id: string, data: any) => ({ id, displayName: data.displayName }),
-  deleteRole: async (id: string) => {},
-  duplicateRole: async (id: string, name: string) => ({ id: '1', displayName: name }),
-  updateRolePermissions: async (id: string, permissionIds: string[]) => ({ id, permissionIds }),
-  compareRoles: async (roleIds: string[]) => ({ roles: roleIds }),
-};
+type PermissionCategory =
+  | 'users'
+  | 'roles'
+  | 'permissions'
+  | 'audit'
+  | 'reports'
+  | 'settings'
+  | 'dashboard'
+  | 'persons'
+  | 'documents'
+  | 'aspirants'
+  | 'verification'
+  | 'academics';
+
+interface Permission {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  category: PermissionCategory;
+  isSystem: boolean;
+  isCritical: boolean;
+  createdAt: string;
+}
+
+interface Role {
+  id: string;
+  code?: string;
+  name: string;
+  nombre: string;
+  displayName: string;
+  description?: string;
+  type: 'system' | 'custom';
+  color?: string;
+  icon?: string;
+  permissions: Permission[];
+  userCount: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
+interface CreateRoleDTO {
+  name: string;
+  displayName: string;
+  description?: string;
+  type: 'custom';
+  permissionIds: string[];
+}
+
+interface UpdateRoleDTO {
+  displayName?: string;
+  description?: string;
+  permissionIds?: string[];
+  isActive?: boolean;
+}
+
+interface FilterParams {
+  search?: string;
+  status?: string[];
+  role?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
 
 interface UseRolesOptions {
   autoFetch?: boolean;
   initialFilters?: FilterParams;
 }
+
+const mapFiltersToRoleFilters = (filters: FilterParams = {}): RoleFilters => {
+  const status = Array.isArray(filters.status) ? filters.status[0] : undefined;
+
+  return {
+    search: filters.search,
+    status:
+      status === 'active' || status === 'activo'
+        ? 'activo'
+        : status === 'inactive' || status === 'inactivo'
+          ? 'inactivo'
+          : undefined,
+    page: filters.page,
+    limit: filters.pageSize,
+  };
+};
+
+const mapBackendPermissionToPermission = (permission: BackendPermission): Permission => ({
+  id: permission.id || (permission as any).id_permission,
+  code: (permission as any).code || permission.name,
+  name: permission.name,
+  description: permission.description,
+  category: ((permission as any).category || 'permissions') as PermissionCategory,
+  isSystem: (permission as any).is_system ?? true,
+  isCritical: (permission as any).is_critical ?? false,
+  createdAt: permission.created_at,
+});
+
+const mapBackendRoleToRole = (role: SystemRole): Role => ({
+  id: role.id,
+  code: role.code,
+  name: role.name,
+  nombre: role.name,
+  displayName: role.name,
+  description: role.description,
+  type: role.type === 'sistema' ? 'system' : 'custom',
+  color: role.color,
+  icon: role.icon,
+  permissions: [],
+  userCount: role.usuarios_count,
+  isActive: role.is_active,
+  createdAt: role.created_at,
+  updatedAt: role.updated_at,
+  createdBy: role.created_by,
+  updatedBy: role.updated_by,
+});
+
+const mapCreateRoleToRequest = (roleData: CreateRoleDTO): CreateRoleRequest => ({
+  name: roleData.displayName || roleData.name,
+  code: roleData.name,
+  description: roleData.description,
+  type: 'personalizado',
+  permissionIds: roleData.permissionIds,
+});
+
+const mapUpdateRoleToRequest = (roleData: UpdateRoleDTO): UpdateRoleRequest => ({
+  name: roleData.displayName,
+  description: roleData.description,
+  permissionIds: roleData.permissionIds,
+});
 
 export function useRoles(options: UseRolesOptions = {}) {
   const { autoFetch = true, initialFilters = {} } = options;
@@ -47,8 +169,8 @@ export function useRoles(options: UseRolesOptions = {}) {
 
     try {
       const filterParams = customFilters || filters;
-      const response = await mockRolesService.getRoles(filterParams);
-      setRoles(response.data);
+      const response = await rolesService.getRoles(mapFiltersToRoleFilters(filterParams));
+      setRoles(response.roles.map(mapBackendRoleToRole));
     } catch (err: any) {
       const errorMessage = err.message || 'Error al cargar roles';
       setError(errorMessage);
@@ -63,10 +185,14 @@ export function useRoles(options: UseRolesOptions = {}) {
    */
   const fetchPermissions = useCallback(async () => {
     try {
-      const allPermissions = await mockRolesService.getAllPermissions();
+      const allPermissions = (await rolesService.getAllPermissions()).map(mapBackendPermissionToPermission);
       setPermissions(allPermissions);
 
-      const byCategory = await mockRolesService.getPermissionsByCategory();
+      const byCategory = allPermissions.reduce<Record<string, Permission[]>>((acc, permission) => {
+        const category = permission.category || 'permissions';
+        acc[category] = [...(acc[category] || []), permission];
+        return acc;
+      }, {});
       setPermissionsByCategory(byCategory);
     } catch (err: any) {
       console.error('Error al cargar permisos:', err);
@@ -81,7 +207,7 @@ export function useRoles(options: UseRolesOptions = {}) {
     setError(null);
 
     try {
-      const newRole = await mockRolesService.createRole(roleData);
+      const newRole = mapBackendRoleToRole(await rolesService.createRole(mapCreateRoleToRequest(roleData)));
       setRoles((prev) => [newRole, ...prev]);
 
       toast.success('Rol creado', {
@@ -107,7 +233,7 @@ export function useRoles(options: UseRolesOptions = {}) {
     setError(null);
 
     try {
-      const updatedRole = await mockRolesService.updateRole(roleId, roleData);
+      const updatedRole = mapBackendRoleToRole(await rolesService.updateRole(roleId, mapUpdateRoleToRequest(roleData)));
       
       setRoles((prev) =>
         prev.map((role) => (role.id === roleId ? updatedRole : role))
@@ -136,7 +262,7 @@ export function useRoles(options: UseRolesOptions = {}) {
     setError(null);
 
     try {
-      await mockRolesService.deleteRole(roleId);
+      await rolesService.deleteRole(roleId);
       
       setRoles((prev) => prev.filter((role) => role.id !== roleId));
 
@@ -161,7 +287,12 @@ export function useRoles(options: UseRolesOptions = {}) {
     setError(null);
 
     try {
-      const duplicatedRole = await mockRolesService.duplicateRole(roleId, newName);
+      const duplicatedRoleResponse = await rolesService.duplicateRole(roleId);
+      const duplicatedRole = mapBackendRoleToRole(
+        newName
+          ? await rolesService.updateRole(duplicatedRoleResponse.id, { name: newName })
+          : duplicatedRoleResponse
+      );
       
       setRoles((prev) => [duplicatedRole, ...prev]);
 
@@ -185,7 +316,7 @@ export function useRoles(options: UseRolesOptions = {}) {
    */
   const updateRolePermissions = useCallback(async (roleId: string, permissionIds: string[]) => {
     try {
-      const updatedRole = await mockRolesService.updateRolePermissions(roleId, permissionIds);
+      const updatedRole = mapBackendRoleToRole(await rolesService.updateRolePermissions(roleId, permissionIds));
       
       setRoles((prev) =>
         prev.map((role) => (role.id === roleId ? updatedRole : role))
@@ -207,12 +338,12 @@ export function useRoles(options: UseRolesOptions = {}) {
    */
   const compareRoles = useCallback(async (roleIds: string[]) => {
     try {
-      return await mockRolesService.compareRoles(roleIds);
+      return { roles: roles.filter((role) => roleIds.includes(role.id)) };
     } catch (err: any) {
       toast.error('Error al comparar roles', { description: err.message });
       throw err;
     }
-  }, []);
+  }, [roles]);
 
   /**
    * Refrescar datos
