@@ -43,8 +43,10 @@ export class ExpedienteController {
     }
 
     @Put(':id')
-    async actualizar(@Param('id') id: string, @Body() data: Partial<Expediente>): Promise<Expediente> {
-        return this.expedienteService.updateExpediente(id, data);
+    async actualizar(@Param('id') id: string, @Body() data: Partial<Expediente>, @Req() req?: any): Promise<Expediente> {
+        const access = getLegalAccessFromRequest(req);
+        const actualizadoPor = (data as any).actualizadoPor || (data as any).usuario || access.userName || access.userId || 'Sistema';
+        return this.expedienteService.updateExpediente(id, data, actualizadoPor);
     }
 
     @Post()

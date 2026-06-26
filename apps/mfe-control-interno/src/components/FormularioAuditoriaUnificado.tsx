@@ -1590,12 +1590,12 @@ function Paso1InformacionBasica({
                     <button
                       key={tipo.id}
                       type="button"
-                      onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
+                      onClick={() => onChange('tipoAuditoria', tipo.nombre as any)}
                       className={`
                         px-4 py-3 rounded-lg border-2 transition-all duration-200
                         flex flex-col items-center justify-center gap-2 font-medium
                         ${
-                          formData.tipoAuditoria === tipo.codigo.toLowerCase()
+                          formData.tipoAuditoria?.trim().toLowerCase() === tipo.nombre.trim().toLowerCase()
                             ? 'border-blue-600 bg-blue-50 text-blue-700'
                             : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
                         }

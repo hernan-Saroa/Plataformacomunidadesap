@@ -357,8 +357,8 @@ function formatearFecha(fecha: string): string {
  * Mapea tipo del backend (respeta el tipo dinámico configurado)
  */
 function mapearTipo(tipo?: string): TipoAuditoria {
-  if (!tipo) return 'regular';
-  return tipo.toLowerCase();
+  if (!tipo) return 'Regular';
+  return tipo;
 }
 
 /**
