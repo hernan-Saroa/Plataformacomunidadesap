@@ -117,8 +117,8 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
 
     // 4. Cabeceras de Datos (Fila 6)
     const headers = [
-      'Id. Actividad',
-      'Id Rol',
+      'ID',
+      'Rol',
       'Lista de actividades',
       'Responsable',
       'Fecha\ninicio',
@@ -126,7 +126,7 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
       'Control',
       'Estado',
       'Seguimiento y evaluación tareas',
-      'Fecha',
+      'Fecha seguimiento',
       'Evaluació\nn tarea',
       'Evidencias'
     ];
