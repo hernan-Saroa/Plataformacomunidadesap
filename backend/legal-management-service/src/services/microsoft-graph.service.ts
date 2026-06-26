@@ -38,7 +38,45 @@ export class MicrosoftGraphService {
     private readonly tenantId = process.env.AZURE_TENANT_ID || '';
     private readonly clientId = process.env.AZURE_CLIENT_ID || '';
     private readonly clientSecret = process.env.AZURE_CLIENT_SECRET || '';
-    private readonly emailAccount = process.env.LEGAL_EMAIL_ACCOUNT || 'desarrollo.ccd@esap.edu.co';
+
+    // Cuenta del buzón JUDICIAL (la única configurada hoy). El default mantiene el
+    // comportamiento actual; para producción se setea LEGAL_EMAIL_ACCOUNT_JUDICIAL.
+    private readonly judicialAccount =
+        process.env.LEGAL_EMAIL_ACCOUNT_JUDICIAL ||
+        process.env.LEGAL_EMAIL_ACCOUNT ||
+        'desarrollo.ccd@esap.edu.co';
+
+    // Cuenta del buzón CORREOS. Vacía hasta que exista la segunda cuenta:
+    // basta con setear LEGAL_EMAIL_ACCOUNT_CORREOS para activarla (ready to replace).
+    private readonly correosAccount = process.env.LEGAL_EMAIL_ACCOUNT_CORREOS || '';
+
+    // Cuenta por defecto para envíos/lecturas sin buzón explícito (la judicial).
+    private readonly emailAccount =
+        process.env.LEGAL_EMAIL_ACCOUNT_JUDICIAL ||
+        process.env.LEGAL_EMAIL_ACCOUNT ||
+        'desarrollo.ccd@esap.edu.co';
+
+    /** Buzones configurados (solo los que tienen cuenta definida). */
+    getMailboxes(): Array<{ buzon: 'JUDICIAL' | 'CORREOS'; address: string }> {
+        const boxes: Array<{ buzon: 'JUDICIAL' | 'CORREOS'; address: string }> = [];
+        if (this.judicialAccount) boxes.push({ buzon: 'JUDICIAL', address: this.judicialAccount });
+        if (this.correosAccount) boxes.push({ buzon: 'CORREOS', address: this.correosAccount });
+        return boxes;
+    }
+
+    /** Resuelve la cuenta de correo para un buzón dado (default: judicial). */
+    resolveAccount(buzon?: string): string {
+        if (String(buzon || '').toUpperCase() === 'CORREOS' && this.correosAccount) {
+            return this.correosAccount;
+        }
+        return this.judicialAccount;
+    }
+
+    /** ¿Está configurada la cuenta para este buzón? */
+    isBuzonConfigured(buzon?: string): boolean {
+        if (String(buzon || '').toUpperCase() === 'CORREOS') return !!this.correosAccount;
+        return !!this.judicialAccount;
+    }
 
     private getClient(): Client {
         if (this.graphClient) {
@@ -68,9 +106,10 @@ export class MicrosoftGraphService {
     /**
      * Get a page of emails with pagination token support
      */
-    async getEmailsPage(nextLink?: string, limit: number = 50): Promise<{ emails: GraphEmail[]; nextLink: string | null }> {
+    async getEmailsPage(nextLink?: string, limit: number = 50, account?: string): Promise<{ emails: GraphEmail[]; nextLink: string | null }> {
         try {
             const client = this.getClient();
+            const mailbox = account || this.emailAccount;
             let response;
 
             if (nextLink) {
@@ -79,9 +118,9 @@ export class MicrosoftGraphService {
                 response = await client.api(nextLink).get();
             } else {
                 // First request
-                this.logger.log(`Fetching first page (limit: ${limit})...`);
+                this.logger.log(`Fetching first page from ${mailbox} (limit: ${limit})...`);
                 response = await client
-                    .api(`/users/${this.emailAccount}/messages`)
+                    .api(`/users/${mailbox}/messages`)
                     .top(limit)
                     .orderby('receivedDateTime desc')
                     .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
@@ -245,9 +284,12 @@ export class MicrosoftGraphService {
         body: string,
         cc?: string[],
         attachments?: { name: string; contentBytes: string; contentType: string }[],
-        options?: { requestReadReceipt?: boolean; requestDeliveryReceipt?: boolean }
+        options?: { requestReadReceipt?: boolean; requestDeliveryReceipt?: boolean },
+        fromAccount?: string,
     ): Promise<boolean> {
         const toList = Array.isArray(to) ? to : [to];
+        // Cuenta remitente: depende del buzón del correo (judicial vs correos). Default: primaria.
+        const mailbox = fromAccount || this.emailAccount;
         // MOCK FOR DEV: Si no hay credenciales configuradas, simular envío exitoso
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
             this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${toList.join(', ')} | Asunto: ${subject}`);
@@ -298,7 +340,7 @@ export class MicrosoftGraphService {
                     ...(options?.requestDeliveryReceipt && { isDeliveryReceiptRequested: true }),
                     from: {
                         emailAddress: {
-                            address: this.emailAccount,
+                            address: mailbox,
                         },
                     },
                 },
@@ -306,10 +348,10 @@ export class MicrosoftGraphService {
             };
 
             await client
-                .api(`/users/${this.emailAccount}/sendMail`)
+                .api(`/users/${mailbox}/sendMail`)
                 .post(message);
 
-            this.logger.log(`Email sent to ${to}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${attachments?.length ? ` with ${attachments.length} attachment(s)` : ''} - Subject: ${subject}`);
+            this.logger.log(`Email sent from ${mailbox} to ${to}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${attachments?.length ? ` with ${attachments.length} attachment(s)` : ''} - Subject: ${subject}`);
             return true;
         } catch (error) {
             this.logger.error(`Error sending email to ${to}:`, error);
@@ -325,6 +367,7 @@ export class MicrosoftGraphService {
         messageId: string,
         to: string,
         comment: string,
+        fromAccount?: string,
     ): Promise<boolean> {
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
             this.logger.warn(`[DEV MOCK] Forward simulación de email ${messageId} enviado a: ${to} con comentario: ${comment}`);
@@ -333,6 +376,8 @@ export class MicrosoftGraphService {
 
         try {
             const client = this.getClient();
+            // El reenvío usa la cuenta del buzón del correo original.
+            const mailbox = fromAccount || this.emailAccount;
 
             const forwardMessage = {
                 toRecipients: [
@@ -346,10 +391,10 @@ export class MicrosoftGraphService {
             };
 
             await client
-                .api(`/users/${this.emailAccount}/messages/${messageId}/forward`)
+                .api(`/users/${mailbox}/messages/${messageId}/forward`)
                 .post(forwardMessage);
 
-            this.logger.log(`Email ${messageId} forwarded to ${to}`);
+            this.logger.log(`Email ${messageId} forwarded from ${mailbox} to ${to}`);
             return true;
         } catch (error) {
             this.logger.error(`Error forwarding email ${messageId} to ${to}:`, error);
@@ -458,6 +503,7 @@ export class MicrosoftGraphService {
         attachments?: { name: string; contentBytes: string; contentType: string }[],
         to?: string,
         subject?: string,
+        fromAccount?: string,
     ): Promise<boolean> {
         // MOCK FOR DEV
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
@@ -472,6 +518,8 @@ export class MicrosoftGraphService {
 
         try {
             const client = this.getClient();
+            // Cuenta remitente según el buzón del correo original (judicial vs correos).
+            const mailbox = fromAccount || this.emailAccount;
 
             const graphAttachments = attachments?.map(att => ({
                 '@odata.type': '#microsoft.graph.fileAttachment',
@@ -488,17 +536,17 @@ export class MicrosoftGraphService {
                         content: body,
                     },
                     toRecipients: [{ emailAddress: { address: to } }],
-                    from: { emailAddress: { address: this.emailAccount } },
+                    from: { emailAddress: { address: mailbox } },
                     ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                 },
                 saveToSentItems: true,
             };
 
             await client
-                .api(`/users/${this.emailAccount}/sendMail`)
+                .api(`/users/${mailbox}/sendMail`)
                 .post(message);
 
-            this.logger.log(`Reply sent to ${to} for original message ${messageId}`);
+            this.logger.log(`Reply sent from ${mailbox} to ${to} for original message ${messageId}`);
             return true;
         } catch (error) {
             this.logger.error(`Error replying to message ${messageId}:`, error);
