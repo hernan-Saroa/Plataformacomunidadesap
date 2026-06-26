@@ -144,7 +144,9 @@ function mapearFaseAEstado(estadoKanban?: string, fase?: string, progreso?: numb
   if (
     estadoNorm === 'plan anual' ||
     estadoNorm === 'plan-anual' ||
+    estadoNorm === 'plan_anual' ||
     estadoNorm === 'programa anual' ||
+    estadoNorm === 'programa-anual' ||
     estadoNorm === 'backlog' ||
     estadoNorm === 'pendiente' ||
     estadoNorm === 'programada' ||
