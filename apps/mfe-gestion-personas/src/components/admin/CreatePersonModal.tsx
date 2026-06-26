@@ -199,6 +199,11 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         errorMessage = 'El correo electrónico ingresado no tiene un formato válido.';
       }
 
+      if (formData.email.split('@')[1] !== 'esap.edu.co') {
+        newErrors.email = 'Debe ser de la institución ESAP';
+        errorMessage = 'El correo electrónico ingresado debe ser de la institución ESAP.';
+      }
+
       if (!formData.phone) {
         newErrors.phone = 'Requerido';
       } else if (formData.phone.length !== 10 || !/^[0-9]+$/.test(formData.phone)) {
@@ -376,7 +381,7 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-white p-5 rounded-lg border border-emerald-100 shadow-sm">
                       <div>
                         <InputLabel label="Correo Electrónico" required />
-                        <input type="email" value={formData.email} onChange={(e) => handleChange('email', e.target.value)} className={inputClass(!!errors.email)} placeholder="correo@ejemplo.com" />
+                        <input type="email" value={formData.email} onChange={(e) => handleChange('email', e.target.value)} className={inputClass(!!errors.email)} placeholder="correo@esap.edu.co" />
                       </div>
                       <div>
                         <InputLabel label="Teléfono" required />

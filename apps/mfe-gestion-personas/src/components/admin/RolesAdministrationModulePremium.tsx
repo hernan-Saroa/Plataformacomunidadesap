@@ -926,7 +926,7 @@ export function RolesAdministrationModulePremium() {
                             <td className="px-6 py-4">
                               <div className="flex flex-col gap-1.5">
                                 {getStatusBadge(role)}
-                                {role.requires_2fa && (
+                                {role.code !== 'SUPER_ADMIN' && role.requires_2fa && (
                                   <Badge className="bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-100 text-xs">
                                     <Lock className="w-3 h-3 mr-1" />
                                     2FA
@@ -938,6 +938,7 @@ export function RolesAdministrationModulePremium() {
                             {/* Acciones */}
                             <td className="px-6 py-4">
                               <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                {role.code !== 'SUPER_ADMIN' && (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
@@ -1010,6 +1011,7 @@ export function RolesAdministrationModulePremium() {
                                      )} */}
                                    </DropdownMenuContent>
                                 </DropdownMenu>
+                                )}
                                 <button
                                   onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
                                   className="p-2 hover:bg-[#003DA5] hover:text-white rounded-lg transition-all"
@@ -1107,7 +1109,7 @@ export function RolesAdministrationModulePremium() {
                                             <Filter className="w-4 h-4 text-[#003DA5]" />
                                             Alcance Administrativo
                                           </h4>
-                                           {(
+                                           {role.code !== 'SUPER_ADMIN' && (
                                              <button
                                                onClick={(e) => {
                                                  e.stopPropagation();
