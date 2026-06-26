@@ -1505,36 +1505,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       if (!isEdit || !id) return;
 
-      // Upload new document-type custom fields and strip base64 from payload
-      if (data.camposAdicionales) {
-        const cleaned: Record<string, any> = {};
-        for (const [key, val] of Object.entries(data.camposAdicionales as Record<string, any>)) {
-          if (val && typeof val === 'object' && val.base64 && val.esNuevo) {
-            try {
-              const res = await fetch(val.base64);
-              const blob = await res.blob();
-              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
-              const formDataDoc = new FormData();
-              formDataDoc.append('archivo', file);
-              formDataDoc.append('expedienteId', id);
-              formDataDoc.append('nombre', val.nombre);
-              formDataDoc.append('tipo', 'DATO_ADICIONAL');
-              formDataDoc.append('origen', 'CARGA_DIRECTA');
-              formDataDoc.append('categoria', 'documentos');
-              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
-              await legalService.crearDocumento(formDataDoc);
-              cleaned[key] = { nombre: val.nombre, tipoMime: val.tipoMime, tamano: val.tamano, cargado: true };
-            } catch (err) {
-              console.error('Error uploading dynamic document on edit:', err);
-              cleaned[key] = val;
-            }
-          } else {
-            cleaned[key] = val;
-          }
-        }
-        data = { ...data, camposAdicionales: cleaned };
-      }
-
+      // Los documentos cargados en campos adicionales (arrays/objetos con base64 y esNuevo)
+      // viajan dentro de camposAdicionales y los persiste el backend al actualizar el
+      // expediente (ver ExpedienteService.persistirDocumentosCamposAdicionales en updateExpediente),
+      // igual que al crear. Así quedan en la pestaña de Documentos sin depender de un
+      // fetch(data:) que el CSP bloquea. No es necesario subirlos aquí en el frontend.
       await legalService.updateExpediente(id, data);
       setIsEditModalOpen(false);
       if (onUpdate) {

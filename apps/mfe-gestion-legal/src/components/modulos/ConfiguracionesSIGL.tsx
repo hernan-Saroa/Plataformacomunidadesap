@@ -49,7 +49,8 @@ import {
   OrganismoControl,
   TipoExcepcionProcesal,
   CausalEspecifica,
-  EnteControlPM
+  EnteControlPM,
+  Dependencia
 } from '../config/ConfiguracionesSIGLContext';
 
 // ✅ Importar componente de plantillas
@@ -86,6 +87,9 @@ const CAMPOS_POR_PASO = [
     paso: 3,
     nombre: 'Paso 3: Datos del/los Demandado(s)',
     campos: [
+      // Campos de sistema (Territorial/Dependencia): siempre visibles y obligatorios, no editables.
+      { id: 'territorial', label: 'Territorial', defaultObligatorio: true, defaultVisible: true, fixed: true },
+      { id: 'dependencia', label: 'Dependencia', defaultObligatorio: true, defaultVisible: true, fixed: true },
       { id: 'demandadoTipoPersona', label: 'Tipo de Persona', defaultObligatorio: true, defaultVisible: true },
       { id: 'demandadoIdentificacion', label: 'Identificación (Cédula/NIT)', defaultObligatorio: true, defaultVisible: true },
       { id: 'demandadoNombre', label: 'Nombre / Razón Social', defaultObligatorio: true, defaultVisible: true, fixed: true },
@@ -297,6 +301,7 @@ export function ConfiguracionesSIGL() {
     actuaciones: false,
     kanban: false,
     mediosControl: false,
+    dependencias: false,
     autos: false,
     actuacionesDisciplinarias: false,
     excepcionesProcesales: false,
@@ -693,6 +698,58 @@ export function ConfiguracionesSIGL() {
           ...m,
           mediosControl: (m.mediosControl || []).map((mc: MedioControl) =>
             mc.id === medioId ? { ...mc, ...cambios } : mc
+          )
+        }
+        : m
+    ));
+  };
+
+  // ============ FUNCIONES DE DEPENDENCIAS ============
+
+  const agregarDependencia = () => {
+    if (!moduloActual || !moduloActual.dependencias) return;
+
+    const nuevaDependencia: Dependencia = {
+      id: `dependencia-${Date.now()}`,
+      nombre: 'Nueva Dependencia',
+      activo: true,
+    };
+
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? { ...m, dependencias: [...(m.dependencias || []), nuevaDependencia] }
+        : m
+    ));
+
+    toast.success('Dependencia agregada correctamente', {
+      description: 'Se ha agregado una nueva dependencia',
+      duration: 3000
+    });
+  };
+
+  const eliminarDependencia = (dependenciaId: string) => {
+    const dependencia = moduloActual?.dependencias?.find(d => d.id === dependenciaId);
+    if (!dependencia) return;
+
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? { ...m, dependencias: (m.dependencias || []).filter((d: Dependencia) => d.id !== dependenciaId) }
+        : m
+    ));
+
+    toast.success('Dependencia eliminada correctamente', {
+      description: `"${dependencia.nombre}" ha sido eliminada de las dependencias`,
+      duration: 3000
+    });
+  };
+
+  const actualizarDependencia = (dependenciaId: string, cambios: Partial<Dependencia>) => {
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          dependencias: (m.dependencias || []).map((d: Dependencia) =>
+            d.id === dependenciaId ? { ...d, ...cambios } : d
           )
         }
         : m
@@ -3346,6 +3403,99 @@ export function ConfiguracionesSIGL() {
                           </div>
                         </div>
                       ))}
+                          </div>
+                        </motion.div>
+                      </AnimatePresence>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Dependencias - SOLO PARA DEFENSA JUDICIAL */}
+              {moduloActual.dependencias && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div
+                      className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3 cursor-pointer select-none"
+                      onClick={() => toggleSection('dependencias')}
+                    >
+                      <div className="flex-1">
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Landmark className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Dependencias
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define las dependencias que estarán disponibles en el formulario de Nueva Demanda
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            agregarDependencia();
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Dependencia</span>
+                        </button>
+                        <button className="p-1 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                          {expandedSections.dependencias ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {expandedSections.dependencias && (
+                      <AnimatePresence>
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="space-y-3">
+                            {moduloActual.dependencias.map((dependencia) => (
+                              <div
+                                key={dependencia.id}
+                                className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                              >
+                                {/* Fila 1: Nombre + Eliminar */}
+                                <div className="flex items-center gap-2 mb-3">
+                                  <input
+                                    type="text"
+                                    value={dependencia.nombre}
+                                    onChange={(e) => actualizarDependencia(dependencia.id, { nombre: e.target.value })}
+                                    className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Nombre de la dependencia"
+                                  />
+                                  <button
+                                    onClick={() => eliminarDependencia(dependencia.id)}
+                                    className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                {/* Fila 2: Toggle Activo */}
+                                <div className="flex items-center justify-end">
+                                  <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={dependencia.activo}
+                                      onChange={(e) => actualizarDependencia(dependencia.id, { activo: e.target.checked })}
+                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                      Activo
+                                    </span>
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </motion.div>
                       </AnimatePresence>
