@@ -71,6 +71,13 @@ interface PersonaDisponible {
   nombre: string;
   cargo?: string;
 }
+interface PreviewEvidencia {
+  url: string;
+  nombre: string;
+  tipoMime: string;
+  esPDF: boolean;
+  esImagen: boolean;
+}
 
 export function SeccionHallazgosExpediente({
   auditoriaId,
@@ -104,6 +111,7 @@ export function SeccionHallazgosExpediente({
   // Estado para evidencias del hallazgo seleccionado (cargadas del backend)
   const [evidenciasHallazgo, setEvidenciasHallazgo] = useState<any[]>([]);
   const [cargandoEvidencias, setCargandoEvidencias] = useState(false);
+  const [previewEvidencia, setPreviewEvidencia] = useState<PreviewEvidencia | null>(null);
   
   // Estado para evidencias de TODOS los hallazgos (para mostrar en tarjetas)
   const [evidenciasPorHallazgo, setEvidenciasPorHallazgo] = useState<Record<string, any[]>>(
@@ -499,8 +507,13 @@ export function SeccionHallazgosExpediente({
     
     if (url) {
       if (esPDF || esImagen) {
-        // Abrir en nueva pestaña para ver
-        window.open(url, '_blank');
+        setPreviewEvidencia({
+          url,
+          nombre,
+          tipoMime: tipo || (esPDF ? 'application/pdf' : 'image/*'),
+          esPDF,
+          esImagen,
+        });
       } else {
         // Descargar el archivo
         const link = document.createElement('a');
@@ -517,6 +530,10 @@ export function SeccionHallazgosExpediente({
         description: esPDF ? 'PDF - Sin URL disponible' : esImagen ? 'Imagen - Sin URL disponible' : `Tipo: ${tipo || 'Documento'}`
       });
     }
+  };
+
+  const cerrarPreviewEvidencia = () => {
+    setPreviewEvidencia(null);
   };
 
   // Función para obtener color según categoría
@@ -1319,6 +1336,66 @@ export function SeccionHallazgosExpediente({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {previewEvidencia && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 sm:p-5"
+          onClick={cerrarPreviewEvidencia}
+        >
+          <div
+            className="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Vista previa de ${previewEvidencia.nombre}`}
+          >
+            <div className="flex min-h-[56px] items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-bold text-gray-900">
+                    {previewEvidencia.nombre}
+                  </h3>
+                  <p className="text-xs font-medium text-gray-500">
+                    Vista previa de evidencia
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={cerrarPreviewEvidencia}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+                  title="Cerrar vista previa"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-hidden bg-gray-100">
+              {previewEvidencia.esPDF ? (
+                <iframe
+                  src={previewEvidencia.url}
+                  title={previewEvidencia.nombre}
+                  className="h-full w-full border-0 bg-white"
+                />
+              ) : previewEvidencia.esImagen ? (
+                <div className="flex h-full w-full items-center justify-center overflow-auto p-4">
+                  <img
+                    src={previewEvidencia.url}
+                    alt={previewEvidencia.nombre}
+                    className="max-h-full max-w-full rounded-lg object-contain shadow-lg"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
