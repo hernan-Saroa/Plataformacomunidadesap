@@ -216,6 +216,11 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   criterios?: string[];
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  equipoAuditores?: string[];
+
   // Estado de checkboxes de actividades (JSON)
   @IsOptional()
   checklistCompletados?: Record<string, boolean>;

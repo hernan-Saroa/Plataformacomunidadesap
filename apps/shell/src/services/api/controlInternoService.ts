@@ -185,6 +185,22 @@ export interface AuditoriaProgramada {
   updatedAt: string;
 }
 
+export interface ConflictoDisponibilidadEquipoAuditor {
+  personaId: string;
+  personaNombre: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export interface DisponibilidadEquipoAuditorResponse {
+  disponible: boolean;
+  conflictos: ConflictoDisponibilidadEquipoAuditor[];
+  mensaje?: string;
+}
+
 export interface Hallazgo {
   id: string;
   codigo: string;
@@ -2334,6 +2350,15 @@ class ControlInternoService {
   /**
    * Crea una nueva auditoría
    */
+  async validarDisponibilidadEquipoAuditor(data: {
+    equipoAuditores: string[];
+    fechaInicio: string;
+    fechaFin: string;
+    excludeAuditoriaId?: string;
+  }): Promise<DisponibilidadEquipoAuditorResponse> {
+    return client.post<DisponibilidadEquipoAuditorResponse>('/auditorias/validar-disponibilidad-equipo', data);
+  }
+
   async createAuditoria(data: any): Promise<any> {
     return client.post<any>('/auditorias', data);
   }
