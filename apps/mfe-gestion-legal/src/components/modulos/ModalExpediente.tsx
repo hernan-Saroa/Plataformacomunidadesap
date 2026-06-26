@@ -47,7 +47,7 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
-import { isViewableInBrowser } from '../../../../utils/fileUtils';
+import { isViewableInBrowser, requiresSignature } from '../../../../utils/fileUtils';
 import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
 import { calcularProgreso } from '../core/expedienteShared';
 import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
@@ -1076,13 +1076,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     const checkActuacionDocsSigned = (act: any) => {
       const associatedDocIds = act.metadata?.documentosAsociados || [];
       if (associatedDocIds.length === 0) return true;
-      
+
       const resolvedDocs = documentos.filter(doc => {
         const docIdStr = String(doc.id);
         return associatedDocIds.some((id: any) => String(id) === docIdStr);
       });
-      
-      return resolvedDocs.every(doc => isDocSigned(doc));
+
+      // Solo PDF y Word requieren firma; Excel, imágenes, video, etc. no bloquean el avance.
+      return resolvedDocs
+        .filter(doc => requiresSignature(doc.nombre))
+        .every(doc => isDocSigned(doc));
     };
 
     const actuacionesConDocsSinFirmar = actuaciones.filter(a => {
