@@ -22,25 +22,28 @@ export function ReportePTAInstitucional({
   const horasDisp = pta.horas_a_programar || 800;
   
   const asignaturas = pta.asignaturas || [];
-  const investigacion = pta.investigacion || {};
-  const extension = pta.extension || {};
-  const complementarias = pta.complementarias || {};
-  const acadAdmin = pta.acad_admin || pta.academico_administrativo || {};
 
-  const horasDocencia = asignaturas.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0);
-  
-  const proyectosInv = investigacion.proyectos || [];
-  const actInv = investigacion.actividades || [];
-  const horasInvestigacion = proyectosInv.reduce((s: number, p: any) => s + (p.horas_solicitadas || 0), 0) + actInv.reduce((s: number, a: any) => s + (a.horas_total || 0), 0);
+  // Normaliza desde el DTO plano (o forma agrupada del backoffice como fallback).
+  const proyectosInv = pta?.investigacion_proyecto?.nombre
+    ? [pta.investigacion_proyecto]
+    : (pta?.investigacion?.proyectos || []);
+  const actInv = pta?.investigacion_actividades || pta?.investigacion?.actividades || [];
+  const extActs = Array.isArray(pta?.extension_actividades)
+    ? pta.extension_actividades
+    : (pta?.extension ? (Object.values(pta.extension).flat() as any[]) : []);
+  const compActs = Array.isArray(pta?.complementarias)
+    ? pta.complementarias
+    : (pta?.complementarias?.actividades || []);
+  const acadActs = Array.isArray(pta?.academico_admin)
+    ? pta.academico_admin
+    : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
 
-  const sectionsExt = ['asesoria', 'consultoria', 'capacitacion', 'comunidad'];
-  const horasExtension = sectionsExt.reduce((total, sec) => {
-    const acts = extension[sec] || [];
-    return total + acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  }, 0);
-
-  const horasComplementarias = (complementarias.actividades || []).reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  const horasAcadAdmin = (acadAdmin.actividades || []).reduce((s: number, a: any) => s + (a.horas || 0), 0);
+  // Prioriza los agregados ya calculados por el backend (incluyen el multiplicador de sección config-driven).
+  const horasDocencia = pta.horas_docencia ?? asignaturas.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0);
+  const horasInvestigacion = pta.horas_investigacion ?? (proyectosInv.reduce((s: number, p: any) => s + (p.horas_solicitadas || 0), 0) + actInv.reduce((s: number, a: any) => s + (a.horas_total || a.horas || 0), 0));
+  const horasExtension = pta.horas_extension ?? extActs.reduce((s: number, a: any) => s + (a.horas || 0), 0);
+  const horasComplementarias = pta.horas_complementarias ?? compActs.reduce((s: number, a: any) => s + (a.horas || 0), 0);
+  const horasAcadAdmin = pta.horas_acad_admin ?? acadActs.reduce((s: number, a: any) => s + (a.horas || 0), 0);
 
   const horasProg = horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin;
 

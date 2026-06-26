@@ -128,11 +128,10 @@ function ComboboxPersonas({
           e.stopPropagation();
           if (!disabled && !cargando) setIsOpen((v) => !v);
         }}
-        className={`w-full px-3 py-2.5 border rounded-lg text-sm text-left flex justify-between items-center gap-2 bg-white transition-colors ${
-          disabled || cargando
+        className={`w-full px-3 py-2.5 border rounded-lg text-sm text-left flex justify-between items-center gap-2 bg-white transition-colors ${disabled || cargando
             ? 'border-gray-200 text-gray-400 cursor-not-allowed'
             : 'border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50/50'
-        }`}
+          }`}
       >
         <span className="truncate flex-1">{labelBoton}</span>
         {cargando ? (
@@ -438,7 +437,7 @@ function parseReunionToForm(
     observaciones?: string;
     documentoBibliotecaId?: string | null;
   } | null
-  | undefined,
+    | undefined,
   personas: PersonaOpcion[] = [],
 ): {
   fecha: string;
@@ -524,6 +523,7 @@ function FormReunionBase({
   camposPrevios?: React.ReactNode;
   camposPosteriores?: React.ReactNode;
 }) {
+  const [archivos, setArchivos] = useState<File[]>([]);
   const tituloActa = tipo === 'apertura' ? 'ACTA DE APERTURA' : 'ACTA DE CIERRE';
   const plantillas = plantillasActa.filter((d: any) => !d.auditoriaId && !d.auditoria_id);
 
@@ -567,27 +567,48 @@ function FormReunionBase({
               placeholder="Compromisos, acuerdos..."
             />
           </div>
-          <div className="border-t pt-2">
-            <label className="block text-xs font-medium text-gray-700 mb-0.5">
-              <FileText className="w-3 h-3 inline mr-1" />
-              {tituloActa} – SELECCIONAR PLANTILLA DESDE BIBLIOTECA - {plantillas.length} PLANTILLAS
-            </label>
-            <Select
-              value={actaBibliotecaId || 'ninguno'}
-              onValueChange={(v) => setActaBibliotecaId(v === 'ninguno' ? '' : v)}
-            >
-              <SelectTrigger className="w-full h-10 text-sm font-normal bg-white">
-                <SelectValue placeholder="Ninguno" />
-              </SelectTrigger>
-              <SelectContent className={CLASE_SELECT_OVERLAY}>
-                <SelectItem value="ninguno">Ninguno</SelectItem>
-                {plantillas.map((d: any) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.nombre || d.nombreArchivoOriginal || d.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="border-t pt-4 mt-2">
+            <div className="relative group">
+              <div className="flex flex-col items-center justify-center w-full h-32 px-4 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl hover:bg-blue-50/50 hover:border-blue-400 transition-all duration-200 cursor-pointer">
+                <div className="p-3 bg-white rounded-full shadow-sm mb-3 group-hover:scale-110 group-hover:shadow-md transition-all duration-200">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m16 16-4-4-4 4"></path></svg>
+                </div>
+                <p className="text-sm font-medium text-gray-600 group-hover:text-blue-600 transition-colors">
+                  Haz clic para examinar o arrastra tus archivos aquí
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Soporta PDF, Word, Excel, PPT, JPG, PNG
+                </p>
+              </div>
+              <input
+                type="file"
+                multiple
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={(e) => {
+                  if (setArchivos) {
+                    setArchivos(Array.from(e.target.files || []));
+                  }
+                }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png"
+              />
+            </div>
+
+            {archivos && archivos.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Archivos adjuntos ({archivos.length})</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {archivos.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                      <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0 truncate">
+                        <p className="text-xs font-medium text-gray-700 truncate">{file.name}</p>
+                        <p className="text-[10px] text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -711,13 +732,13 @@ export function ModalReunionApertura({
   if (!isOpen) return null;
 
   const modal = (
-    <Dialog open={isOpen} modal={false} onOpenChange={(open: boolean) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent
-          layer="nested"
-          className="block overflow-y-auto overflow-x-visible p-6 bg-white"
-          style={{ width: 620, maxWidth: 620, boxShadow: '0px 0px 60px 20px' }}
-          {...propsDialogEvitarCerrarCombobox}
-        >
+        layer="nested"
+        className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
+        style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+        {...propsDialogEvitarCerrarCombobox}
+      >
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-1.5 text-base">
             <Users className="w-4 h-4" />
@@ -906,13 +927,13 @@ export function ModalReunionCierre({
   if (!isOpen) return null;
 
   const modal = (
-    <Dialog open={isOpen} modal={false} onOpenChange={(open: boolean) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent
-          layer="nested"
-          className="block overflow-y-auto overflow-x-visible p-6 bg-white"
-          style={{ width: 620, maxWidth: 620, boxShadow: '0px 0px 60px 20px' }}
-          {...propsDialogEvitarCerrarCombobox}
-        >
+        layer="nested"
+        className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
+        style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+        {...propsDialogEvitarCerrarCombobox}
+      >
         <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-1.5 text-base">
             <Users className="w-4 h-4" />

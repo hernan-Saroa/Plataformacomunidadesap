@@ -2072,7 +2072,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <span className="text-sm font-bold text-gray-900">{expediente.id}</span>
                       </div>
                       <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                        <span className="text-xs text-gray-500">Medio de Control:</span>
+                        <span className="text-xs text-gray-500">Jurisdicción:</span>
                         <span className="text-sm font-bold text-gray-900 text-right">{expediente.medioControl}</span>
                       </div>
                       <div className="flex items-start justify-between py-2 border-b border-gray-100">
@@ -2089,7 +2089,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         </span>
                       </div>
                       <div className="flex items-start justify-between py-2">
-                        <span className="text-xs text-gray-500">Tipo de Proceso:</span>
+                        <span className="text-xs text-gray-500">Medio de Control:</span>
                         <span className="text-sm font-bold text-gray-900">{expediente.tipoProceso}</span>
                       </div>
                       {/* Clasificación Penal (solo visible para Proceso Penal) */}
@@ -2813,7 +2813,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             {/* Info Principal */}
                             <div className="mb-4">
                               <h4 className="text-sm font-black text-gray-900 mb-1.5 leading-tight group-hover:text-indigo-700 transition-colors line-clamp-2">
-                                {anexado.medioControl || anexado.tipoProceso || 'Medio de Control No Especificado'}
+                                {anexado.medioControl || anexado.tipoProceso || 'Jurisdicción No Especificada'}
                               </h4>
                               <p className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
                                 <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-indigo-400" />

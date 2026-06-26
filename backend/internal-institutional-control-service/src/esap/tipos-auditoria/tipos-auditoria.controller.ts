@@ -28,8 +28,8 @@ export class TiposAuditoriaController {
    * Obtener todos los tipos de auditoría
    */
   @Get()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.CONFIG_MANAGE)
+  @UseGuards(JwtAuthGuard)
+  // Permitir lectura a todos los usuarios autenticados (necesario para selects)
   findAll(@Query('includeInactive') includeInactive?: string) {
     const includeInactiveBool = includeInactive === 'true';
     return this.tiposAuditoriaService.findAll(includeInactiveBool);
@@ -40,8 +40,8 @@ export class TiposAuditoriaController {
    * Obtener un tipo de auditoría por ID
    */
   @Get(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.CONFIG_MANAGE)
+  @UseGuards(JwtAuthGuard)
+  // Permitir lectura a todos los usuarios autenticados
   findOne(@Param('id') id: string) {
     return this.tiposAuditoriaService.findOne(id);
   }

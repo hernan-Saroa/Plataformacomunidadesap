@@ -249,6 +249,51 @@ export function TabDocencia({ draft, handleChange }: { draft: PTARules; handleCh
             </div>
           </details>
 
+          {/* Horas Base por Categoría (defaults usados cuando el programa no tiene config propia) */}
+          <details className="group border border-white/80 rounded-3xl bg-white/80 backdrop-blur-sm shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)]" open>
+            <summary className="flex cursor-pointer list-none items-center justify-between p-5 bg-slate-50/50 group-open:bg-blue-50/30 hover:bg-white transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="font-bold text-slate-800 flex items-center gap-3">
+                <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">C</span>
+                Horas Base por Categoría
+              </span>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
+            </summary>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/30">
+              <p className="text-[11px] text-slate-500 leading-tight mb-5 max-w-3xl">
+                Horas base que usa el portal del docente al calcular la carga académica cuando el programa
+                <b> no</b> tiene una configuración específica en la Matriz Paramétrica (sección B). Los bloques fijos
+                aplican una sola vez; las bases por crédito se multiplican por los créditos de la asignatura.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {([
+                  ['docencia_base_seminario_sc', 'Seminario de Énfasis (Sede Central)', 'Bloque fijo', 'h'],
+                  ['docencia_base_pregrado_sc', 'Pregrado Sede Central (AP/EP)', 'Bloque fijo', 'h'],
+                  ['docencia_base_maestria', 'Maestría', 'Base por crédito', 'h/Cr'],
+                  ['docencia_base_especializacion', 'Especialización', 'Base por crédito', 'h/Cr'],
+                  ['docencia_base_apt', 'APT / Territorial / Otros', 'Base por crédito', 'h/Cr'],
+                ] as [keyof PTARules, string, string, string][]).map(([key, label, tipo, unidad]) => (
+                  <div key={key as string} className="relative group bg-white border border-slate-100 p-4 rounded-2xl shadow-sm">
+                    <label className="block text-[11px] font-black text-slate-700 tracking-wider mb-1 uppercase leading-tight">
+                      {label}
+                    </label>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-blue-600">{tipo}</span>
+                    <div className="relative w-full mt-2">
+                      <input
+                        type="number"
+                        min="0"
+                        value={draft[key] as number}
+                        onChange={(e) => handleChange(key, parseInt(e.target.value) || 0)}
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 font-bold rounded-lg px-4 py-2.5 focus:bg-white focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm"
+                      />
+                      <div className="absolute right-3 top-3 text-slate-400 font-bold text-xs">{unidad}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </details>
+
         </div>
       </section>
     </div>

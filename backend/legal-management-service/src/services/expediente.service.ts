@@ -457,6 +457,9 @@ export class ExpedienteService {
         if (!currentExpediente) throw new NotFoundException('Expediente no encontrado');
 
         // 2. Detectar cambios relevantes (Etapa / Estado)
+        // Captura para notificación de avance de etapa (solo avances hacia adelante; la
+        // devolución hacia atrás se notifica aparte en devolverActuacion).
+        let nuevoEstadoConfig: any = null;
         if (data.etapaProcesal && data.etapaProcesal !== currentExpediente.etapaProcesal) {
             // Crear actuación automática
             await this.agregarActuacion(id, {
@@ -465,6 +468,19 @@ export class ExpedienteService {
                 fechaActuacion: new Date(),
                 usuarioResponsable: 'Sistema' // O idealmente el usuario del request si se pasa
             });
+
+            // ¿Es un avance hacia adelante? Comparamos el orden configurado de las etapas.
+            const estadosList = await this.getEstadosConfig(currentExpediente);
+            if (estadosList.length > 0) {
+                const ordenados = estadosList
+                    .filter((e: any) => e.activo !== false)
+                    .sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0));
+                const idxActual = this.configService.findEstadoIndex(ordenados, currentExpediente.etapaProcesal);
+                const idxNuevo = this.configService.findEstadoIndex(ordenados, data.etapaProcesal);
+                if (idxActual !== -1 && idxNuevo !== -1 && idxNuevo > idxActual) {
+                    nuevoEstadoConfig = ordenados[idxNuevo];
+                }
+            }
 
             // Auto-autorizar actuaciones pendientes
             try {
@@ -538,7 +554,37 @@ export class ExpedienteService {
             });
         }
 
+        // Notificar avance de etapa: al abogado del proceso y al aprobador de la nueva etapa.
+        if (nuevoEstadoConfig) {
+            const esDisciplinario =
+                updated.jurisdiccion === 'DISCIPLINARIO' ||
+                updated.jurisdiccion === 'Disciplinaria' ||
+                updated.tipoProceso === 'DISCIPLINARIO' ||
+                updated.tipoProceso === 'Disciplinario';
+            const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+            await this.legalNotifications.notifyEtapaAvanzada({
+                modulo,
+                radicado: updated.radicado,
+                procesoId: updated.id,
+                etapaNombre: nuevoEstadoConfig.nombre || nuevoEstadoConfig.id || updated.etapaProcesal,
+                abogadoId: updated.abogadoSustanciador || undefined,
+                aprobacionTipo: nuevoEstadoConfig.aprobacionTipo,
+                aprobacionRol: nuevoEstadoConfig.aprobacionRol,
+                aprobacionUsuario: nuevoEstadoConfig.aprobacionUsuario,
+            });
+        }
+
         return updated;
+    }
+
+    /**
+     * Devuelve la lista de estados (etapas Kanban) configurada para el tipo de proceso del
+     * expediente. Delega en ConfigurationsService.getEstadosForExpediente, que aplica el mismo
+     * matching tolerante (id o nombre normalizado) que el frontend.
+     */
+    private async getEstadosConfig(expediente: Expediente): Promise<any[]> {
+        return this.configService.getEstadosForExpediente(expediente);
     }
 
     async findOne(id: string): Promise<Expediente | null> {

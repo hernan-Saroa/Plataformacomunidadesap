@@ -1904,7 +1904,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       {isFieldVisible('medioControl', true) && (
                         <div className="space-y-2">
                           <Label htmlFor="medioControl" className={`text-sm font-bold ${erroresCampos.medioControl ? 'text-red-600' : 'text-gray-700'}`}>
-                            Medio de Control {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
+                            Jurisdicción {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
                           </Label>
                           <Select
                             value={formData.medioControl}
@@ -1920,7 +1920,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             }}
                           >
                             <SelectTrigger id="medioControl" className={`bg-white ${erroresCampos.medioControl ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                              <SelectValue placeholder="Seleccione medio de control..." />
+                              <SelectValue placeholder="Seleccione jurisdicción..." />
                             </SelectTrigger>
                             <SelectContent className="z-[100000]">
                               {mediosControlActivos.map(mc => (
@@ -1939,7 +1939,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                       <div className="space-y-2">
                         <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
-                          Tipo de Proceso Judicial <span className="text-red-500">*</span>
+                          Medio de Control <span className="text-red-500">*</span>
                         </Label>
                         <Select
                           value={formData.tipoProcesoJudicial}
@@ -1956,7 +1956,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           }}
                         >
                           <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                            <SelectValue placeholder="Seleccione tipo de proceso..." />
+                            <SelectValue placeholder="Seleccione medio de control..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
                             {tiposProcesosActivos.map(tp => (

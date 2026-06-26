@@ -22,6 +22,22 @@ import { NotificacionesService } from '../notificaciones/notificaciones.service'
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
 
+export interface ConflictoDisponibilidadEquipoAuditor {
+  personaId: string;
+  personaNombre: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export interface DisponibilidadEquipoAuditorResponse {
+  disponible: boolean;
+  conflictos: ConflictoDisponibilidadEquipoAuditor[];
+  mensaje?: string;
+}
+
 @Injectable()
 export class AuditoriasService {
   constructor(
@@ -206,6 +222,138 @@ export class AuditoriasService {
     const dateStr = String(date);
     const dateOnly = dateStr.split('T')[0];
     return dateOnly || dateStr;
+  }
+
+  private async resolverEquipoAuditorIds(equipoAuditores?: Array<string | number>): Promise<string[]> {
+    const ids = equipoAuditores || [];
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+
+    const resueltos = await Promise.all(
+      ids
+        .filter((personaId) => personaId !== undefined && personaId !== null && String(personaId).trim().length > 0)
+        .map((personaId) => this.mapIdTerceroToIdPerson(personaId)),
+    );
+
+    return Array.from(new Set(resueltos.filter((personaId): personaId is string => !!personaId)));
+  }
+
+  private construirMensajeConflictosEquipoAuditor(conflictos: ConflictoDisponibilidadEquipoAuditor[]): string {
+    const nombres = Array.from(new Set(conflictos.map((conflicto) => conflicto.personaNombre)))
+      .filter(Boolean)
+      .join(', ');
+
+    return `No se puede programar la auditoria porque ${nombres || 'uno o mas auditores adicionales'} ya tiene asignacion en otra auditoria durante las fechas seleccionadas. Ajuste las fechas o retire esas personas del Equipo Auditor Adicional.`;
+  }
+
+  private async consultarConflictosEquipoAuditor(
+    personaIds: string[],
+    fechaInicio: Date,
+    fechaFin: Date,
+    excludeAuditoriaId?: string,
+  ): Promise<ConflictoDisponibilidadEquipoAuditor[]> {
+    const idsValidos = Array.from(new Set(personaIds.filter((id) => id && this.isValidUUID(String(id)))));
+    if (idsValidos.length === 0) return [];
+
+    const params: any[] = [
+      idsValidos,
+      this.serializeDate(fechaInicio),
+      this.serializeDate(fechaFin),
+    ];
+
+    let excludeClause = '';
+    if (excludeAuditoriaId && this.isValidUUID(excludeAuditoriaId)) {
+      params.push(excludeAuditoriaId);
+      excludeClause = `AND a.id <> $${params.length}::uuid`;
+    }
+
+    const rows = await this.auditoriaRepository.query(
+      `
+        SELECT DISTINCT
+          ea.persona_id::text AS "personaId",
+          COALESCE(p.nom_largo, ea.persona_id::text) AS "personaNombre",
+          a.id::text AS "auditoriaId",
+          COALESCE(a.codigo, '') AS "auditoriaCodigo",
+          COALESCE(a.nombre, '') AS "auditoriaNombre",
+          a.fecha_inicio AS "fechaInicio",
+          a.fecha_fin AS "fechaFin"
+        FROM control_interno.equipo_auditor ea
+        INNER JOIN control_interno.auditoria a ON a.id = ea.auditoria_id
+        LEFT JOIN auth.personas p ON p.id_person = ea.persona_id
+        WHERE ea.activo = true
+          AND ea.persona_id = ANY($1::uuid[])
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%jefe%'
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%supervisor%'
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%lider%'
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%líder%'
+          AND ea.persona_id IS DISTINCT FROM a.auditor_lider_id
+          AND ea.persona_id IS DISTINCT FROM a.auditor_asignado_id
+          AND ea.persona_id IS DISTINCT FROM a.supervisor_asignado_id
+          AND COALESCE(a.activa, true) = true
+          AND COALESCE(a.archivada, false) = false
+          AND a.fecha_eliminacion IS NULL
+          AND a.fecha_inicio <= $3::date
+          AND a.fecha_fin >= $2::date
+          ${excludeClause}
+        ORDER BY "personaNombre", "fechaInicio"
+      `,
+      params,
+    );
+
+    return rows.map((row: any) => ({
+      personaId: String(row.personaId),
+      personaNombre: row.personaNombre || 'Auditor adicional',
+      auditoriaId: String(row.auditoriaId),
+      auditoriaCodigo: row.auditoriaCodigo || '',
+      auditoriaNombre: row.auditoriaNombre || 'Auditoria sin nombre',
+      fechaInicio: this.serializeDate(row.fechaInicio),
+      fechaFin: this.serializeDate(row.fechaFin),
+    }));
+  }
+
+  public async validarDisponibilidadEquipoAuditor(
+    equipoAuditores: Array<string | number> = [],
+    fechaInicioInput: string | Date,
+    fechaFinInput: string | Date,
+    excludeAuditoriaId?: string,
+  ): Promise<DisponibilidadEquipoAuditorResponse> {
+    const fechaInicio = this.parseDateOnly(fechaInicioInput);
+    const fechaFin = this.parseDateOnly(fechaFinInput);
+
+    if (fechaFin < fechaInicio) {
+      throw new BadRequestException('La fecha de finalizacion debe ser posterior a la fecha de inicio');
+    }
+
+    const personaIds = await this.resolverEquipoAuditorIds(equipoAuditores);
+    const conflictos = await this.consultarConflictosEquipoAuditor(
+      personaIds,
+      fechaInicio,
+      fechaFin,
+      excludeAuditoriaId,
+    );
+
+    return {
+      disponible: conflictos.length === 0,
+      conflictos,
+      mensaje: conflictos.length > 0 ? this.construirMensajeConflictosEquipoAuditor(conflictos) : undefined,
+    };
+  }
+
+  private async asegurarDisponibilidadEquipoAuditorOrThrow(
+    personaIds: string[],
+    fechaInicio: Date,
+    fechaFin: Date,
+    excludeAuditoriaId?: string,
+  ): Promise<void> {
+    const conflictos = await this.consultarConflictosEquipoAuditor(
+      personaIds,
+      fechaInicio,
+      fechaFin,
+      excludeAuditoriaId,
+    );
+
+    if (conflictos.length > 0) {
+      throw new BadRequestException(this.construirMensajeConflictosEquipoAuditor(conflictos));
+    }
   }
 
   /**
@@ -1053,6 +1201,13 @@ export class AuditoriasService {
       ? this.parseDateOnly(createDto.fechaInicioComunicacion)
       : undefined;
 
+    const periodoInicio = createDto.periodoInicio
+      ? this.parseDateOnly(createDto.periodoInicio)
+      : undefined;
+    const periodoFin = createDto.periodoFin
+      ? this.parseDateOnly(createDto.periodoFin)
+      : undefined;
+
     // Validar que fechaFin sea posterior a fechaInicio
     if (fechaFin < fechaInicio) {
       throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
@@ -1080,6 +1235,13 @@ export class AuditoriasService {
     }
 
     // Generar código automático
+    const equipoAuditorPersonaIds = await this.resolverEquipoAuditorIds(createDto.equipoAuditores);
+    await this.asegurarDisponibilidadEquipoAuditorOrThrow(
+      equipoAuditorPersonaIds,
+      fechaInicio,
+      fechaFin,
+    );
+
     const yearForCode = createDto.planAnualVigencia || 
                         ((createDto as any).planAnualAño) || 
                         (fechaInicio ? fechaInicio.getFullYear() : new Date().getFullYear());
@@ -1109,6 +1271,9 @@ export class AuditoriasService {
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
+      periodoInicio: periodoInicio,
+      periodoFin: periodoFin,
+      presupuestoEstimado: createDto.presupuestoEstimado,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
       estadoKanban: this.normalizeEstadoKanban(createDto.estadoKanban),
     };
@@ -1266,27 +1431,15 @@ export class AuditoriasService {
     }
 
     // Guardar equipo de auditores si se proporciona
-    if (createDto.equipoAuditores && Array.isArray(createDto.equipoAuditores) && createDto.equipoAuditores.length > 0) {
-      const equipoPromises = createDto.equipoAuditores
-        .filter(personaId => personaId)
-        .map(async (personaId) => {
-          // Convertir el ID recibido a UUID usando mapIdTerceroToIdPerson
-          const personaUUID = await this.mapIdTerceroToIdPerson(personaId);
-          
-          if (!personaUUID) {
-            console.warn(`[AuditoriasService.create] No se pudo mapear personaId ${personaId} a UUID`);
-            return null;
-          }
-          
-          return this.equipoRepository.create({
-            auditoriaId: auditoriaGuardada.id,
-            personaId: personaUUID,
-            rol: 'Auditor',
-            activo: true,
-          });
-        });
-
-      const equipo = (await Promise.all(equipoPromises)).filter(e => e !== null);
+    if (equipoAuditorPersonaIds.length > 0) {
+      const equipo = equipoAuditorPersonaIds.map((personaUUID) =>
+        this.equipoRepository.create({
+          auditoriaId: auditoriaGuardada.id,
+          personaId: personaUUID,
+          rol: 'Auditor',
+          activo: true,
+        }),
+      );
 
       if (equipo.length > 0) {
         try {
@@ -1345,7 +1498,7 @@ export class AuditoriasService {
   async update(id: string, updateDto: UpdateAuditoriaDto, usuarioId?: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ 
       where: { id },
-      relations: ['objetivos', 'criterios']
+      relations: ['objetivos', 'criterios', 'equipoAuditores']
     });
 
     if (!auditoria) {
@@ -1394,6 +1547,36 @@ export class AuditoriasService {
     }
 
     // Actualizar campos básicos
+    let equipoAuditorPersonaIdsActualizados: string[] | undefined;
+    if (updateDto.equipoAuditores !== undefined) {
+      equipoAuditorPersonaIdsActualizados = await this.resolverEquipoAuditorIds(updateDto.equipoAuditores);
+    }
+
+    if (
+      updateDto.equipoAuditores !== undefined ||
+      updateDto.fechaInicio !== undefined ||
+      updateDto.fechaFin !== undefined
+    ) {
+      const fechaInicioValidacion = updateDto.fechaInicio
+        ? this.parseDateOnly(updateDto.fechaInicio)
+        : auditoria.fechaInicio;
+      const fechaFinValidacion = updateDto.fechaFin
+        ? this.parseDateOnly(updateDto.fechaFin)
+        : auditoria.fechaFin;
+      const equipoValidacion = equipoAuditorPersonaIdsActualizados !== undefined
+        ? equipoAuditorPersonaIdsActualizados
+        : (auditoria.equipoAuditores || [])
+          .filter((equipo) => equipo.activo && equipo.personaId)
+          .map((equipo) => String(equipo.personaId));
+
+      await this.asegurarDisponibilidadEquipoAuditorOrThrow(
+        equipoValidacion,
+        fechaInicioValidacion,
+        fechaFinValidacion,
+        id,
+      );
+    }
+
     if (updateDto.nombre !== undefined) auditoria.nombre = updateDto.nombre;
     // Permitir actualizar descripción incluso si es string vacío
     if (updateDto.descripcion !== undefined) {
@@ -1425,6 +1608,19 @@ export class AuditoriasService {
       auditoria.fechaInicioComunicacion = updateDto.fechaInicioComunicacion
         ? this.parseDateOnly(updateDto.fechaInicioComunicacion)
         : undefined;
+    }
+    if (updateDto.periodoInicio !== undefined) {
+      auditoria.periodoInicio = updateDto.periodoInicio
+        ? this.parseDateOnly(updateDto.periodoInicio)
+        : undefined;
+    }
+    if (updateDto.periodoFin !== undefined) {
+      auditoria.periodoFin = updateDto.periodoFin
+        ? this.parseDateOnly(updateDto.periodoFin)
+        : undefined;
+    }
+    if (updateDto.presupuestoEstimado !== undefined) {
+      auditoria.presupuestoEstimado = updateDto.presupuestoEstimado;
     }
     if (updateDto.progreso !== undefined) auditoria.progreso = updateDto.progreso;
     if (updateDto.prioridad) auditoria.prioridad = updateDto.prioridad as PrioridadAuditoria;
@@ -1591,6 +1787,7 @@ export class AuditoriasService {
     if (updateDto.fechaInicio || updateDto.fechaFin) cambios.push('Fechas actualizadas');
     if (updateDto.auditorLiderId !== undefined) cambios.push('Auditor líder actualizado');
     if (updateDto.auditorAsignadoId !== undefined) cambios.push('Auditor asignado actualizado');
+    if (updateDto.equipoAuditores !== undefined) cambios.push('Equipo auditor actualizado');
 
     // Crear notificaciones si hay cambios importantes
     if (cambios.length > 0) {
@@ -1662,6 +1859,31 @@ export class AuditoriasService {
     }
 
     // Recargar la auditoría con relaciones actualizadas
+    if (updateDto.equipoAuditores !== undefined) {
+      await this.equipoRepository.update(
+        { auditoriaId: saved.id, activo: true },
+        { activo: false, fechaRetiro: new Date() },
+      );
+
+      const nuevoEquipo = (equipoAuditorPersonaIdsActualizados || []).map((personaUUID) =>
+        this.equipoRepository.create({
+          auditoriaId: saved.id,
+          personaId: personaUUID,
+          rol: 'Auditor',
+          activo: true,
+        }),
+      );
+
+      if (nuevoEquipo.length > 0) {
+        try {
+          await this.equipoRepository.save(nuevoEquipo);
+        } catch (error) {
+          console.error('[AuditoriasService.update] Error al actualizar equipo de auditores:', error);
+          throw new BadRequestException('Error al actualizar el equipo de auditores');
+        }
+      }
+    }
+
     const auditoriaActualizada = await this.auditoriaRepository.findOne({
       where: { id: saved.id },
       relations: ['objetivos', 'criterios', 'equipoAuditores', 'territorialInfo', 'especialInfo'],

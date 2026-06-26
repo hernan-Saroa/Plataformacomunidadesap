@@ -626,7 +626,7 @@ export function VerificarCertificadoTitulo() {
                               className="text-sm"
                               style={{ color: '#6B7280' }}
                             >
-                              Este certificado ha sido revocado y no tiene validez. Por favor contacte con Registro Académico ESAP para más información.
+                              Este certificado ha sido revocado y no tiene validez. Por favor contacte con el equipo de Verificación de títulos ESAP para más información.
                             </p>
                           </div>
                         </div>

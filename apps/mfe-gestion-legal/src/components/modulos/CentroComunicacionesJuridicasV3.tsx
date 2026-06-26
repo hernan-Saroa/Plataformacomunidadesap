@@ -1557,7 +1557,7 @@ function VistaPreviaComunicacion({
       {/* Tipo de proceso */}
       {comunicacion.tipoProceso && (
         <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-1">Tipo de Proceso:</p>
+          <p className="text-xs text-gray-500 mb-1">Medio de Control:</p>
           <Badge variant="outline">{comunicacion.tipoProceso}</Badge>
         </div>
       )}

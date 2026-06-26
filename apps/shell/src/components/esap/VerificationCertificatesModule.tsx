@@ -577,7 +577,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             lastRequestedAt,
             generatedAt: normalizeDate(certificate.issueDate),
             acceptedAt: normalizeDate(acceptedAtRaw),
-            generatedBy: certificate.signerName || 'Registro Académico',
+            generatedBy: certificate.signerName || 'Verificación de títulos',
             requestCount: 1,
             qrScanCount: 0,
             viewCount: 1,
@@ -1212,7 +1212,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setNewFooterLogoFile(null);
       toast.success('Plantilla actualizada', {
         description:
-          'Los textos del certificado de registro académico quedaron guardados.',
+          'Los textos del certificado de verificación de títulos quedaron guardados.',
       });
     } catch (error: any) {
       console.error('Error guardando plantilla académica:', error);
@@ -3239,7 +3239,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     Editar Certificado
                   </DialogTitle>
                   <DialogDescription className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
-                    Edita solo los textos del certificado de registro académico. El QR, el código de validación, los datos dinámicos y la URL pública siguen protegidos.
+                    Edita solo los textos del certificado de verificación de títulos. El QR, el código de validación, los datos dinámicos y la URL pública siguen protegidos.
                   </DialogDescription>
                 </div>
               </div>
@@ -3561,7 +3561,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 event.target.value,
                               )
                             }
-                            placeholder="Ej: Administrador jefe Registro académico"
+                            placeholder="Ej: Administrador jefe Verificación de títulos"
                             maxLength={255}
                             disabled={isSavingTemplateConfig}
                             className="border-slate-200 bg-white text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"

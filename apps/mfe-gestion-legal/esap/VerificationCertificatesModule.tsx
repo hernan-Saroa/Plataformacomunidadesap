@@ -510,7 +510,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             lastRequestedAt,
             generatedAt: normalizeDate(certificate.issueDate),
             acceptedAt: normalizeDate(acceptedAtRaw),
-            generatedBy: certificate.signerName || 'Registro Academico',
+            generatedBy: certificate.signerName || 'Verificación de títulos',
             requestCount: 1,
             qrScanCount: 0,
             viewCount: 1,
@@ -994,7 +994,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setTemplateForm(response.texts);
       toast.success('Plantilla actualizada', {
         description:
-          'Los textos del certificado de registro academico quedaron guardados.',
+          'Los textos del certificado de verificación de títulos quedaron guardados.',
       });
     } catch (error: any) {
       console.error('Error guardando plantilla academica:', error);
@@ -2688,7 +2688,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Editar Certificado
             </DialogTitle>
             <DialogDescription>
-              Edita solo los textos del certificado de registro academico. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
+              Edita solo los textos del certificado de verificación de títulos. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
             </DialogDescription>
           </DialogHeader>
 

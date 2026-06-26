@@ -44,6 +44,17 @@ export class CreateAuditoriaDto {
   responsable: string;
 
   // ═══════════════════════════════════════════════════════════════════
+  // PERIODO AUDITADO
+  // ═══════════════════════════════════════════════════════════════════
+  @IsDateString()
+  @IsOptional()
+  periodoInicio?: string;
+
+  @IsDateString()
+  @IsOptional()
+  periodoFin?: string;
+
+  // ═══════════════════════════════════════════════════════════════════
   // CRONOGRAMA DE 3 ETAPAS: Planeación → Ejecución → Comunicación
   // ═══════════════════════════════════════════════════════════════════
   

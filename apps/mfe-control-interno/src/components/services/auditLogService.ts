@@ -169,7 +169,7 @@ export type TipoEntidad =
   | 'carpeta_digital'
   | 'documento_personal'
   
-  // Módulo: Graduados y Registro Académico
+  // Módulo: Graduados y Verificación de títulos
   | 'graduado'
   | 'titulo'
   | 'programa_academico'

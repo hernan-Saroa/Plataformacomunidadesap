@@ -1,5 +1,5 @@
 -- Agrega el tercer nivel del flujo de verificacion de titulos:
--- Revisor -> Aprobador -> Jefe de Registro Academico.
+-- Revisor -> Aprobador -> Jefe de Verificación de títulos.
 -- La migracion es idempotente y no modifica asignaciones de usuarios.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -18,10 +18,10 @@ COMMENT ON COLUMN academic_registration.graduation_certificate_requests.approval
   IS 'Estado de flujo: PENDING_APPROVAL, PENDING_HEAD_APPROVAL, APPROVED_FINAL, REJECTED_FINAL, OBSERVATION o HEAD_OBSERVATION.';
 
 COMMENT ON COLUMN academic_registration.graduation_certificate_requests.head_decision
-  IS 'Decision del jefe de registro academico: APPROVED, REJECTED u OBSERVATION.';
+  IS 'Decision del jefe de verificación de títulos: APPROVED, REJECTED u OBSERVATION.';
 
 COMMENT ON COLUMN academic_registration.graduation_certificate_requests.head_notes
-  IS 'Observaciones o justificacion del jefe de registro academico.';
+  IS 'Observaciones o justificacion del jefe de verificación de títulos.';
 
 COMMENT ON COLUMN academic_registration.graduation_certificate_requests.head_reviewed_at
   IS 'Fecha en que el jefe emitio decision final u observacion.';
@@ -70,8 +70,8 @@ BEGIN
     (
       gen_random_uuid(),
       'graduates-certificates',
-      'Verificacion de Titulos',
-      'Verificacion de titulos para registro academico',
+      'Verificación de títulos',
+      'Verificación de títulos',
       'Award',
       '#003DA5',
       9,
@@ -179,7 +179,7 @@ BEGIN
     (
       gen_random_uuid(),
       'JEFE_REGISTRO_ACADEMICO',
-      'Jefe de Registro Academico',
+      'Jefe de Verificación de títulos',
       'Emite decision final sobre solicitudes de verificacion de titulos.',
       'directivo',
       'Shield',
