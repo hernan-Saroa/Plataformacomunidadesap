@@ -185,6 +185,22 @@ export interface AuditoriaProgramada {
   updatedAt: string;
 }
 
+export interface ConflictoDisponibilidadEquipoAuditor {
+  personaId: string;
+  personaNombre: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export interface DisponibilidadEquipoAuditorResponse {
+  disponible: boolean;
+  conflictos: ConflictoDisponibilidadEquipoAuditor[];
+  mensaje?: string;
+}
+
 export interface Hallazgo {
   id: string;
   codigo: string;
@@ -634,6 +650,14 @@ class ControlInternoService {
   async deleteEvaluacion(id: string): Promise<void> {
     return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
+
+  /**
+   * Forzar inclusión o exclusión manual de una evaluación
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    return client.patch<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}/auditable`, { auditableManual });
+  }
+
 
   // ==========================================================================
   // PROGRAMA ANUAL
@@ -1764,6 +1788,26 @@ class ControlInternoService {
   }
 
   /**
+   * Descarga un documento general
+   */
+  async downloadDocumento(id: string): Promise<Blob> {
+    let url = id;
+    if (!id.startsWith('http')) {
+      url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/documentos/${id}/download`;
+    }
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: controlInternoDownloadHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al descargar: ${response.statusText}`);
+    }
+    return response.blob();
+  }
+
+  /**
    * Obtiene versiones de un documento
    */
   async getVersionesDocumento(id: string): Promise<any[]> {
@@ -2306,6 +2350,15 @@ class ControlInternoService {
   /**
    * Crea una nueva auditoría
    */
+  async validarDisponibilidadEquipoAuditor(data: {
+    equipoAuditores: string[];
+    fechaInicio: string;
+    fechaFin: string;
+    excludeAuditoriaId?: string;
+  }): Promise<DisponibilidadEquipoAuditorResponse> {
+    return client.post<DisponibilidadEquipoAuditorResponse>('/auditorias/validar-disponibilidad-equipo', data);
+  }
+
   async createAuditoria(data: any): Promise<any> {
     return client.post<any>('/auditorias', data);
   }

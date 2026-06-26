@@ -103,7 +103,7 @@ El modelo utiliza una misma base logica con separacion por esquemas:
 | Servicio/dominio | Esquema configurado o usado |
 | --- | --- |
 | Autenticacion, usuarios, roles y permisos | `auth` |
-| Registro academico y certificados de graduados | `academic_registration` |
+| Verificación de títulos y certificados de graduados | `academic_registration` |
 | Plan de trabajo academico (PTA) | `academic_work_plan` |
 | Certificados laborales | `certification` |
 | Control disciplinario interno | `internal_disciplinary_control` |
@@ -150,7 +150,7 @@ frontend y redirige a los servicios de dominio mediante `proxy.config.ts`.
 | --- | ---: | --- | --- |
 | `api-gateway` | 3000 | Enrutamiento, autenticacion transversal y auditoria de llamadas | No |
 | `auth-service` | 3001 | Login, personas, usuarios, roles, permisos y estructura | Si, `auth` |
-| `academic-registration-service` | 3002 | Registro academico y certificados de graduados | Si, `academic_registration` |
+| `academic-registration-service` | 3002 | Verificación de títulos y certificados de graduados | Si, `academic_registration` |
 | `academic-work-plan-service` | 3003 | PTA y gestion academica asociada | Si, `academic_work_plan` |
 | `certification-service` | 3004 | Certificados laborales y plantillas | Si, `certification` |
 | `internal-disciplinary-control-service` | 3005 | Procesos y configuracion disciplinaria | Si, `internal_disciplinary_control` |
@@ -181,7 +181,7 @@ con `@originjs/vite-plugin-federation`.
 | `mfe-gestion-personas` | Personas, usuarios y RBAC | 3104 |
 | `mfe-auditoria` | Auditoria | 3105 |
 | `mfe-reportes` | Reportes | 3106 |
-| `mfe-registro-academico` | Registro academico | 3107 |
+| `mfe-registro-academico` | Verificación de títulos | 3107 |
 | `mfe-certificados-laborales` | Certificados laborales | 3108 |
 | `mfe-firma-electronica` | Firma electronica | 3109 |
 | `mfe-control-interno` | Control institucional | 3110 |

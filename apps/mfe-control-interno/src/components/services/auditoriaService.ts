@@ -537,6 +537,9 @@ export const auditoriaService = {
       if (data.fechaInicioComunicacion) updates.fechaInicioComunicacion = formatearFechaISO(data.fechaInicioComunicacion);
       if (data.fechaFin) updates.fechaFin = formatearFechaISO(data.fechaFin);
       if (data.auditorLider) updates.auditorLiderId = data.auditorLider;
+      if (data.auditorAsignado) updates.auditorAsignadoId = data.auditorAsignado;
+      if (data.supervisorAsignado) updates.supervisorAsignadoId = data.supervisorAsignado;
+      if (data.equipoAuditores !== undefined) updates.equipoAuditores = data.equipoAuditores;
       if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo;
       
       await controlInternoService.updateAuditoria(id, updates);

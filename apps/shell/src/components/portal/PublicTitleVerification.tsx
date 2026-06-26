@@ -1061,7 +1061,7 @@ export function PublicTitleVerification({
     ? "¿Te falta otro título?"
     : "No encontramos coincidencias en la base de datos";
   const manualReviewDescription = isMissingTitleManualReview
-    ? "Si tienes otro título de ESAP que no aparece entre los resultados disponibles, puedes enviar una solicitud de revisión manual para que Registro Académico lo valide."
+    ? "Si tienes otro título de ESAP que no aparece entre los resultados disponibles, puedes enviar una solicitud de revisión manual para que el equipo de Verificación de títulos lo valide."
     : "No encontramos ningún graduado ni coincidencias con los datos ingresados. Si deseas, puedes enviar ahora una solicitud de revisión manual para la verificación del título de egresado.";
   const manualReviewCancelLabel = isMissingTitleManualReview
     ? "Volver a los resultados"
@@ -1281,7 +1281,7 @@ export function PublicTitleVerification({
                           </span>
                           <span className="text-gray-700">
                             {isMissingTitleReviewCreated ? (
-                              "Registro Académico revisará el título seleccionado para crear el nuevo registro si corresponde."
+                              "El equipo de Verificación de títulos revisará el título seleccionado para crear el nuevo registro si corresponde."
                             ) : (
                               <>
                                 Te enviaremos un correo de confirmación a{" "}
@@ -1703,7 +1703,7 @@ export function PublicTitleVerification({
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mb-3 leading-tight px-4">
-            <span className="block sm:inline">Verificación de Títulos</span>
+            <span className="block sm:inline">Verificación de títulos</span>
             <span className="hidden sm:inline"> </span>
             <span className="block sm:inline bg-gradient-to-r from-[#1e5da8] to-[#2962FF] bg-clip-text text-transparent">
               Graduados ESAP
@@ -1731,7 +1731,7 @@ export function PublicTitleVerification({
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-gray-900">
-                      Verificación de Títulos
+                      Verificación de títulos
                     </h2>
                     <p className="text-xs text-gray-500">
                       Código: CERT-{Date.now().toString().slice(-6)}
@@ -2416,7 +2416,7 @@ export function PublicTitleVerification({
                           </select>
                           <p className="mt-2 text-xs leading-5 text-gray-600">
                             Selecciona el título que no aparece en los
-                            resultados para que Registro Académico pueda
+                            resultados para que el equipo de Verificación de títulos pueda
                             validarlo.
                           </p>
                           {selectedMissingTitleAlreadyExists && (

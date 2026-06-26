@@ -220,6 +220,8 @@ export function UsersPersonsModulePremium() {
         identification_number: item.identification_number,
         identificationType: item.identification_type,
         gender: item.gender || '',
+        birthDate: item.fec_nacimiento || '',
+        address: item.dir_residencia || '',
         status: item.user.is_active ? 'active' : 'inactive',
         is_active: item.user.is_active,
         roles: (item.user.roles || []).map((role: any) => ({

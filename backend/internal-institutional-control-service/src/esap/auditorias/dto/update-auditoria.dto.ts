@@ -1,5 +1,5 @@
 import {
-  IsString,
+  IsString, IsNumber,
   IsEnum,
   IsDateString,
   IsInt,
@@ -216,6 +216,11 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   criterios?: string[];
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  equipoAuditores?: string[];
+
   // Estado de checkboxes de actividades (JSON)
   @IsOptional()
   checklistCompletados?: Record<string, boolean>;
@@ -252,4 +257,17 @@ export class UpdateAuditoriaDto {
   @IsBoolean()
   @IsOptional()
   activa?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  periodoInicio?: string;
+
+  @IsDateString()
+  @IsOptional()
+  periodoFin?: string;
+
+  @IsNumber()
+  @IsOptional()
+  presupuestoEstimado?: number;
+
 }

@@ -41,7 +41,7 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
-import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../services/api/controlInternoService';
+import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso, type DisponibilidadEquipoAuditorResponse } from '../services/api/controlInternoService';
 import { estructuraService } from '../../services/estructuraService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
@@ -215,7 +215,7 @@ const PROCESOS_INSTITUCIONALES_FALLBACK = [
   'Capacitación',
   'Evaluación Desempeño',
   'Admisiones',
-  'Registro Académico',
+  'Verificación de títulos',
   'Infraestructura TI',
   'Archivo y Correspondencia',
   'PQRS',
@@ -302,6 +302,13 @@ const parseLocalDate = (dateString: string) => {
   return new Date(year, month - 1, day);
 };
 
+const formatDateLabel = (dateString?: string) => {
+  if (!dateString) return '';
+  const [year, month, day] = dateString.split('T')[0].split('-');
+  if (!year || !month || !day) return dateString;
+  return `${day}/${month}/${year}`;
+};
+
 export function FormularioAuditoriaUnificado({
   open,
   onClose,
@@ -379,6 +386,11 @@ export function FormularioAuditoriaUnificado({
   // Estado para auditores cargados del backend
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
   const [cargandoAuditores, setCargandoAuditores] = useState(false);
+  const [disponibilidadEquipoAuditor, setDisponibilidadEquipoAuditor] = useState<DisponibilidadEquipoAuditorResponse | null>(null);
+  const [validandoDisponibilidadEquipo, setValidandoDisponibilidadEquipo] = useState(false);
+  const auditoriaActualId = mode === 'edit'
+    ? ((initialData as any)?.id || (initialData as any)?.auditoriaId)
+    : undefined;
 
   // Estado para tipos de auditoría cargados del backend
   const [tiposAuditoria, setTiposAuditoria] = useState<{ id: string; codigo: string; nombre: string; color?: string; descripcion?: string }[]>([]);
@@ -650,6 +662,58 @@ export function FormularioAuditoriaUnificado({
       }));
     }
   }, [formData.fechaInicioPlaneacion, mode]);
+
+  useEffect(() => {
+    const equipoAuditores = (formData.equipoAuditores || []).filter(Boolean);
+    const fechaInicio = formData.fechaInicioPlaneacion || formData.fechaInicio || '';
+    const fechaFin = formData.fechaFinComunicacion || formData.fechaFin || '';
+
+    if (!open || equipoAuditores.length === 0 || !fechaInicio || !fechaFin) {
+      setDisponibilidadEquipoAuditor(null);
+      setValidandoDisponibilidadEquipo(false);
+      return;
+    }
+
+    let cancelado = false;
+    setValidandoDisponibilidadEquipo(true);
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const disponibilidad = await controlInternoService.validarDisponibilidadEquipoAuditor({
+          equipoAuditores,
+          fechaInicio,
+          fechaFin,
+          excludeAuditoriaId: auditoriaActualId,
+        });
+
+        if (!cancelado) {
+          setDisponibilidadEquipoAuditor(disponibilidad.disponible ? null : disponibilidad);
+        }
+      } catch (error) {
+        console.warn('[FormularioAuditoria] No se pudo validar disponibilidad del equipo auditor:', error);
+        if (!cancelado) {
+          setDisponibilidadEquipoAuditor(null);
+        }
+      } finally {
+        if (!cancelado) {
+          setValidandoDisponibilidadEquipo(false);
+        }
+      }
+    }, 450);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    open,
+    auditoriaActualId,
+    formData.equipoAuditores,
+    formData.fechaInicioPlaneacion,
+    formData.fechaFinComunicacion,
+    formData.fechaInicio,
+    formData.fechaFin,
+  ]);
 
   // Inicializar búsqueda con el proceso/título actual si existe
   useEffect(() => {
@@ -954,6 +1018,41 @@ export function FormularioAuditoriaUnificado({
       }
     }
 
+    if (formData.equipoAuditores.length > 0) {
+      const fechaInicioEquipo = formData.fechaInicioPlaneacion || formData.fechaInicio || '';
+      const fechaFinEquipo = formData.fechaFinComunicacion || formData.fechaFin || '';
+
+      if (fechaInicioEquipo && fechaFinEquipo) {
+        setValidandoDisponibilidadEquipo(true);
+        try {
+          const disponibilidad = await controlInternoService.validarDisponibilidadEquipoAuditor({
+            equipoAuditores: formData.equipoAuditores,
+            fechaInicio: fechaInicioEquipo,
+            fechaFin: fechaFinEquipo,
+            excludeAuditoriaId: auditoriaActualId,
+          });
+
+          if (!disponibilidad.disponible) {
+            setDisponibilidadEquipoAuditor(disponibilidad);
+            toast.error('Equipo auditor adicional no disponible', {
+              description: disponibilidad.mensaje || 'Uno o mas auditores adicionales tienen cruces de fechas.',
+            });
+            setPasoActual(3);
+            return;
+          }
+
+          setDisponibilidadEquipoAuditor(null);
+        } catch (error) {
+          console.error('[FormularioAuditoria] Error validando disponibilidad del equipo auditor:', error);
+          toast.error('No se pudo validar la disponibilidad del equipo auditor adicional');
+          setPasoActual(3);
+          return;
+        } finally {
+          setValidandoDisponibilidadEquipo(false);
+        }
+      }
+    }
+
     if (formData.objetivos.length === 0) {
       toast.error('Debe agregar al menos un objetivo');
       setPasoActual(5);
@@ -1035,6 +1134,13 @@ export function FormularioAuditoriaUnificado({
   };
 
   const handleSiguiente = () => {
+    if (pasoActual >= 4 && disponibilidadEquipoAuditor?.disponible === false) {
+      toast.error('Equipo auditor adicional no disponible', {
+        description: disponibilidadEquipoAuditor.mensaje || 'Ajuste las fechas o el equipo adicional antes de continuar.',
+      });
+      return;
+    }
+
     if (pasoActual < TOTAL_PASOS) {
       setPasoActual(pasoActual + 1);
     }
@@ -1082,9 +1188,24 @@ export function FormularioAuditoriaUnificado({
           />
         );
       case 3:
-        return <Paso3EquipoAuditor formData={formData} onChange={handleChange} auditores={auditoresDisponibles} />;
+        return (
+          <Paso3EquipoAuditor
+            formData={formData}
+            onChange={handleChange}
+            auditores={auditoresDisponibles}
+            disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
+            validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+          />
+        );
       case 4:
-        return <Paso4Programacion formData={formData} onChange={handleChange} />;
+        return (
+          <Paso4Programacion
+            formData={formData}
+            onChange={handleChange}
+            disponibilidadEquipoAuditor={disponibilidadEquipoAuditor}
+            validandoDisponibilidadEquipo={validandoDisponibilidadEquipo}
+          />
+        );
       case 5:
         return (
           <Paso5ObjetivosCriterios
@@ -1267,6 +1388,18 @@ export function FormularioAuditoriaUnificado({
                       {formData.hallazgos.length} Hallazgo{formData.hallazgos.length !== 1 ? 's' : ''} Preliminar{formData.hallazgos.length !== 1 ? 'es' : ''}
                     </Badge>
                   )}
+                  {disponibilidadEquipoAuditor?.disponible === false && (
+                    <Badge className="bg-red-100 text-red-800 border-red-300 px-3 py-1.5 text-xs font-bold">
+                      <AlertTriangle className="w-3 h-3 mr-1 inline" />
+                      Equipo adicional con cruce
+                    </Badge>
+                  )}
+                  {validandoDisponibilidadEquipo && formData.equipoAuditores.length > 0 && (
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-300 px-3 py-1.5 text-xs font-bold">
+                      <Clock className="w-3 h-3 mr-1 inline" />
+                      Validando equipo
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
@@ -1282,7 +1415,7 @@ export function FormularioAuditoriaUnificado({
                   ) : (
                     <Button
                       onClick={handleSubmit}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || validandoDisponibilidadEquipo || disponibilidadEquipoAuditor?.disponible === false}
                       style={{ background: '#10B981' }}
                       className="gap-2"
                     >
@@ -2167,9 +2300,69 @@ function Paso2ClasificacionAlcance({
 
 interface Paso3Props extends PasoProps {
   auditores: AuditorOption[];
+  disponibilidadEquipoAuditor?: DisponibilidadEquipoAuditorResponse | null;
+  validandoDisponibilidadEquipo?: boolean;
 }
 
-function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
+interface DisponibilidadEquipoAuditorAlertProps {
+  disponibilidad?: DisponibilidadEquipoAuditorResponse | null;
+  validando?: boolean;
+}
+
+function EquipoAuditorDisponibilidadAlert({ disponibilidad, validando }: DisponibilidadEquipoAuditorAlertProps) {
+  if (validando) {
+    return (
+      <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 flex items-center gap-2">
+        <Clock className="w-4 h-4 flex-shrink-0" />
+        Validando disponibilidad del equipo auditor adicional...
+      </div>
+    );
+  }
+
+  if (!disponibilidad || disponibilidad.disponible) return null;
+
+  const conflictos = disponibilidad.conflictos || [];
+
+  return (
+    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <div className="space-y-2">
+          <p className="font-bold">Equipo auditor adicional no disponible</p>
+          <p className="text-xs leading-relaxed">
+            {disponibilidad.mensaje || 'Uno o mas auditores adicionales tienen cruces de fechas con otra auditoria.'}
+          </p>
+          {conflictos.length > 0 && (
+            <ul className="space-y-1 text-xs">
+              {conflictos.slice(0, 4).map((conflicto) => (
+                <li key={`${conflicto.personaId}-${conflicto.auditoriaId}`}>
+                  <span className="font-semibold">{conflicto.personaNombre}</span>
+                  {' ya esta en '}
+                  <span className="font-semibold">{conflicto.auditoriaCodigo || conflicto.auditoriaNombre}</span>
+                  {' del '}
+                  {formatDateLabel(conflicto.fechaInicio)}
+                  {' al '}
+                  {formatDateLabel(conflicto.fechaFin)}
+                </li>
+              ))}
+              {conflictos.length > 4 && (
+                <li>{conflictos.length - 4} cruce(s) adicional(es).</li>
+              )}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Paso3EquipoAuditor({
+  formData,
+  onChange,
+  auditores,
+  disponibilidadEquipoAuditor,
+  validandoDisponibilidadEquipo,
+}: Paso3Props) {
   const handleToggleAuditor = (auditorId: string) => {
     const existe = formData.equipoAuditores.includes(auditorId);
     if (existe) {
@@ -2278,6 +2471,10 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
                 {formData.equipoAuditores.length} auditor(es) adicional(es) seleccionado(s)
               </p>
             )}
+            <EquipoAuditorDisponibilidadAlert
+              disponibilidad={disponibilidadEquipoAuditor}
+              validando={validandoDisponibilidadEquipo}
+            />
           </FieldWrapper>
         </div>
       </Card>
@@ -2289,7 +2486,17 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
 // PASO 4: PROGRAMACIÓN - 3 ETAPAS CON FECHAS ESPECÍFICAS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function Paso4Programacion({ formData, onChange }: PasoProps) {
+interface Paso4Props extends PasoProps {
+  disponibilidadEquipoAuditor?: DisponibilidadEquipoAuditorResponse | null;
+  validandoDisponibilidadEquipo?: boolean;
+}
+
+function Paso4Programacion({
+  formData,
+  onChange,
+  disponibilidadEquipoAuditor,
+  validandoDisponibilidadEquipo,
+}: Paso4Props) {
   // Verificar si las etapas anteriores están completas (convertir a boolean)
   const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
   const ejecucionCompleta = !!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion);
@@ -2338,6 +2545,11 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
       </div>
 
       {/* ETAPA 1: PLANEACIÓN - Siempre habilitada */}
+      <EquipoAuditorDisponibilidadAlert
+        disponibilidad={disponibilidadEquipoAuditor}
+        validando={validandoDisponibilidadEquipo}
+      />
+
       <Card className="p-6 border-2 border-blue-200 bg-blue-50/30">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>

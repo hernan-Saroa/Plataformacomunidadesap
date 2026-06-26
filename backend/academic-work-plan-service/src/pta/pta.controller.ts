@@ -124,8 +124,8 @@ export class PtaController {
   }
 
   @Post('catalogos/calcular-horas-programables')
-  calcularHorasProgramables(@Body() body: any) {
-    const total_horas = this.ptaService.calcHorasProgramables({
+  async calcularHorasProgramables(@Body() body: any) {
+    const total_horas = await this.ptaService.calcHorasProgramables({
       tipo_vinculacion: body?.tipo_vinculacion,
       dedicacion: body?.dedicacion,
       semanas_vinculacion: body?.semanas_vinculacion,

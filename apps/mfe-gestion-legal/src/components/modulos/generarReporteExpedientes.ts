@@ -237,7 +237,7 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number, camposCo
       <!-- Datos generales en grid -->
       <table style="width:100%;border-collapse:collapse;margin-bottom:14px;border:1px solid #E5E7EB;border-radius:6px;overflow:hidden;">
         <tr style="background:#F9FAFB;">
-          <td style="padding:8px 12px;font-size:11px;color:#6B7280;width:25%;border-bottom:1px solid #E5E7EB;">Tipo de Proceso</td>
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;width:25%;border-bottom:1px solid #E5E7EB;">Medio de Control</td>
           <td style="padding:8px 12px;font-size:12px;font-weight:700;width:25%;border-bottom:1px solid #E5E7EB;">${exp.tipoProceso || '—'}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;width:25%;border-bottom:1px solid #E5E7EB;">Etapa Actual</td>
           <td style="padding:8px 12px;font-size:12px;font-weight:700;width:25%;border-bottom:1px solid #E5E7EB;">${exp.etapa || '—'}</td>

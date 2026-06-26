@@ -65,12 +65,17 @@ describe('ExpedienteService', () => {
             create: jest.fn((data) => data),
         };
         mockDataSource = { query: jest.fn() };
-        mockConfigService = { findByKey: jest.fn() };
+        mockConfigService = {
+            findByKey: jest.fn(),
+            getEstadosForExpediente: jest.fn().mockResolvedValue([]),
+            findEstadoIndex: jest.fn((estados: any[], value?: string) => (estados || []).findIndex((e) => e.id === value)),
+        };
         mockLegalNotifications = {
             notifyProcesoCreado: jest.fn(),
             notifyProfesionalAsignado: jest.fn(),
             notifyProfesionalesProcesoAnexado: jest.fn(),
             notifyProcesoAnexado: jest.fn(),
+            notifyEtapaAvanzada: jest.fn(),
         };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -281,6 +286,45 @@ describe('ExpedienteService', () => {
                 abogadoSustanciador: 'abogado-nuevo',
                 abogadosAnteriores: ['abogado-previo'],
             }));
+        });
+
+        it('debe notificar avance de etapa (notifyEtapaAvanzada) al abogado y al aprobador de la nueva etapa', async () => {
+            jest.spyOn(service, 'agregarActuacion').mockResolvedValue({} as Actuacion);
+            mockActuacionRepo.find.mockResolvedValue([]);
+            mockConfigService.getEstadosForExpediente.mockResolvedValue([
+                { id: 'RADICACION', nombre: 'Radicación', orden: 1, activo: true, aprobacionTipo: 'ninguno' },
+                { id: 'PRUEBAS', nombre: 'Pruebas', orden: 2, activo: true, aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            ]);
+            jest.spyOn(service, 'findOne')
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-015', tipoProceso: 'Reparación Directa', etapaProcesal: 'RADICACION', abogadoSustanciador: 'abogado-1' } as unknown as Expediente)
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-015', tipoProceso: 'Reparación Directa', etapaProcesal: 'PRUEBAS', abogadoSustanciador: 'abogado-1' } as unknown as Expediente);
+
+            await service.updateExpediente(expedienteId, { etapaProcesal: 'PRUEBAS' });
+
+            expect(mockLegalNotifications.notifyEtapaAvanzada).toHaveBeenCalledWith(expect.objectContaining({
+                modulo: 'DEFENSA_JUDICIAL',
+                radicado: 'EXP-015',
+                etapaNombre: 'Pruebas',
+                abogadoId: 'abogado-1',
+                aprobacionTipo: 'rol',
+                aprobacionRol: 'JEFE_GESTION_LEGAL',
+            }));
+        });
+
+        it('NO debe notificar avance de etapa cuando es una devolución (retroceso de etapa)', async () => {
+            jest.spyOn(service, 'agregarActuacion').mockResolvedValue({} as Actuacion);
+            mockActuacionRepo.find.mockResolvedValue([]);
+            mockConfigService.getEstadosForExpediente.mockResolvedValue([
+                { id: 'RADICACION', nombre: 'Radicación', orden: 1, activo: true, aprobacionTipo: 'ninguno' },
+                { id: 'PRUEBAS', nombre: 'Pruebas', orden: 2, activo: true, aprobacionTipo: 'rol', aprobacionRol: 'JEFE_GESTION_LEGAL' },
+            ]);
+            jest.spyOn(service, 'findOne')
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-016', tipoProceso: 'Reparación Directa', etapaProcesal: 'PRUEBAS', abogadoSustanciador: 'abogado-1' } as unknown as Expediente)
+                .mockResolvedValueOnce({ id: expedienteId, radicado: 'EXP-016', tipoProceso: 'Reparación Directa', etapaProcesal: 'RADICACION', abogadoSustanciador: 'abogado-1' } as unknown as Expediente);
+
+            await service.updateExpediente(expedienteId, { etapaProcesal: 'RADICACION' });
+
+            expect(mockLegalNotifications.notifyEtapaAvanzada).not.toHaveBeenCalled();
         });
 
         it('debe llamar notifyProfesionalAsignado con esReasignacion: true al reasignar abogado', async () => {

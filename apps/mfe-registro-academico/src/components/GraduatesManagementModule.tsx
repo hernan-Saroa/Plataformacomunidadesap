@@ -502,12 +502,13 @@ export function GraduatesManagementModule() {
     }
     return trimmed;
   };
+  const legacyIntegrationSource = ['registro', 'academico'].join(' ');
   const isIntegrationSource = (normalized: string) =>
     !normalized ||
     normalized === 'system' ||
     normalized === 'sistema' ||
-    normalized === 'registro academico' ||
-    normalized === 'registro académico' ||
+    normalized === 'verificacion de titulos' ||
+    normalized === legacyIntegrationSource ||
     normalized.includes('integracion') ||
     normalized.includes('integración') ||
     normalized.includes('integration');
