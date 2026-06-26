@@ -19,6 +19,7 @@ import type { ActuacionExpediente } from './expedienteShared';
 import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
 import { legalService } from '../../../../services/api/legal.service';
+import { requiresSignature } from '../../../../utils/fileUtils';
 import { FirmaDigitalActuacion, FirmaData } from './FirmaDigitalActuacion';
 
 // ==================== TIPOS ====================
@@ -133,7 +134,10 @@ export function TabActuacionesExpediente({
     }
   };
 
-  // Helper to check if all associated documents for an actuation are signed
+  // Helper to check if all associated documents that REQUIRE a signature are signed.
+  // Solo PDF y Word requieren firma; Excel, imágenes, video, etc. no la requieren y por
+  // tanto no bloquean la autorización. Si la actuación no tiene ningún documento firmable,
+  // se considera "lista" y el aprobador puede autorizar de una vez.
   const checkAllAssociatedDocsSigned = (act: ActuacionExpediente) => {
     const associatedDocIds = act.metadata?.documentosAsociados || [];
     const resolvedDocs = documentosExpediente.filter(doc => {
@@ -152,7 +156,9 @@ export function TabActuacionesExpediente({
       }
       return false;
     };
-    return resolvedDocs.every(doc => isDocSigned(doc));
+    return resolvedDocs
+      .filter(doc => requiresSignature(doc.nombre))
+      .every(doc => isDocSigned(doc));
   };
 
   const handleSendEmail = async (actuacion: ActuacionExpediente) => {
@@ -1379,7 +1385,8 @@ export function TabActuacionesExpediente({
                               return false;
                             };
                             const signed = isDocSigned(doc);
-                            
+                            const requiereFirma = requiresSignature(doc.nombre);
+
                             return (
                               <div key={doc.id || index} className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/70 transition-colors">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -1387,14 +1394,16 @@ export function TabActuacionesExpediente({
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                       <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Documento Asociado #{index + 1}</p>
-                                      <Badge 
+                                      <Badge
                                         className={`text-[9px] font-extrabold px-1.5 py-0 rounded border ${
-                                          signed 
-                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
-                                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                                          !requiereFirma
+                                            ? 'bg-slate-100 border-slate-200 text-slate-500'
+                                            : signed
+                                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                              : 'bg-amber-50 border-amber-200 text-amber-700'
                                         }`}
                                       >
-                                        {signed ? '✓ Firmado' : '⚠ Sin Firmar'}
+                                        {!requiereFirma ? 'No requiere firma' : signed ? '✓ Firmado' : '⚠ Sin Firmar'}
                                       </Badge>
                                     </div>
                                     <p className="text-xs font-bold text-gray-700 truncate" title={doc.nombre}>
@@ -1414,7 +1423,7 @@ export function TabActuacionesExpediente({
                                     </Button>
                                   )}
                                   {(() => {
-                                    const puedeFirmarDoc = !signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove();
+                                    const puedeFirmarDoc = !signed && requiresSignature(doc.nombre) && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove();
                                     const docInfo = {
                                       id: doc.id,
                                       nombre: doc.nombre,

@@ -2893,6 +2893,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       if (planCreado?.id) {
         await limpiarBorradoresWizard();
         setPlanesListVersion((v) => v + 1);
+        vigenciaContext?.refetch?.();
         if (opciones?.permanecerEnWizard) {
           setAñoActual(vigencia);
           await abrirWizardConPlan(
