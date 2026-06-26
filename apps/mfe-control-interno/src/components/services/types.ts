@@ -6,7 +6,7 @@
 // ==================== AUDITORÍAS ====================
 
 export type EstadoAuditoria = 'programada' | 'en-planeacion' | 'en-ejecucion' | 'en-comunicacion' | 'cerrada' | 'cancelada';
-export type FaseAuditoria = 'planeacion' | 'en-curso' | 'revision' | 'completada';
+export type FaseAuditoria = 'plan-anual' | 'planeacion' | 'en-curso' | 'revision' | 'completada';
 export type TipoAuditoria = 'Gestión' | 'Cumplimiento' | 'Desempeño' | 'Sistemas' | 'Financiera' | 'Seguimiento';
 export type PrioridadAuditoria = 'Alta' | 'Media' | 'Baja';
 

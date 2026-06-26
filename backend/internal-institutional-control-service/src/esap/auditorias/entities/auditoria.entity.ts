@@ -23,6 +23,7 @@ export enum TipoAuditoria {
 }
 
 export enum FaseAuditoria {
+  PLAN_ANUAL = 'plan-anual',
   PLANEACION = 'planeacion',
   EN_CURSO = 'en-curso',
   REVISION = 'revision',
@@ -105,7 +106,7 @@ export class Auditoria {
     type: 'varchar',
     length: 50,
     nullable: false,
-    default: FaseAuditoria.PLANEACION,
+    default: FaseAuditoria.PLAN_ANUAL,
   })
   fase: FaseAuditoria;
 

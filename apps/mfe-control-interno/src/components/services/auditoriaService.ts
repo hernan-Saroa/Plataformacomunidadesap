@@ -35,7 +35,7 @@ export interface AuditoriaBackendDTO {
   
   // Campos opcionales
   descripcion?: string;
-  fase?: 'planeacion' | 'ejecucion' | 'informe' | 'seguimiento' | 'cierre';
+  fase?: 'plan-anual' | 'planeacion' | 'ejecucion' | 'informe' | 'seguimiento' | 'cierre';
   progreso?: number;
   prioridad?: 'Alta' | 'Media' | 'Baja';
   areaObjetivo?: string;
@@ -187,7 +187,6 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     
     // Campos opcionales
     descripcion: form.descripcion,
-    fase: 'planeacion',
     progreso: 0,
     prioridad: mapearPrioridad(form.nivelRiesgo),
     areaObjetivo: form.areaObjetivo,
@@ -423,6 +422,7 @@ function mapearEstadoUI(fase?: string, progreso?: number, estadoKanban?: string)
   // ✅ PRIORIDAD 1: usar estadoKanban si está presente
   if (estadoKanban) {
     const kanbanNorm = estadoKanban.toLowerCase().trim();
+    if (kanbanNorm === 'programa anual' || kanbanNorm === 'plan-anual') return 'PROGRAMADA';
     if (kanbanNorm === 'planeación' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
     if (kanbanNorm === 'ejecución' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
     if (kanbanNorm === 'comunicación' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
@@ -432,6 +432,7 @@ function mapearEstadoUI(fase?: string, progreso?: number, estadoKanban?: string)
   // PRIORIDAD 2: usar fase
   if (fase) {
     const faseNorm = fase.toLowerCase();
+    if (faseNorm === 'plan-anual') return 'PROGRAMADA';
     if (faseNorm === 'cierre' || faseNorm === 'completada' || (progreso && progreso >= 100)) return 'COMPLETADA';
     if (faseNorm === 'ejecucion' || faseNorm === 'en-curso' || faseNorm === 'informe') return 'EN_EJECUCION';
     if (faseNorm === 'planeacion' || faseNorm === 'planeación') return 'PROGRAMADA';

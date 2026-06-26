@@ -637,6 +637,19 @@ export class AuditoriasService {
     return estadoDirecto || EstadoKanban.PLANEACION;
   }
 
+  private mapEstadoKanbanToFase(estadoKanban: EstadoKanban): FaseAuditoria {
+    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
+      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLAN_ANUAL,
+      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
+      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
+      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
+      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
+    };
+
+    return estadoToFase[estadoKanban] || FaseAuditoria.PLAN_ANUAL;
+  }
+
   /**
    * Aplica columnas plan_anual_* desde DTO y/o metadata JSON (compatibilidad).
    */
@@ -1253,6 +1266,11 @@ export class AuditoriasService {
       throw new BadRequestException(`Ya existe una auditoría con el código ${codigo}`);
     }
 
+    const estadoKanbanInicial = this.normalizeEstadoKanban(createDto.estadoKanban);
+    const faseInicial = estadoKanbanInicial === EstadoKanban.PLAN_ANUAL
+      ? FaseAuditoria.PLAN_ANUAL
+      : (createDto.fase || this.mapEstadoKanbanToFase(estadoKanbanInicial));
+
     const auditoriaData: any = {
       nombre: createDto.nombre,
       tipo: createDto.tipo,
@@ -1267,7 +1285,7 @@ export class AuditoriasService {
       fechaInicioEjecucion: fechaInicioEjecucion,
       fechaFinEjecucion: fechaFinEjecucion,
       fechaInicioComunicacion: fechaInicioComunicacion,
-      fase: createDto.fase || FaseAuditoria.PLANEACION,
+      fase: faseInicial,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
@@ -1275,7 +1293,7 @@ export class AuditoriasService {
       periodoFin: periodoFin,
       presupuestoEstimado: createDto.presupuestoEstimado,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-      estadoKanban: this.normalizeEstadoKanban(createDto.estadoKanban),
+      estadoKanban: estadoKanbanInicial,
     };
 
     // Incluir campos opcionales si tienen valor
@@ -1949,6 +1967,7 @@ export class AuditoriasService {
 
     // Estadísticas por fase
     const porFase = [
+      { fase: FaseAuditoria.PLAN_ANUAL, cantidad: 0 },
       { fase: FaseAuditoria.PLANEACION, cantidad: 0 },
       { fase: FaseAuditoria.EN_CURSO, cantidad: 0 },
       { fase: FaseAuditoria.REVISION, cantidad: 0 },
@@ -2040,12 +2059,13 @@ export class AuditoriasService {
     // ✅ Sincronizar estadoKanban con la fase
     // Mapeo de FaseAuditoria -> EstadoKanban
     const faseToEstadoKanban: Record<FaseAuditoria, EstadoKanban> = {
+      [FaseAuditoria.PLAN_ANUAL]: EstadoKanban.PLAN_ANUAL,
       [FaseAuditoria.PLANEACION]: EstadoKanban.PLANEACION,
       [FaseAuditoria.EN_CURSO]: EstadoKanban.EJECUCION,
       [FaseAuditoria.REVISION]: EstadoKanban.COMUNICACION,
       [FaseAuditoria.COMPLETADA]: EstadoKanban.FINALIZADA,
     };
-    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLANEACION;
+    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLAN_ANUAL;
     auditoria.estadoKanban = estadoNuevo;
 
     // Si se completa, asegurar progreso al 100%
@@ -2096,15 +2116,7 @@ export class AuditoriasService {
     auditoria.estadoKanban = nuevoEstadoKanban;
     
     // Sincronizar la fase del backend (para compatibilidad)
-    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
-      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLANEACION,
-      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
-      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
-      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
-      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
-      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
-    }
-    auditoria.fase = estadoToFase[nuevoEstadoKanban];
+    auditoria.fase = this.mapEstadoKanbanToFase(nuevoEstadoKanban);
     
     // NO PERMITIR cambiar a FINALIZADA sin usar el endpoint específico
     if (nuevoEstadoKanban === EstadoKanban.FINALIZADA) {
@@ -3008,6 +3020,7 @@ export class AuditoriasService {
    */
   private mapFaseToEstadoKanban(fase: FaseAuditoria): string {
     const mapping = {
+      [FaseAuditoria.PLAN_ANUAL]: 'Plan Anual',
       [FaseAuditoria.PLANEACION]: 'Planeación',
       [FaseAuditoria.EN_CURSO]: 'Ejecución',
       [FaseAuditoria.REVISION]: 'Comunicación',
