@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsString, IsEmail, IsOptional, IsArray, IsUUID, IsNumber } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsArray, IsUUID, IsNumber, IsDateString } from 'class-validator';
 
 export class CreatePersonDto {
   @IsString()
@@ -39,4 +39,12 @@ export class CreatePersonDto {
   @Type(() => Number)
   @IsNumber()
   idSede?: number;
+
+  @IsDateString()
+  birth_date?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
 }

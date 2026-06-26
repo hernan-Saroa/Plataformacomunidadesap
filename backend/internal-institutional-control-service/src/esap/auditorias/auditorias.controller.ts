@@ -25,6 +25,7 @@ import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { PlanesMejoramientoService } from '../planes-mejoramiento/planes-mejoramiento.service';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
+import { ValidarDisponibilidadEquipoDto } from './dto/validar-disponibilidad-equipo.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
 import { UpdateNotaDto } from './dto/update-nota.dto';
 import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
@@ -606,6 +607,22 @@ export class AuditoriasController {
   @Permissions(CIP.AUDITORIA_VIEW)
   findOne(@Param('id') id: string) {
     return this.auditoriasService.findOne(id);
+  }
+
+  /**
+   * POST /esap/auditorias/validar-disponibilidad-equipo
+   * Valida cruces del Equipo Auditor Adicional en el rango de programacion.
+   */
+  @Post('validar-disponibilidad-equipo')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_CREATE, CIP.AUDITORIA_EDIT)
+  validarDisponibilidadEquipo(@Body() dto: ValidarDisponibilidadEquipoDto) {
+    return this.auditoriasService.validarDisponibilidadEquipoAuditor(
+      dto.equipoAuditores || [],
+      dto.fechaInicio,
+      dto.fechaFin,
+      dto.excludeAuditoriaId,
+    );
   }
 
   /**

@@ -78,7 +78,7 @@ Plataformacomunidadesap/
 | --- | ---: | --- |
 | `api-gateway` | 3000 | Enrutamiento HTTP, propagacion de solicitudes y auditoria |
 | `auth-service` | 3001 | Autenticacion, usuarios, roles y permisos |
-| `academic-registration-service` | 3002 | Registro academico e integracion asociada |
+| `academic-registration-service` | 3002 | Verificación de títulos e integracion asociada |
 | `academic-work-plan-service` | 3003 | Plan de trabajo academico (PTA) |
 | `certification-service` | 3004 | Certificados e integraciones de certificacion |
 | `internal-disciplinary-control-service` | 3005 | Control disciplinario interno |

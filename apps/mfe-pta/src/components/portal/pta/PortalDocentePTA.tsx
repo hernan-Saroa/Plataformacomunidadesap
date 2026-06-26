@@ -500,14 +500,22 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
             >
               <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
             </button>
-          ) : (
-            <button
-              onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
-              disabled
-              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border border-gray-200 text-gray-400 text-[12px] sm:text-[13px] font-extrabold bg-gray-50 cursor-not-allowed transition-all duration-300"
-              title={mensajeBloqueo ?? 'No puedes crear un nuevo PTA en este momento'}
+          ) : tieneSolicitudPendiente ? (
+            /* Ya hay una solicitud de segundo PTA en revisión */
+            <span
+              className="flex items-center justify-center gap-2 h-10 px-4 sm:px-5 rounded-xl border border-amber-200 text-amber-700 text-[12px] sm:text-[13px] font-bold bg-amber-50"
+              title="Tu solicitud de segundo PTA está en revisión por Gestión Profesoral."
             >
-              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
+              <Clock className="w-4 h-4" /> Solicitud en revisión
+            </span>
+          ) : (
+            /* Bloqueado por PTA activo/aprobado o límite anual → permitir SOLICITAR un segundo PTA */
+            <button
+              onClick={() => setShowSolicitudModal(true)}
+              className="flex items-center justify-center gap-2 h-10 px-4 sm:px-5 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(217,119,6,0.3)] hover:shadow-[0_6px_20px_rgba(217,119,6,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-gradient-to-r from-[#D97706] to-[#F59E0B] hover:from-[#B45309] hover:to-[#D97706]"
+              title={mensajeBloqueo ? `${mensajeBloqueo} Puedes solicitar un segundo PTA.` : 'Solicitar un segundo PTA'}
+            >
+              <Plus className="w-4 h-4" /> Solicitar <span className="hidden sm:inline">segundo</span> PTA
             </button>
           )}
         </div>

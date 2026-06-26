@@ -8,7 +8,7 @@ VALUES
   ('100000002', 'CC', 'Auditor Prueba', 'Auditor', 'Prueba', 'M', 'auditor@esap.edu.co'),
   ('100000003', 'CC', 'Juridico Prueba', 'Juridico', 'Prueba', 'M', 'juridico@esap.edu.co'),
   ('100000004', 'CC', 'Disciplinario Prueba', 'Disciplinario', 'Prueba', 'M', 'disciplinario@esap.edu.co'),
-  ('100000005', 'CC', 'Registro Academico', 'Registro', 'Academico', 'M', 'registro@esap.edu.co')
+  ('100000005', 'CC', 'Verificación de títulos', 'Verificación', 'de títulos', 'M', 'registro@esap.edu.co')
 ON CONFLICT DO NOTHING;
 
 -- Create users

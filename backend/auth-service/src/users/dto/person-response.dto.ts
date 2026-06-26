@@ -90,4 +90,10 @@ export class PersonResponseDto {
   @Expose()
   @Type(() => UserResponseDto)
   user?: UserResponseDto;
+
+  @Expose()
+  fec_nacimiento: Date;
+
+  @Expose()
+  dir_residencia: string;
 }

@@ -23,7 +23,7 @@ Cada uno será un proyecto independiente dentro de un Monorepo:
 3.  **MFE-03: Programas Académicos**
 4.  **MFE-04: Auditoría**
 5.  **MFE-05: Reportes**
-6.  **MFE-06: Registro Académico**
+6.  **MFE-06: Verificación de títulos**
 7.  **MFE-07: Gestión Profesoral**
 8.  **MFE-08: Certificados Laborales**
 9.  **MFE-09: Firma Electrónica**
@@ -64,7 +64,7 @@ Cada uno será un proyecto independiente dentro de un Monorepo:
 | **03: Programas Académicos** | `components/esap/ProgramasAcademicosModule.tsx` |
 | **04: Auditoría** | `components/esap/audit/`, `components/esap/plan-anual-auditoria/` |
 | **05: Reportes** | `components/esap/ReportsModuleV2.tsx`, `ReportBuilderModal.tsx` |
-| **06: Registro Académico** | `components/esap/registro-academico/` |
+| **06: Verificación de títulos** | `components/esap/registro-academico/` |
 | **07: Gestión Profesoral** | `components/gestion-profesoral/`, `modules/gestion-profesoral/` |
 | **08: Certificados Lab** | `components/esap/CertificateRequestsModule.tsx` |
 | **09: Firma Electrónica** | `components/esap/firma-electronica/` |

@@ -1194,6 +1194,14 @@ export class UsersService {
         setClauses.push(`id_sede = $${paramIndex++}`);
         values.push(dto.idSede || null);
       }
+      if (dto.birth_date !== undefined) {
+        setClauses.push(`fec_nacimiento = $${paramIndex++}`);
+        values.push(dto.birth_date);
+      }
+      if (dto.address !== undefined) {
+        setClauses.push(`dir_residencia = $${paramIndex++}`);
+        values.push(dto.address || null);
+      }
 
       if (setClauses.length > 0) {
         values.push(user.person.id);

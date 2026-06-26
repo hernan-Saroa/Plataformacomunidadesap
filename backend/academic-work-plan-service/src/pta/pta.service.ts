@@ -589,6 +589,10 @@ export class PtaService {
     // Normalize state case
     if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
 
+    // Solicitud aprobada que habilita este segundo PTA; se consume tras crearlo
+    // (estado → 'gestionada') para que el permiso no quede abierto indefinidamente.
+    let solicitudUsada: SolicitudPtaEntity | null = null;
+
     // Regla legacy: máximo 1 PTA activo salvo solicitud aprobada.
     if (!id && !isAdminEdit) {
       const ESTADOS_ACTIVOS = [
@@ -635,6 +639,7 @@ export class PtaService {
               'Ya tienes un Plan de Trabajo en ejecución. Finalizá o esperá su aprobación antes de crear uno nuevo.',
             );
           }
+          solicitudUsada = solicitud;
         }
       }
     }
@@ -736,6 +741,19 @@ export class PtaService {
       sistemaOrigen: isAdminEdit ? 'backoffice' : 'portal',
       mensaje: tipoAccionSave === 'CREACION' ? 'PTA creado' : tipoAccionSave === 'CAMBIO_ESTADO' ? `Estado: ${estadoAnteriorSave} → ${saved.estado}` : 'PTA guardado',
     });
+
+    // Consumir la solicitud aprobada que habilitó este segundo PTA: pasa a 'gestionada'
+    // para que `tienePermisoEspecial` (que solo cuenta 'aprobado') se limpie y el docente
+    // no pueda crear PTAs adicionales sin una nueva solicitud aprobada.
+    if (solicitudUsada) {
+      try {
+        solicitudUsada.estado = 'gestionada';
+        solicitudUsada.notificacionLeida = true;
+        await this.solicitudRepo.save(solicitudUsada);
+      } catch (e: any) {
+        this.logger.warn(`No se pudo consumir la solicitud ${solicitudUsada.id}: ${e?.message || e}`);
+      }
+    }
 
     return this.toPtaDto(saved, extMult);
   }
