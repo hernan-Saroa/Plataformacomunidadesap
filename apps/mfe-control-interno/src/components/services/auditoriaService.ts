@@ -369,33 +369,8 @@ function mapearPrioridad(nivelRiesgo?: string): 'Alta' | 'Media' | 'Baja' {
  * 'Financiera', 'TI', 'Cumplimiento', 'Operacional', 'Regular', 'Territorial', 'Especial'
  */
 function mapearTipoBackend(tipo: string): string {
-  if (!tipo) return 'Gestión';
-  
-  // Mapeo de tipos frontend a valores válidos DB
-  const map: Record<string, string> = {
-    // Tipos del formulario
-    'regular': 'Regular',
-    'territorial': 'Territorial',
-    'especial': 'Especial',
-    'seguimiento': 'Cumplimiento',
-    // Tipos estándar
-    'gestion': 'Gestión',
-    'gestión': 'Gestión',
-    'control interno': 'Control Interno',
-    'control_interno': 'Control Interno',
-    'academica': 'Académica',
-    'académica': 'Académica',
-    'rrhh': 'RRHH',
-    'recursos humanos': 'RRHH',
-    'financiera': 'Financiera',
-    'ti': 'TI',
-    'tecnologia': 'TI',
-    'cumplimiento': 'Cumplimiento',
-    'operacional': 'Operacional',
-  };
-  
-  const tipoLower = tipo.toLowerCase().trim();
-  return map[tipoLower] || tipo; // Si no hay mapeo, envía el valor original
+  if (!tipo) return 'Regular';
+  return tipo;
 }
 
 function mapearTipoUI(tipo: string): AuditoriaUI['tipo'] {
@@ -562,6 +537,9 @@ export const auditoriaService = {
       if (data.fechaInicioComunicacion) updates.fechaInicioComunicacion = formatearFechaISO(data.fechaInicioComunicacion);
       if (data.fechaFin) updates.fechaFin = formatearFechaISO(data.fechaFin);
       if (data.auditorLider) updates.auditorLiderId = data.auditorLider;
+      if (data.auditorAsignado) updates.auditorAsignadoId = data.auditorAsignado;
+      if (data.supervisorAsignado) updates.supervisorAsignadoId = data.supervisorAsignado;
+      if (data.equipoAuditores !== undefined) updates.equipoAuditores = data.equipoAuditores;
       if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo;
       
       await controlInternoService.updateAuditoria(id, updates);

@@ -1198,12 +1198,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   )}
 
                   {/* Gestión Profesoral - PTA */}
-                  {renderMenuItem(
+                  {/* {renderMenuItem(
                     'gestion-profesoral',
                     <BookOpen className="w-5 h-5" strokeWidth={2} />,
                     'Gestión Profesoral',
                     'PTAs y docentes'
-                  )}
+                  )} */}
 
                   {renderMenuItem(
                     'pta',

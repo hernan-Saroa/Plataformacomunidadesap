@@ -117,8 +117,8 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
 
     // 4. Cabeceras de Datos (Fila 6)
     const headers = [
-      'Id. Actividad',
-      'Id Rol',
+      'ID',
+      'Rol',
       'Lista de actividades',
       'Responsable',
       'Fecha\ninicio',
@@ -126,7 +126,7 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
       'Control',
       'Estado',
       'Seguimiento y evaluación tareas',
-      'Fecha',
+      'Fecha seguimiento',
       'Evaluació\nn tarea',
       'Evidencias'
     ];
@@ -307,8 +307,8 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
 
 // Exportamos las columnas disponibles para mantener la compatibilidad con el Dashboard
 export const COLUMNAS_DISPONIBLES = [
-  { key: 'idactividad', label: 'Id. Actividad', defaultVisible: true },
-  { key: 'idrol', label: 'Id Rol', defaultVisible: true },
+  { key: 'idactividad', label: 'ID', defaultVisible: true },
+  { key: 'idrol', label: 'Rol', defaultVisible: true },
   { key: 'lista_actividades', label: 'Lista de actividades', defaultVisible: true },
   { key: 'responsable', label: 'Responsable', defaultVisible: true },
   { key: 'fecha_inicio', label: 'Fecha inicio', defaultVisible: true },
@@ -316,7 +316,7 @@ export const COLUMNAS_DISPONIBLES = [
   { key: 'control', label: 'Control', defaultVisible: true },
   { key: 'estado', label: 'Estado', defaultVisible: true },
   { key: 'seguimiento', label: 'Seguimiento y evaluación', defaultVisible: true },
-  { key: 'fecha', label: 'Fecha', defaultVisible: true },
+  { key: 'fecha', label: 'Fecha seguimiento', defaultVisible: true },
   { key: 'evaluacion_tarea', label: 'Evaluación tarea', defaultVisible: true },
   { key: 'evidencias', label: 'Evidencias', defaultVisible: true }
 ];
