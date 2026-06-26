@@ -99,7 +99,7 @@ import { estructuraService } from '../../services/estructuraService';
 // ============ TIPOS ============
 
 type EstadoAuditoria = 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'finalizada';
-type TipoAuditoria = 'Regular' | 'Territorial' | 'Especial';
+type TipoAuditoria = string;
 type NivelRiesgo = 'Alto' | 'Medio' | 'Bajo';
 type TabActiva = 'general' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'documentacion' | 'historial' | 'finalizada';
 
@@ -1232,11 +1232,9 @@ export function ExpedienteAuditoriaCompleto({
    */
   function mapearTipoAuditoria(tipo?: string): TipoAuditoria {
     if (!tipo) return 'Regular';
-    const t = tipo.toLowerCase().trim();
-    if (t === 'territorial') return 'Territorial';
-    if (t === 'especial') return 'Especial';
-    // 'regular', 'sede', 'gestión', 'cumplimiento', etc. → Regular
-    return 'Regular';
+    // Se devuelve el tipo original para respetar la configuración dinámica (ej. "Gestion")
+    // Se aplica capitalización simple a la primera letra para presentación
+    return tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
   }
 
   function mapearEstado(fase: string): EstadoAuditoria {
@@ -2025,6 +2023,28 @@ function TabGeneral({
     cargarSeccionales();
   }, []);
 
+  // Tipos de Auditoría cargados desde Configuración (API)
+  const [tiposAuditoriaExpediente, setTiposAuditoriaExpediente] = useState<{ id: string; nombre: string; }[]>([]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    const cargarTipos = async () => {
+      try {
+        const response = await auditoriasApi.getTiposAuditoria(true);
+        if (response.success && Array.isArray(response.data)) {
+          const activos = response.data.filter((t: any) => t.activo !== false && t.activa !== false);
+          setTiposAuditoriaExpediente(activos.map((t: any) => ({
+            id: t.id,
+            nombre: t.nombre,
+          })));
+        }
+      } catch (error) {
+        console.warn('[TabGeneral] No se pudieron cargar tipos de auditoría:', error);
+      }
+    };
+    cargarTipos();
+  }, [isEditing]);
+
   // Autocompletado del Responsable del Área Auditada
   const [busquedaResponsable, setBusquedaResponsable] = useState('');
   const [mostrarSugerenciasResponsable, setMostrarSugerenciasResponsable] = useState(false);
@@ -2480,9 +2500,20 @@ function TabGeneral({
                 onChange={(e) => handleFieldChange('tipo', e.target.value)}
                 className="text-sm font-bold text-gray-900 border border-gray-200 rounded-md px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
               >
-                <option value="Regular">Regular</option>
-                <option value="Territorial">Territorial</option>
-                <option value="Especial">Especial</option>
+                <option value="">— Seleccionar —</option>
+                {tiposAuditoriaExpediente.length > 0 ? (
+                  tiposAuditoriaExpediente.map((t) => (
+                    <option key={t.id} value={t.nombre}>{t.nombre}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Gestion">Gestion</option>
+                    <option value="Seguimiento">Seguimiento</option>
+                    <option value="Especial">Especial</option>
+                    <option value="Territorial">Territorial</option>
+                    <option value="Regular">Regular</option>
+                  </>
+                )}
               </select>
             ) : (
               <p className="text-sm font-bold text-gray-900">{auditoria.tipo}</p>
