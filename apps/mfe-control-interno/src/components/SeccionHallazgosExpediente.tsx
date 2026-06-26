@@ -19,7 +19,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  AlertCircle, Plus, Edit2, Eye, Trash2, Search, Filter,
+  AlertCircle, Plus, Edit2, Eye, Trash2, Search, Filter, Users, Calendar,
   CheckCircle, Clock, AlertTriangle, FileText, X, Loader2, Upload, Paperclip, Download
 } from 'lucide-react';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
