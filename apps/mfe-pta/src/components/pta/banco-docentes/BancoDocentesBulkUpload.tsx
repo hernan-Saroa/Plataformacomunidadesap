@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { bulkUploadBancoDocentes } from '../../../services/api/ptaApi';
+import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import * as XLSX from 'xlsx';
 
 interface BancoDocentesBulkUploadProps {
@@ -89,21 +90,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
   };
 
   const handleDownloadTemplate = () => {
-    const wb = XLSX.utils.book_new();
-    const wsDt = XLSX.utils.aoa_to_sheet([
-      ['codigo_dt', 'nombre_dt', 'nombre_normalizado', 'orden_visualizacion', 'activo'],
-      ['SC', 'SEDE_CENTRAL', 'sedecentral', 1, 'TRUE'],
-      ['DT-001', 'ANTIOQUIA', 'antioquia', 2, 'TRUE'],
-    ]);
-    XLSX.utils.book_append_sheet(wb, wsDt, 'DIRECCIONES_TERRITORIALES');
-    const wsCetaps = XLSX.utils.aoa_to_sheet([
-      ['codigo_cetap', 'nombre_cetap', 'nombre_normalizado', 'codigo_dt', 'nombre_dt', 'tipo', 'latitud', 'longitud', 'activo'],
-      ['CET-0288', 'Sede Central', 'sedecentral', 'SC', 'SEDE_CENTRAL', 'sede_central', '4,6486', '-74,0828', 'TRUE'],
-      ['CET-0001', 'OTRO', 'otro', 'SC', 'SEDE_CENTRAL', 'otro', '', '', 'TRUE'],
-      ['CET-0005', 'Amaga', 'amaga', 'DT-001', 'ANTIOQUIA', 'cetap', '', '', 'TRUE'],
-    ]);
-    XLSX.utils.book_append_sheet(wb, wsCetaps, 'DocenteS');
-    XLSX.writeFile(wb, 'Plantilla_Banco_Docentes.xlsx');
+    downloadBancoDocentesTemplate();
   };
 
   const handleImportar = async (dryRun = true, fileToImport?: File, skipInvalid = false) => {
@@ -114,7 +101,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
     if (!dryRun) setResult(null);
 
     try {
-      const response = await bulkUploadBancoDocentes(currentFile, dryRun, skipInvalid);
+      const response = await bulkUploadBancoDocentes(currentFile, dryRun, skipInvalid, periodoSeleccionado);
       
       if (response.success === false) {
         throw new Error(response.error || response.message || 'Error al validar el archivo');

@@ -42,6 +42,7 @@ const CATALOGO_BR039: Record<string, {
       { campo: 'Tipo y número de documento', documento: 'Documento de identidad (CC/CE/PA/PEP)', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'BR-054: Coherencia tipo↔formato' },
       { campo: 'Nombre completo', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'BR-040: Debe coincidir con el soporte' },
       { campo: 'Género', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí' },
+      { campo: 'Sexo biológico', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí' },
       { campo: 'Fecha de nacimiento', documento: 'Documento de identidad', tipoSoporte: 'documento_identidad', obligatorio: 'Sí', validacion: 'Debe ser < hoy' },
       { campo: 'Edad / Rango de edad', documento: '— (Calculado)', tipoSoporte: '', obligatorio: 'Derivado', validacion: 'Calculado desde fecha de nacimiento' },
     ],
@@ -91,7 +92,11 @@ const CATALOGO_BR039: Record<string, {
       { campo: 'Acto administrativo', documento: 'Resolución o contrato (el documento mismo)', tipoSoporte: 'contrato', obligatorio: 'Sí', validacion: 'BR-040: Fecha = inicio vinculación' },
       { campo: 'Inicio / Fin de vinculación', documento: 'Acto administrativo / contrato', tipoSoporte: 'contrato', obligatorio: 'Sí', validacion: 'Inicio ≤ Fin' },
       { campo: 'Dedicación (TC/MT/HC)', documento: 'Acto administrativo', tipoSoporte: 'acto_administrativo_dedicacion', obligatorio: 'Sí' },
+      { campo: 'Horas semanales', documento: '— (Derivado de dedicación)', tipoSoporte: '', obligatorio: 'Derivado' },
+      { campo: 'Horas PTA', documento: 'Acto administrativo / PTA', tipoSoporte: 'acto_administrativo_dedicacion', obligatorio: 'Sí' },
       { campo: 'Situación administrativa', documento: 'Acto administrativo (encargo, comisión, licencia)', tipoSoporte: 'acto_administrativo_situacion', obligatorio: 'Sí' },
+      { campo: 'Situación categoría', documento: '— (Derivado)', tipoSoporte: '', obligatorio: 'Derivado' },
+      { campo: 'Estado docente', documento: '— (Sistema)', tipoSoporte: '', obligatorio: 'Derivado' },
       { campo: 'Territorial / Sede', documento: 'Acto administrativo de adscripción', tipoSoporte: 'acto_adscripcion_territorial', obligatorio: 'Sí', validacion: 'CETAP no va aquí' },
       { campo: 'Categoría (escalafón)', documento: 'Resolución de escalafón / ubicación en categoría', tipoSoporte: 'resolucion_escalafon', obligatorio: 'Sí', validacion: 'BR-048: Coherencia categoría↔formación' },
       { campo: 'Puntaje salarial', documento: 'Resolución de ubicación salarial', tipoSoporte: 'resolucion_puntaje_salarial', obligatorio: 'Sí', validacion: 'Rango por categoría' },
@@ -106,7 +111,7 @@ const CATALOGO_BR039: Record<string, {
     bg: '#ECFEFF',
     campos: [
       { campo: 'Núcleo temático', documento: 'Acto de asignación / definición institucional GGP', tipoSoporte: 'acto_asignacion_nucleo', obligatorio: 'Sí', validacion: 'Lista controlada' },
-      { campo: 'Investigación 2025', documento: 'Acto de convocatoria / certificación de producto', tipoSoporte: 'certificacion_investigacion', obligatorio: 'Si aplica', validacion: 'Coherente con dedicación' },
+      { campo: 'Investigación activa', documento: 'Acto de convocatoria / certificación de producto', tipoSoporte: 'certificacion_investigacion', obligatorio: 'Si aplica', validacion: 'Coherente con dedicación' },
       { campo: 'Última evaluación', documento: 'Acta o certificado de evaluación de desempeño (SEDP)', tipoSoporte: 'acta_evaluacion_desempeno', obligatorio: 'Sí', validacion: 'BR-055: Vigencia / caducidad' },
     ],
   },
@@ -118,6 +123,8 @@ const CATALOGO_BR039: Record<string, {
     color: '#e11d48',
     bg: '#FFF1F2',
     campos: [
+      { campo: 'ID RUND', documento: '— (Sistema)', tipoSoporte: '', obligatorio: 'Derivado' },
+      { campo: 'Observaciones', documento: '— (Revisión)', tipoSoporte: '', obligatorio: 'No' },
       { campo: 'Autorización de tratamiento de datos', documento: 'Formato Habeas Data firmado', tipoSoporte: 'autorizacion_habeas_data', obligatorio: 'Sí', validacion: 'BR-057: Bloquea activación si falta' },
     ],
   },
@@ -129,25 +136,40 @@ const CAMPO_LABELS: Record<string, string> = {
   TIPO_DOCUMENTO: 'Tipo de documento',
   FECHA_NACIMIENTO: 'Fecha de nacimiento',
   GENERO: 'Género',
+  SEXO_BIOLOGICO: 'Sexo biológico',
+  EDAD: 'Edad',
+  RANGO_EDAD: 'Rango de edad',
   NIVEL_FORMACION: 'Nivel de formación',
   TITULO_PREGRADO: 'Pregrado',
   TITULO_ESPECIALIZACION: 'Especialización',
   TITULO_MAESTRIA: 'Maestría',
   TITULO_DOCTORADO: 'Doctorado',
   TITULO_POSDOCTORADO: 'Posdoctorado',
+  PERFIL_ACADEMICO_PRO: 'Perfil académico PRO',
   PERFIL_ACADEMICO: 'Perfil académico',
   TIPO_VINCULACION: 'Tipo de vinculación',
   DEDICACION: 'Dedicación',
+  DEDICACION_HORAS_SEMANA: 'Horas semanales',
+  HORAS_PTA: 'Horas PTA',
   CATEGORIA_ESCALAFON: 'Categoría / escalafón',
   TERRITORIAL: 'Territorial',
   REGIMEN_NORMATIVO: 'Régimen normativo',
+  ORIGEN_VINCULACION: 'Origen de vinculación',
   ACTO_ADMINISTRATIVO: 'Acto administrativo',
+  INICIO_VINCULACION: 'Inicio de vinculación',
+  FIN_VINCULACION: 'Fin de vinculación',
   PUNTAJE_SALARIAL: 'Puntaje salarial',
   SITUACION_ADMINISTRATIVA: 'Situación administrativa',
+  SITUACION_CATEGORIA: 'Situación categoría',
+  ESTADO_DOCENTE: 'Estado docente',
   NUCLEO_TEMATICO: 'Núcleo temático',
+  INVESTIGACION_ACTIVA: 'Investigación activa',
+  ULTIMA_EVALUACION: 'Última evaluación',
   CORREO_INSTITUCIONAL: 'Correo institucional',
   CORREO_ALTERNATIVO: 'Correo alternativo',
   TELEFONO: 'Teléfono',
+  OBSERVACIONES: 'Observaciones',
+  ID_RUND: 'ID RUND',
 };
 
 const OBLIG_BADGE: Record<string, { bg: string, text: string, label: string }> = {
@@ -160,6 +182,47 @@ const OBLIG_BADGE: Record<string, { bg: string, text: string, label: string }> =
 const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any) => {
   const campos = tarjetaRund?.bloques?.[bloqueId]?.campos || [];
   const lowerLabel = campoLabel.toLowerCase();
+
+  const formatValue = (value: any) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (value instanceof Date) return value.toLocaleDateString('es-CO');
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-CO');
+    }
+    return value;
+  };
+
+  const findValue = (key: string) => formatValue(campos.find((c: any) => c.campo === key)?.valor);
+
+  if (lowerLabel.includes('edad')) {
+    const edad = findValue('EDAD');
+    const rango = findValue('RANGO_EDAD');
+    return [edad ? `${edad} anos` : null, rango].filter(Boolean).join(' / ') || null;
+  }
+  if (lowerLabel.includes('sexo biol')) return findValue('SEXO_BIOLOGICO');
+  if (lowerLabel.includes('inicio / fin')) {
+    const inicio = findValue('INICIO_VINCULACION');
+    const fin = findValue('FIN_VINCULACION');
+    return [inicio, fin || 'Indefinido'].filter(Boolean).join(' - ') || null;
+  }
+  if (lowerLabel.includes('perfil')) {
+    const perfilPro = findValue('PERFIL_ACADEMICO_PRO');
+    const perfil = findValue('PERFIL_ACADEMICO');
+    return [perfilPro, perfil].filter(Boolean).join(' / ') || null;
+  }
+  if (lowerLabel.includes('regimen') || lowerLabel.includes('rÃ©gimen')) return findValue('REGIMEN_NORMATIVO');
+  if (lowerLabel.includes('origen')) return findValue('ORIGEN_VINCULACION');
+  if (lowerLabel.includes('horas semanales')) return findValue('DEDICACION_HORAS_SEMANA');
+  if (lowerLabel.includes('horas pta')) return findValue('HORAS_PTA');
+  if (lowerLabel.includes('situacion categoria') || lowerLabel.includes('situaciÃ³n categorÃ­a')) return findValue('SITUACION_CATEGORIA');
+  if (lowerLabel.includes('estado docente')) return findValue('ESTADO_DOCENTE');
+  if (lowerLabel.includes('puntaje')) return findValue('PUNTAJE_SALARIAL');
+  if (lowerLabel.includes('investigacion') || lowerLabel.includes('investigaciÃ³n')) return findValue('INVESTIGACION_ACTIVA');
+  if (lowerLabel.includes('ultima evaluacion') || lowerLabel.includes('Ãºltima evaluaciÃ³n')) return findValue('ULTIMA_EVALUACION');
+  if (lowerLabel.includes('id rund')) return findValue('ID_RUND');
+  if (lowerLabel.includes('observaciones')) return findValue('OBSERVACIONES');
+  if (lowerLabel.includes('posdoctorado')) return findValue('TITULO_POSDOCTORADO');
   
   let keyToFind = '';
   if (lowerLabel.includes('tipo y número') || lowerLabel.includes('documento')) keyToFind = 'DOCUMENTO_IDENTIDAD';
@@ -198,6 +261,35 @@ const RUND_ESTADO_BADGE: Record<string, { bg: string; text: string; border: stri
 
 const getRundEstadoBadge = (estado: string) => RUND_ESTADO_BADGE[estado] || RUND_ESTADO_BADGE['Pendiente'];
 
+function replaceRecordIfChanged<T extends string>(
+  previous: Record<string, T>,
+  next: Record<string, T>,
+): Record<string, T> {
+  const previousKeys = Object.keys(previous);
+  const nextKeys = Object.keys(next);
+  if (previousKeys.length !== nextKeys.length) return next;
+  return nextKeys.every((key) => previous[key] === next[key]) ? previous : next;
+}
+
+function mergeRecordValues<T extends string>(
+  previous: Record<string, T>,
+  incoming: Record<string, T>,
+): Record<string, T> {
+  const incomingEntries = Object.entries(incoming) as [string, T][];
+  if (incomingEntries.length === 0) return previous;
+
+  let changed = false;
+  const next = { ...previous };
+  incomingEntries.forEach(([key, value]) => {
+    if (next[key] !== value) {
+      next[key] = value;
+      changed = true;
+    }
+  });
+
+  return changed ? next : previous;
+}
+
 export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { docenteId: string, cleanPersonaId?: string, docente?: any }) {
   const [tarjetaRund, setTarjetaRund] = useState<any | null>(null);
   const [rundBloques, setRundBloques] = useState<any[]>([]);
@@ -214,6 +306,102 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
   const [isEditing, setIsEditing] = useState(false);
   const auth = useAuth();
 
+  const docenteSnapshot = useMemo(() => {
+    if (!docente) return null;
+
+    return {
+      id: docente.id,
+      docente_id: docente.docente_id,
+      personaId: docente.personaId,
+      persona_id: docente.persona_id,
+      documento_identidad: docente.documento_identidad,
+      tipo_documento: docente.tipo_documento,
+      nombre_completo: docente.nombre_completo,
+      genero: docente.genero,
+      sexo_biologico: docente.sexo_biologico,
+      nacimiento: docente.nacimiento,
+      edad: docente.edad,
+      rango_edad: docente.rango_edad,
+      correo_institucional: docente.correo_institucional,
+      correo_personal: docente.correo_personal,
+      telefono: docente.telefono,
+      nivel_formacion: docente.nivel_formacion,
+      perfil_academico_pro: docente.perfil_academico_pro,
+      pregrado: docente.pregrado,
+      especializacion: docente.especializacion,
+      maestria: docente.maestria,
+      doctorado: docente.doctorado,
+      posdoctorado: docente.posdoctorado,
+      perfil_academico: docente.perfil_academico,
+      vinculacion: docente.vinculacion,
+      regimen_normativo: docente.regimen_normativo || docente.regimenNormativo,
+      dedicacion: docente.dedicacion,
+      dedicacion_horas_semana: docente.dedicacion_horas_semana,
+      horas_programables: docente.horas_programables,
+      categoria: docente.categoria,
+      territorial: docente.territorial,
+      origen_vinculacion: docente.origen_vinculacion,
+      inicio_vinculacion: docente.inicio_vinculacion,
+      fin_vinculacion: docente.fin_vinculacion,
+      estado: docente.estado,
+      puntaje_salarial: docente.puntaje_salarial,
+      situacion_administrativa: docente.situacion_administrativa,
+      situacion_categoria: docente.situacion_categoria,
+      acto_administrativo_vinculacion: docente.acto_administrativo_vinculacion,
+      nucleo_tematico: docente.nucleo_tematico,
+      investigacion: docente.investigacion,
+      ultima_evaluacion: docente.ultima_evaluacion,
+      observaciones: docente.observaciones,
+      id_rund: docente.id_rund || docente.idRund,
+    };
+  }, [
+    docente?.id,
+    docente?.docente_id,
+    docente?.personaId,
+    docente?.persona_id,
+    docente?.documento_identidad,
+    docente?.tipo_documento,
+    docente?.nombre_completo,
+    docente?.genero,
+    docente?.sexo_biologico,
+    docente?.nacimiento,
+    docente?.edad,
+    docente?.rango_edad,
+    docente?.correo_institucional,
+    docente?.correo_personal,
+    docente?.telefono,
+    docente?.nivel_formacion,
+    docente?.perfil_academico_pro,
+    docente?.pregrado,
+    docente?.especializacion,
+    docente?.maestria,
+    docente?.doctorado,
+    docente?.posdoctorado,
+    docente?.perfil_academico,
+    docente?.vinculacion,
+    docente?.regimen_normativo,
+    docente?.regimenNormativo,
+    docente?.dedicacion,
+    docente?.dedicacion_horas_semana,
+    docente?.horas_programables,
+    docente?.categoria,
+    docente?.territorial,
+    docente?.origen_vinculacion,
+    docente?.inicio_vinculacion,
+    docente?.fin_vinculacion,
+    docente?.estado,
+    docente?.puntaje_salarial,
+    docente?.situacion_administrativa,
+    docente?.situacion_categoria,
+    docente?.acto_administrativo_vinculacion,
+    docente?.nucleo_tematico,
+    docente?.investigacion,
+    docente?.ultima_evaluacion,
+    docente?.observaciones,
+    docente?.id_rund,
+    docente?.idRund,
+  ]);
+
   const currentUserId = useMemo(() => {
     if (auth.userPersonId) return auth.userPersonId;
     if (typeof window === 'undefined') return 'admin-user';
@@ -224,7 +412,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
   const openDocViewer = async (url: string, nombre: string, campo: string, tipoSoporte?: string) => {
     // Si la URL es 'mock', intentar buscar el doc real desde el backend
     if (url === 'mock' && tipoSoporte && tarjetaRund?.docenteId) {
-      console.log('[RUND-VIEWER] URL is mock, fetching real doc for', tipoSoporte);
       setViewingDoc({ url, nombre, campo, displayUrl: '', loading: true });
       try {
         const bloquesData = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques?_t=${Date.now()}`);
@@ -238,7 +425,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           }
         }
         if (foundUrl) {
-          console.log('[RUND-VIEWER] Found real URL:', foundUrl);
           const blob = await apiClient.getBlob(foundUrl);
           const extMatch = foundUrl.match(/\.([a-zA-Z0-9]+)$/);
           const tipo = extMatch ? extMatch[1].toLowerCase() : 'pdf';
@@ -249,7 +435,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           setViewingDoc({ url: foundUrl, nombre, campo, displayUrl: objectUrl, loading: false });
           return;
         } else {
-          console.warn('[RUND-VIEWER] No doc found in backend for', tipoSoporte);
           setViewingDoc({ url, nombre, campo });
           return;
         }
@@ -300,22 +485,17 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       try {
         tarjetaRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/tarjeta-rund?_t=${Date.now()}`);
       } catch (e) {
-        console.warn('No se pudo cargar tarjeta-rund:', e);
+        // La tarjeta puede no existir todavia para registros importados; se usa fallback local.
       }
       try {
         bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/bloques?_t=${Date.now()}`);
-        console.log('[RUND-DEBUG] bloquesRes raw:', bloquesRes);
-        console.log('[RUND-DEBUG] bloquesRes is array?', Array.isArray(bloquesRes), 'length:', bloquesRes?.length);
-        if (Array.isArray(bloquesRes) && bloquesRes.length > 0) {
-          bloquesRes.forEach((b: any) => console.log('[RUND-DEBUG] bloque:', b.bloque, 'soportes:', b.soportes?.length, b.soportes));
-        }
       } catch (e) {
-        console.warn('[RUND-DEBUG] ERROR cargando bloques:', e);
+        // Los bloques son opcionales al abrir el detalle; se muestran datos basicos si faltan.
       }
       try {
         auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${dataId}/auditoria?_t=${Date.now()}`);
       } catch (e) {
-        console.warn('No se pudo cargar auditoria:', e);
+        // La auditoria se consulta solo si existe; no debe ensuciar consola al desplegar.
       }
       
       let tar = tarjetaRes?.data || tarjetaRes;
@@ -323,53 +503,74 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       
       // Fallback a MOCK basado en el docente si no hay datos del backend
       if (!tar || blq.length === 0) {
-        if (docente) {
+        if (docenteSnapshot) {
           tar = tar || {
-            idRund: `RUND-${docente.documento_identidad || '000'}`,
+            idRund: `RUND-${docenteSnapshot.documento_identidad || '000'}`,
             docenteId: dataId,
             periodoCarga: '2025-2',
             semaforo: { porcentaje: 60 },
             bloques: {
               IDENTIDAD: {
                 campos: [
-                  { campo: 'DOCUMENTO_IDENTIDAD', valor: docente.documento_identidad },
-                  { campo: 'TIPO_DOCUMENTO', valor: docente.tipo_documento },
-                  { campo: 'NOMBRE_COMPLETO', valor: docente.nombre_completo },
-                  { campo: 'GENERO', valor: docente.genero },
-                  { campo: 'FECHA_NACIMIENTO', valor: docente.nacimiento ? new Date(docente.nacimiento).toLocaleDateString('es-CO') : null },
+                  { campo: 'DOCUMENTO_IDENTIDAD', valor: docenteSnapshot.documento_identidad },
+                  { campo: 'TIPO_DOCUMENTO', valor: docenteSnapshot.tipo_documento },
+                  { campo: 'NOMBRE_COMPLETO', valor: docenteSnapshot.nombre_completo },
+                  { campo: 'GENERO', valor: docenteSnapshot.genero },
+                  { campo: 'SEXO_BIOLOGICO', valor: docenteSnapshot.sexo_biologico },
+                  { campo: 'FECHA_NACIMIENTO', valor: docenteSnapshot.nacimiento ? new Date(docenteSnapshot.nacimiento).toLocaleDateString('es-CO') : null },
+                  { campo: 'EDAD', valor: docenteSnapshot.edad },
+                  { campo: 'RANGO_EDAD', valor: docenteSnapshot.rango_edad },
                 ]
               },
               CONTACTO: {
                 campos: [
-                  { campo: 'CORREO_INSTITUCIONAL', valor: docente.correo_institucional },
-                  { campo: 'CORREO_ALTERNATIVO', valor: docente.correo_personal },
-                  { campo: 'TELEFONO', valor: docente.telefono },
+                  { campo: 'CORREO_INSTITUCIONAL', valor: docenteSnapshot.correo_institucional },
+                  { campo: 'CORREO_ALTERNATIVO', valor: docenteSnapshot.correo_personal },
+                  { campo: 'TELEFONO', valor: docenteSnapshot.telefono },
                 ]
               },
               FORMACION: {
                 campos: [
-                  { campo: 'NIVEL_FORMACION', valor: docente.nivel_formacion },
-                  { campo: 'TITULO_PREGRADO', valor: docente.pregrado },
-                  { campo: 'TITULO_ESPECIALIZACION', valor: docente.especializacion },
-                  { campo: 'TITULO_MAESTRIA', valor: docente.maestria },
-                  { campo: 'TITULO_DOCTORADO', valor: docente.doctorado },
-                  { campo: 'PERFIL_ACADEMICO', valor: docente.perfil_academico },
+                  { campo: 'NIVEL_FORMACION', valor: docenteSnapshot.nivel_formacion },
+                  { campo: 'TITULO_PREGRADO', valor: docenteSnapshot.pregrado },
+                  { campo: 'TITULO_ESPECIALIZACION', valor: docenteSnapshot.especializacion },
+                  { campo: 'TITULO_MAESTRIA', valor: docenteSnapshot.maestria },
+                  { campo: 'TITULO_DOCTORADO', valor: docenteSnapshot.doctorado },
+                  { campo: 'TITULO_POSDOCTORADO', valor: docenteSnapshot.posdoctorado },
+                  { campo: 'PERFIL_ACADEMICO_PRO', valor: docenteSnapshot.perfil_academico_pro },
+                  { campo: 'PERFIL_ACADEMICO', valor: docenteSnapshot.perfil_academico },
                 ]
               },
               VINCULACION: {
                 campos: [
-                  { campo: 'TIPO_VINCULACION', valor: docente.vinculacion },
-                  { campo: 'DEDICACION', valor: docente.dedicacion },
-                  { campo: 'CATEGORIA_ESCALAFON', valor: docente.categoria },
-                  { campo: 'TERRITORIAL', valor: docente.territorial },
-                  { campo: 'PUNTAJE_SALARIAL', valor: docente.puntaje_salarial },
-                  { campo: 'SITUACION_ADMINISTRATIVA', valor: docente.situacion_administrativa },
-                  { campo: 'ACTO_ADMINISTRATIVO', valor: docente.acto_administrativo_vinculacion },
+                  { campo: 'TIPO_VINCULACION', valor: docenteSnapshot.vinculacion },
+                  { campo: 'REGIMEN_NORMATIVO', valor: docenteSnapshot.regimen_normativo },
+                  { campo: 'DEDICACION', valor: docenteSnapshot.dedicacion },
+                  { campo: 'DEDICACION_HORAS_SEMANA', valor: docenteSnapshot.dedicacion_horas_semana },
+                  { campo: 'HORAS_PTA', valor: docenteSnapshot.horas_programables },
+                  { campo: 'CATEGORIA_ESCALAFON', valor: docenteSnapshot.categoria },
+                  { campo: 'TERRITORIAL', valor: docenteSnapshot.territorial },
+                  { campo: 'ORIGEN_VINCULACION', valor: docenteSnapshot.origen_vinculacion },
+                  { campo: 'INICIO_VINCULACION', valor: docenteSnapshot.inicio_vinculacion },
+                  { campo: 'FIN_VINCULACION', valor: docenteSnapshot.fin_vinculacion },
+                  { campo: 'PUNTAJE_SALARIAL', valor: docenteSnapshot.puntaje_salarial },
+                  { campo: 'SITUACION_ADMINISTRATIVA', valor: docenteSnapshot.situacion_administrativa },
+                  { campo: 'SITUACION_CATEGORIA', valor: docenteSnapshot.situacion_categoria },
+                  { campo: 'ESTADO_DOCENTE', valor: docenteSnapshot.estado },
+                  { campo: 'ACTO_ADMINISTRATIVO', valor: docenteSnapshot.acto_administrativo_vinculacion },
                 ]
               },
               ACADEMICO: {
                 campos: [
-                  { campo: 'NUCLEO_TEMATICO', valor: docente.nucleo_tematico },
+                  { campo: 'NUCLEO_TEMATICO', valor: docenteSnapshot.nucleo_tematico },
+                  { campo: 'INVESTIGACION_ACTIVA', valor: docenteSnapshot.investigacion },
+                  { campo: 'ULTIMA_EVALUACION', valor: docenteSnapshot.ultima_evaluacion },
+                ]
+              },
+              TRANSVERSAL: {
+                campos: [
+                  { campo: 'ID_RUND', valor: docenteSnapshot.id_rund },
+                  { campo: 'OBSERVACIONES', valor: docenteSnapshot.observaciones },
                 ]
               }
             }
@@ -438,8 +639,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
             initMockUploadedDocs[campoKey] = val.id_documento_carpeta;
           }
         });
-        setDocStatus(initDocStatus);
-        setMockUploadedDocs(prev => ({ ...prev, ...initMockUploadedDocs }));
+        setDocStatus(prev => replaceRecordIfChanged(prev, initDocStatus));
+        setMockUploadedDocs(prev => mergeRecordValues(prev, initMockUploadedDocs));
       }
 
       // ── Fuente de verdad UNIFICADA: el estado de los soportes (RundSoporteCampo.estado) ──
@@ -475,64 +676,88 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           });
         });
         if (Object.keys(fromSoportes).length > 0) {
-          setMockUploadedDocs(prev => ({ ...fromSoportes, ...prev }));
+          setMockUploadedDocs(prev => {
+            const hasNewSupport = Object.keys(fromSoportes).some((key) => !prev[key]);
+            return hasNewSupport ? { ...fromSoportes, ...prev } : prev;
+          });
         }
         if (Object.keys(fromSoportesStatus).length > 0) {
           // El estado del soporte tiene prioridad sobre lo que vino de validacionDocumental.
-          setDocStatus(prev => ({ ...prev, ...fromSoportesStatus }));
+          setDocStatus(prev => mergeRecordValues(prev, fromSoportesStatus));
         }
       }
     } catch (err) {
       console.error(err);
       
       // Mismo fallback en caso de error de red
-      if (docente) {
+      if (docenteSnapshot) {
         setTarjetaRund({
-          idRund: `RUND-${docente.documento_identidad || '000'}`,
+          idRund: `RUND-${docenteSnapshot.documento_identidad || '000'}`,
           docenteId: docenteId,
           periodoCarga: '2025-2',
           semaforo: { porcentaje: 60 },
           bloques: {
             IDENTIDAD: {
               campos: [
-                { campo: 'DOCUMENTO_IDENTIDAD', valor: docente.documento_identidad },
-                { campo: 'TIPO_DOCUMENTO', valor: docente.tipo_documento },
-                { campo: 'NOMBRE_COMPLETO', valor: docente.nombre_completo },
-                { campo: 'GENERO', valor: docente.genero },
-                { campo: 'FECHA_NACIMIENTO', valor: docente.nacimiento ? new Date(docente.nacimiento).toLocaleDateString('es-CO') : null },
+                { campo: 'DOCUMENTO_IDENTIDAD', valor: docenteSnapshot.documento_identidad },
+                { campo: 'TIPO_DOCUMENTO', valor: docenteSnapshot.tipo_documento },
+                { campo: 'NOMBRE_COMPLETO', valor: docenteSnapshot.nombre_completo },
+                { campo: 'GENERO', valor: docenteSnapshot.genero },
+                { campo: 'SEXO_BIOLOGICO', valor: docenteSnapshot.sexo_biologico },
+                { campo: 'FECHA_NACIMIENTO', valor: docenteSnapshot.nacimiento ? new Date(docenteSnapshot.nacimiento).toLocaleDateString('es-CO') : null },
+                { campo: 'EDAD', valor: docenteSnapshot.edad },
+                { campo: 'RANGO_EDAD', valor: docenteSnapshot.rango_edad },
               ]
             },
             CONTACTO: {
               campos: [
-                { campo: 'CORREO_INSTITUCIONAL', valor: docente.correo_institucional },
-                { campo: 'CORREO_ALTERNATIVO', valor: docente.correo_personal },
-                { campo: 'TELEFONO', valor: docente.telefono },
+                { campo: 'CORREO_INSTITUCIONAL', valor: docenteSnapshot.correo_institucional },
+                { campo: 'CORREO_ALTERNATIVO', valor: docenteSnapshot.correo_personal },
+                { campo: 'TELEFONO', valor: docenteSnapshot.telefono },
               ]
             },
             FORMACION: {
               campos: [
-                { campo: 'NIVEL_FORMACION', valor: docente.nivel_formacion },
-                { campo: 'TITULO_PREGRADO', valor: docente.pregrado },
-                { campo: 'TITULO_ESPECIALIZACION', valor: docente.especializacion },
-                { campo: 'TITULO_MAESTRIA', valor: docente.maestria },
-                { campo: 'TITULO_DOCTORADO', valor: docente.doctorado },
-                { campo: 'PERFIL_ACADEMICO', valor: docente.perfil_academico },
+                { campo: 'NIVEL_FORMACION', valor: docenteSnapshot.nivel_formacion },
+                { campo: 'TITULO_PREGRADO', valor: docenteSnapshot.pregrado },
+                { campo: 'TITULO_ESPECIALIZACION', valor: docenteSnapshot.especializacion },
+                { campo: 'TITULO_MAESTRIA', valor: docenteSnapshot.maestria },
+                { campo: 'TITULO_DOCTORADO', valor: docenteSnapshot.doctorado },
+                { campo: 'TITULO_POSDOCTORADO', valor: docenteSnapshot.posdoctorado },
+                { campo: 'PERFIL_ACADEMICO_PRO', valor: docenteSnapshot.perfil_academico_pro },
+                { campo: 'PERFIL_ACADEMICO', valor: docenteSnapshot.perfil_academico },
               ]
             },
             VINCULACION: {
               campos: [
-                { campo: 'TIPO_VINCULACION', valor: docente.vinculacion },
-                { campo: 'DEDICACION', valor: docente.dedicacion },
-                { campo: 'CATEGORIA_ESCALAFON', valor: docente.categoria },
-                { campo: 'TERRITORIAL', valor: docente.territorial },
-                { campo: 'PUNTAJE_SALARIAL', valor: docente.puntaje_salarial },
-                { campo: 'SITUACION_ADMINISTRATIVA', valor: docente.situacion_administrativa },
-                { campo: 'ACTO_ADMINISTRATIVO', valor: docente.acto_administrativo_vinculacion },
+                { campo: 'TIPO_VINCULACION', valor: docenteSnapshot.vinculacion },
+                { campo: 'REGIMEN_NORMATIVO', valor: docenteSnapshot.regimen_normativo },
+                { campo: 'DEDICACION', valor: docenteSnapshot.dedicacion },
+                { campo: 'DEDICACION_HORAS_SEMANA', valor: docenteSnapshot.dedicacion_horas_semana },
+                { campo: 'HORAS_PTA', valor: docenteSnapshot.horas_programables },
+                { campo: 'CATEGORIA_ESCALAFON', valor: docenteSnapshot.categoria },
+                { campo: 'TERRITORIAL', valor: docenteSnapshot.territorial },
+                { campo: 'ORIGEN_VINCULACION', valor: docenteSnapshot.origen_vinculacion },
+                { campo: 'INICIO_VINCULACION', valor: docenteSnapshot.inicio_vinculacion },
+                { campo: 'FIN_VINCULACION', valor: docenteSnapshot.fin_vinculacion },
+                { campo: 'PUNTAJE_SALARIAL', valor: docenteSnapshot.puntaje_salarial },
+                { campo: 'SITUACION_ADMINISTRATIVA', valor: docenteSnapshot.situacion_administrativa },
+                { campo: 'SITUACION_CATEGORIA', valor: docenteSnapshot.situacion_categoria },
+                { campo: 'ESTADO_DOCENTE', valor: docenteSnapshot.estado },
+                { campo: 'ACTO_ADMINISTRATIVO', valor: docenteSnapshot.acto_administrativo_vinculacion },
               ]
             },
             ACADEMICO: {
               campos: [
-                { campo: 'NUCLEO_TEMATICO', valor: docente.nucleo_tematico },
+                { campo: 'NUCLEO_TEMATICO', valor: docenteSnapshot.nucleo_tematico },
+                { campo: 'INVESTIGACION_ACTIVA', valor: docenteSnapshot.investigacion },
+                { campo: 'ULTIMA_EVALUACION', valor: docenteSnapshot.ultima_evaluacion },
+              ]
+            },
+            TRANSVERSAL: {
+              campos: [
+                { campo: 'ID_RUND', valor: docenteSnapshot.id_rund },
+                { campo: 'OBSERVACIONES', valor: docenteSnapshot.observaciones },
               ]
             }
           }
@@ -550,7 +775,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     } finally {
       setLoadingRund(false);
     }
-  }, [docenteId, cleanPersonaId, docente]);
+  }, [docenteId, cleanPersonaId, docenteSnapshot]);
 
   useEffect(() => {
     fetchRundData();
@@ -894,7 +1119,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                       const localDocUrl = c.tipoSoporte ? mockUploadedDocs[c.campo] : null;
                       const hasDoc = !!soporte || !!localDocUrl;
                       const activeUrl = localDocUrl || soporte?.documento_carpeta_id || soporte?.documentoCarpetaId || soporte?.url || 'mock';
-                      if (c.tipoSoporte) console.log('[RUND-RENDER]', c.campo, '→ soporte:', soporte, '| localDocUrl:', localDocUrl, '| activeUrl:', activeUrl, '| b.soportes:', b.soportes);
                       const isRequired = c.obligatorio === 'Sí';
                       const isDerived = c.obligatorio === 'Derivado';
                       const datoExtraido = getDatoExtraido(b.bloque, c.campo, tarjetaRund);

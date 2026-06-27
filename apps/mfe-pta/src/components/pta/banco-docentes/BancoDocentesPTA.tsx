@@ -1270,7 +1270,10 @@ export function BancoDocentesPTA() {
               setTab('listado');
               showToast('Importación completada correctamente');
             }} 
-            onCancel={() => setTab('listado')} 
+            onBack={() => setTab('listado')}
+            periodos={periodos}
+            periodoSeleccionado={filterPeriodo}
+            onPeriodoChange={setFilterPeriodo}
           />
         </div>
       )}
