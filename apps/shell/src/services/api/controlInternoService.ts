@@ -2133,6 +2133,27 @@ class ControlInternoService {
   }
 
   /**
+   * El auditado crea el borrador inicial del plan de mejoramiento.
+   * Backend: POST /auditorias/auditado/:id/planes-mejoramiento
+   */
+  async crearPlanMejoramientoAuditado(
+    auditoriaId: string,
+    body: {
+      titulo?: string;
+      descripcion?: string;
+      objetivos?: string[];
+      areaResponsable?: string;
+      responsableImplementacion?: string;
+      fechaLimite?: string;
+    } = {},
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/planes-mejoramiento`,
+      body,
+    );
+  }
+
+  /**
    * El auditado actualiza avance u observaciones de una acción (sin rol OCI).
    * Backend: PATCH /auditorias/auditado/:id/planes/:planId/acciones/:accionId
    */

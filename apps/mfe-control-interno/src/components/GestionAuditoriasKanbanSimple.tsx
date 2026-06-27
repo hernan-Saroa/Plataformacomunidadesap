@@ -1232,7 +1232,7 @@ function TarjetaAuditoria({
             ) : null}
 
             {/* Botón Crear Plan: exclusivo de la etapa Comunicación */}
-            {mostrarBotonCrearPlan && onCrearPlan && (
+            {/* {mostrarBotonCrearPlan && onCrearPlan && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1245,7 +1245,7 @@ function TarjetaAuditoria({
                 <Target className="w-3 h-3 mr-1 flex-shrink-0" />
                 <span className="truncate">Crear Plan de Mejoramiento</span>
               </Button>
-            )}
+            )} */}
           </div>
         </div>
       </Card>
