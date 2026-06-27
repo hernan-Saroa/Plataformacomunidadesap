@@ -85,6 +85,26 @@ export function getFileExtension(filename: string | null | undefined): string {
     return queryIndex === -1 ? extension : extension.substring(0, queryIndex);
 }
 
+// File extensions that require an electronic signature in approval flows.
+// Only PDF and Word documents are signable; everything else (Excel, images,
+// video, audio, archives, etc.) does not require a signature.
+const SIGNABLE_EXTENSIONS = ['.pdf', '.doc', '.docx'];
+
+/**
+ * Check whether a document requires an electronic signature.
+ * Only PDF and Word (.doc/.docx) require signing; any other type
+ * (Excel, image, video, etc.) does not.
+ * @param filename - The name of the file (with extension) or URL
+ * @returns true if the document must be signed, false otherwise
+ */
+export function requiresSignature(filename: string | null | undefined): boolean {
+    if (!filename) return false;
+    // Signed documents get " (Firmado)" appended to their name; strip it before checking.
+    const cleaned = filename.toLowerCase().replace(/\s*\(firmado\)\s*/g, '').trim();
+    const ext = getFileExtension(cleaned);
+    return SIGNABLE_EXTENSIONS.includes(ext);
+}
+
 /**
  * Get file type category for display purposes
  * @param filename - The name of the file

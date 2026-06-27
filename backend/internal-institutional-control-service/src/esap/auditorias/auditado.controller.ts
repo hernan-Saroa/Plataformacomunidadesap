@@ -30,6 +30,7 @@ import { UpdateAccionDto } from '../planes-mejoramiento/dto/update-accion.dto';
 import { EvidenciasService } from '../evidencias/evidencias.service';
 import { CreateEvidenciaDto } from '../evidencias/dto/create-evidencia.dto';
 import { CreateAccionDto } from '../planes-mejoramiento/dto/create-accion.dto';
+import { CreatePlanMejoramientoDto } from '../planes-mejoramiento/dto/create-plan-mejoramiento.dto';
 import { PlanMejoramientoEstado } from '../planes-mejoramiento/entities/plan-mejoramiento.entity';
 
 interface MulterFile {
@@ -74,6 +75,26 @@ export class AuditadoController {
     return { email, username };
   }
 
+  private toDateOnly(value: Date | string): string {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return new Date().toISOString().split('T')[0];
+    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private addDays(value: Date | string, days: number): string {
+    const date = value instanceof Date ? new Date(value) : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      date.setTime(Date.now());
+    }
+    date.setDate(date.getDate() + days);
+    return this.toDateOnly(date);
+  }
+
   /**
    * GET /auditorias/auditado/mis-auditorias
    * Lista las auditorías en las que el usuario autenticado figura como
@@ -97,6 +118,64 @@ export class AuditadoController {
     const usuario = this.getUsuarioFromReq(req);
     await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
     return this.planesMejoramientoService.findByAuditoriaId(auditoriaId);
+  }
+
+  /**
+   * POST /auditorias/auditado/:id/planes-mejoramiento
+   * El auditado crea el borrador inicial del plan de mejoramiento de su auditoría.
+   * No requiere permiso OCI; la autorización se hace por ownership.
+   */
+  @Post(':id/planes-mejoramiento')
+  @HttpCode(HttpStatus.CREATED)
+  async crearMiPlanMejoramiento(
+    @Param('id') auditoriaId: string,
+    @Body() body: Partial<CreatePlanMejoramientoDto>,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    const auditoria = await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+
+    const checklist = (auditoria as any).checklistCompletados || {};
+    if (!checklist.informeFinalGenerado) {
+      throw new BadRequestException(
+        'El plan de mejoramiento solo puede crearse después de generar el Informe Final.',
+      );
+    }
+
+    const fechaBase =
+      (auditoria as any).fechaFinalizacion ||
+      (auditoria as any).fechaFin ||
+      new Date();
+
+    const dto: CreatePlanMejoramientoDto = {
+      titulo:
+        body?.titulo ||
+        `Plan de Mejoramiento - ${auditoria.codigo || auditoria.nombre || 'Auditoría'}`,
+      descripcion:
+        body?.descripcion ||
+        'Plan de mejoramiento formulado por el área auditada a partir del Informe Final.',
+      objetivos: Array.isArray(body?.objetivos) && body.objetivos.length > 0
+        ? body.objetivos
+        : ['Formular y ejecutar acciones correctivas para los hallazgos aceptados, ratificados o modificados.'],
+      auditoriaId,
+      areaResponsable:
+        body?.areaResponsable ||
+        auditoria.areaObjetivo ||
+        auditoria.procesoAuditado ||
+        auditoria.sede ||
+        'Área auditada',
+      responsableImplementacion:
+        body?.responsableImplementacion ||
+        auditoria.responsableAreaEmail ||
+        auditoria.responsableAreaNombre ||
+        usuario.username ||
+        usuario.email ||
+        'Auditado',
+      fechaLimite: body?.fechaLimite || this.addDays(fechaBase, 30),
+      acciones: body?.acciones,
+    };
+
+    return this.planesMejoramientoService.create(dto);
   }
 
   /**

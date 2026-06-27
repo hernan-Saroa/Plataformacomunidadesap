@@ -93,6 +93,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { colors } from '../../esap/shared/designTokens';
+import { Button } from '@esap-mfe/shared-ui';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1594,14 +1595,16 @@ function PlanVinculadoHallazgo({ plan, acciones }: { plan: any; acciones: any[] 
 
 /** Planes y acciones del auditado (GET/PATCH bajo /auditorias/auditado/...). */
 function TabPlanMejoramientoAuditado({
+  auditoria,
   auditoriaId,
   readOnly,
   hallazgos,
 }: {
+  auditoria: AuditoriaItem;
   auditoriaId: string;
   readOnly: boolean;
   /** Lista de hallazgos de la auditoría, para vincular cada acción a un hallazgo. */
-  hallazgos: Array<{ id: string; codigo: string; titulo: string; estado: string }>;
+  hallazgos: HallazgoItem[];
 }) {
   const [planes, setPlanes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1619,6 +1622,9 @@ function TabPlanMejoramientoAuditado({
   const [evidenciasSubidas, setEvidenciasSubidas] = useState<Record<string, any[]>>({});
   const [subiendoEvidencia, setSubiendoEvidencia] = useState<string | null>(null);
   const [eliminandoEvidencia, setEliminandoEvidencia] = useState<string | null>(null);
+  const [informeFinalGenerado, setInformeFinalGenerado] = useState(false);
+  const [creatingPlan, setCreatingPlan] = useState(false);
+  const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
 
   // Custom confirm modal state (replaces native confirm())
   const [confirmModal, setConfirmModal] = useState<{
@@ -1737,6 +1743,18 @@ function TabPlanMejoramientoAuditado({
   } | null>>({});
   const [savingEdit, setSavingEdit] = useState<string | null>(null);
 
+  const hallazgosParaPlan = useMemo(() => hallazgos
+    .filter(h => h.estado !== 'retirado')
+    .map(h => ({
+      id: h.id,
+      titulo: h.titulo || h.descripcion?.substring(0, 80) || 'Sin título',
+      gravedad: ((h.gravedad || 'MODERADO') === 'CRITICO' ? 'GRAVE' : (h.gravedad || 'MODERADO')) as 'LEVE' | 'MODERADO' | 'GRAVE',
+      descripcion: h.descripcion || '',
+      causas: h.causas || [],
+      efectos: h.efectos || [],
+      recomendaciones: h.recomendaciones || []
+    })), [hallazgos]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1767,6 +1785,14 @@ function TabPlanMejoramientoAuditado({
         }
       }
       setDrafts(d);
+      try {
+        const estadoComunicacion = await controlInternoService
+          .getEstadoComunicacionAuditado(auditoriaId)
+          .catch(() => controlInternoService.getEstadoComunicacion(auditoriaId));
+        setInformeFinalGenerado(estadoComunicacion.informeFinalGenerado ?? false);
+      } catch (ownerErr) {
+        console.warn('[TabPlanMejoramiento] No se pudo cargar estado de comunicación:', ownerErr);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'No se pudieron cargar los planes';
       setError(msg);
@@ -2076,6 +2102,34 @@ function TabPlanMejoramientoAuditado({
     });
   };
 
+  const handleCrearPlanMejoramiento = useCallback(async () => {
+    if (hallazgosParaPlan.length === 0) {
+      toast.error('No hay hallazgos vigentes para crear el plan de mejoramiento');
+      return;
+    }
+
+    setCreatingPlan(true);
+    try {
+      await controlInternoService.crearPlanMejoramientoAuditado(auditoriaId, {
+        titulo: `Plan de Mejoramiento - ${auditoria.codigo || 'AUD'}`,
+        descripcion: `${hallazgosParaPlan.length} hallazgo(s) vinculado(s) al plan de mejoramiento.`,
+        objetivos: hallazgosParaPlan.map((h) =>
+          `Formular acciones correctivas para: ${h.titulo}`,
+        ),
+      });
+      toast.success('Plan de Mejoramiento creado', {
+        description: `${hallazgosParaPlan.length} hallazgos vinculados. Complete las acciones correctivas para cada uno.`,
+        duration: 5000,
+      });
+      setModalCrearPlanOpen(false);
+      await load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo crear el plan de mejoramiento');
+    } finally {
+      setCreatingPlan(false);
+    }
+  }, [auditoria.codigo, auditoriaId, hallazgosParaPlan, load]);
+
   if (loading) {
     return (
       <div style={{ padding: '40px 0', textAlign: 'center', color: '#6B7280' }}>
@@ -2109,14 +2163,37 @@ function TabPlanMejoramientoAuditado({
 
   if (!planes.length) {
     return (
-      <div style={{ background: 'white', borderRadius: 14, padding: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', textAlign: 'center' }}>
-        <ClipboardList style={{ width: 36, height: 36, color: '#9CA3AF', margin: '0 auto 12px' }} />
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>Sin plan de mejoramiento aún</div>
-        <div style={{ fontSize: 13, color: '#6B7280', marginTop: 8, lineHeight: 1.55 }}>
-          Cuando el área de Control Interno registre el plan vinculado a esta auditoría, aparecerá aquí
-          con las acciones correctivas. Mientras tanto puedes seguir el plazo de formulación en la pestaña Información.
+      <>
+        <div style={{ background: 'white', borderRadius: 14, padding: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+          <ClipboardList style={{ width: 36, height: 36, color: '#9CA3AF', margin: '0 auto 12px' }} />
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>Sin plan de mejoramiento aún</div>
+          <div style={{ fontSize: 13, color: '#6B7280', marginTop: 8, lineHeight: 1.55 }}>
+            Cuando el área de Control Interno registre el plan vinculado a esta auditoría, aparecerá aquí
+            con las acciones correctivas. Mientras tanto puedes seguir el plazo de formulación en la pestaña Información.
+          </div>
+          {informeFinalGenerado && (
+            <Button
+              onClick={() => setModalCrearPlanOpen(true)}
+              disabled={creatingPlan}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-medium mt-4"
+            >
+              <Target className="w-4 h-4 mr-2" />
+              Crear Plan de Mejoramiento
+            </Button>
+          )}
         </div>
-      </div>
+        {modalCrearPlanOpen && (
+          <ModalCrearPlanDesdeAuditoria
+            auditoria={auditoria}
+            hallazgos={hallazgosParaPlan}
+            creando={creatingPlan}
+            onCrear={handleCrearPlanMejoramiento}
+            onCerrar={() => {
+              if (!creatingPlan) setModalCrearPlanOpen(false);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -3419,6 +3496,162 @@ function TabPlanMejoramientoAuditado({
   );
 }
 
+function ModalCrearPlanDesdeAuditoria({
+  auditoria,
+  hallazgos,
+  creando,
+  onCrear,
+  onCerrar,
+}: {
+  auditoria: AuditoriaItem;
+  hallazgos: Array<{
+    id: string;
+    titulo: string;
+    gravedad: 'LEVE' | 'MODERADO' | 'GRAVE';
+    descripcion: string;
+  }>;
+  creando: boolean;
+  onCrear: () => void | Promise<void>;
+  onCerrar: () => void;
+}) {
+  const totalHallazgos = hallazgos.length;
+  const graves = hallazgos.filter((h) => h.gravedad === 'GRAVE').length;
+  const moderados = hallazgos.filter((h) => h.gravedad === 'MODERADO').length;
+  const leves = hallazgos.filter((h) => h.gravedad === 'LEVE').length;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="crear-plan-overlay"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        onClick={onCerrar}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          background: 'rgba(17, 24, 39, 0.48)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20,
+        }}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.94, y: 12 }}
+          transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: '100%',
+            maxWidth: 720,
+            maxHeight: '88vh',
+            overflowY: 'auto',
+            background: 'white',
+            borderRadius: 16,
+            boxShadow: '0 24px 80px rgba(0,0,0,0.24)',
+          }}
+        >
+          <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#FFFBEB', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Target style={{ width: 21, height: 21, color: '#B45309' }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>Crear Plan de Mejoramiento</div>
+              <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
+                Revise la auditoría y confirme la creación del borrador.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: 24 }}>
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: 14, display: 'flex', gap: 10, marginBottom: 18 }}>
+              <Info style={{ width: 18, height: 18, color: '#1D4ED8', flexShrink: 0, marginTop: 1 }} />
+              <div style={{ fontSize: 13, color: '#1E3A8A', lineHeight: 1.5 }}>
+                Se creará un plan en estado borrador para formular acciones correctivas sobre los hallazgos vigentes de esta auditoría.
+              </div>
+            </div>
+
+            <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 12, padding: 16, marginBottom: 18 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#111827', marginBottom: 12 }}>
+                Resumen de la Auditoría Seleccionada
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+                <InfoField icon={<FileText style={{ width: 13, height: 13, color: colors.brand }} />} label="Código" value={auditoria.codigo || 'AUD'} />
+                <InfoField icon={<Building2 style={{ width: 13, height: 13, color: '#7C3AED' }} />} label="Área responsable" value={auditoria.area || 'Área auditada'} />
+                <InfoField icon={<User style={{ width: 13, height: 13, color: '#2563EB' }} />} label="Responsable" value={auditoria.auditorLider || 'N/A'} />
+                <InfoField icon={<AlertTriangle style={{ width: 13, height: 13, color: '#B45309' }} />} label="Total hallazgos" value={String(totalHallazgos)} />
+              </div>
+              {totalHallazgos > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 14, marginTop: 14, borderTop: '1px solid #E5E7EB' }}>
+                  {graves > 0 && <span style={{ fontSize: 12, padding: '4px 8px', borderRadius: 8, background: '#FEF2F2', color: '#B91C1C', fontWeight: 700 }}>{graves} Graves</span>}
+                  {moderados > 0 && <span style={{ fontSize: 12, padding: '4px 8px', borderRadius: 8, background: '#FFFBEB', color: '#B45309', fontWeight: 700 }}>{moderados} Moderados</span>}
+                  {leves > 0 && <span style={{ fontSize: 12, padding: '4px 8px', borderRadius: 8, background: '#FEFCE8', color: '#A16207', fontWeight: 700 }}>{leves} Leves</span>}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 12, padding: 14, display: 'flex', gap: 10 }}>
+              <ClipboardList style={{ width: 18, height: 18, color: '#7C3AED', flexShrink: 0, marginTop: 1 }} />
+              <div style={{ fontSize: 13, color: '#5B21B6', lineHeight: 1.6 }}>
+                <strong>Después de crear el plan</strong>, podrá agregar una acción correctiva por cada hallazgo y enviarlo a revisión de la OCI.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '16px 24px 22px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              type="button"
+              disabled={creando}
+              onClick={onCerrar}
+              style={{
+                height: 40,
+                padding: '0 18px',
+                borderRadius: 10,
+                border: '1px solid #D1D5DB',
+                background: 'white',
+                color: '#374151',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: creando ? 'not-allowed' : 'pointer',
+                opacity: creando ? 0.6 : 1,
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={creando || totalHallazgos === 0}
+              onClick={() => void onCrear()}
+              style={{
+                height: 40,
+                padding: '0 18px',
+                borderRadius: 10,
+                border: 'none',
+                background: creando || totalHallazgos === 0 ? '#9CA3AF' : '#B45309',
+                color: 'white',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: creando || totalHallazgos === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {creando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Target className="w-4 h-4" />}
+              {creando ? 'Creando plan...' : 'Crear Plan de Mejoramiento'}
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 
 function DetalleAuditoria({
   auditoria: auditoriaInicial, userName, onBack,
@@ -3747,7 +3980,7 @@ function DetalleAuditoria({
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18 }}
           >
-            <TabPlanMejoramientoAuditado auditoriaId={auditoria.id} readOnly={isReadOnly} hallazgos={hallazgos} />
+            <TabPlanMejoramientoAuditado auditoria={auditoria} auditoriaId={auditoria.id} readOnly={isReadOnly} hallazgos={hallazgos} />
           </motion.div>
         )}
       </AnimatePresence>

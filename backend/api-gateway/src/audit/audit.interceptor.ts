@@ -74,7 +74,7 @@ export class AuditInterceptor implements NestInterceptor {
 
         // Si la respuesta es un error, extraer el mensaje
         const errorMessage = statusCode >= 400
-          ? (responseBody?.message || responseBody?.error || `Error HTTP ${statusCode}`)
+          ? this.normalizeAuditMessage(responseBody?.message || responseBody?.error || `Error HTTP ${statusCode}`)
           : undefined;
 
         // Preparar datos del log
@@ -139,7 +139,7 @@ export class AuditInterceptor implements NestInterceptor {
           requestBody,
           requestBodySize,
           newData: ['POST', 'PUT', 'PATCH'].includes(method) ? requestBody : undefined,
-          errorMessage: error.message,
+          errorMessage: this.normalizeAuditMessage(error.message),
           errorStack: error.stack,
         };
 
@@ -181,6 +181,26 @@ export class AuditInterceptor implements NestInterceptor {
       request.socket?.remoteAddress ||
       'unknown'
     );
+  }
+
+  private normalizeAuditMessage(message: unknown): string | undefined {
+    if (message === undefined || message === null) {
+      return undefined;
+    }
+
+    if (Array.isArray(message)) {
+      return message.map((item) => String(item)).join('; ');
+    }
+
+    if (typeof message === 'object') {
+      try {
+        return JSON.stringify(message);
+      } catch {
+        return String(message);
+      }
+    }
+
+    return String(message);
   }
 
   private shouldLogBody(request: Request): boolean {

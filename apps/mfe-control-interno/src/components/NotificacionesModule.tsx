@@ -1095,15 +1095,15 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb, condicionesDi
         <form onSubmit={handleSubmit}>
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl sticky top-0 z-10">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-black">Configurar Notificación</h2>
-                <p className="text-sm text-blue-100 mt-1">Evento: {nombreEventoPadre}</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl font-black truncate">Configurar Notificación</h2>
+                <p className="text-sm text-blue-100 mt-1 truncate">Evento: {nombreEventoPadre}</p>
               </div>
               <button
                 type="button"
                 onClick={onCerrar}
-                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
               >
                 <X className="w-6 h-6" />
               </button>

@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 // Servicio API
 import { controlInternoService } from '../services/api/controlInternoService';
 import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
-import { getServiceUrl, API_MODE } from '../../../config/environment';
+import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { notificationsService } from '../../../services/api/notificationsService';
 
 // Design System
@@ -840,20 +840,31 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
     setDocumentoVisualizando(doc);
   };
 
-  const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
+  const handleDescargarDocumento = async (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    // Para doc de cierre usar la URL directa guardada en rutaArchivo
     const baseUrl = getFilesBaseUrl();
-    const downloadUrl = doc.rutaArchivo || `${baseUrl}/documentos/${doc.id}/download`;
-    
-    // Abrir descarga en nueva ventana
-    window.open(downloadUrl, '_blank');
-    
-    toast.success('Descargando documento', {
-      description: `${doc.nombre || doc.nombreArchivo}`,
-      duration: 3000,
-    });
+    const downloadUrl = doc.tipo === 'evidencia_hallazgo'
+      ? `${baseUrl}/evidencias/${doc.id}/download`
+      : doc.tipo === 'cierre'
+        ? (doc.rutaArchivo || '')
+        : `${baseUrl}/documentos/${doc.id}/download`;
+    if (!downloadUrl) return;
+    try {
+      const res = await fetch(downloadUrl, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = doc.nombre || doc.nombreArchivo || 'documento';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('Descarga iniciada', { description: doc.nombre || doc.nombreArchivo, duration: 3000 });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al descargar');
+    }
   };
 
   return (
@@ -1286,31 +1297,45 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Construir URLs del backend
-  // Para documento de cierre, la URL real está en rutaArchivo (campo JSONB)
   const baseUrl = getFilesBaseUrl();
-  const previewUrl = documento.rutaArchivo || `${baseUrl}/documentos/${documento.id}/preview`;
-  const downloadUrl = documento.rutaArchivo || `${baseUrl}/documentos/${documento.id}/download`;
+  const previewUrl = documento.tipo === 'evidencia_hallazgo'
+    ? `${baseUrl}/evidencias/${documento.id}/preview`
+    : documento.tipo === 'cierre'
+      ? (documento.rutaArchivo || '')
+      : `${baseUrl}/documentos/${documento.id}/preview`;
+  const downloadUrl = documento.tipo === 'evidencia_hallazgo'
+    ? `${baseUrl}/evidencias/${documento.id}/download`
+    : documento.tipo === 'cierre'
+      ? (documento.rutaArchivo || '')
+      : `${baseUrl}/documentos/${documento.id}/download`;
 
-  // Verificar si el documento se puede previsualizar
   const tipoMime = documento.tipoMime || 'application/octet-stream';
-  const canPreview = tipoMime.startsWith('application/pdf') || 
+  const canPreview = tipoMime.startsWith('application/pdf') ||
                      tipoMime.startsWith('image/');
-  
-  // Para archivos Office, usar Office Online Viewer
-  const isOfficeDoc = tipoMime.includes('word') || 
-                      tipoMime.includes('excel') || 
+
+  const isOfficeDoc = tipoMime.includes('word') ||
+                      tipoMime.includes('excel') ||
                       tipoMime.includes('spreadsheet') ||
                       tipoMime.includes('powerpoint') ||
                       tipoMime.includes('presentation');
 
-  const handleDownload = () => {
-    // Abrir URL de descarga en nueva ventana
-    window.open(downloadUrl, '_blank');
-    toast.success('Descargando documento', {
-      description: `${documento.nombre || documento.nombreArchivo}`,
-      duration: 3000,
-    });
+  const handleDownload = async () => {
+    try {
+      const res = await fetch(downloadUrl, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = documento.nombre || documento.nombreArchivo || 'documento';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('Descarga iniciada', { description: documento.nombre || documento.nombreArchivo, duration: 3000 });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al descargar');
+    }
   };
 
   const handleOpenInNewTab = () => {
@@ -1428,25 +1453,16 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
                 Documento de {getMimeTypeLabel(tipoMime)}
               </h4>
               <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
-                Este tipo no se puede visualizar. Descargue el archivo o ábralo en Office Online.
+                Este tipo de archivo no se puede previsualizar. Descárguelo para abrirlo con la aplicación correspondiente.
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={handleDownload}
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                  className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
                 >
                   <Download className="w-4 h-4" />
                   Descargar
                 </button>
-                <a
-                  href={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(previewUrl)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
-                >
-                  <Eye className="w-4 h-4" />
-                  Abrir en Office Online
-                </a>
               </div>
             </div>
           ) : (
