@@ -151,17 +151,20 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
       if (!newValue && newValue !== '0') continue;
       const [sheetName, rowStr, colName] = key.split('::');
       const rowNum = parseInt(rowStr, 10);
-      const ws = newWb.Sheets[sheetName];
+      const ws = newWb.Sheets[sheetName] || newWb.Sheets[newWb.SheetNames[0]];
       if (!ws) continue;
       const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       let colIdx = -1;
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cellAddr = XLSX.utils.encode_cell({ r: range.s.r, c });
-        const cell = ws[cellAddr];
-        if (cell && String(cell.v).toLowerCase().trim() === colName.toLowerCase().trim()) { colIdx = c; break; }
+      const maxHeaderRow = Math.min(range.e.r, range.s.r + 10);
+      for (let r = range.s.r; r <= maxHeaderRow && colIdx === -1; r++) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const cellAddr = XLSX.utils.encode_cell({ r, c });
+          const cell = ws[cellAddr];
+          if (cell && String(cell.v).toLowerCase().trim() === colName.toLowerCase().trim()) { colIdx = c; break; }
+        }
       }
       if (colIdx === -1) continue;
-      const cellAddr = XLSX.utils.encode_cell({ r: rowNum, c: colIdx });
+      const cellAddr = XLSX.utils.encode_cell({ r: Math.max(rowNum - 1, 0), c: colIdx });
       if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: newValue };
       else { ws[cellAddr].v = newValue; ws[cellAddr].t = 's'; }
     }
@@ -189,6 +192,31 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
   const allDuplicates = totalCetaps > 0 && identicalCetaps === totalCetaps && newCetaps === 0 && updatedCetaps === 0;
 
   const hasValidToImport = (totalCetaps > 0) && (newCetaps > 0 || updatedCetaps > 0);
+  const resultErrors = Array.isArray(result?.errores) ? result.errores : [];
+  const duplicateDocumentErrors = resultErrors.filter((err: any) =>
+    err && typeof err === 'object' && (err.tipo === 'DUPLICADO_DOCUMENTO' || err.duplicado === true || err.columna === 'DOCUMENTO_IDENTIDAD' && /duplicad|ya existe/i.test(String(err.mensaje || err.message || '')))
+  );
+  const duplicateDocumentSummaries = Array.from(
+    duplicateDocumentErrors.reduce((acc: Map<string, any>, err: any) => {
+      const documentNumber = String(err.documentoIdentidad || err.datoErrado || err.documentNumber || 'Sin documento');
+      const current = acc.get(documentNumber) || { documentNumber, filas: new Set<number>(), mensajes: [] as string[] };
+      const fila = Number(err.fila || err.row);
+      if (fila) current.filas.add(fila);
+      for (const filaDuplicada of err.filasDuplicadas || []) current.filas.add(Number(filaDuplicada));
+      const message = String(err.mensaje || err.message || 'Documento duplicado.');
+      if (!current.mensajes.includes(message)) current.mensajes.push(message);
+      acc.set(documentNumber, current);
+      return acc;
+    }, new Map<string, any>()).values()
+  ).map((item: any) => ({
+    ...item,
+    filas: Array.from(item.filas).filter(Boolean).sort((a: any, b: any) => Number(a) - Number(b)),
+  }));
+  const hasDocumentDuplicateErrors = duplicateDocumentErrors.length > 0;
+
+  // Vista previa de docentes válidos ("correctos") que devuelve el backend en la validación.
+  // El backend ya entrega result.data.results con cada registro procesado correctamente.
+  const previewValidos = Array.isArray(result?.data?.results) ? result.data.results : [];
 
   // ═══════════════════════════════ RENDER ═══════════════════════════════
   return (
@@ -444,7 +472,9 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
             className=""
           >
             {/* Status + Action Bar */}
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 160px)' }}>
+            {/* La tarjeta se ajusta a su contenido; las tablas internas (vista previa y
+                errores) tienen su propio scroll acotado, así no queda espacio en blanco. */}
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex flex-col">
               {/* Status banner */}
               {isAllIdentical ? (
                 <div className="px-8 py-5 flex items-center justify-between gap-4 flex-wrap bg-blue-50/40 border-b border-blue-100">
@@ -550,14 +580,55 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                         <AlertCircle className="w-4 h-4 text-red-500" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-gray-900 text-sm">Errores bloqueantes</h3>
-                        <p className="text-[11px] text-gray-500">No es posible importar. Corrija los datos en el archivo.</p>
+                        <h3 className="font-bold text-gray-900 text-sm">
+                          {hasDocumentDuplicateErrors ? 'Documentos duplicados detectados' : 'Errores bloqueantes'}
+                        </h3>
+                        <p className="text-[11px] text-gray-500">
+                          {hasDocumentDuplicateErrors
+                            ? 'No se importara ningun registro mientras existan documentos repetidos o ya registrados.'
+                            : 'No es posible importar. Corrija los datos en el archivo.'}
+                        </p>
                       </div>
                     </div>
                     <button onClick={resetState} className="px-3 py-1.5 text-[11px] font-bold text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-all">
                       Cargar otro
                     </button>
                   </div>
+
+                  {hasDocumentDuplicateErrors && (
+                    <div className="px-6 py-4 bg-red-50/40 border-t border-red-100/60">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                          <Shield className="w-4 h-4 text-red-600" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-bold text-red-900">Validacion de unicidad por documento</h4>
+                          <p className="text-[11px] text-red-700 mt-0.5">
+                            Cada docente debe tener un unico numero de documento. El archivo queda bloqueado hasta corregir estos registros.
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 mt-3">
+                            {duplicateDocumentSummaries.slice(0, 6).map((item: any) => (
+                              <div key={item.documentNumber} className="rounded-lg border border-red-100 bg-white px-3 py-2 shadow-sm">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-red-500">Documento</span>
+                                  <span className="text-[10px] font-mono text-gray-400">
+                                    {item.filas.length ? `Fila ${item.filas.join(', ')}` : 'Archivo'}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-black text-gray-900 mt-1 truncate">{item.documentNumber}</p>
+                                <p className="text-[11px] text-gray-500 mt-1 line-clamp-2">{item.mensajes[0]}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {duplicateDocumentSummaries.length > 6 && (
+                            <p className="text-[11px] text-red-700 mt-2 font-medium">
+                              + {duplicateDocumentSummaries.length - 6} documento(s) duplicado(s) adicional(es). Revise la tabla de errores.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   
                   {result?.errores && result.errores.length > 0 ? (
                     <div className="border-t border-red-100/50">
@@ -628,7 +699,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
               )}
 
               {/* Metrics row inside the card */}
-              <div className="px-8 py-5 grid grid-cols-5 gap-4 border-b border-gray-100">
+              <div className="px-8 py-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 border-b border-gray-100">
                 {[
                   { label: 'Total Registros', value: totalCetaps, icon: Building2, color: 'text-[#003DA5]', bg: 'bg-blue-50' },
                   { label: 'Nuevos', value: newCetaps, icon: Sparkles, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -647,6 +718,49 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                   </div>
                 ))}
               </div>
+
+              {/* Vista previa de docentes válidos ("correctos") */}
+              {previewValidos.length > 0 && (
+                <div className="border-b border-gray-50 flex flex-col min-h-0">
+                  <div className="px-6 py-2.5 flex items-center justify-between bg-emerald-50/30">
+                    <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {previewValidos.length} docente(s) válido(s) — vista previa
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto overflow-y-auto max-h-[55vh] min-h-[200px]">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50/80 sticky top-0 z-10 border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Fila</th>
+                          <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Nombre</th>
+                          <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Documento</th>
+                          <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {previewValidos.map((r: any, idx: number) => {
+                          const estado = r.action === 'insert'
+                            ? { label: 'Nuevo', cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
+                            : r.action === 'update'
+                            ? { label: 'Actualizado', cls: 'bg-blue-50 text-blue-700 border-blue-100' }
+                            : { label: 'Sin cambios', cls: 'bg-gray-100 text-gray-500 border-gray-200' };
+                          return (
+                            <tr key={idx} className="hover:bg-emerald-50/20">
+                              <td className="px-4 py-2 text-[10px] font-mono text-gray-400">{r.sourceRowNumber ? `F${r.sourceRowNumber}` : idx + 1}</td>
+                              <td className="px-4 py-2 text-gray-700 font-medium">{r.fullName || '—'}</td>
+                              <td className="px-4 py-2 font-mono text-gray-600">{r.documentNumber || '—'}</td>
+                              <td className="px-4 py-2">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${estado.cls}`}>{estado.label}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* Error correction panel (inside the card, collapsed by default) */}
               {result.errores && result.errores.length > 0 && (

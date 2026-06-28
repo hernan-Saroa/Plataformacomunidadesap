@@ -97,6 +97,19 @@ function extractFirstEmail(value: any): string | null {
   return match ? match[0].toLowerCase() : null;
 }
 
+function normalizePhoneForAuth(value: any): string | null {
+  const text = toCleanString(value);
+  if (!text) return null;
+  const candidates = text.match(/\+?\d[\d\s().-]{5,}\d/g) || [];
+  const normalizedCandidates = candidates
+    .map((candidate) => candidate.replace(/[^\d+]/g, ''))
+    .filter(Boolean);
+  const preferred = normalizedCandidates.find((candidate) => candidate.replace(/\D/g, '').length >= 10)
+    || normalizedCandidates[0]
+    || text.replace(/[^\d+]/g, '');
+  return (preferred || text.replace(/\s+/g, ' ').trim()).slice(0, 20);
+}
+
 // â”€â”€â”€ dedican / vinculacion codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function normalizeDedicacionCode(value: any): string {
@@ -274,6 +287,10 @@ export function normalizeBancoDocentePayload(raw: any) {
   let correoPers = extractFirstEmail(correoPersRaw);
 
   const observationsList: string[] = [];
+
+  if (correoInst && !correoInst.toLowerCase().trim().endsWith('@esap.edu.co')) {
+    observationsList.push('Correo no institucional recibido en CORREO_INSTITUCIONAL; se conserva para contacto y queda para revision RUND');
+  }
 
   // [BR-016] Personal email differs from institutional
   if (correoPers && correoInst && correoPers.toLowerCase().trim() === correoInst.toLowerCase().trim()) {
@@ -480,18 +497,9 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
     }
   }
 
-  // [BR-019] & [BR-020]
-  if (payload.correoInstitucional) {
-    const email = payload.correoInstitucional.toLowerCase().trim();
-    if (!email.endsWith('@esap.edu.co')) {
-      throw new BadRequestException({
-        message: 'Correo no institucional en campo institucional. Requiere correo @esap.edu.co',
-        columna: 'CORREO_INSTITUCIONAL',
-        datoErrado: payload.correoInstitucional,
-        valorEsperado: '*@esap.edu.co'
-      });
-    }
-  }
+  // El archivo oficial puede traer correos personales en CORREO_INSTITUCIONAL.
+  // Se conservan como dato de contacto y quedan marcados en observaciones RUND;
+  // no bloquean la carga masiva.
 }
 
 /**
@@ -616,7 +624,7 @@ function buildAuthBancoDocenteResponse(row: any) {
   const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
 
   return {
-    id: row.usuario_id,
+    id: row.docente_id || row.usuario_id,
     persona_id: row.persona_id,
     usuario_id: row.usuario_id,
     docente_id: row.docente_id || null,
@@ -714,6 +722,11 @@ export class BancoDocentesService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "sexoBiologico" TEXT,
           ADD COLUMN IF NOT EXISTS "dedicacionHorasSemana" INTEGER,
           ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT
+      `);
+      await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "Docente_personaId_periodoCarga_key"
+        ON academic_work_plan."Docente" ("personaId", COALESCE("periodoCarga", ''))
       `);
     } catch (error: any) {
       this.logger.warn(`No se pudieron verificar columnas RUND Excel en Docente: ${error?.message || error}`);
@@ -848,7 +861,7 @@ export class BancoDocentesService implements OnModuleInit {
   private authDocentesBaseSql() {
     return `
       WITH auth_docentes AS (
-        SELECT DISTINCT ON (u.id_user)
+        SELECT
           u.id_user AS usuario_id,
           u.username,
           u.is_active AS activo,
@@ -922,13 +935,17 @@ export class BancoDocentesService implements OnModuleInit {
           ) AS roles
         FROM auth."user" u
         INNER JOIN auth.personas p ON p.id_person = u.id_person
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
-        INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
         LEFT JOIN auth.seccionales sec ON sec.id_seccional = p.id_seccional
         LEFT JOIN auth.sedes sede ON sede.id_sede = p.id_sede
         LEFT JOIN academic_work_plan."Docente" d ON d."personaId"::text = p.id_person::text
-        WHERE (UPPER(r.code) = 'DOCENTE' OR UPPER(r.name) = 'DOCENTE')
-        ORDER BY u.id_user, p.nom_largo ASC
+        WHERE EXISTS (
+          SELECT 1
+          FROM auth.user_roles ur
+          INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+          WHERE ur.id_user = u.id_user
+            AND COALESCE(ur.is_active, true) = true
+            AND (UPPER(r.code) = 'DOCENTE' OR UPPER(r.name) = 'DOCENTE')
+        )
       )
     `;
   }
@@ -1052,6 +1069,7 @@ export class BancoDocentesService implements OnModuleInit {
 
     const runWithManager = async (manager: any) => {
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
+      const phoneFinal = normalizePhoneForAuth(payload.telefono);
       const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
       if (!finalFullName) throw new BadRequestException({
         message: `No se pudo construir el nombre del docente ${payload.documentNumber}.`,
@@ -1147,7 +1165,7 @@ export class BancoDocentesService implements OnModuleInit {
           gender || 'N',
           payload.fechaNacimiento,
           emailFinal,
-          payload.telefono,
+          phoneFinal,
           authSeccionalId,
         ];
         const placeholders = values.map((_, idx) => `$${idx + 1}`);
@@ -1187,7 +1205,7 @@ export class BancoDocentesService implements OnModuleInit {
             gender || authPersona.gen_tercero || 'N',
             payload.fechaNacimiento || authPersona.fec_nacimiento || null,
             emailFinal,
-            payload.telefono || authPersona.tel_celular || null,
+            phoneFinal || authPersona.tel_celular || null,
             authSeccionalId,
           ],
         );
@@ -1255,10 +1273,18 @@ export class BancoDocentesService implements OnModuleInit {
         [authUser.id_user, docenteRoleId],
       );
 
-      const existingDocente = await manager.findOne(DocenteEntity, { where: { personaId: authPersonId } });
+      const targetPeriodoCarga = payload.periodoCarga || null;
+      const existingDocente = targetPeriodoCarga
+        ? await manager.findOne(DocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga } as any })
+        : await manager.findOne(DocenteEntity, { where: { personaId: authPersonId } });
 
       if (existingDocente && options.rejectExisting) {
-        throw new BadRequestException(`El documento ${payload.documentNumber} ya existe en el Banco de Docentes.`);
+        throw new BadRequestException({
+          message: `El documento ${payload.documentNumber} ya existe en el Banco de Docentes para el periodo ${targetPeriodoCarga || 'sin periodo'}.`,
+          columna: 'DOCUMENTO_IDENTIDAD',
+          datoErrado: payload.documentNumber,
+          valorEsperado: `Documento no registrado en el periodo ${targetPeriodoCarga || 'seleccionado'}`,
+        });
       }
 
       let nextIdRund = payload.idRund || existingDocente?.idRund;
@@ -1426,26 +1452,161 @@ export class BancoDocentesService implements OnModuleInit {
     return result;
   }
 
+  private async validateBulkDocumentDuplicates(rows: any[], queryRunner: { query: (sql: string, params?: any[]) => Promise<any[]> }) {
+    type BulkDocumentIssue = {
+      documentNumber: string;
+      periodoCarga: string | null;
+      rowNumber: number;
+      name: string | null;
+      reasons: string[];
+      duplicateRows?: number[];
+      existing?: any;
+    };
+
+    const issuesByRow = new Map<number, BulkDocumentIssue>();
+    const rowsByDocumentPeriod = new Map<string, Array<{ index: number; rowNumber: number; name: string | null; documentNumber: string; periodoCarga: string | null }>>();
+
+    const makeDocumentPeriodKey = (documentNumber: string, periodoCarga: string | null) => `${documentNumber}::${periodoCarga || ''}`;
+
+    const ensureIssue = (index: number, documentNumber: string, periodoCarga: string | null, rowNumber: number, name: string | null) => {
+      const existing = issuesByRow.get(index);
+      if (existing) return existing;
+      const issue: BulkDocumentIssue = { documentNumber, periodoCarga, rowNumber, name, reasons: [] };
+      issuesByRow.set(index, issue);
+      return issue;
+    };
+
+    rows.forEach((row, index) => {
+      const payload = normalizeBancoDocentePayload(row || {});
+      const documentNumber = payload.documentNumber ? String(payload.documentNumber).trim().replace(/\./g, '') : '';
+      if (!documentNumber) return;
+      const periodoCarga = payload.periodoCarga ? String(payload.periodoCarga).trim() : null;
+      const rowNumber = Number(row?.__sourceRowNumber || index + 2);
+      const name = payload.fullName || row?.NOMBRE_COMPLETO || row?.nombreCompleto || null;
+      const key = makeDocumentPeriodKey(documentNumber, periodoCarga);
+      const group = rowsByDocumentPeriod.get(key) || [];
+      group.push({ index, rowNumber, name, documentNumber, periodoCarga });
+      rowsByDocumentPeriod.set(key, group);
+    });
+
+    for (const group of rowsByDocumentPeriod.values()) {
+      if (group.length <= 1) continue;
+      const duplicateRows = group.map((item) => item.rowNumber).sort((a, b) => a - b);
+      for (const item of group) {
+        const issue = ensureIssue(item.index, item.documentNumber, item.periodoCarga, item.rowNumber, item.name);
+        issue.duplicateRows = duplicateRows;
+        issue.reasons.push(`El documento ${item.documentNumber} aparece repetido dentro del archivo para el periodo ${item.periodoCarga || 'sin periodo'} en las filas ${duplicateRows.join(', ')}.`);
+      }
+    }
+
+    const documentNumbers = Array.from(new Set(Array.from(rowsByDocumentPeriod.values()).flat().map((item) => item.documentNumber)));
+    const periodos = Array.from(new Set(Array.from(rowsByDocumentPeriod.values()).flat().map((item) => item.periodoCarga || '')));
+    if (documentNumbers.length > 0 && periodos.length > 0) {
+      const existingRows = await queryRunner.query(
+        `
+        SELECT
+          p.num_identificacion::text AS document_number,
+          p.nom_largo AS nombre,
+          p.id_person AS persona_id,
+          d.id AS docente_id,
+          COALESCE(d."periodoCarga", '') AS periodo_carga
+        FROM auth.personas p
+        INNER JOIN academic_work_plan."Docente" d
+          ON d."personaId"::text = p.id_person::text
+         AND COALESCE(d."periodoCarga", '') = ANY($2::text[])
+        WHERE p.num_identificacion::text = ANY($1::text[])
+        `,
+        [documentNumbers, periodos],
+      );
+      const existingByDocument = new Map<string, any>();
+      for (const existing of existingRows || []) {
+        if (existing?.document_number) {
+          const key = makeDocumentPeriodKey(String(existing.document_number), existing.periodo_carga || null);
+          if (!existingByDocument.has(key)) existingByDocument.set(key, existing);
+        }
+      }
+
+      for (const group of rowsByDocumentPeriod.values()) {
+        const first = group[0];
+        const existing = existingByDocument.get(makeDocumentPeriodKey(first.documentNumber, first.periodoCarga));
+        if (!existing) continue;
+        for (const item of group) {
+          const issue = ensureIssue(item.index, item.documentNumber, item.periodoCarga, item.rowNumber, item.name);
+          issue.existing = existing;
+          issue.reasons.push(`El documento ${item.documentNumber} ya existe en el Banco de Docentes para el periodo ${item.periodoCarga || 'sin periodo'}${existing.nombre ? ` como ${existing.nombre}` : ''}.`);
+        }
+      }
+    }
+
+    const blockedRowIndexes = new Set<number>(issuesByRow.keys());
+    const errors = Array.from(issuesByRow.entries()).map(([index, issue]) => ({
+      row: issue.rowNumber,
+      fila: issue.rowNumber,
+      hoja: 'CARGA_DOCENTES',
+      columna: 'DOCUMENTO_IDENTIDAD',
+      field: 'DOCUMENTO_IDENTIDAD',
+      tipo: 'DUPLICADO_DOCUMENTO',
+      duplicado: true,
+      blocking: true,
+      documentoIdentidad: issue.documentNumber,
+      periodoCarga: issue.periodoCarga,
+      nombre: issue.name,
+      filasDuplicadas: issue.duplicateRows || [],
+      registroExistente: issue.existing || null,
+      datoErrado: issue.documentNumber,
+      valorEsperado: `Documento unico para el periodo ${issue.periodoCarga || 'seleccionado'}`,
+      message: issue.reasons.join(' '),
+      mensaje: issue.reasons.join(' '),
+      data: rows[index],
+    }));
+
+    return { errors, blockedRowIndexes };
+  }
+
   async bulkUpsert(rows: any[], options: { rejectExisting?: boolean, dryRun?: boolean, omitErrors?: boolean, periodoCarga?: string } = {}) {
     const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' LIMIT 1`);
     const activePeriod = periodRows.length > 0 ? periodRows[0].codigo : null;
     const fallbackPeriod = options.periodoCarga || activePeriod;
+    const preparedRows = rows.map((item, index) => {
+      const row = { ...item, __sourceRowNumber: item?.__sourceRowNumber || index + 2 };
+      if (fallbackPeriod && !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga) {
+        row.PERIODO_CARGA = fallbackPeriod;
+      }
+      return row;
+    });
 
     let finalResults: any[] = [];
     let finalErrors: any[] = [];
 
     const processRows = async (manager?: any) => {
+      const queryRunner = manager || this.dataSource;
+      const duplicateValidation = await this.validateBulkDocumentDuplicates(preparedRows, queryRunner);
+      if (duplicateValidation.errors.length > 0 && !options.omitErrors && !options.dryRun) {
+        return { results: [], errors: duplicateValidation.errors };
+      }
+
       const results: any[] = [];
-      const errors: any[] = [];
-      for (let i = 0; i < rows.length; i++) {
-        const row = { ...rows[i], __sourceRowNumber: rows[i]?.__sourceRowNumber || i + 2 };
-        if (fallbackPeriod && !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga) {
-          row.PERIODO_CARGA = fallbackPeriod;
-        }
+      const errors: any[] = [...duplicateValidation.errors];
+      for (let i = 0; i < preparedRows.length; i++) {
+        if (duplicateValidation.blockedRowIndexes.has(i)) continue;
+        const row = { ...preparedRows[i] };
+        const useRowSavepoint = Boolean(options.dryRun && manager?.query);
+        const savepointName = `banco_docentes_row_${i}`;
         try {
+          if (useRowSavepoint) {
+            await manager.query(`SAVEPOINT ${savepointName}`);
+          }
           const result = await this.upsertDocente(row, { ...options, outerManager: manager });
           results.push(result);
+          if (useRowSavepoint) {
+            await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+            await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
+          }
         } catch (err: any) {
+          if (useRowSavepoint) {
+            await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`).catch(() => undefined);
+            await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
+          }
           if (!options.omitErrors && !options.dryRun) {
              // If not omitting, we still record it. Or wait, original code recorded all errors.
           }
@@ -1454,14 +1615,19 @@ export class BancoDocentesService implements OnModuleInit {
           if (typeof err.getResponse === 'function') {
             const resp = err.getResponse();
             if (typeof resp === 'object') errorPayload = resp;
+            else if (typeof resp === 'string') errorPayload = { message: resp };
           }
 
           errors.push({ 
             row: row.__sourceRowNumber, 
-            message: errorPayload.message || err.message || 'Error desconocido', 
+            fila: row.__sourceRowNumber,
+            hoja: 'CARGA_DOCENTES',
+            message: errorPayload.message || err.message || 'Error desconocido',
+            mensaje: errorPayload.message || err.message || 'Error desconocido',
             columna: errorPayload.columna,
             datoErrado: errorPayload.datoErrado,
             valorEsperado: errorPayload.valorEsperado,
+            blocking: true,
             data: row 
           });
         }
@@ -1487,7 +1653,7 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     return {
-      total: rows.length,
+      total: preparedRows.length,
       created: finalResults.filter((r) => r.action === 'insert').length,
       updated: finalResults.filter((r) => r.action === 'update').length,
       unchanged: finalResults.filter((r) => r.action === 'unchanged').length,
@@ -1498,14 +1664,15 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async toggleEstado(id: string) {
+    const targetDocente = await this.docenteRepo.findOne({ where: { id } });
     const authRows = await this.dataSource.query(
       `
       SELECT u.id_user, u.id_person, u.is_active
       FROM auth."user" u
-      WHERE u.id_user::text = $1 OR u.id_person::text = $1
+      WHERE u.id_user::text = $1 OR u.id_person::text = $1 OR u.id_person::text = $2
       LIMIT 1
       `,
-      [id],
+      [id, targetDocente?.personaId || null],
     );
 
     let activoFinal = false;
@@ -1518,7 +1685,7 @@ export class BancoDocentesService implements OnModuleInit {
       );
 
       // También sincronizar el estado en DocenteEntity para que la UI refleje el cambio
-      const d = await this.docenteRepo.findOne({ where: { personaId: authRows[0].id_person } as any });
+      const d = targetDocente || await this.docenteRepo.findOne({ where: { personaId: authRows[0].id_person } as any });
       if (d) {
         d.estado = activoFinal ? 'ACTIVO' : 'INACTIVO';
         await this.docenteRepo.save(d);
@@ -1527,7 +1694,7 @@ export class BancoDocentesService implements OnModuleInit {
       return { id: authRows[0].id_user, estado: activoFinal ? 'ACTIVO' : 'INACTIVO', activo: activoFinal };
     }
 
-    const d = await this.docenteRepo.findOne({ where: { id } });
+    const d = targetDocente || await this.docenteRepo.findOne({ where: { id } });
     if (!d) throw new NotFoundException(`Docente ${id} no encontrado`);
     d.estado = d.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
     await this.docenteRepo.save(d);
@@ -1541,7 +1708,11 @@ export class BancoDocentesService implements OnModuleInit {
         `SELECT num_identificacion AS document_number FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
         [d.personaId],
       );
-      const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || authRows[0]?.document_number }, {});
+      const result = await this.upsertDocente({
+        ...body,
+        periodoCarga: body.periodoCarga || body.periodo_carga || d.periodoCarga,
+        documentNumber: body.documentNumber || authRows[0]?.document_number,
+      }, {});
       return result;
     }
 
@@ -1557,7 +1728,11 @@ export class BancoDocentesService implements OnModuleInit {
     );
     if (!authRows[0]?.document_number) throw new NotFoundException(`Docente ${id} no encontrado`);
 
-    const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || authRows[0].document_number }, {});
+    const result = await this.upsertDocente({
+      ...body,
+      periodoCarga: body.periodoCarga || body.periodo_carga || null,
+      documentNumber: body.documentNumber || authRows[0].document_number,
+    }, {});
     return result;
   }
 
@@ -2829,7 +3004,7 @@ export class BancoDocentesService implements OnModuleInit {
    * §6.3 / BR-059 — Lookup tarjeta RUND by persona ID (for Carpeta Digital).
    * Returns null if the persona is not a docente.
    */
-  async getTarjetaRUNDByPersona(personaId: string): Promise<any | null> {
+  async getTarjetaRUNDByPersona(personaId: string, periodoCarga?: string): Promise<any | null> {
     try {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(personaId);
       
@@ -2843,12 +3018,15 @@ export class BancoDocentesService implements OnModuleInit {
         finalPersonaId = result[0].id_person;
       }
 
-      let docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      const docenteWhere = periodoCarga
+        ? { personaId: finalPersonaId, periodoCarga }
+        : { personaId: finalPersonaId };
+      let docente = await this.docenteRepo.findOne({ where: docenteWhere as any });
       
       // Auto-provisionar docente si no existe (Necesario para sincronizaciA3n con Carpeta Digital)
       if (!docente) {
         const authData = await this.dataSource.query(
-          `SELECT id_person, num_identificacion, nombres, apellidos, correo_electronico FROM auth.personas WHERE id_person = $1 LIMIT 1`,
+          `SELECT id_person, num_identificacion, nom_largo, dir_email FROM auth.personas WHERE id_person = $1 LIMIT 1`,
           [finalPersonaId]
         );
         if (authData && authData.length > 0) {
@@ -2857,13 +3035,14 @@ export class BancoDocentesService implements OnModuleInit {
             personaId: auth.id_person,
             documentNumber: auth.num_identificacion || 'N/A',
             documento_identidad: auth.num_identificacion || 'N/A',
-            nombre_completo: `${auth.nombres || ''} ${auth.apellidos || ''}`.trim() || 'Sin Nombre',
-            correo_institucional: auth.correo_electronico || null,
+            nombre_completo: auth.nom_largo || 'Sin Nombre',
+            correo_institucional: auth.dir_email || null,
             territorial: 'Sede Central',
             vinculacion: 'Ocasional',
-            estado: 'Inactivo'
+            estado: 'Inactivo',
+            periodoCarga: periodoCarga || null,
           }, { rejectExisting: false });
-          docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+          docente = await this.docenteRepo.findOne({ where: docenteWhere as any });
         }
       }
 

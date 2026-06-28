@@ -314,6 +314,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       docente_id: docente.docente_id,
       personaId: docente.personaId,
       persona_id: docente.persona_id,
+      periodoCarga: docente.periodoCarga || docente.periodo_carga,
       documento_identidad: docente.documento_identidad,
       tipo_documento: docente.tipo_documento,
       nombre_completo: docente.nombre_completo,
@@ -359,6 +360,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     docente?.docente_id,
     docente?.personaId,
     docente?.persona_id,
+    docente?.periodoCarga,
+    docente?.periodo_carga,
     docente?.documento_identidad,
     docente?.tipo_documento,
     docente?.nombre_completo,
@@ -408,6 +411,11 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     const authUser = (window as any).__esap_auth_cache;
     return authUser?.id || authUser?.id_user || authUser?.userId || authUser?.sub || 'admin-user';
   }, [auth.userPersonId]);
+
+  const currentPeriodoCarga = useMemo(() => {
+    const periodo = docenteSnapshot?.periodoCarga;
+    return periodo ? String(periodo) : null;
+  }, [docenteSnapshot?.periodoCarga]);
 
   const openDocViewer = async (url: string, nombre: string, campo: string, tipoSoporte?: string) => {
     // Si la URL es 'mock', intentar buscar el doc real desde el backend
@@ -476,7 +484,8 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     try {
       let dataId = docenteId;
       if (cleanPersonaId && !docenteId) {
-        const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
+        const qs = currentPeriodoCarga ? `?periodoCarga=${encodeURIComponent(currentPeriodoCarga)}` : '';
+        const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund${qs}`);
         dataId = res?.data?.docenteId || res?.docenteId;
         if (!dataId) return;
       }
@@ -507,7 +516,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           tar = tar || {
             idRund: `RUND-${docenteSnapshot.documento_identidad || '000'}`,
             docenteId: dataId,
-            periodoCarga: '2025-2',
+            periodoCarga: currentPeriodoCarga,
             semaforo: { porcentaje: 60 },
             bloques: {
               IDENTIDAD: {
@@ -694,7 +703,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
         setTarjetaRund({
           idRund: `RUND-${docenteSnapshot.documento_identidad || '000'}`,
           docenteId: docenteId,
-          periodoCarga: '2025-2',
+          periodoCarga: currentPeriodoCarga,
           semaforo: { porcentaje: 60 },
           bloques: {
             IDENTIDAD: {
@@ -775,7 +784,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     } finally {
       setLoadingRund(false);
     }
-  }, [docenteId, cleanPersonaId, docenteSnapshot]);
+  }, [docenteId, cleanPersonaId, docenteSnapshot, currentPeriodoCarga]);
 
   useEffect(() => {
     fetchRundData();
@@ -1001,7 +1010,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
             )}
           </h3>
           <p style={{ margin: 0, fontSize: 13, color: '#64748B', marginTop: 4, fontWeight: 500 }}>
-            ID RUND: <span style={{ color: '#0F172A' }}>{tarjetaRund.idRund}</span> · Periodo: <span style={{ color: '#0F172A' }}>{tarjetaRund.periodoCarga || '2025-2'}</span>
+            ID RUND: <span style={{ color: '#0F172A' }}>{tarjetaRund.idRund}</span> · Periodo: <span style={{ color: '#0F172A' }}>{tarjetaRund.periodoCarga || currentPeriodoCarga || 'Sin periodo'}</span>
           </p>
         </div>
         <div style={{ textAlign: 'right', minWidth: 220 }}>

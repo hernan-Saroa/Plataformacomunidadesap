@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 
 interface Props {
   docente: any | null;
+  periodoSeleccionado?: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -155,7 +156,7 @@ const fieldFocusStyle = `
    Main Component
    ═══════════════════════════════════════════════════════════════════ */
 
-export function BancoDocenteEditModal({ docente, onClose, onSaved }: Props) {
+export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, onSaved }: Props) {
   const [activeStep, setActiveStep] = useState<Step>(0);
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
   const [saving, setSaving] = useState(false);
@@ -322,11 +323,12 @@ export function BancoDocenteEditModal({ docente, onClose, onSaved }: Props) {
       telefono: form.telefono || null,
       genero: form.genero || null,
       fechaNacimiento: form.fechaNacimiento || null,
+      periodoCarga: docente?.periodoCarga || docente?.periodo_carga || periodoSeleccionado || null,
       canal_origen: 'MODAL', // §4 / §6 — Auditoría del canal de alta
     };
 
     const res = docente?.id
-      ? await updateBancoDocente(docente.id, payload)
+      ? await updateBancoDocente(docente.docente_id || docente.id, payload)
       : await createBancoDocente(payload);
 
     setSaving(false);

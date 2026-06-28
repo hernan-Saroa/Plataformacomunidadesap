@@ -125,11 +125,11 @@ export function BancoDocentesPTA() {
   const [tab, setTab] = useState<Tab>('listado');
   const [docentes, setDocentes] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [listStats, setListStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsFilterTerritorial, setStatsFilterTerritorial] = useState('');
   const [statsFilterDedicacion, setStatsFilterDedicacion] = useState('');
   const [statsFilterEstado, setStatsFilterEstado] = useState('');
-  const [statsFilterPeriodo, setStatsFilterPeriodo] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -191,17 +191,13 @@ export function BancoDocentesPTA() {
         territorial: statsFilterTerritorial || undefined,
         dedicacion: statsFilterDedicacion || undefined,
         estado: statsFilterEstado || undefined,
-        // Usar el filtro de periodo PROPIO de las estadísticas (statsFilterPeriodo),
-        // no el del listado (filterPeriodo). El del listado se auto-setea al periodo
-        // activo y aplicaba un filtro "invisible" que dejaba los conteos en 0 porque
-        // los docentes no tienen periodoCarga igual al periodo activo. Vacío al inicio
-        // → sin filtro → cuenta todos. Esto además hace funcional el dropdown de stats.
-        periodoCarga: statsFilterPeriodo || undefined,
+        // Las estadísticas usan el mismo periodo del encabezado/listado.
+        periodoCarga: filterPeriodo || undefined,
       });
       if (statsRes.success && statsRes.data) setStats(statsRes.data);
     } catch { /* silencioso */ }
     finally { setStatsLoading(false); }
-  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, statsFilterPeriodo]);
+  }, [statsFilterTerritorial, statsFilterDedicacion, statsFilterEstado, filterPeriodo]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
@@ -219,12 +215,16 @@ export function BancoDocentesPTA() {
   const loadData = useCallback(async (p = page) => {
     setLoading(true);
     try {
-      const res = await getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined });
+      const [res, listStatsRes] = await Promise.all([
+        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
+      ]);
       if (res.success && res.data) {
         setDocentes(res.data.items || res.data.data || []);
         setTotal(res.data.total || 0);
         setPages(res.data.pages || 1);
       }
+      if (listStatsRes.success && listStatsRes.data) setListStats(listStatsRes.data);
     } catch {
       // Fallback silencioso: los servicios ya manejan errores internamente
     } finally {
@@ -250,7 +250,7 @@ export function BancoDocentesPTA() {
     if (!bulkFile) return;
     setBulkLoading(true);
     setBulkResult(null);
-    const res = await bulkUploadBancoDocentes(bulkFile);
+    const res = await bulkUploadBancoDocentes(bulkFile, false, false, filterPeriodo || undefined);
     setBulkLoading(false);
     if (res.success && res.data) {
       setBulkResult(res.data);
@@ -280,6 +280,7 @@ export function BancoDocentesPTA() {
   const processBulkFile = () => handleBulkUpload();
 
   // ── Stats derived — usa TODOS los valores del API ─────────────────────────
+  const statKey = (...parts: any[]) => parts.map((part) => String(part ?? 'sin-dato')).join('__');
   const DEDICACION_COLORS: Record<string, string> = { TC: '#1E40AF', MT: '#D97706', HC: '#7C3AED', SIN_DEDICACION: '#9CA3AF' };
   const DEDICACION_LABELS: Record<string, string> = { TC: 'Tiempo Completo', MT: 'Medio Tiempo', HC: 'Hora Cátedra', SIN_DEDICACION: 'Sin Dedicación' };
   const dedicacionSegments = stats?.por_dedicacion?.map((d: any) => ({
@@ -287,6 +288,7 @@ export function BancoDocentesPTA() {
     value: d.total,
     color: DEDICACION_COLORS[d.dedicacion] || '#94A3B8',
     code: d.dedicacion,
+    key: statKey('dedicacion', d.dedicacion),
   })) || [];
 
   // Paleta diversa: azul, naranja, verde, morado, rosa, cyan, ámbar
@@ -295,11 +297,27 @@ export function BancoDocentesPTA() {
     label: c.categoria,
     value: c.total,
     color: CATEGORIA_COLORS[i % CATEGORIA_COLORS.length],
+    key: statKey('categoria', c.categoria, i),
   })) : [];
 
-  const territorialData: { label: string; value: number; id?: string }[] = stats?.por_territorial
-    ? [...stats.por_territorial].sort((a: any, b: any) => b.total - a.total).slice(0, 20).map((t: any) => ({ label: t.territorial, value: t.total, id: t.territorial_id }))
+  const allTerritorialData: { key: string; label: string; value: number; id?: string }[] = stats?.por_territorial
+    ? Array.from(
+        stats.por_territorial.reduce((acc: Map<string, any>, item: any) => {
+          const label = String(item.territorial || 'Sin territorial');
+          const key = statKey('territorial', label);
+          const current = acc.get(key) || { key, label, value: 0, id: item.territorial_id || undefined };
+          current.value += Number(item.total || 0);
+          if (!current.id && item.territorial_id) current.id = item.territorial_id;
+          acc.set(key, current);
+          return acc;
+        }, new Map<string, any>()).values()
+      ).sort((a: any, b: any) => b.value - a.value)
     : [];
+
+  const territorialData = allTerritorialData.slice(0, 20);
+  const listTerritorialesCount = Array.from(
+    new Set((listStats?.por_territorial || []).map((t: any) => String(t.territorial || 'Sin territorial')))
+  ).length;
 
   // ─────────────────────────────────────────────────────────────────────────
   const TAB_STYLES = (active: boolean) => ({
@@ -446,13 +464,13 @@ export function BancoDocentesPTA() {
       {tab === 'listado' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px 24px' }}>
           {/* Stats cards */}
-          {stats && (
+          {listStats && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12 }}>
               {[
-                { label: 'Total Docentes', value: stats.total, icon: Users, color: '#1d4ed8' },
-                { label: 'Tiempo Completo', value: stats.por_dedicacion?.find((d: any) => d.dedicacion === 'TC')?.total ?? 0, icon: Clock, color: '#7c3aed' },
-                { label: 'Medio Tiempo', value: stats.por_dedicacion?.find((d: any) => d.dedicacion === 'MT')?.total ?? 0, icon: BarChart2, color: '#d97706' },
-                { label: 'Territoriales', value: (stats.por_territorial?.length ?? 0), icon: Building2, color: '#0891b2' },
+                { label: 'Total Docentes', value: listStats.total, icon: Users, color: '#1d4ed8' },
+                { label: 'Tiempo Completo', value: listStats.por_dedicacion?.find((d: any) => d.dedicacion === 'TC')?.total ?? 0, icon: Clock, color: '#7c3aed' },
+                { label: 'Medio Tiempo', value: listStats.por_dedicacion?.find((d: any) => d.dedicacion === 'MT')?.total ?? 0, icon: BarChart2, color: '#d97706' },
+                { label: 'Territoriales', value: listTerritorialesCount, icon: Building2, color: '#0891b2' },
               ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} style={{ background: '#fff', borderRadius: 10, padding: '14px 16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 36, height: 36, borderRadius: 8, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -729,7 +747,7 @@ export function BancoDocentesPTA() {
                             {/* Botón Toggle Estado */}
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
-                                onClick={() => handleToggleEstado(d.id)}
+                                onClick={() => handleToggleEstado(d.docente_id || d.id)}
                                 title={d.estado === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
                                 style={{
                                   width: 32, height: 32, borderRadius: 8,
@@ -839,12 +857,12 @@ export function BancoDocentesPTA() {
 
               {/* Periodo */}
               <select
-                value={statsFilterPeriodo}
-                onChange={(e) => setStatsFilterPeriodo(e.target.value)}
+                value={filterPeriodo}
+                onChange={(e) => setFilterPeriodo(e.target.value)}
                 style={{
                   padding: '7px 12px', borderRadius: 8, border: '1px solid #E5E7EB', fontSize: '13px',
-                  background: statsFilterPeriodo ? '#EBF0FA' : '#fff', color: '#374151', cursor: 'pointer',
-                  fontWeight: statsFilterPeriodo ? 600 : 400, minWidth: 160,
+                  background: filterPeriodo ? '#EBF0FA' : '#fff', color: '#374151', cursor: 'pointer',
+                  fontWeight: filterPeriodo ? 600 : 400, minWidth: 160,
                 }}
               >
                 <option value="">Todos los periodos</option>
@@ -864,8 +882,8 @@ export function BancoDocentesPTA() {
                 }}
               >
                 <option value="">Todas las territoriales</option>
-                {(stats?.por_territorial || []).map((t: any) => (
-                  <option key={t.territorial} value={t.territorial}>{t.territorial}</option>
+                {allTerritorialData.map((t: any) => (
+                  <option key={t.key} value={t.label}>{t.label}</option>
                 ))}
               </select>
 
@@ -901,9 +919,9 @@ export function BancoDocentesPTA() {
               </select>
 
               {/* Reset filtros */}
-              {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado || statsFilterPeriodo) && (
+              {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado) && (
                 <button
-                  onClick={() => { setStatsFilterTerritorial(''); setStatsFilterDedicacion(''); setStatsFilterEstado(''); setStatsFilterPeriodo(''); }}
+                  onClick={() => { setStatsFilterTerritorial(''); setStatsFilterDedicacion(''); setStatsFilterEstado(''); }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
                     borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2',
@@ -916,14 +934,8 @@ export function BancoDocentesPTA() {
             </div>
 
             {/* Active filter badges */}
-            {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado || statsFilterPeriodo) && (
+            {(statsFilterTerritorial || statsFilterDedicacion || statsFilterEstado) && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {statsFilterPeriodo && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, background: '#EBF0FA', color: '#003DA5', fontSize: '11px', fontWeight: 600 }}>
-                    Periodo: {periodos.find((p: any) => p.codigo === statsFilterPeriodo)?.nombre || statsFilterPeriodo}
-                    <X size={12} style={{ cursor: 'pointer' }} onClick={() => setStatsFilterPeriodo('')} />
-                  </span>
-                )}
                 {statsFilterTerritorial && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, background: '#FEF3C7', color: '#92400E', fontSize: '11px', fontWeight: 600 }}>
                     Territorial: {statsFilterTerritorial}
@@ -969,7 +981,7 @@ export function BancoDocentesPTA() {
                   { label: 'Inactivos', value: stats.inactivos, icon: XCircle, color: '#DC2626', bg: '#FEF2F2', click: () => navigateToListado({ estado: 'INACTIVO' }) },
                   { label: 'Total Horas', value: `${(stats.total_horas ?? 0).toLocaleString()}h`, icon: Clock, color: '#7C3AED', bg: '#EDE9FE' },
                   { label: 'Promedio Horas', value: `${stats.promedio_horas ?? 0}h`, icon: BarChart2, color: '#0891B2', bg: '#ECFEFF' },
-                  { label: 'Territoriales', value: stats.por_territorial?.length ?? 0, icon: Building2, color: '#D97706', bg: '#FEF3C7' },
+                  { label: 'Territoriales', value: allTerritorialData.length, icon: Building2, color: '#D97706', bg: '#FEF3C7' },
                   { label: 'CETAP/Sedes', value: stats.por_sede?.length ?? 0, icon: MapPin, color: '#EA580C', bg: '#FFF7ED' },
                   { label: 'Categorías', value: stats.por_categoria?.length ?? 0, icon: GraduationCap, color: '#DB2777', bg: '#FDF2F8' },
                 ].map(({ label, value, icon: Icon, color, bg, click }) => (
@@ -1010,7 +1022,7 @@ export function BancoDocentesPTA() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                       {dedicacionSegments.map((s: any) => (
                         <div
-                          key={s.label}
+                          key={s.key}
                           onClick={() => navigateToListado({ dedicacion: s.code })}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
@@ -1043,7 +1055,7 @@ export function BancoDocentesPTA() {
                     <DonutChart segments={categoriaSegments} size={160} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, maxHeight: 240, overflowY: 'auto' }}>
                       {categoriaSegments.map((s: any) => (
-                        <div key={s.label} style={{
+                        <div key={s.key} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                           fontSize: '13px', color: '#374151', padding: '5px 8px', borderRadius: 6,
                         }}>
@@ -1068,13 +1080,13 @@ export function BancoDocentesPTA() {
                   </h3>
                   {(() => {
                     const vinculacionData = (stats.por_vinculacion || []).map((v: any, i: number) => ({
-                      label: v.vinculacion, value: v.total, color: ['#059669', '#D97706', '#2563EB', '#DC2626', '#7C3AED', '#DB2777'][i % 6],
+                      label: v.vinculacion, value: v.total, color: ['#059669', '#D97706', '#2563EB', '#DC2626', '#7C3AED', '#DB2777'][i % 6], key: statKey('vinculacion', v.vinculacion, i),
                     }));
                     const maxV = Math.max(...vinculacionData.map((v: any) => v.value), 1);
                     return vinculacionData.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {vinculacionData.map((v: any) => (
-                          <div key={v.label} style={{ cursor: 'default' }}>
+                          <div key={v.key} style={{ cursor: 'default' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '12px' }}>
                               <span style={{ color: '#374151', fontWeight: 500 }}>{v.label}</span>
                               <span style={{ fontWeight: 700, color: '#1F2937' }}>{v.value}</span>
@@ -1098,13 +1110,13 @@ export function BancoDocentesPTA() {
                   </h3>
                   {(() => {
                     const formacionData = (stats.por_nivel_formacion || []).map((f: any, i: number) => ({
-                      label: f.nivel_formacion, value: f.total, color: ['#7C3AED', '#2563EB', '#EA580C', '#059669', '#DB2777', '#0891B2'][i % 6],
+                      label: f.nivel_formacion, value: f.total, color: ['#7C3AED', '#2563EB', '#EA580C', '#059669', '#DB2777', '#0891B2'][i % 6], key: statKey('formacion', f.nivel_formacion, i),
                     }));
                     const maxF = Math.max(...formacionData.map((f: any) => f.value), 1);
                     return formacionData.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {formacionData.map((f: any) => (
-                          <div key={f.label}>
+                          <div key={f.key}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '12px' }}>
                               <span style={{ color: '#374151', fontWeight: 500 }}>{f.label}</span>
                               <span style={{ fontWeight: 700, color: '#1F2937' }}>{f.value}</span>
@@ -1134,13 +1146,14 @@ export function BancoDocentesPTA() {
                       label: g.genero === 'M' ? 'Masculino' : g.genero === 'F' ? 'Femenino' : g.genero === 'O' ? 'Otro' : g.genero,
                       value: g.total,
                       color: ['#2563EB', '#DB2777', '#D97706', '#059669', '#7C3AED'][i % 5],
+                      key: statKey('genero', g.genero, i),
                     }));
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
                         <DonutChart segments={generoData} size={150} />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
                           {generoData.map((g: any) => (
-                            <div key={g.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '13px', color: '#374151', padding: '5px 8px', borderRadius: 6 }}>
+                            <div key={g.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '13px', color: '#374151', padding: '5px 8px', borderRadius: 6 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <div style={{ width: 12, height: 12, borderRadius: '50%', background: g.color, flexShrink: 0 }} />
                                 <span>{g.label}</span>
@@ -1161,13 +1174,13 @@ export function BancoDocentesPTA() {
                   </h3>
                   {(() => {
                     const edadData = (stats.por_rango_edad || []).map((e: any, i: number) => ({
-                      label: e.rango_edad, value: e.total, color: ['#EA580C', '#2563EB', '#059669', '#D97706', '#7C3AED', '#DC2626', '#0891B2'][i % 7],
+                      label: e.rango_edad, value: e.total, color: ['#EA580C', '#2563EB', '#059669', '#D97706', '#7C3AED', '#DC2626', '#0891B2'][i % 7], key: statKey('edad', e.rango_edad, i),
                     }));
                     const maxE = Math.max(...edadData.map((e: any) => e.value), 1);
                     return edadData.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {edadData.map((e: any) => (
-                          <div key={e.label}>
+                          <div key={e.key}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '12px' }}>
                               <span style={{ color: '#374151', fontWeight: 500 }}>{e.label}</span>
                               <span style={{ fontWeight: 700, color: '#1F2937' }}>{e.value}</span>
@@ -1200,7 +1213,7 @@ export function BancoDocentesPTA() {
                       const pct = (t.value / maxVal) * 100;
                       return (
                         <div
-                          key={t.label}
+                          key={t.key}
                           onClick={() => navigateToListado({ territorial: t.label })}
                           style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 8, transition: 'background 0.15s' }}
                           onMouseEnter={(e) => { e.currentTarget.style.background = '#F0F4FF'; }}
@@ -1289,6 +1302,7 @@ export function BancoDocentesPTA() {
       {editDocente !== null && (
         <BancoDocenteEditModal
           docente={editDocente?.id ? editDocente : null}
+          periodoSeleccionado={filterPeriodo || undefined}
           onClose={() => setEditDocente(null)}
           onSaved={() => { setEditDocente(null); loadData(); showToast('Docente guardado correctamente'); }}
         />

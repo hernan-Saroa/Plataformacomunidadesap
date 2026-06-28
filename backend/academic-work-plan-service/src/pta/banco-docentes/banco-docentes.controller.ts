@@ -115,8 +115,11 @@ export class BancoDocentesController {
    *  ya es accesible públicamente vía el endpoint por-id, así que no hay regresión. */
   @Get('by-persona/:personaId/tarjeta-rund')
   @Public()
-  async getTarjetaRUNDByPersona(@Param('personaId') personaId: string) {
-    const result = await this.service.getTarjetaRUNDByPersona(personaId);
+  async getTarjetaRUNDByPersona(
+    @Param('personaId') personaId: string,
+    @Query('periodoCarga') periodoCarga?: string,
+  ) {
+    const result = await this.service.getTarjetaRUNDByPersona(personaId, periodoCarga);
     if (!result) return { success: false, data: null, message: 'No es docente RUND' };
     return { success: true, data: result };
   }
@@ -220,7 +223,7 @@ export class BancoDocentesController {
     // Los duplicados se manejarán dentro del servicio bulkUpsert para no bloquear el archivo completo.
 
     const result = await this.service.bulkUpsert(rows, {
-      rejectExisting: false,
+      rejectExisting: true,
       dryRun,
       omitErrors,
       periodoCarga: periodoCargaQuery || periodoCargaFromFile || undefined,
