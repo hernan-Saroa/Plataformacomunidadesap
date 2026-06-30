@@ -103,7 +103,7 @@ const EMPTY_ASIGNATURA: Omit<Asignatura, 'id' | 'programa_id'> = {
 // ═══ Export Helpers ═══
 
 function exportToCSV(asignaturas: Asignatura[], programaNombre: string) {
-  const headers = ['#', 'Codigo', 'Nombre', 'Semestre', 'Creditos', 'Horas', 'Nucleo', 'Modalidad', 'Tipo'];
+  const headers = ['#', 'Código', 'Nombre', 'Semestre', 'Créditos', 'Horas', 'Núcleo', 'Modalidad', 'Tipo'];
   const rows = asignaturas
     .sort((a, b) => (a.semestre || 1) - (b.semestre || 1) || a.nombre.localeCompare(b.nombre))
     .map((a, i) => [
@@ -150,6 +150,7 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
   if (!win) { toast.error('Popup bloqueado. Permite popups para exportar PDF.'); return; }
 
   win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
     <title>Plan de Estudios - ${programaNombre}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -179,16 +180,16 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
     </div>
     <div class="stats">
       <div class="stat"><div class="value">${asignaturas.length}</div><div class="label">Asignaturas</div></div>
-      <div class="stat"><div class="value">${totalCr}/${totalCreditos}</div><div class="label">Creditos</div></div>
+      <div class="stat"><div class="value">${totalCr}/${totalCreditos}</div><div class="label">Créditos</div></div>
       <div class="stat"><div class="value">${totalH.toLocaleString()}</div><div class="label">Horas</div></div>
       <div class="stat"><div class="value">${bySem.size}</div><div class="label">Semestres</div></div>
     </div>
     ${Array.from(bySem.entries()).sort((a, b) => a[0] - b[0]).map(([sem, asigs]) => {
       const semCr = asigs.reduce((s, a) => s + (a.creditos || 0), 0);
       return `<div class="semester">
-        <h3>Semestre ${sem} — ${asigs.length} asignaturas · ${semCr} creditos</h3>
+        <h3>Semestre ${sem} — ${asigs.length} asignaturas · ${semCr} créditos</h3>
         <table>
-          <thead><tr><th>#</th><th>Codigo</th><th>Asignatura</th><th>Creditos</th><th>Horas</th><th>Horas PTA</th><th>Nucleo</th><th>Modalidad</th></tr></thead>
+          <thead><tr><th>#</th><th>Código</th><th>Asignatura</th><th>Créditos</th><th>Horas</th><th>Horas PTA</th><th>Núcleo</th><th>Modalidad</th></tr></thead>
           <tbody>
             ${asigs.map((a, i) => `<tr>
               <td>${i + 1}</td><td>${a.codigo || '-'}</td><td><strong>${a.nombre}</strong></td>
@@ -202,9 +203,9 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
     }).join('')}
     <div style="margin-top:16px; padding:8px 12px; background:#003DA5; color:white; border-radius:4px; font-size:12px; font-weight:800; display:flex; justify-content:space-between;">
       <span>TOTAL PLAN DE ESTUDIOS</span>
-      <span>${totalCr} creditos · ${totalH.toLocaleString()} horas · ${asignaturas.length} asignaturas</span>
+      <span>${totalCr} créditos · ${totalH.toLocaleString()} horas · ${asignaturas.length} asignaturas</span>
     </div>
-    <div class="footer">ESAP — Escuela Superior de Administracion Publica · Sistema de Gestion Academica</div>
+    <div class="footer">ESAP — Escuela Superior de Administración Pública · Sistema de Gestión Académica</div>
   </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
@@ -393,7 +394,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       setHasChanges(false);
       sessionStorage.removeItem(draftStorageKey);
       toast.success('Plan de estudios guardado', {
-        description: `${asignaturas.length} asignaturas sincronizadas con Oferta Academica (PTA)`,
+        description: `${asignaturas.length} asignaturas sincronizadas con Oferta Académica (PTA)`,
       });
     } catch (err: any) {
       toast.error('Error al guardar plan de estudios', {
@@ -561,7 +562,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
             <div>
               <h4 className="font-black text-gray-900 text-sm">Plan de Estudios</h4>
               <p className="text-[11px] text-gray-500">
-                {asignaturas.length} asig. · {porSemestre.size} semestres · {nucleosUnicos.length} nucleos
+                {asignaturas.length} asig. · {porSemestre.size} semestres · {nucleosUnicos.length} núcleos
               </p>
             </div>
           </div>
@@ -641,11 +642,11 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
         {asignaturas.length > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-gray-500">Progreso de creditos</span>
+              <span className="text-gray-500">Progreso de créditos</span>
               <span className={`font-black ${
                 creditProgress >= 100 ? 'text-emerald-600' : creditProgress >= 75 ? 'text-blue-600' : 'text-amber-600'
               }`}>
-                {totalCreditosPlan} / {totalCreditos} creditos ({creditProgress.toFixed(0)}%)
+                {totalCreditosPlan} / {totalCreditos} créditos ({creditProgress.toFixed(0)}%)
               </span>
             </div>
             <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
@@ -664,7 +665,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
             <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-1">
               <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{asignaturas.length} asig.</span>
               <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{totalHorasPlan.toLocaleString()} horas</span>
-              <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{nucleosUnicos.length} nucleos</span>
+              <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{nucleosUnicos.length} núcleos</span>
               <span className="flex items-center gap-1"><Grid3X3 className="w-3 h-3" />{porSemestre.size} semestres</span>
             </div>
           </div>
@@ -710,7 +711,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                 );
               })}
             {nucleoStats.size > 8 && (
-              <span className="text-[10px] text-gray-400">+{nucleoStats.size - 8} mas</span>
+              <span className="text-[10px] text-gray-400">+{nucleoStats.size - 8} más</span>
             )}
           </div>
         </div>
@@ -801,12 +802,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                   <input
                     value={newAsig.nombre}
                     onChange={e => setNewAsig({ ...newAsig, nombre: e.target.value })}
-                    placeholder="Ej: Fundamentos de Administracion Publica"
+                    placeholder="Ej: Fundamentos de Administración Pública"
                     className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#003DA5]"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Codigo</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Código</label>
                   <input
                     value={newAsig.codigo}
                     onChange={e => setNewAsig({ ...newAsig, codigo: e.target.value })}
@@ -827,7 +828,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Creditos</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Créditos</label>
                   <input
                     type="number"
                     value={newAsig.creditos}
@@ -849,7 +850,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Nucleo</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Núcleo</label>
                   <input
                     value={newAsig.nucleoTematico}
                     onChange={e => setNewAsig({ ...newAsig, nucleoTematico: e.target.value })}
@@ -904,7 +905,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="text-sm font-bold text-gray-500">No hay asignaturas registradas</p>
           <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-            Agrega asignaturas al plan de estudios o espera a que se sincronicen automaticamente desde el catalogo PTA.
+            Agrega asignaturas al plan de estudios o espera a que se sincronicen automáticamente desde el catálogo PTA.
           </p>
           <button
             onClick={() => setShowAddForm(true)}
@@ -952,7 +953,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                       }`}>
                         {isDropTarget && semAsigs.length === 0 && (
                           <div className="flex items-center justify-center h-16 border-2 border-dashed border-[#003DA5]/30 rounded-lg">
-                            <span className="text-[10px] text-[#003DA5]/60 font-medium">Soltar aqui</span>
+                            <span className="text-[10px] text-[#003DA5]/60 font-medium">Soltar aquí</span>
                           </div>
                         )}
                         {semAsigs

@@ -250,9 +250,9 @@ export class ApiClient {
               }));
               return;
             }
-            reject(new Error('Sesion expirada. Por favor, inicia sesion nuevamente.'));
+            reject(new Error('Sesión expirada. Por favor, inicia sesión nuevamente.'));
           } catch {
-            reject(new Error('Sesion expirada. Por favor, inicia sesion nuevamente.'));
+            reject(new Error('Sesión expirada. Por favor, inicia sesión nuevamente.'));
           }
         } else {
           try {
@@ -428,7 +428,7 @@ export class ApiClient {
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog);
         }
-        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        const expiredError: any = new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         expiredError.status = 401;
         throw expiredError;
       }
@@ -501,7 +501,7 @@ export class ApiClient {
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
-        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        const expiredError: any = new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         expiredError.status = 401;
         throw expiredError;
       }

@@ -585,7 +585,7 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                         </h3>
                         <p className="text-[11px] text-gray-500">
                           {hasDocumentDuplicateErrors
-                            ? 'No se importara ningun registro mientras existan documentos repetidos o ya registrados.'
+                            ? 'No se importará ningún registro mientras existan documentos repetidos o ya registrados.'
                             : 'No es posible importar. Corrija los datos en el archivo.'}
                         </p>
                       </div>
@@ -602,9 +602,9 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                           <Shield className="w-4 h-4 text-red-600" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-sm font-bold text-red-900">Validacion de unicidad por documento</h4>
+                          <h4 className="text-sm font-bold text-red-900">Validación de unicidad por documento</h4>
                           <p className="text-[11px] text-red-700 mt-0.5">
-                            Cada docente debe tener un unico numero de documento. El archivo queda bloqueado hasta corregir estos registros.
+                            Cada docente debe tener un único número de documento. El archivo queda bloqueado hasta corregir estos registros.
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 mt-3">
                             {duplicateDocumentSummaries.slice(0, 6).map((item: any) => (
