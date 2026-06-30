@@ -16,14 +16,13 @@ CREATE SCHEMA IF NOT EXISTS academic_work_plan;
 CREATE TABLE IF NOT EXISTS academic_work_plan."ConfiguracionSistema" (
     clave text NOT NULL,
     valor jsonb NOT NULL,
-    descripcion text,
     "updatedAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT "ConfiguracionSistema_pkey" PRIMARY KEY (clave)
 );
 
 -- 2) Fila base de reglas del PTA
-INSERT INTO academic_work_plan."ConfiguracionSistema" (clave, valor, descripcion, "updatedAt")
-VALUES ('pta_rules_v2', '{}'::jsonb, 'Reglas globales de configuracion del PTA', CURRENT_TIMESTAMP)
+INSERT INTO academic_work_plan."ConfiguracionSistema" (clave, valor, "updatedAt")
+VALUES ('pta_rules_v2', '{}'::jsonb, CURRENT_TIMESTAMP)
 ON CONFLICT (clave) DO NOTHING;
 
 -- 3) Completar SOLO claves nuevas que falten (defaults a la izquierda => 'valor' existente gana en colision)

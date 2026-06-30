@@ -1303,12 +1303,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           if (res.data.notes && Object.keys(res.data.notes).length > 0) setInlineNotes(res.data.notes);
           if (res.data.pinned && res.data.pinned.length > 0) setPinnedIds(new Set(res.data.pinned));
           if (res.data.priorityOrder && res.data.priorityOrder.length > 0) setPriorityOrder(res.data.priorityOrder);
-          console.log('[PTA-Persist] User data loaded:', {
-            tags: Object.keys(res.data.tags || {}).length,
-            notes: Object.keys(res.data.notes || {}).length,
-            pinned: (res.data.pinned || []).length,
-            priority: (res.data.priorityOrder || []).length,
-          });
+
         }
       } catch (err) {
         console.error('[PTA-Persist] Error loading user data:', err);
@@ -1330,7 +1325,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           pinned: Array.from(pinnedIds),
           priorityOrder,
         });
-        console.log('[PTA-Persist] Auto-saved user data');
+
       } catch (err) {
         console.error('[PTA-Persist] Error saving user data:', err);
       }
@@ -1666,26 +1661,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     },
     { type: 'button' as const, key: 'tablero_unificado' as ModuleView, label: 'Reportes', icon: BarChart3 },
     {
-      type: 'dropdown' as const,
-      id: 'herramientas',
-      label: 'Herramientas',
-      icon: FlaskConical,
-      items: [
-        { key: 'calendario_academico', label: 'Calendario Académico', icon: Calendar },
-        { key: 'benchmarking', label: 'Benchmarking', icon: TrendingUp },
-        { key: 'mapeo_sincronizacion', label: 'Mapeo & Sincronización', icon: RefreshCw },
-        { key: 'salud_sistema', label: 'Salud del Sistema', icon: Shield },
-        { key: 'reconciliacion_masiva', label: 'Reconciliación Masiva', icon: GitCompare },
-        { key: 'validador', label: 'Validador GTH-F081', icon: CheckCircle },
-        { key: 'verificacion_qr', label: 'Verificar Firma QR', icon: CheckCircle },
-        { key: 'preferencias_notificaciones', label: 'Pref. Notificaciones', icon: Bell },
-        { key: 'test_e2e', label: 'Test E2E Flujo', icon: FlaskConical },
-      ],
-    },
-    {
       type: 'direct' as const,
       items: [
-        { key: 'banco_docentes', label: 'Banco Docentes', icon: Users },
         { key: 'configuracion', label: 'Configuración', icon: Sliders },
       ],
     },
@@ -2143,62 +2120,67 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         </span>
                       )}
                     </div>
-                    {/* Selector de Periodo Académico */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PERIODO:</span>
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowPeriodoDropdownPTA(!showPeriodoDropdownPTA)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
-                        >
-                          {periodoSeleccionadoPTA || '2025-2'}
-                          {esPeriodoActivoPTA && (
-                            <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
-                          )}
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                        {showPeriodoDropdownPTA && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdownPTA(false)} />
-                            <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
-                              <div className="px-3 py-2 border-b border-gray-100">
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
-                              </div>
-                              {periodosPTA.length > 0 ? periodosPTA.map((p: any, idx: number) => {
-                                const codigo = p.codigo || `${p.anio}-${p.semestre}`;
-                                const esActivo = p.estado === 'en_curso';
-                                return (
-                                  <button
-                                    key={idx}
-                                    onClick={() => { setPeriodoSeleccionadoPTA(codigo); setShowPeriodoDropdownPTA(false); }}
-                                    className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
-                                      codigo === periodoSeleccionadoPTA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
-                                    }`}
-                                  >
-                                    <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
-                                    {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
-                                  </button>
-                                );
-                              }) : (
-                                <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      {!esPeriodoActivoPTA && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                          Solo lectura
-                        </span>
-                      )}
-                    </div>
+
                     <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
                       Gestión y aprobación de PTAs
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Selector de Periodo Académico — derecha */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider hidden sm:inline">PERÍODO:</span>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowPeriodoDropdownPTA(!showPeriodoDropdownPTA)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 hover:bg-[#dce7f9] transition-all shadow-sm"
+                      >
+                        {periodoSeleccionadoPTA || '2025-2'}
+                        {esPeriodoActivoPTA && (
+                          <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
+                        )}
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      {showPeriodoDropdownPTA && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdownPTA(false)} />
+                          <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
+                            <div className="px-3 py-2 border-b border-gray-100">
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
+                            </div>
+                            {periodosPTA.length > 0 ? periodosPTA.map((p: any, idx: number) => {
+                              const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                              const esActivo = p.estado === 'en_curso';
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    setPeriodoSeleccionadoPTA(codigo);
+                                    setFiltroPeriodo(codigo);
+                                    setShowPeriodoDropdownPTA(false);
+                                  }}
+                                  className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                                    codigo === periodoSeleccionadoPTA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                                  }`}
+                                >
+                                  <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
+                                  {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
+                                </button>
+                              );
+                            }) : (
+                              <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {!esPeriodoActivoPTA && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Solo lectura
+                      </span>
+                    )}
+                  </div>
                   <PTASyncIndicator
                     syncState={syncState}
                     sistema="backoffice"
@@ -2417,7 +2399,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             filtroPeriodo={filtroPeriodo}
-            setFiltroPeriodo={setFiltroPeriodo}
+            setFiltroPeriodo={(v) => {
+              setFiltroPeriodo(v);
+              setPeriodoSeleccionadoPTA(v);
+            }}
             filtroPrograma={filtroPrograma}
             setFiltroPrograma={setFiltroPrograma}
             programas={programas}
@@ -3335,24 +3320,23 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 {viewMode === 'table' ? (() => {
                   // ═══ Feature 19: Dynamic grid based on visible columns ═══
                   const colSizes: Record<string, string> = {
-                    docente: 'minmax(220px, 3.5fr)', 
-                    estado: 'minmax(150px, 1.5fr)', 
-                    aging: 'minmax(55px, 0.5fr)', 
-                    fecha: 'minmax(64px, 0.7fr)',
-                    hora: 'minmax(64px, 0.7fr)',
-                    dedicacion: 'minmax(54px, 0.5fr)',
-                    carga: 'minmax(120px, 1.2fr)', 
-                    componentes: 'minmax(110px, 1fr)', 
+                    docente: 'minmax(250px, 4fr)', 
+                    estado: 'minmax(120px, 0.8fr)', 
+                    aging: 'minmax(55px, 0.4fr)', 
+                    fecha: 'minmax(70px, 0.5fr)',
+                    hora: 'minmax(70px, 0.5fr)',
+                    dedicacion: 'minmax(54px, 0.4fr)',
+                    carga: 'minmax(100px, 0.7fr)', 
+                    componentes: 'minmax(120px, 1.2fr)', 
                     territorial: 'minmax(110px, 1fr)', 
                     periodo: 'minmax(70px, 0.6fr)',
                   };
                   const activeCols = ALL_COLUMNS.filter(c => effectiveCols.has(c.key));
                   const gridCols = [
-                    ...(permisos.puedeAprobar ? ['40px'] : []),
                     ...activeCols.map(c => colSizes[c.key] || '100px'),
                     'minmax(60px, 0.5fr)', // acciones
                   ].join(' ');
-                  const minW = (permisos.puedeAprobar ? 40 : 0) + activeCols.length * 95 + 60;
+                  const minW = activeCols.length * 95 + 60;
 
                   return (
                   <div ref={tableContainerRef} style={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
@@ -3368,26 +3352,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       minWidth: minW,
                       position: 'sticky', top: 0, zIndex: 5,
                     }}>
-                      {permisos.puedeAprobar && (
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.size > 0 && paginated.every((p: any) => selectedIds.has(p.id))}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                const pendientes = paginated.filter((p: any) =>
-                                  ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)
-                                  && puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion)
-                                );
-                                setSelectedIds(new Set(pendientes.map((p: any) => p.id)));
-                              } else {
-                                setSelectedIds(new Set());
-                              }
-                            }}
-                            style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#003DA5' }}
-                          />
-                        </div>
-                      )}
+
                       {effectiveCols.has('docente') && <SortableHeader label="Docente" field="docente_nombre" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('estado') && <SortableHeader label="Estado" field="estado" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('aging') && <span title="Días en estado actual">Días</span>}
@@ -3504,23 +3469,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             if (!isSelected && !isFocused) e.currentTarget.style.background = 'white';
                           }}
                         >
-                          {/* Feature 17: Shift+Click checkbox */}
-                          {permisos.puedeAprobar && (
-                            <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
-                              {isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion) && (
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRowSelect(pta.id, idx, e.shiftKey, paginated);
-                                  }}
-                                  onChange={() => {}}
-                                  style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#003DA5' }}
-                                />
-                              )}
-                            </div>
-                          )}
+
 
                           {/* Docente */}
                           {effectiveCols.has('docente') && (

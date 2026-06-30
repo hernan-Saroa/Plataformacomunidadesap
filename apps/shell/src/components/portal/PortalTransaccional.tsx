@@ -264,7 +264,7 @@ export function PortalTransaccional({
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const fotoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFoto, setUploadingFoto] = useState(false);
-  const [isContactInfoOpen, setIsContactInfoOpen] = useState(false);
+  const [isContactInfoOpen, setIsContactInfoOpen] = useState(true);
   const [ptaVista, setPtaVista] = useState<string>('v01_dashboard');
 
   useEffect(() => {
@@ -289,8 +289,10 @@ export function PortalTransaccional({
   }, []);
 
   useEffect(() => {
-    setIsContactInfoOpen(currentView.type === 'dashboard');
-  }, [currentView.type]);
+    if (currentView?.type === 'pta') {
+      setIsContactInfoOpen(false);
+    }
+  }, [currentView?.type]);
 
   useEffect(() => {
     if (!userPersonId || initRef.current) return;
@@ -332,12 +334,17 @@ export function PortalTransaccional({
       setUploadingFoto(true);
       try {
         const res = await uploadFotoPerfil(file, userPersonId);
-        if (!res?.data?.url) throw new Error('No se recibió la URL de la foto');
-        setFotoUrl(res.data.url);
-        toast.success('Foto de perfil actualizada');
+        if (res?.data?.url) {
+          setFotoUrl(res.data.url);
+          toast.success('Foto de perfil actualizada');
+        } else {
+          // Backend may not support photo upload yet — fail silently
+          console.info('[Portal] Foto upload: endpoint no disponible o no retornó URL');
+          toast.info('La funcionalidad de foto de perfil estará disponible próximamente');
+        }
       } catch (err) {
-        console.error('[Portal] Error subiendo foto:', err);
-        toast.error('Error al subir la foto');
+        console.info('[Portal] Foto upload no disponible:', (err as Error)?.message);
+        toast.info('La funcionalidad de foto de perfil estará disponible próximamente');
       } finally {
         setUploadingFoto(false);
       }

@@ -83,6 +83,7 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
             <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-amber-50/10">
               {renderInputRow("horas_semanales_tc", "Dedicación Tiempo Completo", "Por semana de vinculación.", false, "h/sem")}
               {renderInputRow("horas_semanales_mt", "Dedicación Medio Tiempo", "Por semana de vinculación.", false, "h/sem")}
+              {renderInputRow("semanas_periodo_academico", "Semanas del Período Académico", "Circular §2: base de proporcionalidad (20 sem × 40h = 800h PTA).", false, "sem")}
             </div>
           </details>
 
@@ -96,30 +97,13 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
             </summary>
             <div className="p-4 border-t border-slate-100 flex flex-col md:grid md:grid-cols-2 lg:grid-cols-2 gap-3 bg-blue-50/10">
-              {renderInputRow("max_pct_investigacion", "Máximo Porcentaje Investigación", "Límite superior del porcentaje de tiempo asignado a investigación sobre el PTA total.", true)}
-              {renderInputRow("max_pct_extension", "Máximo Porcentaje Extensión", "Límite superior extendido disponible en la bolsa sobre la extensión social o consultoría del PTA.", true)}
-              {renderInputRow("max_pct_complementarias", "Máximo Porcentaje Complementarias", "Tasa máxima porcentual permitida para actividades opcionales.", true)}
-              {renderInputRow("max_pct_inv_ext_combinado", "Máximo Investigación + Extensión (Enlace/Director)", "Tope combinado de investigación y extensión para Enlace Territorial y Director de Grupo sobre el PTA total.", true)}
-              {renderInputRow("dias_cierre_concertacion", "Fecha Límite Concertación", "Plazo máximo para los docentes luego del inicio de clases para someter su PTA a revisión en días contados.", false, "días")}
-              {renderInputRow("dias_verificacion_posterior", "Plazo Jefaturas Regionales", "Días hábiles correspondientes después de iniciar clases para dar feedback al docente.", false, "días")}
+              {renderInputRow("dias_cierre_concertacion", "Plazo Concertación", "Días para que docentes sometan su PTA después del inicio de clases.", false, "días")}
+              {renderInputRow("dias_verificacion_posterior", "Plazo Jefaturas Regionales", "Días hábiles después de inicio para dar feedback al docente.", false, "días")}
+              {renderInputRow("plazo_consolidacion_semanas", "Plazo Consolidación Nacional", "Circular §5: 'dentro de las 4 semanas siguientes al inicio de clases'.", false, "sem")}
             </div>
           </details>
 
-          {/* Fechas del Semestre */}
-          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-violet-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-violet-100 text-violet-700 flex items-center justify-center font-black text-xs">D</span>
-                Fechas del Semestre
-              </span>
-              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-            </summary>
-            <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-violet-50/10">
-              <p className="text-[11px] text-slate-500 px-1">Estas fechas delimitan el rango permitido para las fechas de inicio y fin de actividades en Extensión, Complementarias y Académico-Administrativo.</p>
-              {renderDateRow("fecha_inicio_semestre", "Fecha de Inicio del Semestre", "Inicio del período académico vigente.")}
-              {renderDateRow("fecha_fin_semestre", "Fecha de Fin del Semestre", "Cierre del período académico vigente.")}
-            </div>
-          </details>
+
 
         </div>
       </section>

@@ -444,7 +444,7 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
   const setPerfil = (newPerfil: PerfilRolPTA) => {
     if (isSuperUserEffective) {
       setPerfilOverride(newPerfil);
-      console.log('[PermisosPTA] Superuser simulando rol:', newPerfil.rol, newPerfil.nombre);
+      console.log('[PermisosPTA] Superuser simulando rol:', newPerfil.rol);
     } else {
       console.warn('[PermisosPTA] setPerfil ignorado: solo superusers pueden simular roles');
     }
@@ -455,7 +455,6 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
     // Superuser ALWAYS gets full admin hardcoded permissions
     if (isSuperUserEffective || perfil.rol === 'admin') {
       const hardcoded = PERMISOS_POR_ROL['admin'](perfil);
-      console.log(`[PermisosPTA] Admin/Superuser → HARDCODED FULL ACCESS: ${hardcoded.vistasPerm.length} vistas`);
       return hardcoded;
     }
 
@@ -464,13 +463,11 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
     // Intentar derivar desde permisos granulares
     const granular = deriveFromGranular(allPerms, perfil);
     if (granular) {
-      console.log(`[PermisosPTA] Usando permisos GRANULARES: ${granular.granularCount} permisos PTA, ${granular.vistasPerm.length} vistas`);
       return granular;
     }
 
     // Fallback: mapa hardcodeado por rol
     const hardcoded = PERMISOS_POR_ROL[perfil.rol](perfil);
-    console.log(`[PermisosPTA] Fallback HARDCODED para rol '${perfil.rol}': ${hardcoded.vistasPerm.length} vistas`);
     return hardcoded;
   }, [auth.session?.permisos, perfil, isSuperUserEffective]);
 

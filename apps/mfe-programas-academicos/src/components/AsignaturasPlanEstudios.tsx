@@ -232,9 +232,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const [hasChanges, setHasChanges] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [dragState, setDragState] = useState<DragState>({ draggingId: null, overSemestre: null });
-  const [ptaConfig, setPtaConfig] = useState<any>(null);
+
   const exportRef = useRef<HTMLDivElement>(null);
   const draftRestoredRef = useRef(false);
+  // Auto-save timer
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoSaveCountdown, setAutoSaveCountdown] = useState<number | null>(null);
   const draftStorageKey = `esap.programas.plan-estudios.draft.${programaId}`;
 
   // Close export menu on outside click
@@ -248,31 +251,73 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Load PTA config
+  // Load programa data for Circular 003 HRS PTA calculation
+  const [programaData, setProgramaData] = useState<any>(null);
+  const [ptaRules, setPtaRules] = useState<any>(null);
+
+  // Fetch PTA configuration (criterio multiplicador + horas base por categoría)
   useEffect(() => {
     async function fetchPtaConfig() {
       try {
         const res = await apiClient.get('/pta/api/v1/configuracion');
-        if (res && (res as any).data?.rules?.docencia_por_programa) {
-          setPtaConfig((res as any).data.rules.docencia_por_programa);
-        } else if (res && (res as any).rules?.docencia_por_programa) {
-          setPtaConfig((res as any).rules.docencia_por_programa);
-        }
+        const rules = (res as any)?.data || (res as any)?.rules || res;
+        if (rules) setPtaRules(rules);
       } catch (err) {
-        console.warn('Could not load PTA config for dynamic Hrs PTA', err);
+        console.warn('Could not load PTA config', err);
       }
     }
     fetchPtaConfig();
   }, []);
 
-  const calculateHrsPta = useCallback((creditos: number) => {
-    if (!ptaConfig || !ptaConfig[programaId]) return null;
-    const config = ptaConfig[programaId];
-    if (config.esVariable) {
-      return (creditos || 0) * (config.base || 0) * (config.multiplicador || 1);
+  // Fetch programa data (categoría, horas base, etc.)
+  useEffect(() => {
+    async function fetchProgramaData() {
+      try {
+        const res = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}`);
+        if (res) setProgramaData(res);
+      } catch (err) {
+        console.warn('Could not load programa data for HRS PTA', err);
+      }
     }
-    return (config.base || 0) * (config.multiplicador || 1);
-  }, [ptaConfig, programaId]);
+    if (programaId) fetchProgramaData();
+  }, [programaId]);
+
+  const calculateHrsPta = useCallback((creditos: number, tipoAsignatura?: string) => {
+    if (!programaData) return null;
+
+    // ── Criterio Multiplicador dinámico (desde Config PTA, sección A) ──
+    const criterioMultiplicador = ptaRules?.criterio_multiplicador_docencia || 3;
+
+    const categoria = programaData.categoria_horas_circular003;
+    const horasPregradoCentral = programaData.horasPregradoCentral || programaData.horas_pregrado_central;
+
+    // ── Horas Base dinámicas (desde Config PTA, sección B) ──
+    // Claves reales: docencia_base_maestria, docencia_base_especializacion,
+    // docencia_base_apt, docencia_base_seminario_sc, docencia_base_pregrado_sc
+    let horasBase: number;
+    if (categoria === 'maestria') {
+      horasBase = ptaRules?.docencia_base_maestria || programaData.horasBasePorCredito || programaData.horas_base_por_credito || 12;
+    } else if (categoria === 'especializacion') {
+      horasBase = ptaRules?.docencia_base_especializacion || programaData.horasBasePorCredito || programaData.horas_base_por_credito || 16;
+    } else {
+      horasBase = ptaRules?.docencia_base_apt || programaData.horasBasePorCredito || programaData.horas_base_por_credito || 16;
+    }
+
+    // ── Sede Central: bloque fijo ──
+    if (categoria === 'pregrado_sede_central' || (horasPregradoCentral && horasPregradoCentral > 0)) {
+      // Seminario de Énfasis
+      const bloqueSeminario = ptaRules?.docencia_base_seminario_sc || 128;
+      if (tipoAsignatura && tipoAsignatura.toLowerCase().includes('seminario')) {
+        return bloqueSeminario * criterioMultiplicador;
+      }
+      // Pregrado SC normal (bloque fijo)
+      const bloqueSC = ptaRules?.docencia_base_pregrado_sc || horasPregradoCentral || 64;
+      return bloqueSC * criterioMultiplicador;
+    }
+
+    // ── APT / Especialización / Maestría: créditos × horas_base × criterio ──
+    return (creditos || 0) * horasBase * criterioMultiplicador;
+  }, [programaData, ptaRules]);
 
   // Load
   const loadAsignaturas = useCallback(async () => {
@@ -293,7 +338,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
         };
         // Override with dynamic calculated hrs if config exists
-        const calculated = calculateHrsPta(asig.creditos);
+        const calculated = calculateHrsPta(asig.creditos, asig.tipo);
         if (calculated !== null) {
           asig.horasFijasPta = calculated;
         }
@@ -356,6 +401,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       toast.error('Revisa la asignatura antes de guardar', {
         description: `La asignatura ${invalidIndex + 1} requiere nombre, créditos entre 1 y 20 y un semestre válido.`,
       });
+      autoSaveFailedRef.current = true;
       return;
     }
 
@@ -366,6 +412,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       toast.error('Códigos repetidos', {
         description: 'Cada código de asignatura debe ser único dentro del plan.',
       });
+      autoSaveFailedRef.current = true;
       return;
     }
 
@@ -383,7 +430,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           modalidad: modalidad.charAt(0).toUpperCase() + modalidad.slice(1),
           nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
         };
-        const calculated = calculateHrsPta(normalized.creditos);
+        const calculated = calculateHrsPta(normalized.creditos, normalized.tipo);
         if (calculated !== null) {
           normalized.horasFijasPta = calculated;
         }
@@ -399,10 +446,59 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       toast.error('Error al guardar plan de estudios', {
         description: err?.message || 'No fue posible guardar el plan de estudios.',
       });
+      autoSaveFailedRef.current = true; // Pausar auto-save tras error
+      throw err; // Propagar para que el auto-save lo detecte
     } finally {
       setSaving(false);
     }
   };
+
+  // ═══ AUTO-SAVE: Solo se activa cuando el usuario edita explícitamente ═══
+  const AUTOSAVE_DELAY = 5000; // 5 segundos después del último cambio
+  const autoSaveCallbackRef = useRef(handleSaveAll);
+  autoSaveCallbackRef.current = handleSaveAll;
+  const autoSaveFailedRef = useRef(false);
+  const [userEdited, setUserEdited] = useState(false); // Solo true cuando el usuario hace un cambio real
+
+  useEffect(() => {
+    // Solo auto-guardar si: 1) el usuario editó, 2) hay cambios, 3) no estamos guardando, 4) no falló antes
+    if (!userEdited || !hasChanges || saving || autoSaveFailedRef.current) return;
+
+    // Clear previous timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Start countdown display
+    setAutoSaveCountdown(5);
+    const countdownInterval = setInterval(() => {
+      setAutoSaveCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownInterval);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Set auto-save timer
+    autoSaveTimerRef.current = setTimeout(async () => {
+      clearInterval(countdownInterval);
+      setAutoSaveCountdown(null);
+      try {
+        await autoSaveCallbackRef.current();
+        setUserEdited(false); // Reset tras guardado exitoso
+      } catch {
+        autoSaveFailedRef.current = true;
+      }
+    }, AUTOSAVE_DELAY);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      clearInterval(countdownInterval);
+      setAutoSaveCountdown(null);
+    };
+  }, [userEdited, hasChanges, saving, asignaturas]);
 
   // Add
   const handleAdd = () => {
@@ -418,7 +514,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       horas: newAsig.horas || newAsig.creditos * 48,
     };
     
-    const calculated = calculateHrsPta(asig.creditos);
+    const calculated = calculateHrsPta(asig.creditos, asig.tipo);
     if (calculated !== null) {
       asig.horasFijasPta = calculated;
     }
@@ -427,6 +523,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     setNewAsig(EMPTY_ASIGNATURA);
     setShowAddForm(false);
     setHasChanges(true);
+    setUserEdited(true); autoSaveFailedRef.current = false; // Activar auto-save
     toast.success(`"${asig.nombre}" agregada al plan de estudios`);
   };
 
@@ -442,6 +539,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     if (confirmed) {
       setAsignaturas(prev => prev.filter(a => a.id !== id));
       setHasChanges(true);
+      setUserEdited(true); autoSaveFailedRef.current = false;
       toast.info(`"${asig.nombre}" eliminada`);
     }
   };
@@ -453,7 +551,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       const updated = { ...a, [field]: value };
       if (field === 'creditos') {
         updated.horas = Number(value) * 48;
-        const calculated = calculateHrsPta(Number(value));
+        const calculated = calculateHrsPta(Number(value), updated.tipo);
         if (calculated !== null) {
           updated.horasFijasPta = calculated;
         }
@@ -461,6 +559,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       return updated;
     }));
     setHasChanges(true);
+    setUserEdited(true); autoSaveFailedRef.current = false;
   };
 
   // ═══ Drag & Drop handlers (native HTML5 DnD) ═══
@@ -567,9 +666,20 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {hasChanges && (
-              <span className="text-[11px] text-amber-600 font-bold flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Sin guardar
+              <span className={`text-[11px] font-bold flex items-center gap-1 transition-colors ${
+                autoSaveCountdown !== null ? 'text-blue-600' : 'text-amber-600'
+              }`}>
+                {autoSaveCountdown !== null ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Guardando en {autoSaveCountdown}s...
+                  </>
+                ) : (
+                  <>
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Sin guardar
+                  </>
+                )}
               </span>
             )}
 

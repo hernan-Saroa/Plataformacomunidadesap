@@ -25,7 +25,7 @@ import {
   getCatalogoActividadesComplementarias, getCatalogoActividadesAcademicoAdmin,
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
-  getRUNDDocente
+  getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -39,8 +39,10 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
 function DocumentosPendientesAlert({ documentosPendientes }: { documentosPendientes: any[] }) {
-  return null; // Temporarily deactivated - not blocking UI
   const [expanded, setExpanded] = useState(false);
+  
+  // Temporarily deactivated - not blocking UI
+  if (true) return null;
   
   if (!documentosPendientes || documentosPendientes.length === 0) return null;
   
@@ -173,6 +175,7 @@ interface ExtensionActividad {
   descripcion: string;
   fecha_inicio: string;
   fecha_fin: string;
+  items_cantidades?: Record<number, number>; // índice del ítem → cantidad (para tipo 'por_unidad')
 }
 
 interface ComplementariaItem {
@@ -370,6 +373,11 @@ function calcTotalHoras(asigNombre: string, horasBase: number, rules?: any, prog
   return horasBase * mult;
 }
 
+/**
+ * Prorrateo: aplica el tope máximo por componente según la Circular 003/2025.
+ * Las horas cuentan al 100% hasta el límite; el excedente se ignora en el total.
+ * Ej: Investigador Líder tiene un tope de 400h (50% de 800h del PTA).
+ */
 function prorratear(total: number, base: number, pct: number): number {
   return Math.min(total, base * pct);
 }
@@ -452,6 +460,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // Catálogos
   const [programas, setProgramas] = useState<any[]>([]);
+  // Programas filtrados por CETAP (clave: cetap_id, valor: array de programas)
+  const [programasPorCetap, setProgramasPorCetap] = useState<Record<string, any[]>>({});
   const [asignaturasCat, setAsignaturasCat] = useState<any[]>([]);
   const [territoriales, setTerritoriales] = useState<any[]>([]);
   const [cetapsMap, setCetapsMap] = useState<Record<string, any[]>>({});
@@ -462,6 +472,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [actAcadAdmin, setActAcadAdmin] = useState<any[]>([]);
   const [rolesInvestigacion, setRolesInvestigacion] = useState<any[]>([]);
   const [ptaRules, setPtaRules] = useState<any>(null);
+  const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
+  // Fechas del período académico activo — usadas como min/max en los date-pickers
+  const [periodoFechaMin, setPeriodoFechaMin] = useState<string | undefined>(undefined);
+  const [periodoFechaMax, setPeriodoFechaMax] = useState<string | undefined>(undefined);
+
 
   // Form data
   const [periodo, setPeriodo] = useState('2026-1');
@@ -542,7 +557,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           setDocumentosPendientes(noAceptados);
         }
       })
-      .catch((err) => console.error('Error fetching RUND documents checklist:', err));
+      .catch((err) => console.warn('[PTAForm] RUND no disponible (no crítico):', err?.message || err));
   }, [userPersonId, docenteIdFromPta]);
 
   // Load catálogos
@@ -550,7 +565,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     Promise.all([
       getCatalogoProgramas(),
       getCatalogoAsignaturas(),
-      getCatalogoTerritoriales(),
       getCatalogoActividadesInvestigacion(),
       getCatalogoActividadesExtension(),
       getCatalogoActividadesComplementarias(),
@@ -558,16 +572,30 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       getCatalogoRolesInvestigacion(),
       getConfiguracionPTAGlobal(),
       getCatalogoSeccionesExtension(),
-    ]).then(([progs, asigs, terrs, actInv, actExt, actComp, actAcad, roles, config, secciones]) => {
+      getPeriodosAcademicos(),
+    ]).then(([progs, asigs, actInv, actExt, actComp, actAcad, roles, config, secciones, periodos]) => {
       if (progs.success) setProgramas(progs.data);
       if (asigs.success) setAsignaturasCat(asigs.data);
-      if (terrs.success) setTerritoriales(terrs.data);
       if (actInv.success) setActInvestigacion(actInv.data);
-      if (actExt.success) setActExtension(actExt.data);
+      if (actExt.success && actExt.data) {
+        const normalized: Record<string, any[]> = {};
+        Object.entries(actExt.data).forEach(([key, val]) => {
+          if (key === 'capacitacion') {
+            normalized[key] = val as any[];
+          } else {
+            normalized[key] = (val as any[]).map((a: any) => ({
+              ...a,
+              items: a.items || []
+            }));
+          }
+        });
+        setActExtension(normalized);
+      }
       if (actComp.success) setActComplementarias(actComp.data);
       if (actAcad.success) setActAcadAdmin(actAcad.data);
       if (roles.success) setRolesInvestigacion(roles.data);
       if (config.success && config.data) setPtaRules(config.data);
+      if (periodos.success) setPeriodosDisponibles(periodos.data);
       if (secciones.success && Array.isArray(secciones.data) && secciones.data.length > 0) {
         // El multiplicador de la config (ext_secciones[].multiplicador) es la fuente de verdad
         // y el backend ya lo aplica. Solo usamos el default por key si la config NO trae el campo,
@@ -586,6 +614,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     });
   }, []);
 
+  // Load territoriales based on period
+  useEffect(() => {
+    if (!periodo) return;
+    let active = true;
+    (async () => {
+      try {
+        const terrs = await getCatalogoTerritoriales(periodo);
+        if (active && terrs.success) {
+          setTerritoriales(terrs.data);
+        }
+      } catch (err) {
+        console.warn('[PTAForm] No se pudieron cargar territoriales para el período:', err?.message || err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [periodo]);
+
   // Cuando extSecciones carga, corregir actividades cuyas horas no fueron multiplicadas
   // por race condition (actividad agregada antes de que llegara la config del backend)
   useEffect(() => {
@@ -603,6 +650,33 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return e;
     }));
   }, [extSecciones]);
+
+  // Recalcular y sincronizar horas para etapas con desglose de ítems (como Procesos de Selección)
+  // cuando el catálogo de actividades de extensión o la lista de actividades del docente terminen de cargar.
+  useEffect(() => {
+    if (!actExtension) return;
+    setExtActividades(prev => {
+      let changed = false;
+      const next = prev.map(e => {
+        const cat = (actExtension[e.seccion] || []).find((c: any) => c.id === e.actividad_id);
+        if (cat && Array.isArray(cat.items) && cat.items.length > 0) {
+          const newCantidades = e.items_cantidades || {};
+          const totalHoras = cat.items.reduce((sum: number, item: any, i: number) => {
+            if (item.tipo === 'fija') return sum + (item.horas || 0);
+            if (item.tipo === 'hasta') return sum + Math.min(item.horas || 0, Math.max(0, Number(newCantidades[i]) || 0));
+            const qty = Math.max(0, Number(newCantidades[i]) || 0);
+            return sum + (qty * (item.horas || 0));
+          }, 0);
+          if (e.horas !== totalHoras || e.horas_ejecutadas !== totalHoras) {
+            changed = true;
+            return { ...e, horas: totalHoras, horas_ejecutadas: totalHoras };
+          }
+        }
+        return e;
+      });
+      return changed ? next : prev;
+    });
+  }, [actExtension, extActividades]);
 
   const loadingCetapsRef = useRef<Set<string>>(new Set());
 
@@ -681,7 +755,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     });
   }, [ptaId]);
 
-  // Load active period for new PTA
+  // Load active period codigo — solo para PTAs nuevos
   useEffect(() => {
     if (ptaId) return;
     (async () => {
@@ -691,10 +765,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           setPeriodo(activePer.codigo);
         }
       } catch (err) {
-        console.error('Error fetching active period:', err);
+        console.warn('[PTAForm] No se pudo obtener el período activo (codigo):', err?.message || err);
       }
     })();
   }, [ptaId]);
+
+  // Carga SIEMPRE las fechas del período académico activo — fuente de verdad para los date-pickers.
+  // Dinámica: aplica tanto al crear como al editar un PTA, garantizando coherencia con Programas Académicos.
+  useEffect(() => {
+    (async () => {
+      try {
+        const activePer = await getActivePeriodoAcademico();
+        const fi = activePer?.fecha_inicio || activePer?.fechaInicio;
+        const ff = activePer?.fecha_fin || activePer?.fechaFin;
+        if (fi) setPeriodoFechaMin(String(fi).substring(0, 10));
+        if (ff) setPeriodoFechaMax(String(ff).substring(0, 10));
+      } catch (err) {
+        console.warn('[PTAForm] No se pudo cargar fechas del período activo:', err?.message || err);
+      }
+    })();
+  }, []); // Sin dependencias: se monta una vez y siempre refleja el período activo del sistema
 
     // Load Docente User Profile and Banco Docentes info to prepopulate defaults
     useEffect(() => {
@@ -733,7 +823,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           loadCetaps(tId);
         }
         if (p.sede_id || p.sedeId) {
-          setDefaultCetap(p.sede_id || p.sedeId);
+          const cetapDefault = String(p.sede_id || p.sedeId);
+          setDefaultCetap(cetapDefault);
+          // Pre-cargar programas filtrados para el CETAP del docente
+          getCatalogoProgramasCascada(cetapDefault).then(result => {
+            if (result.success && result.data.length > 0) {
+              setProgramasPorCetap(prev => ({ ...prev, [cetapDefault]: result.data }));
+            }
+          }).catch(() => { /* silencioso - fallback a lista completa */ });
         }
         // Nombre del docente para firma digital
         const nombre = p.nombre || p.primer_nombre || p.fullName || p.name || '';
@@ -748,7 +845,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             setHorasAProgramar(calcHorasProgramables(p.tipoVinculacion || 'CARRERA_003', p.dedicacion, semanasVinculacion, ptaRules));
           }
         }
-      }).catch(console.error);
+      }).catch((e) => console.warn('[PTAForm] Error loading docente profile data (non-critical):', e?.message || e));
     }, [userPersonId, docenteIdFromPta, ptaId, loadCetaps, semanasVinculacion, ptaRules]);
 
   // ═══ SOLAPAMIENTO (necesario antes de calcular hDocencia) ════════════════
@@ -843,16 +940,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   }, [rolesParaDropdown]);
 
   const hInvestigacion = useMemo(() => {
+    // 1. Prioridad: horas del rol en catálogo (si ptaRules/rolesHorasMap ya cargó)
     if (invProyecto.rol && rolesHorasMap[invProyecto.rol]) {
       return rolesHorasMap[invProyecto.rol];
     }
+    // 2. Fallback: horas_solicitadas guardadas (al editar un PTA existente antes de que
+    //    cargue ptaRules; así el display de tabs muestra el valor correcto de la BD)
+    if (invProyecto.horas_solicitadas && Number(invProyecto.horas_solicitadas) > 0) {
+      return Number(invProyecto.horas_solicitadas);
+    }
+    // 3. Último recurso: suma de actividades individuales
     return hInvestigacion_raw;
-  }, [hInvestigacion_raw, invProyecto.rol, rolesHorasMap]);
+  }, [hInvestigacion_raw, invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
 
   // Prorrateo según Circular 003/2025 y Configuración Dinámica Backend
   const maxPctInv = useMemo(() => {
     if (invProyecto.rol) {
-      const maxRol = rolesHorasMap[invProyecto.rol] || Infinity;
+      const maxRol = rolesHorasMap[invProyecto.rol];
+      if (!maxRol || !isFinite(maxRol)) {
+        // Rol no encontrado en el mapa — usar porcentaje configurado
+        return ptaRules?.max_pct_investigacion ? (ptaRules.max_pct_investigacion / 100) : 0.5;
+      }
       let rolLimit = maxRol;
       if (tipoVinculacion !== 'CARRERA_009') {
           const base800 = ptaRules?.horas_base_carrera_003 || 800;
@@ -879,9 +987,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const hasDocencia = asignaturas.length > 0;
 
+  // Bloqueo: la resolución y/o adjunto son obligatorios pero no se han llenado
+  const invResolucionPendiente = useMemo(() => {
+    const faltaResolucion = ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim();
+    const faltaAdjunto = ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url;
+    return !!(faltaResolucion || faltaAdjunto);
+  }, [ptaRules, invProyecto.resolucion_nombre, invProyecto.resolucion_archivo, invProyecto.resolucion_archivo_url]);
+
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
   const maxExtLimit = Math.min(ptaRules?.ext_max_horas_enlace || 200, horasAProgramar * maxPctExt);
+  // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
+  const maxInvLimit = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * maxPctInv);
 
   const hCompOrdinary = useMemo(() =>
     complementarias
@@ -890,7 +1007,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     [complementarias]
   );
 
-  const invExcede = !actividadTotalidad && hInvestigacion > horasAProgramar * maxPctInv;
+  // Excedentes: se comparan las horas reales contra el tope máximo del componente
+  const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
   const extExcede = !actividadTotalidad && hExtension > maxExtLimit;
   const compExcede = !actividadTotalidad && hCompOrdinary > horasAProgramar * maxPctComp;
   const acadExcede = false;
@@ -899,8 +1017,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const compWarnings = useMemo(() => {
     const warns: string[] = [];
     const maxCompLimit = horasAProgramar * maxPctComp;
-    if (hCompOrdinary > maxCompLimit) {
-      warns.push(`La suma de complementarias (${hCompOrdinary}h) supera el tope del ${maxPctComp * 100}% (${maxCompLimit}h), excluyendo Sindicatos.`);
+    // Con prorrateo: las horas efectivas de complementarias = hCompOrdinary * pct
+    const compOrdinaryProrr = Math.round(hCompOrdinary * maxPctComp);
+    if (compOrdinaryProrr > maxCompLimit) {
+      warns.push(`Las complementarias ponderadas (${hCompOrdinary}h × ${maxPctComp * 100}% = ${compOrdinaryProrr}h) superan el tope de ${maxCompLimit}h, excluyendo Sindicatos.`);
     }
     complementarias.forEach(comp => {
       if (!comp.actividad_id) return;
@@ -1008,7 +1128,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       toast.error('Máximo 10 asignaturas por PTA');
       return;
     }
-    setAsignaturas(prev => [...prev, {
+    setAsignaturas(prev => [{
       id: Date.now(),
       territorial_id: defaultTerritorial,
       cetap_id: defaultCetap,
@@ -1017,7 +1137,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       creditos: 3, semestre: 1, total_estudiantes: 25,
       horas_base: 0, total_horas: 0, porcentaje_pta: 0, observaciones: '',
       modalidad: 'PRESENCIAL', fecha_inicio: '', fecha_fin: '', _showObs: false,
-    }]);
+    }, ...prev]);
   };
 
   const handleAsigChange = (id: number, field: string, value: any) => {
@@ -1033,11 +1153,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
       }
-      // Reset downstream on CETAP change
+      // Reset downstream on CETAP change + cargar programas filtrados por CETAP
       if (field === 'cetap_id') {
         updated.programa_id = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
+        if (value && !programasPorCetap[value]) {
+          // Cargar programas del CETAP desde Programas Académicos
+          getCatalogoProgramasCascada(value).then(result => {
+            if (result.success && result.data.length > 0) {
+              setProgramasPorCetap(prev => ({ ...prev, [value]: result.data }));
+            } else {
+              // Fallback: marcar que se cargó pero sin resultados específicos → usar todos
+              setProgramasPorCetap(prev => ({ ...prev, [value]: [] }));
+            }
+          }).catch(() => {
+            setProgramasPorCetap(prev => ({ ...prev, [value]: [] }));
+          });
+        }
       }
       // On programa change
       if (field === 'programa_id') {
@@ -1177,8 +1310,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const maxExtLimit = Math.min(ptaRules?.ext_max_horas_enlace || 200, horasAProgramar * (ptaRules?.max_pct_extension ? (ptaRules.max_pct_extension / 100) : 0.25));
       const otherSum = prev.filter(x => x.id !== id).reduce((sum, x) => sum + (x.horas || 0), 0);
       const cupoExt = Math.max(0, maxExtLimit - otherSum);
-      const cupoPta = Math.max(0, horasRestantes + (e.horas || 0)); // horas disponibles en el PTA total (reintegra las de esta actividad)
-      const remainingLimit = Math.min(cupoExt, cupoPta);
+      // El tope del PTA total es informativo (ya hay advertencia "Excede").
+      // Aqui solo respetamos el tope de extensión para no bloquear el ingreso de actividades.
+      const remainingLimit = cupoExt;
       
       // Multiplicador dinámico desde configuración de la sección
       const secConfig = extSecciones.find(s => s.key === e.seccion);
@@ -1191,23 +1325,48 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const cat = (actExtension?.[e.seccion] || []).find((c: any) => c.id === value);
         if (cat) {
           updated.nombre = cat.nombre;
-          const totalCatalogo = cat.max_horas || 0;
-          const maxEjecucion = tieneMultiplicador ? totalCatalogo / mult : totalCatalogo;
-          let valEjec = maxEjecucion;
-          let valHoras = tieneMultiplicador ? totalCatalogo : maxEjecucion;
-          
-          if (valHoras > remainingLimit) {
-            valHoras = remainingLimit;
-            valEjec = tieneMultiplicador ? valHoras / mult : valHoras;
+          // Detectar si es una etapa con ítems jerárquicos
+          if (Array.isArray(cat.items) && cat.items.length > 0) {
+            // Pre-inicializar cantidades: las fijas vienen del backoffice, las demás en 0
+            const initCantidades: Record<number, number> = {};
+            let totalHorasInit = 0;
+            cat.items.forEach((it: any, i: number) => {
+              const tipo = (it.tipo || 'fija').toLowerCase();
+              if (tipo === 'fija') {
+                initCantidades[i] = it.horas || 0;
+                totalHorasInit += it.horas || 0;
+              } else if (tipo === 'hasta') {
+                initCantidades[i] = 0; // docente ajusta dentro del rango
+              } else if (tipo === 'intervalo') {
+                initCantidades[i] = it.min ?? 0; // inicia en el mínimo del intervalo
+                totalHorasInit += it.min ?? 0;
+              } else {
+                initCantidades[i] = 0; // por_unidad: inicia en 0 unidades
+              }
+            });
+            updated.items_cantidades = initCantidades;
+            updated.horas_ejecutadas = totalHorasInit;
+            updated.horas = totalHorasInit;
+          } else {
+            // Actividad plana (modelo anterior)
+            const totalCatalogo = cat.max_horas || 0;
+            const maxEjecucion = tieneMultiplicador ? totalCatalogo / mult : totalCatalogo;
+            let valEjec = maxEjecucion;
+            let valHoras = tieneMultiplicador ? totalCatalogo : maxEjecucion;
+            
+            if (valHoras > remainingLimit) {
+              valHoras = remainingLimit;
+              valEjec = tieneMultiplicador ? valHoras / mult : valHoras;
+            }
+            
+            if (valHoras < 1 && remainingLimit >= 1) {
+               valHoras = 1;
+               valEjec = tieneMultiplicador ? 1 / mult : 1;
+            }
+            
+            updated.horas_ejecutadas = valEjec;
+            updated.horas = valHoras;
           }
-          
-          if (valHoras < 1 && remainingLimit >= 1) {
-             valHoras = 1;
-             valEjec = tieneMultiplicador ? 1 / mult : 1;
-          }
-          
-          updated.horas_ejecutadas = valEjec;
-          updated.horas = valHoras;
         }
       }
 
@@ -1256,6 +1415,32 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       }
       
       return updated;
+    }));
+  };
+
+  // Actualiza la cantidad / valor de un ítem dentro de una etapa de extensión
+  const handleExtItemQtyChange = (extId: number, itemIdx: number, val: number) => {
+    setExtActividades(prev => prev.map(e => {
+      if (e.id !== extId) return e;
+      const cat = (actExtension?.[e.seccion] || []).find((c: any) => c.id === e.actividad_id);
+      if (!cat || !Array.isArray(cat.items)) return e;
+      
+      const item = cat.items[itemIdx];
+      const itemTipo = (item.tipo || 'fija').toLowerCase();
+      let cleanedVal = Math.max(itemTipo === 'intervalo' ? (item.min ?? 0) : 0, val);
+      if (itemTipo === 'hasta' || itemTipo === 'intervalo') {
+        cleanedVal = Math.min(item.horas || 0, cleanedVal);
+      }
+      
+      const newCantidades = { ...(e.items_cantidades || {}), [itemIdx]: cleanedVal };
+      const totalHoras = cat.items.reduce((sum: number, it: any, i: number) => {
+        const tipo = (it.tipo || 'fija').toLowerCase();
+        if (tipo === 'fija') return sum + (it.horas || 0);
+        if (tipo === 'hasta' || tipo === 'intervalo') return sum + (newCantidades[i] || 0);
+        const qty = newCantidades[i] || 0;
+        return sum + (qty * (it.horas || 0));
+      }, 0);
+      return { ...e, items_cantidades: newCantidades, horas: totalHoras, horas_ejecutadas: totalHoras };
     }));
   };
 
@@ -1480,9 +1665,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       estado: isAdminEdit ? estado : (enviar ? estado : 'Borrador'),
       _adminEdit: isAdminEdit || undefined,
       asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
-      investigacion_proyecto: invProyecto.nombre
+      // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
+      // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
+      investigacion_proyecto: (invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
         ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
-        : undefined,
+        : null,  // null explícito → backend borra los datos anteriores
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
       complementarias: complementarias.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
@@ -1760,7 +1947,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const sections = [
     { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: hDocencia, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: '100%', bloqueada: !!actividadTotalidad, modificada: seccionModificada('docencia') },
-    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${ptaRules?.max_pct_investigacion || 50}%`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
+    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
     { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${ptaRules?.max_pct_extension || 25}%`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
     { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
     { key: 'academico_admin' as const, icon: Shield, label: 'Académico-Administrativo', count: academicoAdmin.length, hours: hAcademicoAdmin, prorr: acadProrr, color: PTA_COLORS.ACAD_ADMIN, limit: actividadTotalidad ? '100%' : 'Según actividad', excede: acadExcede, bloqueada: !hasDocencia && !actividadTotalidad, modificada: seccionModificada('academico_admin') },
@@ -2012,12 +2199,32 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <div className="w-1 h-4 bg-[#003DA5] rounded-full inline-block" />
               Datos de Vinculación
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdminEdit ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
               <ReadonlyField label="Tipo de Vinculación" value={TIPOS_VINCULACION.find(t => t.codigo === tipoVinculacion)?.nombre || tipoVinculacion} />
               <ReadonlyField label="Dedicación" value={dedicacion} />
-              <FormSelect label="Periodo" value={periodo} disabled={!isEditable}
+              <FormSelect label="Periodo" value={periodo} disabled={!isEditable || !!ptaId}
                 onChange={v => setPeriodo(v)}
-                options={[{ value: '2025-2', label: '2025-2' }, { value: '2026-2', label: '2026-2' }]} />
+                options={(() => {
+                  const filtered = periodosDisponibles.filter(p => {
+                    const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                    if (ptaId) {
+                      return codigo === periodo || p.estado === 'en_curso';
+                    }
+                    return p.estado === 'en_curso';
+                  });
+                  const opts = filtered.map(p => {
+                    const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                    const esActual = p.estado === 'en_curso';
+                    return {
+                      value: codigo,
+                      label: `${codigo}${esActual ? ' (Actual)' : ''}`
+                    };
+                  });
+                  if (opts.length === 0 || !opts.some(o => o.value === periodo)) {
+                    opts.unshift({ value: periodo, label: periodo });
+                  }
+                  return opts;
+                })()} />
               {isAdminEdit && (
                 <div>
                   <FormInput
@@ -2039,15 +2246,30 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   )}
                 </div>
               )}
-              <div>
+              <div className="flex flex-col">
                 <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1 flex items-center gap-1">
                   Horas Programables
                 </label>
-                <div className={`flex items-center justify-center h-[36px] px-3 rounded-xl border shadow-inner text-sm font-black transition-colors ${semanasProrrateo < 16
-                    ? 'bg-amber-50/50 border-amber-200 text-amber-700'
-                    : 'bg-blue-50/50 border-blue-100 text-[#003DA5]'
-                  }`}>
-                  {horasAProgramar}h {semanasProrrateo < 16 && <span className="text-[10px] opacity-80 font-semibold ml-1">(Prorrateo)</span>}
+                <div className={`w-full px-3 py-2 rounded-xl border border-transparent flex items-center min-h-[36px] text-[12px] font-extrabold shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] ${
+                  semanasProrrateo < 16
+                    ? 'bg-amber-50/50 text-amber-700 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.15)]'
+                    : 'bg-blue-50/50 text-[#003DA5] shadow-[inset_0_0_0_1px_rgba(0,61,165,0.15)]'
+                }`}>
+                  {horasAProgramar}h {semanasProrrateo < 16 && <span className="text-[10px] opacity-80 font-semibold ml-1.5">(Prorrateo)</span>}
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1 flex items-center gap-1">
+                  Total Horas PTA
+                </label>
+                <div className={`w-full px-3 py-2 rounded-xl border border-transparent flex items-center min-h-[36px] text-[12px] font-extrabold shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] ${
+                  totalHoras > horasAProgramar
+                    ? 'bg-red-50/50 text-red-700 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.15)]'
+                    : totalHoras >= horasAProgramar
+                      ? 'bg-green-50/50 text-green-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]'
+                      : 'bg-blue-50/50 text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.15)]'
+                }`}>
+                  {totalHoras}h / {horasAProgramar}h ({porcentaje}%)
                 </div>
               </div>
             </div>
@@ -2105,64 +2327,90 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           {/* ─── PROGRESO DEL PTA (renderizado en sidebar izquierdo del portal via createPortal) ─── */}
           {(() => {
             const progressContent = (
-              <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 overflow-hidden shadow-[0_4px_20px_rgb(0,0,0,0.04)]">
-                <div className="px-5 py-4 bg-gradient-to-b from-white to-gray-50/30 border-b border-gray-100">
-                  <h3 className="text-[11px] font-black tracking-[0.15em] text-[#003DA5] flex items-center gap-2 uppercase m-0">
-                    <Calculator className="w-3.5 h-3.5" /> Progreso del PTA
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                <div className="px-4 py-3 bg-gradient-to-b from-white to-slate-50/40 border-b border-gray-100">
+                  <h3 className="text-[10px] font-extrabold tracking-wider text-[#003DA5] flex items-center gap-1.5 uppercase m-0">
+                    <Calculator className="w-3.5 h-3.5 text-[#003DA5]" /> Distribución de Horas
                   </h3>
                 </div>
-                <div className="p-5">
-                  <div className="text-center mb-5">
-                    <div className="relative w-[100px] h-[100px] mx-auto flex items-center justify-center" style={{height: '100px'}}>
-                      {(() => {
-                        const r = 42;
-                        const circ = 2 * Math.PI * r;
-                        const fill = (Math.min(porcentaje, 100) / 100) * circ;
-                        return (
-                          <svg width="100" height="100" viewBox="0 0 100 100" style={{ display: 'block' }} className="absolute inset-0 drop-shadow-sm">
-                            <circle cx="50" cy="50" r={r} fill="none" stroke="#F1F5F9" strokeWidth="7" />
-                            <circle cx="50" cy="50" r={r} fill="none"
-                              stroke={porcentaje > 100 ? '#EF4444' : porcentaje >= 80 ? '#10B981' : '#2563EB'}
-                              strokeWidth="7" strokeLinecap="round"
-                              strokeDasharray={`${fill} ${circ}`}
-                              transform="rotate(-90 50 50)"
-                              style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                <div className="p-4">
+                  {/* Donut Chart (top, centered) */}
+                  <div className="flex justify-center mb-5">
+                    {(() => {
+                      const size = 130;
+                      const sw = 12;
+                      const donutR = (size - sw) / 2;
+                      const donutC = 2 * Math.PI * donutR;
+                      const donutWithData = sections.filter(s => s.prorr > 0);
+                      let cumOff = 0;
+                      const segs = donutWithData.map(s => {
+                        const pct = totalHoras > 0 ? s.prorr / totalHoras : 0;
+                        const dl = pct * donutC;
+                        const dashOffset = -cumOff;
+                        cumOff += dl;
+                        return { ...s, dl, dashOffset };
+                      });
+                      return (
+                        <div className="relative shrink-0" style={{ width: size, height: size }}>
+                          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90 absolute inset-0">
+                            <circle cx={size / 2} cy={size / 2} r={donutR} fill="none" stroke="#F1F5F9" strokeWidth={sw} />
+                            {segs.map(seg => (
+                              <circle
+                                key={seg.key}
+                                cx={size / 2}
+                                cy={size / 2}
+                                r={donutR}
+                                fill="none"
+                                stroke={seg.color}
+                                strokeWidth={sw}
+                                strokeDasharray={`${seg.dl} ${donutC - seg.dl}`}
+                                strokeDashoffset={seg.dashOffset}
+                                strokeLinecap="butt"
+                                style={{ transition: 'stroke-dasharray 0.5s ease-out, stroke-dashoffset 0.5s ease-out' }}
+                              />
+                            ))}
                           </svg>
-                        );
-                      })()}
-                      <div className="relative z-10 flex flex-col items-center justify-center">
-                        <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-[#003DA5] to-blue-400 tracking-tighter">
-                          {porcentaje}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2.5">
-                    {sections.map(s => (
-                      <div key={s.key} className="flex justify-between items-center">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
-                          <span className="text-[11px] text-gray-600 truncate">{s.label}</span>
-                          {s.excede && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-2xl font-black text-slate-800 leading-none tabular-nums">{totalHoras}</span>
+                            <span className="text-[9px] font-bold text-slate-400 tracking-wider uppercase mt-1">Horas</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0 ml-2">
-                          {s.hours !== s.prorr && (
-                            <span className="text-[10px] text-gray-400 line-through">{s.hours}h</span>
-                          )}
-                          <span className="text-[11px] font-bold text-gray-900">{s.prorr}h</span>
-                          <span className="text-[10px] text-gray-400">({s.limit})</span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Component list with icons and progress (bottom, full width) */}
+                  <div className="flex flex-col gap-2.5 mb-4">
+                    {sections.map(s => {
+                      const pct = horasAProgramar > 0 ? Math.min((s.prorr / horasAProgramar) * 100, 100) : 0;
+                      return (
+                        <div key={s.key} className="flex items-center gap-2">
+                          <div className="rounded-md flex items-center justify-center shrink-0" style={{ width: '24px', height: '24px', backgroundColor: `${s.color}15` }}>
+                            <s.icon className="w-3.5 h-3.5" style={{ color: s.color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-center text-[10px] leading-tight mb-0.5">
+                              <span className="font-semibold text-slate-600 truncate">{s.label}</span>
+                              <span className="font-bold tabular-nums" style={{ color: s.color }}>
+                                {s.hours}h
+                                {s.hours !== s.prorr && (
+                                  <span className="text-[8.5px] text-slate-400 ml-1 font-normal" title="Horas efectivas con prorrateo">→{s.prorr}h</span>
+                                )}
+                              </span>
+                            </div>
+                            <div className="h-[4px] bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: s.color }} />
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                  <div className="my-3 h-px bg-gray-200/70" />
-                  <div className="flex justify-between items-center">
-                    <span className="text-[12px] font-bold text-gray-900">Total</span>
-                    <span className="text-base font-extrabold text-[#003DA5]">{totalHoras}h</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-0.5">
-                    <span className="text-[10px] text-gray-400">Máximo</span>
-                    <span className="text-[10px] text-gray-400">{horasAProgramar}h</span>
+
+                  <div className="my-2.5 h-px bg-slate-100" />
+                  <div className="flex justify-between items-center text-[10px] font-semibold text-slate-500">
+                    <span>Límite programable:</span>
+                    <span className="font-bold text-slate-700">{horasAProgramar}h</span>
                   </div>
                   <div className={`mt-3 p-2.5 rounded-lg border text-[10px] leading-relaxed flex items-start gap-1.5 ${
                     totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800'
@@ -2367,7 +2615,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                               <FormSelect label="Programa" value={asig.programa_id} disabled={!rowEditable || !programaHabilitado}
                                 onChange={v => handleAsigChange(asig.id, 'programa_id', v)}
-                                options={programas.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }))}
+                                options={(() => {
+                                  // Usar programas filtrados por CETAP si están disponibles
+                                  const cetapId = asig.cetap_id;
+                                  const filtrados = cetapId && programasPorCetap[cetapId];
+                                  // Si hay programas filtrados del CETAP, usarlos; si no, mostrar todos como fallback
+                                  const lista = (filtrados && filtrados.length > 0) ? filtrados : programas;
+                                  return lista.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }));
+                                })()}
                                 placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />
                               <FormSelect label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || !asig.programa_id}
                                 onChange={v => handleAsigChange(asig.id, 'asignatura_id', v)}
@@ -2429,8 +2684,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             {/* Additional Info: Dates & Students */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-1">
                               <FormInput label="Fecha inicio" type="date" value={asig.fecha_inicio || ''} disabled={!rowEditable}
+                                min={periodoFechaMin}
+                                max={periodoFechaMax}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_inicio', v)} />
                               <FormInput label="Fecha fin" type="date" value={asig.fecha_fin || ''} disabled={!rowEditable}
+                                min={asig.fecha_inicio || periodoFechaMin}
+                                max={periodoFechaMax}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_fin', v)} />
                               <FormInput label="Estudiantes" type="number" value={asig.total_estudiantes} disabled={!rowEditable}
                                 onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
@@ -2508,7 +2767,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── INVESTIGACIÓN ─── */}
             {!actividadTotalidad && hasDocencia && activeSection === 'investigacion' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${ptaRules?.max_pct_investigacion || 50}% = ${horasAProgramar * ((ptaRules?.max_pct_investigacion || 50) / 100)}h)`}
+                <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${Math.round(maxInvLimit)}h — ${Math.round(maxPctInv * 100)}% o ${ptaRules?.max_horas_investigacion_global || 400}h global)`}
                   color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} excede={invExcede} />
 
                 {invWarnings.length > 0 && (
@@ -2637,10 +2896,23 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   <div>
                     {invProyecto.rol ? (
                       /* ── MODO ROL: horas fijas, sin actividades ── */
+                      invResolucionPendiente ? (
+                        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300">
+                          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                          <div>
+                            <p className="text-xs font-bold text-amber-800">Completa la documentación de resolución para habilitar las horas</p>
+                            <p className="text-[10px] text-amber-600 mt-0.5">
+                              {ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim() ? 'Falta: N° / Nombre de la Resolución. ' : ''}
+                              {ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url ? 'Falta: Archivo adjunto.' : ''}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
                       <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-purple-100 border border-purple-300">
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Horas asignadas por rol</span>
                         <span className="text-lg font-black text-purple-800">{rolesHorasMap[invProyecto.rol] || 0}h</span>
                       </div>
+                      )
                     ) : (
                       <>
                     <div className="flex justify-between items-center mb-2">
@@ -2653,13 +2925,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         )}
                       </div>
                       {isEditable && (() => {
-                        const maxInvLimit = horasAProgramar * ((ptaRules?.max_pct_investigacion || 50) / 100);
-                        const cupoInv = Math.max(0, maxInvLimit - hInvestigacion);
-                        const cupoPta = Math.max(0, horasRestantes);
-                        if (Math.min(cupoInv, cupoPta) <= 0) return null;
+                        const _maxInvL = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * ((ptaRules?.max_pct_investigacion || 50) / 100));
+                        const cupoInv = Math.max(0, _maxInvL - hInvestigacion);
+                        if (cupoInv <= 0) return null;
                         return (
                           <button onClick={handleAddInvActividad}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer" style={{ background: PTA_COLORS.INVESTIGACION }}>
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer"
+                            style={{ background: PTA_COLORS.INVESTIGACION }}>
                             <Plus className="w-3 h-3" /> Agregar
                           </button>
                         );
@@ -2709,7 +2981,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={e => {
                                     let val = Number(e.target.value) || 0;
                                     if (val < 0) val = 0;
-                                    const limiteMax = horasAProgramar * (ptaRules?.max_pct_investigacion ? (ptaRules.max_pct_investigacion / 100) : 0.5);
+                                    const limiteMax = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * (ptaRules?.max_pct_investigacion ? (ptaRules.max_pct_investigacion / 100) : 0.5));
                                     const otherActsSum = invActividades.filter(a => a.id !== act.id).reduce((sum, a) => sum + (a.horas_total || 0), 0);
                                     const remaining = Math.max(0, limiteMax - otherActsSum);
                                     if (val > remaining) val = remaining;
@@ -2728,14 +3000,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               ))} />
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               <FormInput label="Fecha Inicio" type="date" value={act.fecha_inicio} disabled={!isEditable}
-                                min={ptaRules?.fecha_inicio_semestre || undefined}
-                                max={ptaRules?.fecha_fin_semestre || undefined}
+                                min={periodoFechaMin || undefined}
+                                max={periodoFechaMax || undefined}
                                 onChange={v => setInvActividades(prev => prev.map(a =>
                                   a.id === act.id ? { ...a, fecha_inicio: v } : a
                                 ))} />
                               <FormInput label="Fecha Fin" type="date" value={act.fecha_fin} disabled={!isEditable}
-                                min={ptaRules?.fecha_inicio_semestre || undefined}
-                                max={ptaRules?.fecha_fin_semestre || undefined}
+                                min={periodoFechaMin || undefined}
+                                max={periodoFechaMax || undefined}
                                 onChange={v => setInvActividades(prev => prev.map(a =>
                                   a.id === act.id ? { ...a, fecha_fin: v } : a
                                 ))} />
@@ -2827,12 +3099,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               onChange={v => handleInvActChange(act.id, 'descripcion', v)} />
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               <FormInput label="Fecha Inicio" type="date" value={act.fecha_inicio} disabled={!isEditable}
-                                min={ptaRules?.fecha_inicio_semestre || undefined}
-                                max={ptaRules?.fecha_fin_semestre || undefined}
+                                min={periodoFechaMin || undefined}
+                                max={periodoFechaMax || undefined}
                                 onChange={v => handleInvActChange(act.id, 'fecha_inicio', v)} />
                               <FormInput label="Fecha Fin" type="date" value={act.fecha_fin} disabled={!isEditable}
-                                min={ptaRules?.fecha_inicio_semestre || undefined}
-                                max={ptaRules?.fecha_fin_semestre || undefined}
+                                min={periodoFechaMin || undefined}
+                                max={periodoFechaMax || undefined}
                                 onChange={v => handleInvActChange(act.id, 'fecha_fin', v)} />
                             </div>
                             {/* ── Resolución de la actividad ── */}
@@ -2917,7 +3189,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── EXTENSIÓN (6 subsecciones) ─── */}
             {!actividadTotalidad && hasDocencia && activeSection === 'extension' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h permitidas)`}
+                <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h — ${ptaRules?.max_pct_extension || 25}% o ${ptaRules?.ext_max_horas_enlace || 200}h global)`}
                   color={PTA_COLORS.EXTENSION} icon={Globe} excede={extExcede} />
 
                 {extWarnings.length > 0 && (
@@ -2966,10 +3238,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       ) : null}
                     </div>
                     {isEditable && (() => {
-                      const extRemaining = Math.max(0, maxExtLimit - hExtension);
-                      const ptaRemaining = Math.max(0, horasRestantes);
-                      const cupoDisponible = Math.min(extRemaining, ptaRemaining);
-                      if (cupoDisponible <= 0) return null;
+                      const extRemaining = maxExtLimit - hExtension;
+                      // Solo ocultar si se alcanzó el tope de extensión; el excedente
+                      // del PTA total es informativo pero no bloquea agregar actividades.
+                      if (extRemaining <= 0) return null;
                       return (
                         <button onClick={() => handleAddExtActividad(extSubseccion)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer shrink-0" style={{ background: PTA_COLORS.EXTENSION }}>
@@ -2986,83 +3258,195 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <EmptyState icon={Globe} text={`Sin actividades de ${extSecciones.find(s => s.key === extSubseccion)?.label}`} small />
                   ) : (
                     <div className="flex flex-col gap-2">
-                      {extActividades.filter(e => e.seccion === extSubseccion).map(ext => (
-                        <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
-                          {isEditable && (
-                            <button onClick={() => setExtActividades(prev => prev.filter(e => e.id !== ext.id))}
-                              className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                          <div className="flex flex-col sm:flex-row gap-2 pr-8">
-                            <div className="flex-1">
-                              <FormSelect label="Actividad" value={ext.actividad_id} disabled={!isEditable}
-                                onChange={v => handleExtActChange(ext.id, 'actividad_id', v)}
-                                options={(() => {
-                                  const sMult = extSecciones.find(s => s.key === ext.seccion)?.multiplicador || 1;
-                                  return getExtCatalog(extSubseccion).map((a: any) => ({
-                                    value: a.id,
-                                    label: sMult > 1
-                                      ? `${a.nombre} (máx ${Math.floor((a.max_horas || 0) / sMult)} ejec. = ${a.max_horas || 0}h PTA)`
-                                      : `${a.nombre} (${a.max_horas || 0}h)`,
-                                  }));
-                                })()}
-                                placeholder="Seleccionar..." />
-                            </div>
-                            {(() => {
-                              const secMult = extSecciones.find(s => s.key === ext.seccion)?.multiplicador || 1;
-                              if (secMult > 1) {
-                                const cat = (actExtension?.[ext.seccion] || []).find((c: any) => c.id === ext.actividad_id);
-                                const maxEjecCat = cat?.max_horas ? Math.floor(cat.max_horas / secMult) : undefined;
-                                const maxEjecSec = Math.floor(maxExtLimit / secMult);
-                                const maxEjec = maxEjecCat !== undefined ? Math.min(maxEjecCat, maxEjecSec) : maxEjecSec;
-                                return (
-                              <>
-                                <div className="w-24">
-                                  <FormInput label="Horas Ejec." type="number" value={ext.horas_ejecutadas || 0}
-                                    min={0} max={maxEjec} disabled={!isEditable}
-                                    onChange={v => handleExtActChange(ext.id, 'horas_ejecutadas', Number(v))} />
-                                </div>
-                                <div className="w-28">
-                                  <ReadonlyField label={`PTA (×${secMult})`} value={`${ext.horas}h`} color={PTA_COLORS.EXTENSION} />
-                                </div>
-                              </>
-                                );
-                              }
-                              return (
-                              <div className="w-24">
-                                <FormInput label="Horas" type="number" value={ext.horas} disabled={!isEditable}
-                                  onChange={v => handleExtActChange(ext.id, 'horas', Number(v))} />
+                      {extActividades.filter(e => e.seccion === extSubseccion).map(ext => {
+                        const catExt = (actExtension?.[ext.seccion] || []).find((c: any) => c.id === ext.actividad_id);
+                        const hasItemsExt = catExt && Array.isArray(catExt.items) && catExt.items.length > 0;
+                        const secMult = extSecciones.find(s => s.key === ext.seccion)?.multiplicador || 1;
+                        return (
+                          <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
+                            {isEditable && (
+                              <button onClick={() => setExtActividades(prev => prev.filter(e => e.id !== ext.id))}
+                                className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {/* Selector de Actividad / Etapa */}
+                            <div className="flex flex-col sm:flex-row gap-2 pr-8">
+                              <div className="flex-1">
+                                <FormSelect label="Actividad / Etapa" value={ext.actividad_id} disabled={!isEditable}
+                                  onChange={v => handleExtActChange(ext.id, 'actividad_id', v)}
+                                  options={getExtCatalog(extSubseccion).map((a: any) => {
+                                    const hasItems = Array.isArray(a.items) && a.items.length > 0;
+                                    if (hasItems) {
+                                      const totalHorasItems = a.items.reduce((s: number, it: any) => {
+                                        if (it.tipo === 'fija' || it.tipo === 'hasta') return s + (it.horas || 0);
+                                        return s + (it.horas || 0); // por_unidad: 1 unidad base
+                                      }, 0);
+                                      return { value: a.id, label: `${a.nombre} (máx ${a.max_horas || totalHorasItems}h)` };
+                                    }
+                                    return {
+                                      value: a.id,
+                                      label: secMult > 1
+                                        ? `${a.nombre} (máx ${Math.floor((a.max_horas || 0) / secMult)} ejec. = ${a.max_horas || 0}h PTA)`
+                                        : `${a.nombre} (${a.max_horas || 0}h)`,
+                                    };
+                                  })}
+                                  placeholder="Seleccionar..." />
                               </div>
-                            );
-                            })()}
+                              {/* Para actividades PLANAS (sin items): mostrar inputs de horas como antes */}
+                              {!hasItemsExt && (() => {
+                                if (secMult > 1) {
+                                  const maxEjecCat = catExt?.max_horas ? Math.floor(catExt.max_horas / secMult) : undefined;
+                                  const maxEjecSec = Math.floor(maxExtLimit / secMult);
+                                  const maxEjec = maxEjecCat !== undefined ? Math.min(maxEjecCat, maxEjecSec) : maxEjecSec;
+                                  return (
+                                    <>
+                                      <div className="w-24">
+                                        <FormInput label="Horas Ejec." type="number" value={ext.horas_ejecutadas || 0}
+                                          min={0} max={maxEjec} disabled={!isEditable}
+                                          onChange={v => handleExtActChange(ext.id, 'horas_ejecutadas', Number(v))} />
+                                      </div>
+                                      <div className="w-28">
+                                        <ReadonlyField label="Horas PTA" value={`${ext.horas}h`} color={PTA_COLORS.EXTENSION} />
+                                      </div>
+                                    </>
+                                  );
+                                }
+                                return (
+                                  <>
+                                    <div className="w-24">
+                                      <FormInput label="Horas" type="number" value={ext.horas} disabled={!isEditable}
+                                        min={0} max={catExt?.max_horas || maxExtLimit}
+                                        onChange={v => handleExtActChange(ext.id, 'horas', Number(v))} />
+                                    </div>
+                                    <div className="w-28">
+                                      <ReadonlyField label="Horas PTA" value={`${ext.horas}h`} color={PTA_COLORS.EXTENSION} />
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                              {hasItemsExt && (
+                                <div className="w-28 shrink-0">
+                                  <ReadonlyField label="Horas PTA" value={`${ext.horas}h`} color={PTA_COLORS.EXTENSION} />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Para etapas CON ÍTEMS: mostrar desglose por ítem */}
+                            {hasItemsExt && (
+                              <div className="mt-1 rounded-lg border border-sky-100 bg-white overflow-hidden">
+                                <div className="px-3 py-1.5 bg-sky-50 border-b border-sky-100">
+                                  <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wide">Desglose de ítems</span>
+                                </div>
+                                <div className="p-3 space-y-2">
+                                  {catExt.items.map((item: any, iIdx: number) => {
+                                    const itemTipo = (item.tipo || 'fija').toLowerCase();
+                                    return (
+                                    <div key={iIdx} className="flex items-center gap-3">
+                                      <span className="flex-1 text-[12px] text-slate-600">{item.nombre}</span>
+                                      {itemTipo === 'fija' ? (
+                                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
+                                          {item.horas}h fija
+                                        </span>
+                                      ) : itemTipo === 'hasta' ? (
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-[11px] text-slate-400">Hasta {item.horas}h</span>
+                                          <input type="number" min={0} max={item.horas}
+                                            value={(ext.items_cantidades || {})[iIdx] ?? 0}
+                                            disabled={!isEditable}
+                                            onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
+                                            className="w-16 text-center border border-amber-200 rounded-md px-2 py-1 text-[12px] font-bold text-amber-700 focus:ring-2 focus:ring-amber-500/20 outline-none bg-white" />
+                                          <span className="text-[11px] font-semibold text-amber-700 min-w-[36px] text-right">
+                                            = {((ext.items_cantidades || {})[iIdx] ?? 0)}h
+                                          </span>
+                                        </div>
+                                      ) : itemTipo === 'intervalo' ? (
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-[11px] text-slate-400">{item.min ?? 0}–{item.horas}h</span>
+                                          <input type="number" min={item.min ?? 0} max={item.horas}
+                                            value={(ext.items_cantidades || {})[iIdx] ?? (item.min ?? 0)}
+                                            disabled={!isEditable}
+                                            onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
+                                            className="w-16 text-center border border-indigo-200 rounded-md px-2 py-1 text-[12px] font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white" />
+                                          <span className="text-[11px] font-semibold text-indigo-700 min-w-[36px] text-right">
+                                            = {((ext.items_cantidades || {})[iIdx] ?? (item.min ?? 0))}h
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <input type="number" min={0}
+                                            value={(ext.items_cantidades || {})[iIdx] || 0}
+                                            disabled={!isEditable}
+                                            onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
+                                            className="w-16 text-center border border-sky-200 rounded-md px-2 py-1 text-[12px] font-bold text-sky-700 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white" />
+                                          <span className="text-[11px] text-slate-400">
+                                            uds. (×{item.horas}h)
+                                          </span>
+                                          <span className="text-[11px] font-semibold text-sky-700 min-w-[36px] text-right">
+                                            = {((ext.items_cantidades || {})[iIdx] || 0) * (item.horas || 0)}h
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    );
+                                  })}
+                                  {/* Fila de total */}
+                                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                    <span className="text-[11px] font-bold text-slate-500">Total PTA:</span>
+                                    <span className="px-3 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[13px] font-bold border border-sky-200">
+                                      {ext.horas}h
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Evidencias de la Etapa */}
+                            {catExt && Array.isArray(catExt.evidencias) && catExt.evidencias.length > 0 && (
+                              <div className="mt-1 rounded-lg border border-violet-100 bg-violet-50 overflow-hidden">
+                                <div className="px-3 py-1.5 bg-violet-100/50 border-b border-violet-100">
+                                  <span className="text-[10px] font-bold text-violet-700 uppercase tracking-wide">Evidencias requeridas</span>
+                                </div>
+                                <ul className="p-3 space-y-1">
+                                  {catExt.evidencias.map((ev: string, evIdx: number) => (
+                                    <li key={evIdx} className="flex items-start gap-2 text-[11px] text-violet-900">
+                                      <span className="text-violet-400 mt-0.5">•</span>
+                                      <span>{ev || 'Sin descripción'}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Descripción y Fechas */}
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <div className="flex-1">
+                                <FormInput label="Descripción" type="text" value={ext.descripcion} disabled={!isEditable}
+                                  placeholder="Solo letras..."
+                                  onChange={v => handleExtActChange(ext.id, 'descripcion', v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''))} />
+                              </div>
+                              <div className="w-36">
+                                <FormInput label="Fecha Inicio" type="date" value={ext.fecha_inicio} disabled={!isEditable}
+                                  min={periodoFechaMin || undefined}
+                                  max={periodoFechaMax || undefined}
+                                  onChange={v => handleExtActChange(ext.id, 'fecha_inicio', v)} />
+                              </div>
+                              <div className="w-36">
+                                <FormInput label="Fecha Fin" type="date" value={ext.fecha_fin} disabled={!isEditable}
+                                  min={periodoFechaMin || undefined}
+                                  max={periodoFechaMax || undefined}
+                                  onChange={v => handleExtActChange(ext.id, 'fecha_fin', v)} />
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <div className="flex-1">
-                              <FormInput label="Descripción" type="text" value={ext.descripcion} disabled={!isEditable}
-                                placeholder="Solo letras..."
-                                onChange={v => handleExtActChange(ext.id, 'descripcion', v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''))} />
-                            </div>
-                            <div className="w-36">
-                              <FormInput label="Fecha Inicio" type="date" value={ext.fecha_inicio} disabled={!isEditable}
-                                min={ptaRules?.fecha_inicio_semestre || undefined}
-                                max={ptaRules?.fecha_fin_semestre || undefined}
-                                onChange={v => handleExtActChange(ext.id, 'fecha_inicio', v)} />
-                            </div>
-                            <div className="w-36">
-                              <FormInput label="Fecha Fin" type="date" value={ext.fecha_fin} disabled={!isEditable}
-                                min={ptaRules?.fecha_inicio_semestre || undefined}
-                                max={ptaRules?.fecha_fin_semestre || undefined}
-                                onChange={v => handleExtActChange(ext.id, 'fecha_fin', v)} />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               </div>
             )}
+
 
             {/* ─── COMPLEMENTARIAS ─── */}
             {!actividadTotalidad && hasDocencia && activeSection === 'complementarias' && (
@@ -3073,8 +3457,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     if (!isEditable || complementarias.length >= 17) return undefined;
                     const maxCompLimit = horasAProgramar * ((ptaRules?.max_pct_complementarias || 25) / 100);
                     const cupoComp = Math.max(0, maxCompLimit - hComplementarias);
-                    const cupoPta = Math.max(0, horasRestantes);
-                    if (Math.min(cupoComp, cupoPta) <= 0) return undefined;
+                    // Solo ocultar si se alcanzó el tope de complementarias; excedente total es sólo informativo.
+                    if (cupoComp <= 0) return undefined;
                     return { label: 'Agregar Actividad', onClick: handleAddComplementaria };
                   })()} />
 
@@ -3152,14 +3536,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               </div>
                               <div className="w-36">
                                 <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!isEditable}
-                                  min={ptaRules?.fecha_inicio_semestre || undefined}
-                                  max={ptaRules?.fecha_fin_semestre || undefined}
+                                  min={periodoFechaMin || undefined}
+                                  max={periodoFechaMax || undefined}
                                   onChange={v => handleCompChange(comp.id, 'fecha_inicio', v)} />
                               </div>
                               <div className="w-36">
                                 <FormInput label="Fecha Fin" type="date" value={comp.fecha_fin} disabled={!isEditable}
-                                  min={ptaRules?.fecha_inicio_semestre || undefined}
-                                  max={ptaRules?.fecha_fin_semestre || undefined}
+                                  min={periodoFechaMin || undefined}
+                                  max={periodoFechaMax || undefined}
                                   onChange={v => handleCompChange(comp.id, 'fecha_fin', v)} />
                               </div>
                             </div>
@@ -3279,14 +3663,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               </div>
                               <div className="w-36">
                                 <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!isEditable}
-                                  min={ptaRules?.fecha_inicio_semestre || undefined}
-                                  max={ptaRules?.fecha_fin_semestre || undefined}
+                                  min={periodoFechaMin || undefined}
+                                  max={periodoFechaMax || undefined}
                                   onChange={v => handleAcadChange(comp.id, 'fecha_inicio', v)} />
                               </div>
                               <div className="w-36">
                                 <FormInput label="Fecha Fin" type="date" value={comp.fecha_fin} disabled={!isEditable}
-                                  min={ptaRules?.fecha_inicio_semestre || undefined}
-                                  max={ptaRules?.fecha_fin_semestre || undefined}
+                                  min={periodoFechaMin || undefined}
+                                  max={periodoFechaMax || undefined}
                                   onChange={v => handleAcadChange(comp.id, 'fecha_fin', v)} />
                               </div>
                             </div>
@@ -3482,8 +3866,8 @@ function ReadonlyField({ label, value, color }: { label: string; value: string; 
   return (
     <div className="flex flex-col">
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
-      <div className="px-3 py-2 rounded-xl bg-gray-50/40 border border-transparent shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] text-[12px] font-bold text-center flex items-center justify-center min-h-[36px]"
-        style={{ color: color || '#6B7280' }}>
+      <div className="w-full px-3 py-2 rounded-xl border border-transparent bg-gray-50/40 text-[12px] font-semibold text-gray-700 flex items-center min-h-[36px] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] cursor-not-allowed select-none transition-all"
+        style={{ color: color || '#374151' }}>
         {value}
       </div>
     </div>

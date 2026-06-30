@@ -157,8 +157,8 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
   const loadNotifications = useCallback(async () => {
     if (!REMOTE_NOTIFICATIONS_ENABLED) return;
 
-    // Si ha fallado repetidamente, pausar el polling para evitar spam en la consola
-    if (consecutiveFailures.current >= 3) return;
+    // Si ha fallado, pausar el polling para evitar spam en la consola
+    if (consecutiveFailures.current >= 1) return;
 
     const user = authService.getCurrentUser();
     if (!user?.id) return;
@@ -196,7 +196,7 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
     if (!REMOTE_NOTIFICATIONS_ENABLED) return;
 
     const interval = setInterval(() => {
-      if (consecutiveFailures.current < 3) {
+      if (consecutiveFailures.current < 1) {
         loadNotifications();
       }
     }, 30_000);

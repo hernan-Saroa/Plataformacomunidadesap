@@ -40,6 +40,16 @@ export async function getActivePeriodoAcademico() {
   }
 }
 
+export async function getPeriodosAcademicos() {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/periodos-academicos`);
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    console.error('Error fetching academic periods:', error);
+    return { success: false, data: [] };
+  }
+}
+
 export async function getAllPTAs(filters?: {
   estado?: string;
   periodo?: string;
@@ -167,7 +177,8 @@ export async function getPTAEstadisticas(periodo?: string) {
 
 export async function getCatalogoProgramas() {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/programas`);
+    // Cache-busting: _t evita HTTP 304, garantiza datos frescos del origen
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/programas`, { _t: Date.now().toString() });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -176,9 +187,47 @@ export async function getCatalogoProgramas() {
   }
 }
 
+export async function getCatalogoProgramasCascada(cetapId: string, periodo?: string) {
+  try {
+    // Primary: use programas-por-sede endpoint (handles auth.sedes.id_sede correctly)
+    const params: Record<string, string> = { cetap_id: cetapId, _t: Date.now().toString() };
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/programas-por-sede`, params);
+    const normalized = normalizeResult<any[]>(raw, []);
+    const data = Array.isArray(normalized.data) ? normalized.data : [];
+    if (data.length > 0) {
+      return { success: true, data };
+    }
+    // Fallback: try cascada endpoint (uses academic_work_plan.cetap.id)
+    if (periodo) params.periodo = periodo;
+    const raw2 = await apiClient.get<any>(`${PTA_BASE}/cascada/programas`, params);
+    const normalized2 = normalizeResult<any[]>(raw2, []);
+    const data2 = Array.isArray(normalized2.data) ? normalized2.data : [];
+    return { success: data2.length > 0 || normalized2.success, data: data2 };
+  } catch (error) {
+    console.error('[mfe-pta][getCatalogoProgramasCascada] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
+/** Asignaturas con horas_pta calculadas por el backend (HorasPtaCalculator) - CASCADA DINÁMICA */
+export async function getCatalogoAsignaturasCascada(programaId: string) {
+  try {
+    const params: Record<string, string> = { programa_id: programaId, _t: Date.now().toString() };
+    const raw = await apiClient.get<any>(`${PTA_BASE}/cascada/asignaturas`, params);
+    const normalized = normalizeResult<any[]>(raw, []);
+    const data = Array.isArray(normalized.data) ? normalized.data : [];
+    return { success: data.length > 0 || normalized.success, data };
+  } catch (error) {
+    console.error('[mfe-pta][getCatalogoAsignaturasCascada] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
 export async function getCatalogoAsignaturas(programaId?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/asignaturas`, programaId ? { programa_id: programaId } : undefined);
+    const params: Record<string, string> = { _t: Date.now().toString() };
+    if (programaId) params.programa_id = programaId;
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/asignaturas`, params);
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -198,9 +247,39 @@ export async function getCatalogoAsignaturasCompleto() {
   }
 }
 
-export async function getCatalogoTerritoriales() {
+/** CETAPs filtrados por programa (vía oferta_cetap_programa) - DINÁMICO */
+export async function getCetapsPorPrograma(programaId: string, territorialId?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/territoriales`);
+    const params: Record<string, string> = { programa_id: programaId };
+    if (territorialId) params.territorial_id = territorialId;
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/cetaps-por-programa`, params);
+    const normalized = normalizeResult<any[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.error('[mfe-pta][getCetapsPorPrograma] Error:', error);
+    return { success: false, data: [] };
+  }
+}
+
+/** Cupos estimados para CETAP + Programa - DINÁMICO */
+export async function getOfertaCetap(cetapId: string, programaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/oferta-cetap`, {
+      cetap_id: cetapId,
+      programa_id: programaId,
+    });
+    const normalized = normalizeResult<any>(raw, { cupos_estimados: null });
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('[mfe-pta][getOfertaCetap] Error:', error);
+    return { success: false, data: { cupos_estimados: null } };
+  }
+}
+
+export async function getCatalogoTerritoriales(periodo?: string) {
+  try {
+    const params = periodo ? { periodo } : undefined;
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/territoriales`, params);
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -209,9 +288,12 @@ export async function getCatalogoTerritoriales() {
   }
 }
 
-export async function getCatalogoCetaps(territorialId: string) {
+export async function getCatalogoCetaps(territorialId: string, periodo?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/cetaps`, territorialId ? { territorial_id: territorialId } : undefined);
+    const params: Record<string, string> = {};
+    if (territorialId) params.territorial_id = territorialId;
+    if (periodo) params.periodo = periodo;
+    const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/cetaps`, params);
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -393,7 +475,7 @@ export async function getComponentesAprobacion(ptaId: string) {
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
-    console.error('[mfe-pta][getComponentesAprobacion] Error:', error);
+    console.warn('[mfe-pta][getComponentesAprobacion] No disponible:', error instanceof Error ? error.message : error);
     return { success: false, data: [] };
   }
 }
@@ -736,7 +818,7 @@ export async function getRUNDDocente(_docenteId: string) {
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
-    console.error('[mfe-pta][getRUNDDocente] Error:', error);
+    console.warn('[mfe-pta][getRUNDDocente] RUND no disponible (no crítico):', error instanceof Error ? error.message : error);
     return { success: false, data: null };
   }
 }
@@ -1641,7 +1723,7 @@ export async function getBancoDocenteById(id: string) {
     const raw = await apiClient.get<any>(`${BD_BASE}/${id}`);
     return normalizeResult<any>(raw, null);
   } catch (error) {
-    console.error('[mfe-pta][getBancoDocenteById] Error:', error);
+    console.warn('[mfe-pta][getBancoDocenteById] No encontrado o error al buscar docente:', error instanceof Error ? error.message : error);
     return { success: false, data: null };
   }
 }

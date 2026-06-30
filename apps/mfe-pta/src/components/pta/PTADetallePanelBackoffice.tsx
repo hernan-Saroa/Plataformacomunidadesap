@@ -567,6 +567,27 @@ function SectionCollapsible({ title, icon: Icon, color, count, children, default
   );
 }
 
+function normalizePTAData(d: any, fallbackPta: any = {}) {
+  if (!d) return d;
+  return {
+    ...fallbackPta,
+    ...d,
+    investigacion: {
+      proyectos: (d.investigacion_proyecto?.nombre || d.investigacion_proyecto?.rol) ? [d.investigacion_proyecto] : [],
+      actividades: d.investigacion_actividades || [],
+    },
+    extension: {
+      capacitacion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'capacitacion'),
+      seleccion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'seleccion'),
+      fortalecimiento: (d.extension_actividades || []).filter((e: any) => e.seccion === 'fortalecimiento'),
+      alto_gobierno: (d.extension_actividades || []).filter((e: any) => e.seccion === 'alto_gobierno'),
+      otras: (d.extension_actividades || []).filter((e: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(e.seccion)),
+    },
+    complementarias: { actividades: d.complementarias || [] },
+    acad_admin: { actividades: d.academico_admin || [] },
+  };
+}
+
 // ═══ MAIN COMPONENT ═══════════════════════════════════════════════════
 
 export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADetallePanelProps>(({
@@ -714,24 +735,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     setLoadingExtras(true);
     getPTAById(initialPta.id).then(res => {
       if (res.success && res.data) {
-        const d = res.data;
-        setPta({
-          ...initialPta,
-          ...d,
-          investigacion: {
-            proyectos: d.investigacion_proyecto?.nombre ? [d.investigacion_proyecto] : [],
-            actividades: d.investigacion_actividades || [],
-          },
-          extension: {
-            capacitacion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'capacitacion'),
-            seleccion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'seleccion'),
-            fortalecimiento: (d.extension_actividades || []).filter((e: any) => e.seccion === 'fortalecimiento'),
-            alto_gobierno: (d.extension_actividades || []).filter((e: any) => e.seccion === 'alto_gobierno'),
-            otras: (d.extension_actividades || []).filter((e: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(e.seccion)),
-          },
-          complementarias: { actividades: d.complementarias || [] },
-          acad_admin: { actividades: d.academico_admin || [] },
-        });
+        setPta(normalizePTAData(res.data, initialPta));
       }
       setLoadingExtras(false);
     });
@@ -743,11 +747,30 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
-  const asignaturas = pta.asignaturas || [];
-  const investigacion = pta.investigacion || {};
-  const extension = pta.extension || {};
-  const complementarias = pta.complementarias || {};
-  const acadAdmin = pta.acad_admin || pta.academico_administrativo || {};
+  const asignaturas = Array.isArray(pta.asignaturas) ? pta.asignaturas : [];
+  
+  const investigacion = {
+    proyectos: pta.investigacion_proyecto ? [pta.investigacion_proyecto] : (pta.investigacion?.proyectos || []),
+    actividades: Array.isArray(pta.investigacion_actividades) ? pta.investigacion_actividades : (pta.investigacion?.actividades || [])
+  };
+  
+  const extActsRaw = Array.isArray(pta.extension_actividades) ? pta.extension_actividades : [];
+  const extension = {
+    capacitacion: extActsRaw.filter((a: any) => a.seccion === 'capacitacion'),
+    seleccion: extActsRaw.filter((a: any) => a.seccion === 'seleccion'),
+    fortalecimiento: extActsRaw.filter((a: any) => a.seccion === 'fortalecimiento'),
+    alto_gobierno: extActsRaw.filter((a: any) => a.seccion === 'alto_gobierno'),
+    otras: extActsRaw.filter((a: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(a.seccion)),
+    ...(pta.extension || {})
+  };
+  
+  const complementarias = {
+    actividades: Array.isArray(pta.complementarias) ? pta.complementarias : (pta.complementarias?.actividades || [])
+  };
+  
+  const acadAdmin = {
+    actividades: Array.isArray(pta.academico_admin) ? pta.academico_admin : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || [])
+  };
   const historial = pta.historial || [];
   const concertacion = pta.concertacion || {};
 
@@ -2210,7 +2233,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         border: '1px solid #F3F4F6', marginBottom: 4,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', flex: 1 }}>{p.nombre}</div>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', flex: 1 }}>{p.nombre || 'Proyecto de Investigación (Pendiente Registro)'}</div>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{p.horas_solicitadas}h</span>
                         </div>
                         <div style={{ display: 'flex', gap: 8, fontSize: '0.68rem', color: '#9CA3AF', marginTop: 3, flexWrap: 'wrap' }}>
@@ -3428,7 +3451,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 setShowEditForm(false);
                 const res = await getPTAById(pta.id);
                 if (res.success && res.data) {
-                  setPta((prev: any) => ({ ...prev, ...res.data }));
+                  setPta((prev: any) => normalizePTAData(res.data, prev));
                   // Notificar al módulo padre para que actualice la fila en la lista
                   onUpdated?.(res.data);
                 }

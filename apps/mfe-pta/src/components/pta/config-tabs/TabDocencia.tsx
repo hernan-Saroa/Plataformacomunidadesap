@@ -1,122 +1,10 @@
-import React, { useState } from 'react';
-import { BookOpen, AlertCircle, Library, Calculator, Settings2, ChevronDown } from 'lucide-react';
+import React from 'react';
+import { BookOpen, Calculator, ChevronDown } from 'lucide-react';
 import { PTARules } from '../ConfiguracionReglasPTA';
 
 export function TabDocencia({ draft, handleChange }: { draft: PTARules; handleChange: (k: keyof PTARules, v: any) => void }) {
   
   const mult = draft.criterio_multiplicador_docencia || 0;
-
-  // Local state for interactive simulators
-  const [simCrAPT, setSimCrAPT] = useState<number>(3);
-  const [simCrEsp, setSimCrEsp] = useState<number>(2);
-  const [simCrMst, setSimCrMst] = useState<number>(4);
-
-  const [programas, setProgramas] = useState<any[]>([]);
-  const [loadingProgs, setLoadingProgs] = useState(true);
-
-  React.useEffect(() => {
-    async function load() {
-      try {
-        const { apiClient } = await import('../../../../../shell/src/services/api');
-        // Usamos el endpoint real de Programas Académicos
-        const response = await apiClient.get<any>('/auth/api/v1/programas-academicos', { limit: 100 });
-        if (response && response.data) {
-          setProgramas(response.data);
-        } else if (Array.isArray(response)) {
-          setProgramas(response);
-        }
-      } catch (e) {
-        console.error('Error loading programas for docencia config', e);
-      } finally {
-        setLoadingProgs(false);
-      }
-    }
-    load();
-  }, []);
-
-  const handleProgChange = (idProg: string, campo: 'base' | 'multiplicador' | 'esVariable', valor: any) => {
-    const configActual = draft.docencia_por_programa?.[idProg] || { base: 0, multiplicador: draft.criterio_multiplicador_docencia || 3, esVariable: true };
-    const nuevoMap = {
-      ...draft.docencia_por_programa,
-      [idProg]: { ...configActual, [campo]: valor }
-    };
-    handleChange('docencia_por_programa', nuevoMap);
-  };
-
-  const renderSimulador = (
-    idProg: string,
-    titulo: string,
-    desc: string,
-    esVariable: boolean,
-    valorBase: number,
-    cambioBase: (v: number) => void,
-    cambioVariable?: (v: boolean) => void,
-    valorCreditos?: number,
-    cambioCreditos?: (v: number) => void
-  ) => {
-    const total = esVariable ? (valorCreditos! * valorBase * mult) : (valorBase * mult);
-    return (
-      <details key={idProg} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors shadow-sm [&::-webkit-details-marker]:hidden" open={!esVariable}>
-        <summary className="flex items-center justify-between p-4 cursor-pointer select-none bg-slate-50 group-open:bg-blue-50/20">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <h4 className="text-[13px] font-bold text-slate-800 leading-tight">{titulo}</h4>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={(e) => { e.preventDefault(); if (cambioVariable) cambioVariable(!esVariable); }}
-                  className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border transition-colors ${esVariable ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
-                >
-                  {esVariable ? 'Variable por Crédito' : 'Base Fija (Bloque)'}
-                </button>
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-tight">{desc}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 mr-2 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-lg shadow-sm">
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Resultado:</span>
-              <span className="text-sm font-black text-blue-600">{total}h</span>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-slate-200 shadow-sm group-hover:bg-slate-50 transition-colors">
-              <ChevronDown className="w-4 h-4 text-slate-500 transition-transform group-open:rotate-180" />
-            </div>
-          </div>
-        </summary>
-        
-        <div className="p-5 border-t border-slate-100 bg-white">
-          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 justify-center bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-            {esVariable && (
-              <>
-                <div className="flex flex-col items-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Settings2 className="w-3 h-3"/> Simulador Cr.</span>
-                  <input type="number" min="0" value={valorCreditos} onChange={(e) => cambioCreditos!(parseInt(e.target.value) || 0)} className="w-24 bg-white border border-slate-300 text-slate-800 font-bold rounded-lg px-3 py-2.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none shadow-sm transition-all" />
-                </div>
-                <div className="text-slate-300 font-black text-lg">×</div>
-              </>
-            )}
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase mb-2">{esVariable ? 'Base h/Cr.' : 'Base (Bloque)'}</span>
-              <input type="number" min="0" value={valorBase || 0} onChange={(e) => cambioBase(parseInt(e.target.value) || 0)} className="w-24 bg-white border border-slate-300 text-slate-800 font-bold rounded-lg px-3 py-2.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none shadow-sm transition-all" />
-            </div>
-            <div className="text-slate-300 font-black text-lg">×</div>
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Calculator className="w-3 h-3"/> Multiplicador</span>
-              <div className="w-24 bg-slate-100 border border-slate-200 text-slate-500 font-bold rounded-lg px-3 py-2.5 text-center shadow-inner cursor-not-allowed">
-                {mult}
-              </div>
-            </div>
-            <div className="text-slate-300 font-black text-lg">=</div>
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-bold text-blue-600 uppercase mb-2">Total Asignar</span>
-              <div className="w-28 bg-gradient-to-b from-blue-500 to-blue-600 border border-blue-700 text-white font-black rounded-lg px-3 py-2.5 text-center shadow-lg shadow-blue-500/25">
-                {total}h
-              </div>
-            </div>
-          </div>
-        </div>
-      </details>
-    );
-  };
 
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -208,62 +96,22 @@ export function TabDocencia({ draft, handleChange }: { draft: PTARules; handleCh
             </div>
           </details>
 
-          {/* Matriz Paramétrica por Programa */}
+
+          {/* Horas Base por Categoría — Tabla 1 Circular 003/2025 */}
           <details className="group border border-white/80 rounded-3xl bg-white/80 backdrop-blur-sm shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)]" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-5 bg-slate-50/50 group-open:bg-blue-50/30 hover:bg-white transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
                 <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">B</span>
-                Matriz Paramétrica por Programa (Tablas 1 y 2)
-              </span>
-              <div className="flex items-center gap-4">
-                <span className="text-[10px] hidden sm:flex items-center gap-1.5 font-bold text-blue-700 bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg shadow-sm">
-                  <Settings2 className="w-3.5 h-3.5" /> Simulador Multiplicador Activo
-                </span>
-                <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-              </div>
-            </summary>
-            
-            <div className="p-6 border-t border-slate-100 flex flex-col gap-4 bg-slate-50/30">
-              {loadingProgs ? (
-                <div className="text-center py-6 text-sm text-slate-500">Cargando programas académicos...</div>
-              ) : programas.length === 0 ? (
-                <div className="text-center py-6 text-sm text-slate-500">No se encontraron programas académicos.</div>
-              ) : (
-                programas.map((p) => {
-                  const idProg = String(p.id);
-                  const configActual = draft.docencia_por_programa?.[idProg] || { base: 64, multiplicador: draft.criterio_multiplicador_docencia || 3, esVariable: true };
-                  
-                  return renderSimulador(
-                    idProg,
-                    p.nombre, 
-                    p.sede === 'Sede Central' ? "Asignación referencial (Sede Central)" : "Fórmula escalada por cada crédito (Territorial)", 
-                    configActual.esVariable, 
-                    configActual.base,
-                    (v) => handleProgChange(idProg, 'base', v),
-                    (v) => handleProgChange(idProg, 'esVariable', v),
-                    simCrAPT, // Usamos uno por defecto para el simulador o podríamos aislarlo
-                    setSimCrAPT
-                  );
-                })
-              )}
-            </div>
-          </details>
-
-          {/* Horas Base por Categoría (defaults usados cuando el programa no tiene config propia) */}
-          <details className="group border border-white/80 rounded-3xl bg-white/80 backdrop-blur-sm shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)]" open>
-            <summary className="flex cursor-pointer list-none items-center justify-between p-5 bg-slate-50/50 group-open:bg-blue-50/30 hover:bg-white transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">C</span>
-                Horas Base por Categoría
+                Horas Base por Categoría de Programa (Tabla 1)
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
             </summary>
 
             <div className="p-6 border-t border-slate-100 bg-slate-50/30">
               <p className="text-[11px] text-slate-500 leading-tight mb-5 max-w-3xl">
-                Horas base que usa el portal del docente al calcular la carga académica cuando el programa
-                <b> no</b> tiene una configuración específica en la Matriz Paramétrica (sección B). Los bloques fijos
-                aplican una sola vez; las bases por crédito se multiplican por los créditos de la asignatura.
+                Horas base definidas en la Tabla 1 de la Circular 003/2025 para cada categoría de programa.
+                Los <b>bloques fijos</b> (Seminario, Pregrado SC) se asignan completos independiente del N° de créditos.
+                Las <b>bases por crédito</b> (APT, Especialización, Maestría) se multiplican por los créditos de la asignatura × multiplicador.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {([

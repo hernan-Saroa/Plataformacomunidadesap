@@ -76,8 +76,8 @@ export class PtaController {
   }
 
   @Get('catalogos/territoriales')
-  async getCatalogoTerritoriales() {
-    const data = await this.ptaService.getCatalogoTerritoriales();
+  async getCatalogoTerritoriales(@Query('periodo') periodo?: string) {
+    const data = await this.ptaService.getCatalogoTerritoriales(periodo);
     return { success: true, data, total: data.length };
   }
 
@@ -85,6 +85,27 @@ export class PtaController {
   async getCatalogoCetaps(@Query() query: any) {
     const data = await this.ptaService.getCatalogoCetaps(query);
     return { success: true, data, total: data.length };
+  }
+
+  // CETAPs filtrados por programa (via oferta_cetap_programa)
+  @Get('catalogos/cetaps-por-programa')
+  async getCetapsPorPrograma(@Query() query: any) {
+    const data = await this.ptaService.getCetapsPorPrograma(query);
+    return { success: true, data, total: data.length };
+  }
+
+  // Programas ofertados en un CETAP/Sede (acepta auth.sedes.id_sede)
+  @Get('catalogos/programas-por-sede')
+  async getProgramasPorSede(@Query() query: any) {
+    const data = await this.ptaService.getProgramasPorSede(query);
+    return { success: true, data, total: data.length };
+  }
+
+  // Cupos estimados para una combinación CETAP + Programa
+  @Get('catalogos/oferta-cetap')
+  async getOfertaCetap(@Query() query: any) {
+    const data = await this.ptaService.getOfertaCetapPrograma(query);
+    return { success: true, data };
   }
 
   @Get('catalogos/roles-investigacion')
@@ -282,9 +303,10 @@ export class PtaController {
   }
 
   @Post('configuracion')
-  async saveConfiguracion(@Body() body: any) {
+  async saveConfiguracion(@Body() body: any, @Req() req: Request) {
     const rules = body?.rules ?? body;
-    const data = await this.ptaService.saveConfiguracionPTAGlobal(rules);
+    const userId = (req.headers['x-user-id'] as string) || 'admin';
+    const data = await this.ptaService.saveConfiguracionPTAGlobal(rules, userId);
     return { success: true, data };
   }
 
@@ -552,8 +574,9 @@ export class PtaController {
   }
 
   @Get('dashboard/kpis')
-  getDashboardKpis(@Query() _query: any) {
-    return { success: true, data: null };
+  async getDashboardKpis(@Query() query: any) {
+    const data = await this.ptaService.getDashboardKPIs(query?.periodo);
+    return { success: true, data };
   }
 
   @Get('dashboard/directivo')
