@@ -198,7 +198,7 @@ const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any)
   if (lowerLabel.includes('edad')) {
     const edad = findValue('EDAD');
     const rango = findValue('RANGO_EDAD');
-    return [edad ? `${edad} anos` : null, rango].filter(Boolean).join(' / ') || null;
+    return [edad ? `${edad} años` : null, rango].filter(Boolean).join(' / ') || null;
   }
   if (lowerLabel.includes('sexo biol')) return findValue('SEXO_BIOLOGICO');
   if (lowerLabel.includes('inicio / fin')) {
