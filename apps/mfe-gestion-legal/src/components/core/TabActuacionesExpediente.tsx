@@ -19,7 +19,7 @@ import type { ActuacionExpediente } from './expedienteShared';
 import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
 import { legalService } from '../../../../services/api/legal.service';
-import { requiresSignature } from '../../../../utils/fileUtils';
+import { requiresSignature, isPreviewableInViewer } from '../../../../utils/fileUtils';
 import { FirmaDigitalActuacion, FirmaData } from './FirmaDigitalActuacion';
 
 // ==================== TIPOS ====================
@@ -1338,7 +1338,7 @@ export function TabActuacionesExpediente({
                                   </div>
                                 </div>
                                 <div className="flex gap-1.5 shrink-0">
-                                  {onPreviewDocument && (
+                                  {onPreviewDocument && isPreviewableInViewer(actuacionDetalle.documentoNombre || 'documento.pdf') && (
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -1451,7 +1451,7 @@ export function TabActuacionesExpediente({
                                         </Button>
                                       );
                                     }
-                                    if (onPreviewDocument && doc.archivoUrl) {
+                                    if (onPreviewDocument && doc.archivoUrl && isPreviewableInViewer(doc.nombre)) {
                                       return (
                                         <Button
                                           size="sm"
