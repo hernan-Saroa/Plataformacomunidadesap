@@ -1260,6 +1260,7 @@ export interface CorreoJuridico {
     archivado: boolean;
     urgente: boolean;
     tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO';
+    buzon?: 'JUDICIAL' | 'CORREOS' | string; // bandeja de origen (cuenta de correo)
     categoria: string | null;
     moduloSugerido: string | null;
     confianzaClasificacion: number | null;
@@ -1288,6 +1289,7 @@ export interface CorreoFilters {
     archivado?: boolean;
     direccion?: string;
     search?: string;
+    buzon?: string; // JUDICIAL | CORREOS
 }
 
 export interface SendCorreoDto {
@@ -1296,6 +1298,7 @@ export interface SendCorreoDto {
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    buzon?: string; // JUDICIAL | CORREOS — cuenta remitente según el tab
 }
 
 export interface AdjuntoCorreo {
@@ -1315,8 +1318,17 @@ export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
      */
-    async syncCorreos(nextLink?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink });
+    async syncCorreos(nextLink?: string, buzon?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink, buzon });
+    }
+
+    /** Buzones de correo configurados en el backend (JUDICIAL / CORREOS). */
+    async getMailboxes(): Promise<Array<{ buzon: string; address: string }>> {
+        try {
+            return await apiClient.get(`${SERVICE_PREFIX}/correos/mailboxes`);
+        } catch {
+            return [{ buzon: 'JUDICIAL', address: '' }];
+        }
     }
 
     /**
@@ -1336,6 +1348,7 @@ export class CorreosJuridicosService {
         if (filters?.urgente !== undefined) params.urgente = String(filters.urgente);
         if (filters?.archivado !== undefined) params.archivado = String(filters.archivado);
         if (filters?.search) params.search = filters.search;
+        if (filters?.buzon) params.buzon = filters.buzon;
 
         return apiClient.get(`${SERVICE_PREFIX}/correos`, { params });
     }

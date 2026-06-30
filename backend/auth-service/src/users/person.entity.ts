@@ -62,4 +62,10 @@ export class Person {
   @ManyToOne(() => Sede, { nullable: true })
   @JoinColumn({ name: 'id_sede' })
   sede: Sede | null;
+
+  @Column({ name: 'fec_nacimiento' })
+  fec_nacimiento: string;
+
+  @Column({ name: 'dir_residencia' })
+  dir_residencia: string;
 }

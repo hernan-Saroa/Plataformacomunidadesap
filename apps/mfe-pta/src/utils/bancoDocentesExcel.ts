@@ -3,37 +3,44 @@ import { sanitizeText } from './textSanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../shared/territoriales-cetaps-esap';
 
 export const BANCO_DOCENTES_HEADERS = [
-  '0',
-  'Documento de identidad',
-  'Vinculación',
-  'Nombre completo',
-  'Territorial',
-  'Categoría',
-  'Núcleo Temático',
-  'Nivel de Formación',
-  'Perfil académico PRO',
-  'Perfil académico',
-  'Pregrado',
-  'Especialización',
-  'Maestría',
-  'Doctorado',
-  'PosDoctorado',
-  'Investigación 2025',
-  'Origen de vinculación',
-  'Acto Administrativo de Vinculación ',
-  'Correo Institucional',
-  'Correo personal',
-  'Telefono',
-  'Última Evaluación',
-  'Dedicación',
-  'Situación Administrativa',
-  'Inicio de Vinculación',
-  'Fin de Vinculación',
-  'Puntaje Salarial',
-  'Género',
-  'Nacimiento',
-  'Edad',
-  'Rango de edad',
+  'DOCUMENTO_IDENTIDAD',
+  'TIPO_DOCUMENTO',
+  'NOMBRE_COMPLETO',
+  'GENERO',
+  'SEXO_BIOLOGICO',
+  'FECHA_NACIMIENTO',
+  'EDAD',
+  'RANGO_EDAD',
+  'CORREO_INSTITUCIONAL',
+  'CORREO_PERSONAL',
+  'TELEFONO',
+  'VINCULACION',
+  'REGIMEN_NORMATIVO',
+  'HORAS_PTA',
+  'TERRITORIAL',
+  'DEDICACION',
+  'DEDICACION_HORAS_SEMANA',
+  'CATEGORIA_ESCALAFON',
+  'INICIO_VINCULACION',
+  'FIN_VINCULACION',
+  'ESTADO_DOCENTE',
+  'ACTO_ADMINISTRATIVO',
+  'ORIGEN_VINCULACION',
+  'PUNTAJE_SALARIAL',
+  'SITUACION_ADMINISTRATIVA',
+  'SITUACION_CATEGORIA',
+  'NIVEL_FORMACION',
+  'TITULO_PREGRADO',
+  'TITULO_ESPECIALIZACION',
+  'TITULO_MAESTRIA',
+  'TITULO_DOCTORADO',
+  'TITULO_POSDOCTORADO',
+  'NUCLEO_TEMATICO',
+  'PERFIL_ACADEMICO',
+  'INVESTIGACION_ACTIVA',
+  'ULTIMA_EVALUACION',
+  'OBSERVACIONES',
+  'ID_RUND',
 ] as const;
 
 type PreviewStatus = 'valido' | 'advertencia' | 'invalido';
@@ -99,12 +106,12 @@ const HEADER_ALIASES = {
   nivelFormacion: ['niveldeformacion', 'nivelformacion'],
   perfilAcademicoPro: ['perfilacademicopro', 'perfilacademicoprofesional'],
   perfilAcademico: ['perfilacademico'],
-  pregrado: ['pregrado'],
-  especializacion: ['especializacion'],
-  maestria: ['maestria', 'maestriadoctorado'],
-  doctorado: ['doctorado'],
-  posDoctorado: ['posdoctorado'],
-  investigacion: ['investigacion2025', 'investigacion'],
+  pregrado: ['pregrado', 'titulopregrado'],
+  especializacion: ['especializacion', 'tituloespecializacion'],
+  maestria: ['maestria', 'maestriadoctorado', 'titulomaestria'],
+  doctorado: ['doctorado', 'titulodoctorado'],
+  posDoctorado: ['posdoctorado', 'tituloposdoctorado'],
+  investigacion: ['investigacion2025', 'investigacion', 'investigacionactiva'],
   origenVinculacion: ['origendevinculacion', 'origenvinculacion'],
   actoAdministrativoVinculacion: ['actoadministrativodevinculacion', 'actoadministrativovinculacion', 'actoadministrativo'],
   correoInstitucional: ['correoinstitucional', 'emailinstitucional'],
@@ -120,9 +127,15 @@ const HEADER_ALIASES = {
   fechaNacimiento: ['nacimiento', 'fechadenacimiento', 'fechanacimiento'],
   edad: ['edad'],
   rangoEdad: ['rangodeedad'],
-  horasAsignables: ['horasaprogramar', 'horasprogramables', 'horasasignables'],
+  regimenNormativo: ['regimennormativo'],
+  sexoBiologico: ['sexobiologico'],
+  horasAsignables: ['horasaprogramar', 'horasprogramables', 'horasasignables', 'horaspta'],
+  dedicacionHorasSemana: ['dedicacionhorassemana', 'horassemanales'],
+  situacionCategoria: ['situacioncategoria'],
+  observaciones: ['observaciones'],
+  idRund: ['idrund'],
   periodoAplicacion: ['periodoaplicacion', 'periodo'],
-  estadoRegistro: ['estadoregistro', 'estado'],
+  estadoRegistro: ['estadoregistro', 'estadodocente', 'estado'],
 } as const;
 
 const HEADER_KEYS = new Set(
@@ -226,6 +239,33 @@ function getRowValue(row: NormalizedInputRow, aliases: readonly string[]): unkno
     }
   }
   return null;
+}
+
+function findBancoDocentesHeaderIndex(matrix: unknown[][]): number {
+  return matrix.findIndex((row) => {
+    const keys = new Set((row || []).map((cell) => normalizeHeaderKey(String(cell || ''))));
+    return (keys.has('documentoidentidad') || keys.has('documento') || keys.has('documentodeidentidad'))
+      && (keys.has('nombrecompleto') || keys.has('nombre'))
+      && (keys.has('vinculacion') || keys.has('tipovinculacion'));
+  });
+}
+
+function sheetToBancoDocenteRows(sheet: XLSX.WorkSheet): { rows: Record<string, unknown>[]; firstDataRowNumber: number } {
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
+  const headerIndex = findBancoDocentesHeaderIndex(matrix);
+  if (headerIndex < 0) {
+    return {
+      rows: XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true }),
+      firstDataRowNumber: 2,
+    };
+  }
+
+  const headers = (matrix[headerIndex] || []).map((header) => toCleanString(header) || '');
+  const rows = matrix.slice(headerIndex + 1)
+    .filter((row) => (row || []).some((cell) => cell !== null && cell !== undefined && String(cell).trim() !== ''))
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header, row?.[index] ?? null]).filter(([header]) => header)));
+
+  return { rows, firstDataRowNumber: headerIndex + 2 };
 }
 
 function joinNameParts(parts: Array<string | null>): string | null {
@@ -357,18 +397,24 @@ function normalizeExcelDocenteRow(rawRow: Record<string, unknown>) {
     correoAlternativo: toCleanString(getRowValue(row, HEADER_ALIASES.correoAlternativo))?.toLowerCase() || null,
     telefono: toCleanString(getRowValue(row, HEADER_ALIASES.telefono)),
     ultimaEvaluacion: toCleanString(getRowValue(row, HEADER_ALIASES.ultimaEvaluacion)),
+    regimenNormativo: toCleanString(getRowValue(row, HEADER_ALIASES.regimenNormativo)),
     dedicacion,
+    dedicacionHorasSemana: parseNumeric(getRowValue(row, HEADER_ALIASES.dedicacionHorasSemana)),
     situacionAdministrativa: toCleanString(getRowValue(row, HEADER_ALIASES.situacionAdministrativa)),
+    situacionCategoria: toCleanString(getRowValue(row, HEADER_ALIASES.situacionCategoria)),
     fechaInicioVinculacion: parseExcelDate(fechaInicioRaw),
     fechaFinVinculacion: parseExcelDate(fechaFinRaw),
     puntajeSalarial: parseNumeric(getRowValue(row, HEADER_ALIASES.puntajeSalarial)),
     genero: toCleanString(getRowValue(row, HEADER_ALIASES.genero)),
+    sexoBiologico: toCleanString(getRowValue(row, HEADER_ALIASES.sexoBiologico)),
     fechaNacimiento,
     edad,
     rangoEdad: toCleanString(getRowValue(row, HEADER_ALIASES.rangoEdad)) || computeRangoEdad(edad),
     horasAsignables: deriveHorasAsignables(dedicacion, parseNumeric(getRowValue(row, HEADER_ALIASES.horasAsignables))),
     periodoAplicacion: toCleanString(getRowValue(row, HEADER_ALIASES.periodoAplicacion)),
     estadoRegistro: toCleanString(getRowValue(row, HEADER_ALIASES.estadoRegistro)),
+    observaciones: toCleanString(getRowValue(row, HEADER_ALIASES.observaciones)),
+    idRund: toCleanString(getRowValue(row, HEADER_ALIASES.idRund)),
     _raw: {
       territorial: territorialRaw,
       vinculacion: vinculacionRaw,
@@ -531,18 +577,68 @@ function buildExportRow(user: any, index: number) {
   };
 }
 
-function appendMainSheet(workbook: XLSX.WorkBook, rows: Record<string, string | number>[], sheetName: string) {
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: [...BANCO_DOCENTES_HEADERS] });
+function buildOfficialExportRow(user: any, index: number) {
+  const bancoDocente = user?.banco_docente || user?.docente?.banco_docente || user || {};
+  const documentNumber = normalizeDocumentNumber(bancoDocente?.documento_identidad || user?.identificacion || user?.documento || user?.document) || '';
+  const dedicacion = toCleanString(bancoDocente?.dedicacion || user?.dedicacion_label) || '';
+  const estadoDocente = toCleanString(bancoDocente?.estado || (user?.activo === false ? 'INACTIVO' : 'ACTIVO')) || '';
 
-  sheet['!cols'] = [
-    { wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 36 }, { wch: 20 }, { wch: 16 }, { wch: 42 }, { wch: 22 },
-    { wch: 44 }, { wch: 44 }, { wch: 28 }, { wch: 34 }, { wch: 34 }, { wch: 30 }, { wch: 24 }, { wch: 26 },
-    { wch: 42 }, { wch: 42 }, { wch: 30 }, { wch: 30 }, { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 34 },
-    { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 18 },
-  ];
+  return {
+    DOCUMENTO_IDENTIDAD: documentNumber,
+    TIPO_DOCUMENTO: toCleanString(bancoDocente?.tipo_documento || user?.tipo_identificacion) || '',
+    NOMBRE_COMPLETO: buildFullName(user, bancoDocente),
+    GENERO: toCleanString(bancoDocente?.genero || user?.genero) || '',
+    SEXO_BIOLOGICO: toCleanString(bancoDocente?.sexo_biologico) || '',
+    FECHA_NACIMIENTO: formatExportDate(bancoDocente?.nacimiento || user?.fecha_nacimiento),
+    EDAD: parseNumeric(bancoDocente?.edad) ?? '',
+    RANGO_EDAD: toCleanString(bancoDocente?.rango_edad) || '',
+    CORREO_INSTITUCIONAL: toCleanString(bancoDocente?.correo_institucional || user?.correo_institucional || user?.email) || '',
+    CORREO_PERSONAL: toCleanString(bancoDocente?.correo_personal || user?.correo_alternativo) || '',
+    TELEFONO: toCleanString(bancoDocente?.telefono || user?.telefono || user?.phone) || '',
+    VINCULACION: toCleanString(bancoDocente?.vinculacion || user?.tipoVinculacion_label) || '',
+    REGIMEN_NORMATIVO: toCleanString(bancoDocente?.regimen_normativo || bancoDocente?.regimenNormativo) || '',
+    HORAS_PTA: parseNumeric(bancoDocente?.horas_programables) ?? '',
+    TERRITORIAL: toCleanString(bancoDocente?.territorial || user?.territorial_nombre) || '',
+    DEDICACION: dedicacion,
+    DEDICACION_HORAS_SEMANA: parseNumeric(bancoDocente?.dedicacion_horas_semana) ?? '',
+    CATEGORIA_ESCALAFON: toCleanString(bancoDocente?.categoria || user?.categoria_escalafon || user?.escalafon) || '',
+    INICIO_VINCULACION: formatExportDate(bancoDocente?.inicio_vinculacion),
+    FIN_VINCULACION: formatExportDate(bancoDocente?.fin_vinculacion),
+    ESTADO_DOCENTE: estadoDocente,
+    ACTO_ADMINISTRATIVO: toCleanString(bancoDocente?.acto_administrativo_vinculacion) || '',
+    ORIGEN_VINCULACION: toCleanString(bancoDocente?.origen_vinculacion) || '',
+    PUNTAJE_SALARIAL: parseNumeric(bancoDocente?.puntaje_salarial) ?? '',
+    SITUACION_ADMINISTRATIVA: toCleanString(bancoDocente?.situacion_administrativa) || '',
+    SITUACION_CATEGORIA: toCleanString(bancoDocente?.situacion_categoria) || '',
+    NIVEL_FORMACION: toCleanString(bancoDocente?.nivel_formacion) || '',
+    TITULO_PREGRADO: toCleanString(bancoDocente?.pregrado) || '',
+    TITULO_ESPECIALIZACION: toCleanString(bancoDocente?.especializacion) || '',
+    TITULO_MAESTRIA: toCleanString(bancoDocente?.maestria) || '',
+    TITULO_DOCTORADO: toCleanString(bancoDocente?.doctorado) || '',
+    TITULO_POSDOCTORADO: toCleanString(bancoDocente?.posdoctorado) || '',
+    NUCLEO_TEMATICO: toCleanString(bancoDocente?.nucleo_tematico) || '',
+    PERFIL_ACADEMICO: toCleanString(bancoDocente?.perfil_academico) || '',
+    INVESTIGACION_ACTIVA: toCleanString(bancoDocente?.investigacion) || '',
+    ULTIMA_EVALUACION: toCleanString(bancoDocente?.ultima_evaluacion) || '',
+    OBSERVACIONES: toCleanString(bancoDocente?.observaciones) || '',
+    ID_RUND: toCleanString(bancoDocente?.id_rund || bancoDocente?.idRund) || '',
+  };
+}
+
+function appendMainSheet(workbook: XLSX.WorkBook, rows: Record<string, string | number>[], sheetName: string) {
+  const headerList = [...BANCO_DOCENTES_HEADERS];
+  const title = `ESAP -SM-01 RUND | CARGA MASIVA BANCO DOCENTES TC/MT | ${headerList.length} campos`;
+  const sheet = XLSX.utils.aoa_to_sheet([
+    [title],
+    headerList,
+    ...rows.map((row) => headerList.map((header) => row[header] ?? '')),
+  ]);
+
+  sheet['!cols'] = headerList.map((header) => ({ wch: Math.min(Math.max(header.length + 2, 14), 42) }));
+  sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headerList.length - 1 } }];
 
   sheet['!autofilter'] = {
-    ref: `A1:${XLSX.utils.encode_col(BANCO_DOCENTES_HEADERS.length - 1)}${rows.length + 1}`,
+    ref: `A2:${XLSX.utils.encode_col(headerList.length - 1)}${rows.length + 2}`,
   };
 
   XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
@@ -562,7 +658,7 @@ export async function parseBancoDocentesFile(
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true });
+  const { rows, firstDataRowNumber } = sheetToBancoDocenteRows(sheet);
 
   if (!rows.length) {
     throw new Error('El archivo no contiene registros.');
@@ -610,15 +706,15 @@ export async function parseBancoDocentesFile(
 
     return {
       id: rowId,
-      fila: index + 2,
-      identificador: docente.documentNumber || `fila-${index + 2}`,
+      fila: firstDataRowNumber + index,
+      identificador: docente.documentNumber || `fila-${firstDataRowNumber + index}`,
       nombre: docente.nombreCompleto || 'Sin nombre',
       estado,
       mensajes: [...errors, ...warnings],
       errores: errors,
       advertencias: warnings,
       accion,
-      datos: errors.length > 0 ? null : { ...payload, __previewId: rowId, __sourceRowNumber: index + 2 },
+      datos: errors.length > 0 ? null : { ...payload, __previewId: rowId, __sourceRowNumber: firstDataRowNumber + index },
       resultadoAplicacion: errors.length > 0 ? 'omitido' : 'pendiente',
       mensajeAplicacion: null,
     };
@@ -628,6 +724,26 @@ export async function parseBancoDocentesFile(
 }
 
 export function downloadBancoDocentesTemplate() {
+  {
+    const workbook = XLSX.utils.book_new();
+    appendMainSheet(workbook, [], 'CARGA_DOCENTES');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(TERRITORIALES_OFICIALES.map((item) => ({ Codigo: item.codigo, Territorial: item.nombre }))),
+      'CATALOGO_TERRITORIALES',
+    );
+    const instruccionesSheet = XLSX.utils.json_to_sheet([
+      { Paso: 1, Detalle: 'Diligencie la hoja CARGA_DOCENTES sin cambiar los encabezados.' },
+      { Paso: 2, Detalle: 'Una fila equivale a un docente del Banco RUND.' },
+      { Paso: 3, Detalle: 'Use fechas en formato DD/MM/YYYY o YYYY-MM-DD.' },
+      { Paso: 4, Detalle: 'El sistema valida documento, correo institucional, territorial, vinculacion, dedicacion y soportes RUND.' },
+    ]);
+    instruccionesSheet['!cols'] = [{ wch: 10 }, { wch: 120 }];
+    XLSX.utils.book_append_sheet(workbook, instruccionesSheet, 'INSTRUCCIONES');
+    XLSX.writeFile(workbook, 'CargaDocentes_RUND_PLANTILLA.xlsx');
+    return;
+  }
+
   const workbook = XLSX.utils.book_new();
   const emptyTemplateRow = Object.fromEntries(BANCO_DOCENTES_HEADERS.map((header) => [header, ''])) as Record<string, string>;
   appendMainSheet(workbook, [emptyTemplateRow], 'DATOS_DOCENTES');
@@ -756,7 +872,7 @@ export function downloadBancoDocentesExport(users: any[], fileName?: string) {
     return buildFullName(left, leftBanco).localeCompare(buildFullName(right, rightBanco), 'es');
   });
 
-  const rows = orderedUsers.map((user, index) => buildExportRow(user, index));
+  const rows = orderedUsers.map((user, index) => buildOfficialExportRow(user, index));
   const stamp = new Date();
   const safeFileName = fileName || `BANCO_DOCENTES_ESAP_${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, '0')}-${String(stamp.getDate()).padStart(2, '0')}.xlsx`;
   const workbook = XLSX.utils.book_new();

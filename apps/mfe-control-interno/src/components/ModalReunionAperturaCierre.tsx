@@ -380,7 +380,7 @@ function SelectorPersonaUnica({
 export interface DatosReunionApertura {
   fecha: string;
   hora: string;
-  modalidad: 'presencial' | 'virtual';
+  modalidad: 'presencial' | 'virtual' | 'hibrida';
   lugar: string;
   participantes: string;
   temasTratados: string;
@@ -393,7 +393,7 @@ export interface DatosReunionApertura {
 export interface DatosReunionCierre {
   fecha: string;
   hora: string;
-  modalidad: 'presencial' | 'virtual';
+  modalidad: 'presencial' | 'virtual' | 'hibrida';
   lugar: string;
   participantes: string;
   temasTratados: string;
@@ -442,7 +442,7 @@ function parseReunionToForm(
 ): {
   fecha: string;
   hora: string;
-  modalidad: 'presencial' | 'virtual';
+  modalidad: 'presencial' | 'virtual' | 'hibrida';
   lugar: string;
   participantesLista: PersonaOpcion[];
   temasTratados: string;
@@ -466,12 +466,12 @@ function parseReunionToForm(
     };
   }
   const d = r.fecha ? (typeof r.fecha === 'string' ? new Date(r.fecha) : r.fecha) : null;
-  const m = (r.modalidad === 'hibrida' ? 'presencial' : (r.modalidad as 'presencial' | 'virtual') || 'presencial');
+  const m = ((r.modalidad as 'presencial' | 'virtual' | 'hibrida') || 'presencial');
   const docId = r.documentoBibliotecaId ?? '';
   return {
     fecha: d ? d.toISOString().slice(0, 10) : '',
     hora: d ? d.toTimeString().slice(0, 5) : '',
-    modalidad: m === 'virtual' ? 'virtual' : 'presencial',
+    modalidad: (['presencial', 'virtual', 'hibrida'].includes(m) ? m : 'presencial') as 'presencial' | 'virtual' | 'hibrida',
     lugar: r.lugar || '',
     participantesLista: parseParticipantesLista(r.participantes, personas),
     temasTratados: r.agenda?.temasTratados || '',
@@ -635,7 +635,7 @@ export function ModalReunionApertura({
 }: ModalReunionAperturaProps) {
   const [fecha, setFecha] = useState('');
   const [hora, setHora] = useState('');
-  const [modalidad, setModalidad] = useState<'presencial' | 'virtual'>('presencial');
+  const [modalidad, setModalidad] = useState<'presencial' | 'virtual' | 'hibrida'>('presencial');
   const [lugar, setLugar] = useState('');
   const [participantesLista, setParticipantesLista] = useState<PersonaOpcion[]>([]);
   const [temasTratados, setTemasTratados] = useState('');
@@ -788,17 +788,21 @@ export function ModalReunionApertura({
                     <input type="radio" name="modalidad" checked={modalidad === 'virtual'} onChange={() => setModalidad('virtual')} />
                     Virtual
                   </label>
+                  <label className="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" name="modalidad" checked={modalidad === 'hibrida'} onChange={() => setModalidad('hibrida')} />
+                    Híbrido
+                  </label>
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                  {modalidad === 'virtual' ? 'Link de reunión (URL)' : 'Lugar'}
+                  {modalidad === 'virtual' ? 'Link de reunión (URL)' : modalidad === 'hibrida' ? 'Lugar / Link de reunión' : 'Lugar'}
                 </label>
                 <input
-                  type={modalidad === 'virtual' ? 'url' : 'text'}
+                  type="text"
                   value={lugar}
                   onChange={(e) => setLugar(e.target.value)}
-                  placeholder={modalidad === 'virtual' ? 'https://teams.microsoft.com/...' : 'Ej: Sala 203'}
+                  placeholder={modalidad === 'virtual' ? 'https://teams.microsoft.com/...' : modalidad === 'hibrida' ? 'Ej: Sala 203 o https://teams.microsoft.com/...' : 'Ej: Sala 203'}
                   className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -830,7 +834,7 @@ export function ModalReunionCierre({
 }: ModalReunionCierreProps) {
   const [fecha, setFecha] = useState('');
   const [hora, setHora] = useState('');
-  const [modalidad, setModalidad] = useState<'presencial' | 'virtual'>('presencial');
+  const [modalidad, setModalidad] = useState<'presencial' | 'virtual' | 'hibrida'>('presencial');
   const [lugar, setLugar] = useState('');
   const [participantesLista, setParticipantesLista] = useState<PersonaOpcion[]>([]);
   const [temasTratados, setTemasTratados] = useState('');
@@ -983,17 +987,21 @@ export function ModalReunionCierre({
                     <input type="radio" name="modalidad-cierre" checked={modalidad === 'virtual'} onChange={() => setModalidad('virtual')} />
                     Virtual
                   </label>
+                  <label className="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" name="modalidad-cierre" checked={modalidad === 'hibrida'} onChange={() => setModalidad('hibrida')} />
+                    Híbrido
+                  </label>
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                  {modalidad === 'virtual' ? 'Link de reunión (URL)' : 'Lugar'}
+                  {modalidad === 'virtual' ? 'Link de reunión (URL)' : modalidad === 'hibrida' ? 'Lugar / Link de reunión' : 'Lugar'}
                 </label>
                 <input
-                  type={modalidad === 'virtual' ? 'url' : 'text'}
+                  type="text"
                   value={lugar}
                   onChange={(e) => setLugar(e.target.value)}
-                  placeholder={modalidad === 'virtual' ? 'https://teams.microsoft.com/...' : 'Ej: Sala 203'}
+                  placeholder={modalidad === 'virtual' ? 'https://teams.microsoft.com/...' : modalidad === 'hibrida' ? 'Ej: Sala 203 o https://teams.microsoft.com/...' : 'Ej: Sala 203'}
                   className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                 />
               </div>

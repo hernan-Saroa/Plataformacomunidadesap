@@ -129,6 +129,16 @@ function mapResponsablesRolDesdeBackend(rol: any): Auditor[] {
 
 const esUUID = esUuidPersona;
 
+function logPlanAnualDebug(...args: unknown[]): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage.getItem('debug:plan-anual') === '1') {
+      console.log(...args);
+    }
+  } catch {
+    /* debug disabled */
+  }
+}
+
 async function limpiarBorradoresWizard(): Promise<void> {
   try {
     localStorage.removeItem('esap:wizard_plan_anual_draft');
@@ -2000,7 +2010,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           // edición/creación/activación solo debe ver planes donde está en el
           // equipo de aprobación. No le interesa ni puede actuar sobre los demás.
           const esSoloComite = puedeAprobarPlan && !puedeEditarPlan && !puedeActivarPlan && !puedeCrearPlan && !esSuperUsuario;
-          console.log('[PlanAnualDefinitivo] Filtro planes:', {
+          logPlanAnualDebug('[PlanAnualDefinitivo] Filtro planes:', {
             esSoloComite,
             puedeAprobarPlan,
             puedeEditarPlan,
@@ -2393,12 +2403,12 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // ═══════════════════════════════════════════════════════════════
       // DEBUG: Resumen completo de lo que se va a enviar al backend
       // ═══════════════════════════════════════════════════════════════
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('🚀 [handleCrearPlan] INICIO - Creando Plan Anual');
-      console.log(`   Vigencia: ${vigencia}`);
-      console.log(`   Jefe OCI: ${jefeOCI.nombre} (id: ${jefeOCI.id})`);
-      console.log(`   Fechas: ${fechaInicio} → ${fechaFin}`);
-      console.log(`   Roles configurados: ${rolesConfig.length}`);
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug('🚀 [handleCrearPlan] INICIO - Creando Plan Anual');
+      logPlanAnualDebug(`   Vigencia: ${vigencia}`);
+      logPlanAnualDebug(`   Jefe OCI: ${jefeOCI.nombre} (id: ${jefeOCI.id})`);
+      logPlanAnualDebug(`   Fechas: ${fechaInicio} → ${fechaFin}`);
+      logPlanAnualDebug(`   Roles configurados: ${rolesConfig.length}`);
       
       /** Solo actividades con checkbox marcado en el wizard (`incluidaEnPlan !== false`). */
       const actividadesTemplateIncluidas = (rc: any) =>
@@ -2416,10 +2426,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         const tareasEnRol = todasActs.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
         totalTareasEsperadas += tareasEnRol;
         
-        console.log(`   Rol ${rc.numero} "${rc.nombre}": ${actSel} sel + ${actCus} custom = ${totalAct} actividades, ${tareasEnRol} tareas, ${rc.responsables?.length || 0} responsables`);
+        logPlanAnualDebug(`   Rol ${rc.numero} "${rc.nombre}": ${actSel} sel + ${actCus} custom = ${totalAct} actividades, ${tareasEnRol} tareas, ${rc.responsables?.length || 0} responsables`);
       }
-      console.log(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // responsable_id = id_person (auth.personas), no el UUID de configuracion_profesionales_ocig
       const responsableIdPerson = idPersonaParaPlanAnual(jefeOCI);
@@ -2761,7 +2771,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             ...(rolConfig.actividadesCustom || [])
           ];
 
-          console.log(`📦 [handleCrearPlan] Rol ${rolBackend.rol_numero}:`, {
+          logPlanAnualDebug(`📦 [handleCrearPlan] Rol ${rolBackend.rol_numero}:`, {
             actividadesSeleccionadas: (rolConfig.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false).length,
             actividadesCustom: rolConfig.actividadesCustom?.length || 0,
             primeraActividad: todasActividades[0]?.nombre,
@@ -2883,6 +2893,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       if (planCreado?.id) {
         await limpiarBorradoresWizard();
         setPlanesListVersion((v) => v + 1);
+        vigenciaContext?.refetch?.();
         if (opciones?.permanecerEnWizard) {
           setAñoActual(vigencia);
           await abrirWizardConPlan(
@@ -2917,14 +2928,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // NO recargamos el plan ni cambiamos la vista aquí, 
       // lo hará el Wizard después de mostrar el Modal de feedback.
 
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✅ [handleCrearPlan] RESUMEN FINAL:`);
-      console.log(`   Actividades creadas: ${actividadesCreadas}`);
-      console.log(`   Actividades fallidas: ${actividadesFallidas}`);
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug(`✅ [handleCrearPlan] RESUMEN FINAL:`);
+      logPlanAnualDebug(`   Actividades creadas: ${actividadesCreadas}`);
+      logPlanAnualDebug(`   Actividades fallidas: ${actividadesFallidas}`);
       if (erroresPorActividad.length > 0) {
-        console.log(`   Errores:`, erroresPorActividad);
+        logPlanAnualDebug(`   Errores:`, erroresPorActividad);
       }
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       if (actividadesFallidas === 0) {
         if (!opciones?.silencioso) {

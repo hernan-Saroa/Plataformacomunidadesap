@@ -111,7 +111,7 @@ Login → auth-service genera JWT con roles[] → Frontend guarda token + user d
 | `JEFE_DE_LA_OCID` | Jefe OCID | directivo | Control Disciplinario |
 | `SECRETARIA_RADICADOR` | Radicador Disciplinario | administrativo | Control Disciplinario |
 | `PROFESIONAL` | Profesional Disciplinario | administrativo | Control Disciplinario |
-| `COORDINADOR_CERT_LABORAL` | Coordinador Cert. Laboral | backoffice | Registro Académico |
+| `COORDINADOR_CERT_LABORAL` | Coordinador Cert. Laboral | backoffice | Verificación de títulos |
 | `AUDITOR_LIDER` | Auditor Líder | backoffice | Control Interno |
 
 ### Roles de OCI (auditoría):

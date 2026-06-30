@@ -469,7 +469,7 @@ export function ValidarCertificadoGrado({
                         Este certificado no se encuentra vigente
                       </p>
                       <p className="text-sm text-amber-800">
-                        Verifica con Registro Académico antes de usar este documento como soporte
+                        Verifica con el equipo de Verificación de títulos antes de usar este documento como soporte
                         oficial.
                       </p>
                     </div>
@@ -625,7 +625,7 @@ export function ValidarCertificadoGrado({
                     Validación de certificados de grado
                   </DialogTitle>
                   <DialogDescription id={descriptionId} className="max-w-2xl text-sm text-slate-600">
-                    Verifica certificados académicos y títulos emitidos por Registro Académico usando el
+                    Verifica certificados académicos y títulos emitidos por el equipo de Verificación de títulos usando el
                     código QR, el enlace del QR o el número del certificado.
                   </DialogDescription>
                 </div>

@@ -18,9 +18,9 @@ INSERT INTO academic_registration.signers (
   updated_at
 ) VALUES (
   '22222222-2222-2222-2222-222222222222',
-  'DIRECTOR DE REGISTRO ACADÉMICO',
-  'Director(a) de Registro Académico',
-  'Registro Académico',
+  'DIRECTOR DE VERIFICACIÓN DE TÍTULOS',
+  'Director(a) de Verificación de títulos',
+  'Verificación de títulos',
   'registro.academico@esap.edu.co',
   true,
   true,
@@ -469,8 +469,8 @@ INSERT INTO academic_registration.graduation_certificates (
   'DIPL-2024-001234',
   'ACTA-2024-06-001',
   'Sede Principal Bogotá',
-  'DIRECTOR DE REGISTRO ACADÉMICO',
-  'Director(a) de Registro Académico',
+  'DIRECTOR DE VERIFICACIÓN DE TÍTULOS',
+  'Director(a) de Verificación de títulos',
   '2025-01-15',
   'VALID',
   NOW(),
@@ -548,7 +548,7 @@ INSERT INTO academic_registration.certificate_template_config (
   '22222222-2222-2222-2222-222222222222',
   'Arial Narrow, Arial, sans-serif',
   '<p style="text-align: justify; line-height: 1.8;">
-    El suscrito <strong>Director de Registro Académico</strong> de la <strong>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</strong>
+    El suscrito <strong>Director de Verificación de títulos</strong> de la <strong>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</strong>
   </p>
   <h2 style="text-align: center; margin: 40px 0; font-size: 18pt; font-weight: bold;">CERTIFICA QUE:</h2>
   <p style="text-align: justify; line-height: 1.8;">

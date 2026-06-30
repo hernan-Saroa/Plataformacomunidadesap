@@ -51,6 +51,7 @@ type EstadoComunicacion = 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA' | 'ENVIADA';
 interface ComunicacionUnificada {
   id: string;
   tipo: TipoComunicacion;
+  buzon?: string; // bandeja de origen: JUDICIAL | CORREOS
   tipoProceso?: string;
   asunto: string;
   descripcion: string;
@@ -230,6 +231,10 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // Filtro adicional: Medios de Control (filtra correos cuyo origen es un órgano de control)
   const [filtroMedioControl, setFiltroMedioControl] = useState<string>('todos');
 
+  // Filtro interno por BUZÓN (cuenta de correo): aplica en los tabs generales
+  // (Respondidos/Urgentes/Enviados/Archivados) para distinguir Judicial vs Correos.
+  const [filtroBuzon, setFiltroBuzon] = useState<'todos' | 'JUDICIAL' | 'CORREOS'>('todos');
+
   // Estado para el nuevo modal de responder
   const [modalResponderOpen, setModalResponderOpen] = useState(false);
   const [correoParaResponder, setCorreoParaResponder] = useState<CorreoOriginalData | null>(null);
@@ -258,6 +263,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return {
       id: correo.id,
       tipo: tipoFinal,
+      buzon: (correo as any).buzon || 'JUDICIAL',
       asunto: correo.asunto,
       descripcion: correo.cuerpoTexto || '',
       remitente: correo.remitenteNombre || correo.remitenteEmail,
@@ -311,37 +317,46 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
   };
 
-  // Sincronizar con Microsoft Graph de forma progresiva
+  // Sincronizar con Microsoft Graph de forma progresiva.
+  // Itera sobre cada BUZÓN configurado (JUDICIAL y, cuando exista, CORREOS).
   const handleSyncCorreos = async () => {
     setSyncing(true);
-    let nextLink: string | null | undefined = undefined;
     let totalSynced = 0;
     let totalErrors = 0;
-    let pagesProcessed = 0;
-    const MAX_PAGES = 10; // Límite de 500 correos (10 * 50)
+    const MAX_PAGES = 10; // Límite de 500 correos por buzón (10 * 50)
 
     try {
       toast.info("Iniciando sincronización de correos...");
 
-      do {
-        // Notificar progreso si no es la primera página
-        if (pagesProcessed > 0) {
-          toast.loading(`Cargando lote ${pagesProcessed + 1}...`, { id: 'sync-progress', duration: 2000 });
-        }
+      // Buzones configurados en el backend; si falla, se usa JUDICIAL por defecto.
+      let buzones: string[] = [];
+      try {
+        const mailboxes = await correosJuridicosService.getMailboxes();
+        buzones = (mailboxes || []).map(m => m.buzon).filter(Boolean);
+      } catch { /* fallback abajo */ }
+      if (buzones.length === 0) buzones = ['JUDICIAL'];
 
-        const result = await correosJuridicosService.syncCorreos(nextLink ?? undefined);
+      for (const buzon of buzones) {
+        let nextLink: string | null | undefined = undefined;
+        let pagesProcessed = 0;
+        do {
+          if (pagesProcessed > 0 || buzones.length > 1) {
+            toast.loading(`Sincronizando buzón ${buzon} (lote ${pagesProcessed + 1})...`, { id: 'sync-progress', duration: 2000 });
+          }
 
-        totalSynced += result.synced;
-        totalErrors += result.errors;
-        nextLink = result.nextLink; // Actualizar nextLink para la siguiente iteración
-        pagesProcessed++;
+          const result = await correosJuridicosService.syncCorreos(nextLink ?? undefined, buzon);
 
-        // Si encontramos nuevos correos, refrescar la lista inmediatamente para efecto "poco a poco"
-        if (result.synced > 0) {
-          await loadCorreosFromAPI();
-        }
+          totalSynced += result.synced;
+          totalErrors += result.errors;
+          nextLink = result.nextLink;
+          pagesProcessed++;
 
-      } while (nextLink && pagesProcessed < MAX_PAGES);
+          // Refrescar la lista de a poco para efecto progresivo
+          if (result.synced > 0) {
+            await loadCorreosFromAPI();
+          }
+        } while (nextLink && pagesProcessed < MAX_PAGES);
+      }
 
       toast.dismiss('sync-progress');
       toast.success(`✅ Sincronización completada: ${totalSynced} correos nuevos procesados`, {
@@ -391,19 +406,37 @@ export function ModuloCentroComunicacionesJuridicasV3() {
 
 
 
+  // ¿Hay más de un buzón con datos? Si es así, los tabs Judiciales/Oficios se
+  // restringen al buzón JUDICIAL y Correos al buzón CORREOS (separación por cuenta).
+  // Con un solo buzón (estado actual) se mantiene el filtrado por tipo para no
+  // ocultar nada. Al configurar la segunda cuenta, la separación es automática.
+  const buzonesPresentes = useMemo(() => {
+    const set = new Set<string>();
+    comunicaciones.forEach(c => set.add((c.buzon || 'JUDICIAL').toUpperCase()));
+    return set;
+  }, [comunicaciones]);
+  const multiBuzon = buzonesPresentes.size > 1;
+
   const comunicacionesFiltradas = useMemo(() => {
     let resultado = [...comunicaciones];
+    const esBuzon = (c: ComunicacionUnificada, b: string) => (c.buzon || 'JUDICIAL').toUpperCase() === b;
 
     // Filtrar por tab
     switch (tabActiva) {
       case 'judiciales':
-        resultado = resultado.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
+        resultado = resultado.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO'
+          && (!multiBuzon || esBuzon(c, 'JUDICIAL')));
         break;
       case 'correos':
-        resultado = resultado.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
+        // Si hay dos buzones, el tab Correos muestra TODO el buzón CORREOS (cualquier tipo).
+        // Con un solo buzón, se mantiene el filtro por tipo CORREO (comportamiento actual).
+        resultado = multiBuzon
+          ? resultado.filter(c => esBuzon(c, 'CORREOS') && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO')
+          : resultado.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'oficios':
-        resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
+        resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO'
+          && (!multiBuzon || esBuzon(c, 'JUDICIAL')));
         break;
       case 'enviados':
         resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
@@ -418,6 +451,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       case 'archivadas':
         resultado = resultado.filter(c => c.estado === 'ARCHIVADA');
         break;
+    }
+
+    // Filtro interno por BUZÓN en los tabs generales (no en los tabs ya específicos de buzón).
+    const TABS_GENERALES = ['enviados', 'respuestas', 'urgentes', 'archivadas'];
+    if (filtroBuzon !== 'todos' && TABS_GENERALES.includes(tabActiva)) {
+      resultado = resultado.filter(c => esBuzon(c, filtroBuzon));
     }
 
     // Filtrar por Medios de Control (solo aplica en tab 'correos')
@@ -451,7 +490,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return resultado.sort((a, b) => {
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
-  }, [comunicaciones, tabActiva, busqueda, filtroMedioControl]);
+  }, [comunicaciones, tabActiva, busqueda, filtroMedioControl, filtroBuzon, multiBuzon]);
 
   // ✨ Aplicar paginación
   const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
@@ -465,6 +504,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   useEffect(() => {
     setPaginaActual(1);
     setFiltroMedioControl('todos');
+    setFiltroBuzon('todos');
   }, [tabActiva, busqueda]);
 
   // Calcular estadísticas
@@ -907,6 +947,23 @@ export function ModuloCentroComunicacionesJuridicasV3() {
               </select>
             </div>
           )}
+
+          {/* Filtro interno por BUZÓN — visible en tabs generales (muestran ambas cuentas) */}
+          {['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && (
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <select
+                value={filtroBuzon}
+                onChange={(e) => setFiltroBuzon(e.target.value as 'todos' | 'JUDICIAL' | 'CORREOS')}
+                className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                aria-label="Filtrar por buzón"
+              >
+                <option value="todos">Ambos buzones</option>
+                <option value="JUDICIAL">Buzón Judicial</option>
+                <option value="CORREOS">Buzón Correos</option>
+              </select>
+            </div>
+          )}
           {seleccionadas.size > 0 && (
             <div className="flex gap-2">
               <Button
@@ -1040,6 +1097,15 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       <ModalNuevaComunicacion
         isOpen={modalNuevaComunicacionOpen}
         onClose={() => setModalNuevaComunicacionOpen(false)}
+        buzon={
+          // Cuenta remitente según el tab activo: Correos → CORREOS; en tabs generales
+          // respeta el filtro interno de buzón; el resto (judiciales/oficios) → JUDICIAL.
+          tabActiva === 'correos'
+            ? 'CORREOS'
+            : (['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && filtroBuzon !== 'todos'
+                ? filtroBuzon
+                : 'JUDICIAL')
+        }
         onSubmit={async (data) => {
           console.log('Nueva comunicación enviada:', data);
           toast.success('Comunicación registrada exitosamente');
@@ -1557,7 +1623,7 @@ function VistaPreviaComunicacion({
       {/* Tipo de proceso */}
       {comunicacion.tipoProceso && (
         <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-1">Tipo de Proceso:</p>
+          <p className="text-xs text-gray-500 mb-1">Medio de Control:</p>
           <Badge variant="outline">{comunicacion.tipoProceso}</Badge>
         </div>
       )}

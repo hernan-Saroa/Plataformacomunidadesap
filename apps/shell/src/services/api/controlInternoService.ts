@@ -185,6 +185,22 @@ export interface AuditoriaProgramada {
   updatedAt: string;
 }
 
+export interface ConflictoDisponibilidadEquipoAuditor {
+  personaId: string;
+  personaNombre: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export interface DisponibilidadEquipoAuditorResponse {
+  disponible: boolean;
+  conflictos: ConflictoDisponibilidadEquipoAuditor[];
+  mensaje?: string;
+}
+
 export interface Hallazgo {
   id: string;
   codigo: string;
@@ -2117,6 +2133,27 @@ class ControlInternoService {
   }
 
   /**
+   * El auditado crea el borrador inicial del plan de mejoramiento.
+   * Backend: POST /auditorias/auditado/:id/planes-mejoramiento
+   */
+  async crearPlanMejoramientoAuditado(
+    auditoriaId: string,
+    body: {
+      titulo?: string;
+      descripcion?: string;
+      objetivos?: string[];
+      areaResponsable?: string;
+      responsableImplementacion?: string;
+      fechaLimite?: string;
+    } = {},
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/planes-mejoramiento`,
+      body,
+    );
+  }
+
+  /**
    * El auditado actualiza avance u observaciones de una acción (sin rol OCI).
    * Backend: PATCH /auditorias/auditado/:id/planes/:planId/acciones/:accionId
    */
@@ -2334,6 +2371,15 @@ class ControlInternoService {
   /**
    * Crea una nueva auditoría
    */
+  async validarDisponibilidadEquipoAuditor(data: {
+    equipoAuditores: string[];
+    fechaInicio: string;
+    fechaFin: string;
+    excludeAuditoriaId?: string;
+  }): Promise<DisponibilidadEquipoAuditorResponse> {
+    return client.post<DisponibilidadEquipoAuditorResponse>('/auditorias/validar-disponibilidad-equipo', data);
+  }
+
   async createAuditoria(data: any): Promise<any> {
     return client.post<any>('/auditorias', data);
   }

@@ -1758,13 +1758,14 @@ export async function toggleBancoDocenteEstado(id: string) {
   }
 }
 
-export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitErrors = false) {
+export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitErrors = false, periodoCarga?: string) {
   try {
     const formData = new FormData();
     formData.append('file', file);
     const query = new URLSearchParams();
     if (dryRun) query.append('dry_run', 'true');
     if (omitErrors) query.append('omit_errors', 'true');
+    if (periodoCarga) query.append('periodo_carga', periodoCarga);
     const queryString = query.toString() ? `?${query.toString()}` : '';
     const raw = await apiClient.upload<any>(`${BD_BASE}/bulk${queryString}`, formData, { timeoutMs: 300000 });
     return normalizeResult<any>(raw, null);

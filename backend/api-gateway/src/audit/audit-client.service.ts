@@ -30,12 +30,45 @@ export class AuditClientService {
       // No lanzar error para no afectar la petición original
       // Solo loggear en desarrollo
       if (process.env.NODE_ENV === 'development') {
+        const responseStatus = error.response?.status;
+        const responseData = error.response?.data;
+        const logContext = responseStatus
+          ? ` status=${responseStatus} response=${JSON.stringify(responseData)} payload=${JSON.stringify(this.getDebugPayload(logData))}`
+          : '';
         this.logger.warn(
-          `Error al enviar log a audit service: ${error.message}`,
+          `Error al enviar log a audit service: ${error.message}${logContext}`,
         );
       }
     }
   }
-}
 
+  private getDebugPayload(logData: CreateAuditLogDto) {
+    return {
+      method: logData.method,
+      url: logData.url,
+      path: logData.path,
+      module: logData.module,
+      submodule: logData.submodule,
+      action: logData.action,
+      version: logData.version,
+      ipAddress: logData.ipAddress,
+      userId: logData.userId,
+      userEmail: logData.userEmail,
+      userRole: logData.userRole,
+      statusCode: logData.statusCode,
+      responseTimeMs: logData.responseTimeMs,
+      requestBodyType: this.getValueType(logData.requestBody),
+      responseBodyType: this.getValueType(logData.responseBody),
+      newDataType: this.getValueType(logData.newData),
+      errorMessage: logData.errorMessage,
+    };
+  }
+
+  private getValueType(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
+  }
+}
 

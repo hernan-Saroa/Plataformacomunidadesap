@@ -74,6 +74,30 @@ function buildUrl(modulo: LegalModuleKey, referencia?: string): string {
   return `/gestion-legal?${params.toString()}`;
 }
 
+/**
+ * Cuerpo HTML del correo que avisa al aprobador de la nueva etapa que hay una firma pendiente.
+ */
+function buildEtapaPendienteEmailHtml(etapaNombre: string, radicado: string, moduloLabel: string, url: string): string {
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${url}`;
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #003DA5; border-bottom: 2px solid #003DA5; padding-bottom: 10px;">Firma / Aprobación Requerida</h2>
+      <p>Estimado(a) funcionario(a),</p>
+      <p>El proceso <strong>${radicado}</strong> en <strong>${moduloLabel}</strong> avanzó a la etapa
+      <strong>${etapaNombre}</strong>, la cual requiere su firma o aprobación para continuar.</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${link}"
+           style="background-color: #003DA5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+          Ir al Expediente
+        </a>
+      </div>
+      <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+        Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+      </p>
+    </div>
+  `;
+}
+
 @Injectable()
 export class LegalNotificationsService {
   private readonly logger = new Logger(LegalNotificationsService.name);
@@ -222,6 +246,95 @@ export class LegalNotificationsService {
       });
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar asignación de proceso ${params.radicado} al abogado ${params.abogadoId}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notifica el avance del expediente a una NUEVA etapa (típicamente tras firmar/aprobar la
+   * actuación de la etapa anterior). Avisa:
+   *   1. Al abogado del proceso (informativo: su proceso avanzó de fase).
+   *   2. Al rol o usuario configurado como aprobador de la NUEVA etapa — quien debe firmar/
+   *      revisar en la siguiente fase — por plataforma y, adicionalmente, por correo.
+   * El énfasis es la notificación por plataforma; el correo es complementario.
+   */
+  async notifyEtapaAvanzada(params: {
+    modulo: LegalModuleKey;
+    radicado: string;
+    procesoId: string;
+    etapaNombre: string;
+    abogadoId?: string;
+    aprobacionTipo?: 'ninguno' | 'rol' | 'usuario';
+    aprobacionRol?: string;
+    aprobacionUsuario?: string;
+  }): Promise<void> {
+    const meta = MODULE_META[params.modulo];
+    const url = buildUrl(params.modulo, params.radicado);
+    this.logger.log(`[NOTIFY] Etapa avanzada — modulo=${params.modulo} radicado=${params.radicado} etapa="${params.etapaNombre}"`);
+
+    try {
+      // 1) Informar al abogado del proceso que avanzó de etapa
+      if (params.abogadoId) {
+        await this.notificationClient.notifyUserById(params.abogadoId, {
+          tipo_notificacion: 'EXPEDIENTE_ETAPA_AVANZADA',
+          titulo: `Proceso avanzó a la etapa ${params.etapaNombre}`,
+          mensaje: `El proceso ${params.radicado} pasó a la etapa "${params.etapaNombre}" en ${meta.label}.`,
+          descripcion_corta: `${params.radicado} → ${params.etapaNombre}`,
+          icono: 'ArrowRight',
+          color: meta.color,
+          prioridad: 'Media',
+          categoria: meta.categoria,
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          url_accion: url,
+          datos_adicionales: {
+            modulo: params.modulo,
+            procesoId: params.procesoId,
+            radicado: params.radicado,
+            etapa: params.etapaNombre,
+          },
+        });
+      }
+
+      // 2) Notificar al aprobador (rol/usuario) de la NUEVA etapa: tiene una firma pendiente
+      const tipo = params.aprobacionTipo;
+      if (!tipo || tipo === 'ninguno') return;
+
+      const dto = {
+        tipo_notificacion: 'EXPEDIENTE_ETAPA_PENDIENTE_FIRMA',
+        titulo: `Pendiente de firma en la etapa ${params.etapaNombre}`,
+        mensaje: `El proceso ${params.radicado} entró a la etapa "${params.etapaNombre}" en ${meta.label} y requiere su firma/aprobación.`,
+        descripcion_corta: `Firma requerida en ${params.radicado}`,
+        icono: 'FileCheck',
+        color: '#F59E0B',
+        prioridad: 'Alta' as const,
+        categoria: meta.categoria,
+        tiene_accion: true,
+        texto_boton_accion: 'Ver expediente',
+        url_accion: url,
+        datos_adicionales: {
+          modulo: params.modulo,
+          procesoId: params.procesoId,
+          radicado: params.radicado,
+          etapa: params.etapaNombre,
+        },
+      };
+
+      const emailSubject = `Pendiente de firma — etapa ${params.etapaNombre} — Radicado ${params.radicado}`;
+      const emailHtml = buildEtapaPendienteEmailHtml(params.etapaNombre, params.radicado, meta.label, url);
+
+      if (tipo === 'rol' && params.aprobacionRol) {
+        await this.notificationClient.notifyByRole(params.aprobacionRol, dto);
+        const details = await this.notificationClient.getUsersDetailsByRole(params.aprobacionRol);
+        for (const d of details) {
+          if (d.email) await this.notificationClient.sendEmail(d.email, emailSubject, emailHtml);
+        }
+      } else if (tipo === 'usuario' && params.aprobacionUsuario) {
+        await this.notificationClient.notifyUserById(params.aprobacionUsuario, dto);
+        const detail = await this.notificationClient.getUserDetailsById(params.aprobacionUsuario);
+        if (detail?.email) await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar avance de etapa del proceso ${params.radicado}: ${err?.message}`);
     }
   }
 

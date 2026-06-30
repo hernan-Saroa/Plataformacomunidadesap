@@ -307,6 +307,25 @@ function calcularFechaVencimiento(
   return toLocalISO(fecha);
 }
 
+// Al EDITAR, los campos de tipo documento son "solo para carga": no precargamos los
+// documentos ya subidos (esos viven en la pestaña Documentos del expediente), el campo
+// aparece vacío para agregar nuevos. Esta función quita del jsonb de camposAdicionales los
+// valores que son documentos (array de objetos-doc u objeto-doc) y conserva el resto
+// (territorial/dependencia y demás campos de texto/selección).
+const esValorDocumento = (v: any): boolean =>
+  !!v && typeof v === 'object' && 'nombre' in v && ('base64' in v || 'cargado' in v || 'tipoMime' in v);
+
+function limpiarDocumentosParaCarga(campos: Record<string, any> | undefined | null): Record<string, any> {
+  if (!campos || typeof campos !== 'object') return {};
+  const out: Record<string, any> = {};
+  for (const [key, val] of Object.entries(campos)) {
+    if (Array.isArray(val) && val.some(esValorDocumento)) continue; // campo documento (array) → vacío
+    if (esValorDocumento(val)) continue;                            // campo documento (objeto) → vacío
+    out[key] = val;
+  }
+  return out;
+}
+
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit, tableroSeleccionado }: ModalNuevaDemandaRESTAURADOProps) {
@@ -865,8 +884,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           juzgadoTribunal: expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '',
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
-          territorial: (expedienteEdit as any).territorial || '',
-          dependencia: (expedienteEdit as any).dependencia || '',
+          // territorial/dependencia pueden estar en la columna directa o, como respaldo,
+          // dentro de camposAdicionales (mismo patrón que usa el mapeo del módulo al listar).
+          // territorial se fuerza a string porque el <Select> usa value={String(idSeccional)}.
+          territorial: String((expedienteEdit as any).territorial || (expedienteEdit.camposAdicionales as any)?.territorial || ''),
+          dependencia: (expedienteEdit as any).dependencia || (expedienteEdit.camposAdicionales as any)?.dependencia || '',
           tipoPlazo: expedienteEdit.tipoConteoTermino === 'HORAS' ? 'Horas' : expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
           termino: expedienteEdit.terminoProcesalDias || expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
           fechaNotificacion: expedienteEdit.fechaNotificacion ?
@@ -883,7 +905,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           esConductaPatrimonioPublico: (expedienteEdit as any).esConductaPatrimonioPublico || false,
           esOtroDelitoPenal: (expedienteEdit as any).esOtroDelitoPenal || false,
           otroDelitoPenalDescripcion: (expedienteEdit as any).otroDelitoPenalDescripcion || '',
-          camposAdicionales: expedienteEdit.camposAdicionales || {}
+          // Campos de documento "solo para carga": se omiten los ya subidos (quedan en la
+          // pestaña Documentos); territorial/dependencia y demás campos sí se conservan.
+          camposAdicionales: limpiarDocumentosParaCarga(expedienteEdit.camposAdicionales)
         });
         setCiudadesDisponibles([]);
       } else {
@@ -1413,6 +1437,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           return false;
         }
 
+        if (!formData.dependencia) {
+          toast.error('⚠️ Dependencia requerida', {
+            description: 'Debe seleccionar la dependencia del proceso'
+          });
+          return false;
+        }
+
         if (formData.demandados.length === 0) {
           toast.error('⚠️ Demandados requeridos', {
             description: 'Debe agregar al menos un demandado'
@@ -1667,6 +1698,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       let finalPayload: any;
 
       if (isEdit) {
+        // Territorial/Dependencia no tienen columna propia en el backend: persisten dentro
+        // de camposAdicionales (jsonb), igual que en la creación. Por eso hay que mergearlos
+        // aquí; si no, al editar se pierden y no se actualizan. Los nombres se resuelven de
+        // la config para guardarlos como respaldo legible.
+        const territorialNombreEdit = seccionales.find(s => String(s.idSeccional) === formData.territorial)?.nomSeccional;
+        const dependenciaNombreEdit = dependenciasActivas.find((d: any) => d.id === formData.dependencia)?.nombre;
+
         // Build payload explicitly with only the scalar columns allowed by the Expediente entity
         finalPayload = {
           radicado: formData.numeroRadicado,
@@ -1689,8 +1727,49 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           hechos: formData.hechos || undefined,
           tipoConteoTermino: formData.tipoPlazo === 'Horas' ? 'HORAS' : formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
           terminoProcesalDias: formData.termino || undefined,
-          camposAdicionales: formData.camposAdicionales || undefined,
-          // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
+          camposAdicionales: {
+            ...(formData.camposAdicionales || {}),
+            // El valor actual del formulario manda sobre cualquier valor previo en camposAdicionales
+            ...(formData.territorial ? { territorial: formData.territorial } : {}),
+            ...(formData.dependencia ? { dependencia: formData.dependencia } : {}),
+            ...(territorialNombreEdit ? { territorialNombre: territorialNombreEdit } : {}),
+            ...(dependenciaNombreEdit ? { dependenciaNombre: dependenciaNombreEdit } : {}),
+          },
+          // Partes procesales: el backend (updateExpediente) reemplaza el conjunto de actors
+          // con este arreglo. Mismo mapeo que la creación (RESTAURADO → formato Actor).
+          actors: [
+            ...formData.demandantes.map((d) => ({
+              nombre: d.nombreCompleto,
+              tipoPersona: d.tipoPersona === 'Juridica' ? 'juridica' : 'natural',
+              identificacion: d.cedula,
+              rol: 'DEMANDANTE',
+              telefono: d.telefono,
+              email: d.correo,
+              direccion: d.direccion,
+              apoderado: d.apoderado?.nombreCompleto || '',
+            })),
+            ...formData.demandados.map((d) => ({
+              nombre: d.nombreCompleto,
+              tipoPersona: d.tipoPersona === 'Juridica' ? 'juridica' : 'natural',
+              identificacion: d.cedula,
+              rol: 'DEMANDADO',
+              cargo: d.cargoFuncion || '',
+              telefono: d.telefono,
+              email: d.correo,
+              direccion: d.direccion,
+              apoderado: d.apoderado?.nombreCompleto || '',
+            })),
+            ...formData.otrosActores.map((d) => ({
+              nombre: d.nombreCompleto,
+              tipoPersona: d.tipoPersona === 'Juridica' ? 'juridica' : 'natural',
+              identificacion: d.cedula,
+              rol: d.rol || 'OTRO',
+              telefono: d.telefono,
+              email: d.correo,
+              direccion: d.direccion,
+              apoderado: d.apoderado?.nombreCompleto || '',
+            })),
+          ],
         };
       } else {
         // For creations, the parent component strictly expects the full NuevaDemandaData signature
@@ -1904,7 +1983,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                       {isFieldVisible('medioControl', true) && (
                         <div className="space-y-2">
                           <Label htmlFor="medioControl" className={`text-sm font-bold ${erroresCampos.medioControl ? 'text-red-600' : 'text-gray-700'}`}>
-                            Medio de Control {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
+                            Jurisdicción {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
                           </Label>
                           <Select
                             value={formData.medioControl}
@@ -1920,7 +1999,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             }}
                           >
                             <SelectTrigger id="medioControl" className={`bg-white ${erroresCampos.medioControl ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                              <SelectValue placeholder="Seleccione medio de control..." />
+                              <SelectValue placeholder="Seleccione jurisdicción..." />
                             </SelectTrigger>
                             <SelectContent className="z-[100000]">
                               {mediosControlActivos.map(mc => (
@@ -1939,7 +2018,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                       <div className="space-y-2">
                         <Label htmlFor="tipoProcesoJudicial" className={`text-sm font-bold ${erroresCampos.tipoProcesoJudicial ? 'text-red-600' : 'text-gray-700'}`}>
-                          Tipo de Proceso Judicial <span className="text-red-500">*</span>
+                          Medio de Control <span className="text-red-500">*</span>
                         </Label>
                         <Select
                           value={formData.tipoProcesoJudicial}
@@ -1956,7 +2035,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           }}
                         >
                           <SelectTrigger id="tipoProcesoJudicial" className={`bg-white ${erroresCampos.tipoProcesoJudicial ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                            <SelectValue placeholder="Seleccione tipo de proceso..." />
+                            <SelectValue placeholder="Seleccione medio de control..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
                             {tiposProcesosActivos.map(tp => (
@@ -2319,7 +2398,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                     {/* Dependencia */}
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-gray-700">Dependencia</Label>
+                      <Label className="text-sm font-bold text-gray-700">
+                        Dependencia <span className="text-red-500">*</span>
+                      </Label>
                       <Select
                         value={formData.dependencia}
                         onValueChange={(val) => setFormData(prev => ({ ...prev, dependencia: val }))}

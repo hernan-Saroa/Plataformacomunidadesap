@@ -33,10 +33,10 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    console.log(
-      '🔐 [PermissionsGuard] Required permissions:',
-      requiredPermissions,
-    );
+    // console.log(
+    //   '🔐 [PermissionsGuard] Required permissions:',
+    //   requiredPermissions,
+    // );
 
     // Si no hay permisos requeridos, permitir acceso
     if (!requiredPermissions || requiredPermissions.length === 0) {
@@ -73,7 +73,7 @@ export class PermissionsGuard implements CanActivate {
 
     // Consultar permisos desde la base de datos basándose en los roles
     const userPermissions = await this.permissionsService.getPermissionsByRoles(userRoles);
-    console.log('🔐 [PermissionsGuard] User permissions from DB:', userPermissions);
+    // console.log('🔐 [PermissionsGuard] User permissions from DB:', userPermissions);
 
     // Verificar si el usuario tiene AL MENOS UNO de los permisos requeridos
     const hasPermission = requiredPermissions.some((permission) =>

@@ -960,7 +960,7 @@ export function GestionNoticias() {
           etapa: mapStageToUi(news.kanbanStage) || 'Recepcion',
           diasTranscurridos: getDiasTranscurridos(news.fechaRecepcion),
           radicador: (Array.isArray(news.historialAuditoria) ? news.historialAuditoria.find((h: any) => h.tipo === 'creacion')?.usuario : null) || 'Sistema',
-          fechaRegistro: news.fechaRecepcion,
+          fechaRegistro: news.createdAt || news.fechaRecepcion,
           fechaRecepcion: news.fechaRecepcion,
           fechaQueja: news.fechaQueja,  // Mostrar fecha de queja/notificación si existe
           conductas: news.conductas || [],

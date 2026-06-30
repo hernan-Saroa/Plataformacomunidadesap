@@ -263,7 +263,7 @@ export function ValidadorCertificadosPublico({
                     }}
                   >
                     Valida certificados académicos y títulos emitidos por la
-                    Dirección de Registro Académico
+                    Dirección de Verificación de títulos
                   </p>
 
                   <ul className="mb-6 space-y-2">

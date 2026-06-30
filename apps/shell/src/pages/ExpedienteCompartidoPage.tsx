@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import disciplinaryService from '../services/api/disciplinary.service';
 import { API_MODE, buildApiUrl } from '../config/environment';
 import * as mammoth from 'mammoth';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // Tipos
 interface ExpedienteCompartidoData {
@@ -79,7 +80,8 @@ type FilePreviewType = 'pdf' | 'video' | 'audio' | 'image' | 'document' | 'sprea
 export function ExpedienteCompartidoPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  
+  const isMobile = useIsMobile();
+
   const [loading, setLoading] = useState(true);
   const [verificandoClave, setVerificandoClave] = useState(false);
   const [expedienteData, setExpedienteData] = useState<ExpedienteCompartidoData | null>(null);
@@ -177,9 +179,9 @@ export function ExpedienteCompartidoPage() {
   };
 
   // Detectar si es dispositivo móvil
-  const isMobile = () => {
-    return window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  };
+  // const isMobile = () => {
+  //   return window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // };
 
   const getDocumentoFileName = (doc: Documento): string => {
     return doc.archivoNombre || doc.nombre || doc.downloadUrl || doc.url || doc.urlExterna || 'documento';
@@ -327,7 +329,7 @@ export function ExpedienteCompartidoPage() {
 
       // En móviles, abrir archivos pesados de audio/video en nueva pestaña.
       const previewType = getFileType(getDocumentoFileName(doc), blob.type || doc.fileType);
-      if (isMobile() && (previewType === 'video' || previewType === 'audio')) {
+      if (isMobile && (previewType === 'video' || previewType === 'audio')) {
         window.open(downloadUrl, '_blank', 'noopener,noreferrer');
         setShowModalVisor(false);
         toast.info('Documento abierto en nueva pestaña');
@@ -892,6 +894,19 @@ export function ExpedienteCompartidoPage() {
                 }
 
                 if (previewType === 'pdf') {
+                  if (isMobile) {
+                    return (
+                      <div className="h-full flex flex-col items-center justify-center p-8 text-center gap-4">
+                        <FileText className="w-16 h-16 text-red-500" />
+                        <p className="text-gray-700 font-medium">El PDF está listo para visualizarse</p>
+                        <p className="text-sm text-gray-500">Los navegadores móviles no soportan la vista previa integrada. Ábrelo en una nueva pestaña para verlo.</p>
+                        <Button onClick={() => window.open(pdfBlobUrl, '_blank', 'noopener,noreferrer')}>
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                          Abrir PDF
+                        </Button>
+                      </div>
+                    );
+                  }
                   return (
                     <iframe
                       src={pdfBlobUrl}

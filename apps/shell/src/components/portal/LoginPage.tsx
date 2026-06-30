@@ -310,8 +310,8 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
           duration: 3500,
         });
       } else if (emailLower === 'registro.academico@esap.edu.co') {
-        toast.success('📚 ¡Bienvenido Registro Académico!', {
-          description: 'Acceso al Módulo de Registro Académico concedido',
+        toast.success('📚 ¡Bienvenido a Verificación de títulos!', {
+          description: 'Acceso al Módulo de Verificación de títulos concedido',
           duration: 3500,
         });
       }

@@ -24,7 +24,7 @@ import {
   getAllPTAs, getPTAEstadisticas, updatePTAStatus, getCatalogoProgramas, seedPTAs,
   guardarFirmaDigitalPTA, getPTAUserData, savePTAUserData, deletePTA,
   getAllPtasConEvidencias, revisarEvidenciaPTA,
-  getSolicitudesPTA, resolverSolicitudPTA,
+  getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
 } from '../../services/api/ptaApi';
 import { apiClient } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
@@ -218,10 +218,12 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
 
   useEffect(() => { load(); }, [filtro]);
 
-  // Cargar territoriales para caso 1
+  // Cargar territoriales para caso 1 (vía apiClient/gateway, no fetch a localhost:5000
+  // que rompía por CSP en QA/prod).
   useEffect(() => {
-    fetch(`${(window as any).__API_BASE__ || 'http://localhost:5000/api'}/pta/catalogos/territoriales`)
-      .then(r => r.json()).then(r => { if (r.success) setTerritoriales(r.data || []); }).catch(() => {});
+    getCatalogoTerritoriales()
+      .then(r => { if (r.success) setTerritoriales(r.data || []); })
+      .catch(() => {});
   }, []);
 
   const handleResolver = async (id: string, decision: 'aprobado' | 'denegado') => {

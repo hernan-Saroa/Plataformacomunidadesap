@@ -1925,15 +1925,16 @@ const SeccionGestionHallazgos: React.FC<{
                     </h5>
                     
                     <div className="space-y-4">
-                      {hallazgo.argumentosControversia && (
+                      {/* {hallazgo.argumentosControversia && (
                         <div className="relative pl-4 border-l-2 border-amber-300">
                           <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Argumentos del área auditada</span>
                           <p className="text-sm text-gray-700 whitespace-pre-wrap">{hallazgo.argumentosControversia}</p>
                         </div>
-                      )}
+                      )} */}
                       {hallazgo.observacionesControversia && (
                         <div className="relative pl-4 border-l-2 border-blue-300">
-                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block mb-1">Observaciones del auditor (Devolución)</span>
+                          {/* <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block mb-1">Observaciones del auditor (Devolución)</span> */}
+                          <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Observaciones</span>
                           <p className="text-sm text-gray-700 whitespace-pre-wrap">{hallazgo.observacionesControversia}</p>
                         </div>
                       )}
@@ -2310,7 +2311,7 @@ const SeccionPlanMejoramiento: React.FC<{
             <p className="text-gray-600 mb-4">
               Con los hallazgos de esta auditoría debe crear un Plan de Mejoramiento. Las <strong>acciones correctivas</strong> para cada hallazgo se formularán en el módulo de Planes.
             </p>
-            {hallazgosCount > 0 ? (
+            {/* {hallazgosCount > 0 ? (
               <Button
                 onClick={onCrearPlanMejoramiento}
                 className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
@@ -2322,7 +2323,7 @@ const SeccionPlanMejoramiento: React.FC<{
               <p className="text-amber-700 text-sm">
                 No hay hallazgos vinculados a esta auditoría. Gestione los hallazgos en la sección anterior.
               </p>
-            )}
+            )} */}
           </div>
         </CardSIGL>
       )}
