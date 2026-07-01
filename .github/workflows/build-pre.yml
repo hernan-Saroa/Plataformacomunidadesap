@@ -3,7 +3,7 @@ name: Build and Push Frontend (PRE)
 on:
   push:
     branches:
-      - release/pre
+      - pre
 
 env:
   REGISTRY: ghcr.io
