@@ -233,6 +233,12 @@ export class RolesController {
     };
   }
 
+  @Get(':id/users')
+  @InternalServiceAccess()
+  async getUsersByRole(@Param('id') id: string) {
+    return this.rolesService.getUsersByRole(id);
+  }
+
   @Get(':id/permissions')
   @InternalServiceAccess()
   async getPermissions(@Param('id') id: string) {
