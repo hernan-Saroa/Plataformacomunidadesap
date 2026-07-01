@@ -190,7 +190,7 @@ export function CreateSeccionalSedeModal({
       }
       const cod = normCodigo(seccionalForm.codSeccional);
       if (cod && cod.length > 20) {
-        newErrors.codSeccional = 'El codigo no puede exceder 20 caracteres';
+        newErrors.codSeccional = 'El código no puede exceder 20 caracteres';
       } else if (cod) {
         // El código no puede repetirse entre seccionales (excluyendo la que se edita)
         const editId = isEditMode ? (editItem as Seccional).idSeccional : undefined;
@@ -209,7 +209,7 @@ export function CreateSeccionalSedeModal({
       }
       const cod = normCodigo(sedeForm.codSede);
       if (cod && cod.length > 20) {
-        newErrors.codSede = 'El codigo no puede exceder 20 caracteres';
+        newErrors.codSede = 'El código no puede exceder 20 caracteres';
       } else if (cod) {
         // El código no puede repetirse entre sedes (excluyendo la que se edita)
         const editId = isEditMode ? (editItem as Sede).idSede : undefined;
@@ -323,7 +323,7 @@ export function CreateSeccionalSedeModal({
                     <div>
                       <h2 className="text-lg font-bold text-gray-900">{titulo}</h2>
                       <p className="text-sm text-gray-600">
-                        {tipo === 'seccional' ? 'Direccion Territorial ESAP' : 'Sede asociada a una seccional'}
+                        {tipo === 'seccional' ? 'Dirección Territorial ESAP' : 'Sede asociada a una seccional'}
                       </p>
                     </div>
                   </div>
@@ -343,7 +343,7 @@ export function CreateSeccionalSedeModal({
                     {/* Codigo Seccional */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Codigo (opcional)
+                        Código (opcional)
                       </label>
                       <div className="relative">
                         <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -375,7 +375,7 @@ export function CreateSeccionalSedeModal({
                         type="text"
                         value={seccionalForm.nomSeccional}
                         onChange={(e) => setSeccionalForm(prev => ({ ...prev, nomSeccional: e.target.value }))}
-                        placeholder="Direccion Territorial Bogota"
+                        placeholder="Dirección Territorial Bogotá"
                         maxLength={100}
                         className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
                           errors.nomSeccional ? 'border-red-500' : 'border-gray-300'
@@ -444,7 +444,7 @@ export function CreateSeccionalSedeModal({
                     {/* Orden Visualizacion */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Orden de Visualizacion
+                        Orden de Visualización
                       </label>
                       <input
                         type="number"
@@ -471,7 +471,7 @@ export function CreateSeccionalSedeModal({
                     <div className="space-y-4">
                       <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2 border-b pb-2">
                         <Building2 className="w-4 h-4 text-[#003DA5]" />
-                        Informacion Basica
+                        Información Básica
                       </h3>
 
                       {/* Seccional */}
@@ -557,7 +557,7 @@ export function CreateSeccionalSedeModal({
                         {/* Codigo Sede */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Codigo (opcional)
+                            Código (opcional)
                           </label>
                           <div className="relative">
                             <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -606,7 +606,7 @@ export function CreateSeccionalSedeModal({
                           type="text"
                           value={sedeForm.nomSede}
                           onChange={(e) => setSedeForm(prev => ({ ...prev, nomSede: e.target.value }))}
-                          placeholder="Sede Principal Bogota"
+                          placeholder="Sede Principal Bogotá"
                           maxLength={50}
                           className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${
                             errors.nomSede ? 'border-red-500' : 'border-gray-300'

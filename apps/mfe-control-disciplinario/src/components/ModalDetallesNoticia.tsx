@@ -800,7 +800,7 @@ function TabGeneral({
               { label: 'NÚMERO', value: n.numero },
               { label: 'ORIGEN', value: n.origen || '—' },
               { label: 'FECHA RECEPCIÓN', value: formatFechaLocal(n.fechaRecepcion) },
-              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.fechaQueja) || formatFechaLocal(n.fechaRecepcion) },
+              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.fechaQueja) || formatFechaLocal(n.fechaRegistro) },
             ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>

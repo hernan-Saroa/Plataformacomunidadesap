@@ -23,6 +23,7 @@ export class SendEmailDto {
     attachments?: { name: string; contentBytes: string; contentType: string }[];
     requestReadReceipt?: boolean;
     requestDeliveryReceipt?: boolean;
+    buzon?: string; // JUDICIAL | CORREOS — define la cuenta remitente (según el tab)
 }
 
 @Controller('correos')
@@ -34,8 +35,16 @@ export class CorreosJuridicosController {
      */
     @Post('sync')
     @HttpCode(HttpStatus.OK)
-    async sync(@Body() body: { nextLink?: string }): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
-        return this.correosService.syncInbox(body.nextLink);
+    async sync(@Body() body: { nextLink?: string; buzon?: string }): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        // buzon opcional: 'JUDICIAL' (default) | 'CORREOS'. El frontend puede sincronizar
+        // cada buzón por separado; si la cuenta del buzón no existe, devuelve 0 sin error.
+        return this.correosService.syncInbox(body.nextLink, body.buzon || 'JUDICIAL');
+    }
+
+    /** Buzones de correo configurados (para que el frontend sepa cuáles sincronizar). */
+    @Get('mailboxes')
+    getMailboxes(): Array<{ buzon: string; address: string }> {
+        return this.correosService.getMailboxes();
     }
 
     /**
@@ -122,6 +131,7 @@ export class CorreosJuridicosController {
         @Query('direccion') direccion?: string,
         @Query('search') search?: string,
         @Query('expedienteId') expedienteId?: string,
+        @Query('buzon') buzon?: string,
     ): Promise<CorreoJuridico[]> {
         const filters: EmailFilters = {};
 
@@ -132,6 +142,7 @@ export class CorreosJuridicosController {
         if (direccion) filters.direccion = direccion;
         if (search) filters.search = search;
         if (expedienteId) filters.expedienteId = expedienteId;
+        if (buzon) filters.buzon = buzon;
 
         return this.correosService.getAll(filters);
     }

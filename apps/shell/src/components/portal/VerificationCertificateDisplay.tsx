@@ -234,7 +234,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const descargarPdfPorRutaPublica = async (): Promise<Blob> => {
     const publicPdfUrl = getPublicPdfUrl();
     if (!publicPdfUrl) {
-      throw new Error('No se encontr� una ruta p�blica para descargar el certificado.');
+      throw new Error('No se encontró una ruta pública para descargar el certificado.');
     }
 
     const response = await fetch(publicPdfUrl, {

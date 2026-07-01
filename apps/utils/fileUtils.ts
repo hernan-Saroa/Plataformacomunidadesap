@@ -105,6 +105,28 @@ export function requiresSignature(filename: string | null | undefined): boolean 
     return SIGNABLE_EXTENSIONS.includes(ext);
 }
 
+// File extensions that the in-app document viewer (VisorDocumentoModal) can actually
+// render for preview: PDF (iframe/pdf.js), Word .docx (mammoth -> HTML) and images.
+// Anything else (Excel, video, audio, .doc binario, comprimidos, etc.) no lo soporta
+// el visor y cae al estado "Vista previa no disponible", por lo que el botón de
+// previsualizar debe ocultarse para esos tipos.
+const PREVIEWABLE_EXTENSIONS = ['.pdf', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+/**
+ * Check whether a document can be previewed by the in-app viewer (VisorDocumentoModal).
+ * Solo PDF, Word .docx e imágenes (jpg/jpeg/png/gif/webp) son previsualizables;
+ * Excel, video, audio y otros tipos no lo son.
+ * @param filename - The name of the file (with extension) or URL
+ * @returns true if the document can be previewed in the viewer, false otherwise
+ */
+export function isPreviewableInViewer(filename: string | null | undefined): boolean {
+    if (!filename) return false;
+    // Signed documents get " (Firmado)" appended to their name; strip it before checking.
+    const cleaned = filename.toLowerCase().replace(/\s*\(firmado\)\s*/g, '').trim();
+    const ext = getFileExtension(cleaned);
+    return PREVIEWABLE_EXTENSIONS.includes(ext);
+}
+
 /**
  * Get file type category for display purposes
  * @param filename - The name of the file

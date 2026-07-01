@@ -205,6 +205,19 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const fetchProcesos = async () => {
     try {
       const data = await legalService.getJuzgamientoProcesos();
+
+      // ✅ Cargar abogados para (1) resolver el ID del profesional a su nombre y
+      //    (2) el filtrado por rol RESUELVE_GESTION_LEGAL (igual que en Defensa Judicial)
+      const abogadosData = await legalService.getAbogados().catch(() => []);
+      const nombrePorAbogadoId = new Map<string, string>();
+      (Array.isArray(abogadosData) ? abogadosData : []).forEach((a: any) => {
+        const nombre = a.nombreCompleto || a.nombre || a.email;
+        if (!nombre) return;
+        if (a.id) nombrePorAbogadoId.set(String(a.id), nombre);
+        if ((a as any).rawId) nombrePorAbogadoId.set(String((a as any).rawId), nombre);
+        if ((a as any).authId) nombrePorAbogadoId.set(String((a as any).authId), nombre);
+      });
+
       const mappedData = (Array.isArray(data) ? data : []).map((p: any) => ({
         ...p,
         fechaHechos: p.fechaHechos ? new Date(p.fechaHechos) : new Date(),
@@ -217,12 +230,13 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         disciplinado: p.investigado || p.disciplinado || 'N/A',
         tipoFalta: p.tipoFalta || 'Sin clasificar',
         cargo: p.cargo || '',
+        // Conservar el ID crudo para el filtro y mostrar el nombre resuelto en la UI
+        abogadoAsignadoId: p.abogadoAsignado,
+        abogadoAsignado: nombrePorAbogadoId.get(String(p.abogadoAsignado)) || p.abogadoAsignado || 'Sin asignar',
         ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
         documentosAdjuntos: p.documentos ? p.documentos.length : 0,
       }));
 
-      // ✅ Filtrado por rol RESUELVE_GESTION_LEGAL (igual que en Defensa Judicial)
-      const abogadosData = await legalService.getAbogados().catch(() => []);
       const currentUser = authService.getCurrentUser() as any;
       const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
       let procesosFiltrados = mappedData;
@@ -272,17 +286,17 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
         if (myAbogado) {
           procesosFiltrados = mappedData.filter((p: any) => {
-            if (myAbogado.id && p.abogadoAsignado === myAbogado.id) return true;
-            if ((myAbogado as any).rawId && p.abogadoAsignado === (myAbogado as any).rawId) return true;
-            if ((myAbogado as any).authId && p.abogadoAsignado === (myAbogado as any).authId) return true;
+            if (myAbogado.id && p.abogadoAsignadoId === myAbogado.id) return true;
+            if ((myAbogado as any).rawId && p.abogadoAsignadoId === (myAbogado as any).rawId) return true;
+            if ((myAbogado as any).authId && p.abogadoAsignadoId === (myAbogado as any).authId) return true;
             if (myAbogado.nombre && p.abogadoAsignado === myAbogado.nombre) return true;
             if (myAbogado.nombreCompleto && p.abogadoAsignado === myAbogado.nombreCompleto) return true;
             return false;
           });
         } else {
-          // Fallback: filtrar directamente por IDs del usuario contra abogadoAsignado
+          // Fallback: filtrar directamente por IDs del usuario contra abogadoAsignadoId
           procesosFiltrados = mappedData.filter((p: any) =>
-            cuIds.has(p.abogadoAsignado as string)
+            cuIds.has(p.abogadoAsignadoId as string)
           );
         }
         console.log('[DEBUG RESUELVE JUZGAMIENTO] filtrados:', procesosFiltrados.length, 'de', mappedData.length);
@@ -689,7 +703,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
       {/* ✅ MODAL DE CONFIRMACIÓN DE CAMBIO DE ETAPA */}
       <Dialog open={modalCambioEtapaOpen} onOpenChange={setModalCambioEtapaOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent size="md">
           <DialogTitle className="flex items-center gap-2 text-lg font-bold">
             <ArrowRight className="w-5 h-5 text-blue-600" />
             Confirmar Cambio de Etapa
@@ -1015,6 +1029,13 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaE
               {proceso.disciplinado}
             </p>
           </div>
+
+          {((proceso as any).origen || (proceso as any).territorial) && (
+            <div className="mb-2 pb-2 border-b border-gray-200 text-xs text-gray-600 space-y-0.5">
+              {(proceso as any).origen && <p><span className="text-gray-500">Origen:</span> {(proceso as any).origen}</p>}
+              {(proceso as any).territorial && <p><span className="text-gray-500">Territorial:</span> {(proceso as any).territorial}</p>}
+            </div>
+          )}
 
           <div className="mb-2 pb-2 border-b border-gray-200">
             <div className="flex items-center gap-2">

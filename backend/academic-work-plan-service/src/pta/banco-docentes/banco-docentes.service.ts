@@ -97,6 +97,19 @@ function extractFirstEmail(value: any): string | null {
   return match ? match[0].toLowerCase() : null;
 }
 
+function normalizePhoneForAuth(value: any): string | null {
+  const text = toCleanString(value);
+  if (!text) return null;
+  const candidates = text.match(/\+?\d[\d\s().-]{5,}\d/g) || [];
+  const normalizedCandidates = candidates
+    .map((candidate) => candidate.replace(/[^\d+]/g, ''))
+    .filter(Boolean);
+  const preferred = normalizedCandidates.find((candidate) => candidate.replace(/\D/g, '').length >= 10)
+    || normalizedCandidates[0]
+    || text.replace(/[^\d+]/g, '');
+  return (preferred || text.replace(/\s+/g, ' ').trim()).slice(0, 20);
+}
+
 // â”€â”€â”€ dedican / vinculacion codes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function normalizeDedicacionCode(value: any): string {
@@ -175,6 +188,15 @@ function getHorasAsignablesFromDedicacion(dedicacion: any, explicit?: any): numb
   return 800;
 }
 
+function getHorasSemanalesFromDedicacion(dedicacion: any, explicit?: any): number | null {
+  const exp = parseMaybeInt(explicit);
+  if (exp !== null && exp >= 0) return exp;
+  const n = normalizeDedicacionCode(dedicacion);
+  if (n === 'MT') return 20;
+  if (n === 'HC') return 0;
+  return 40;
+}
+
 function computeEdad(fechaNacimiento: any, edadFallback?: any): number | null {
   const fecha = parseMaybeDate(fechaNacimiento);
   if (!fecha) return parseMaybeInt(edadFallback);
@@ -208,6 +230,14 @@ export function categorizarSituacion(texto: string | null): string {
 }
 
 // â”€â”€â”€ territorial resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function normalizeEstadoDocente(value: any, fallback = 'ACTIVO'): string {
+  const n = normalizeLookupText(value);
+  if (!n) return fallback;
+  if (n.includes('inactivo') || n.includes('retir') || n.includes('termin') || n.includes('desvinc')) return 'INACTIVO';
+  if (n.includes('activo') || n.includes('servicio')) return 'ACTIVO';
+  return (toCleanString(value) || fallback).toUpperCase().replace(/\s+/g, '_');
+}
 
 const TERRITORIAL_ALIASES: Record<string, string[]> = Object.fromEntries(
   OFFICIAL_TERRITORIALES_ESAP.map((t) => [normalizeLookupText(t.nombre), t.aliases.map((a) => normalizeLookupText(a))]),
@@ -258,6 +288,10 @@ export function normalizeBancoDocentePayload(raw: any) {
 
   const observationsList: string[] = [];
 
+  if (correoInst && !correoInst.toLowerCase().trim().endsWith('@esap.edu.co')) {
+    observationsList.push('Correo no institucional recibido en CORREO_INSTITUCIONAL; se conserva para contacto y queda para revision RUND');
+  }
+
   // [BR-016] Personal email differs from institutional
   if (correoPers && correoInst && correoPers.toLowerCase().trim() === correoInst.toLowerCase().trim()) {
     correoPers = null;
@@ -280,7 +314,7 @@ export function normalizeBancoDocentePayload(raw: any) {
 
   if (docNum) {
     if (!docType || docType === 'POR VERIFICAR' || docType === 'POR VE') {
-      if (docNum.length >= 7) {
+      if (docNum.length >= 5) {
         docType = 'CC';
       } else {
         docType = 'OTRO';
@@ -292,6 +326,12 @@ export function normalizeBancoDocentePayload(raw: any) {
   // Situation admin and status
   const sitAdmin = firstNonEmpty(raw?.SITUACION_ADMINISTRATIVA, raw?.situacionAdministrativa, raw?.['SituaciÃ³n Administrativa'], raw?.['SituaciA3n Administrativa']);
   const finVinculacionStr = firstNonEmpty(raw?.FIN_VINCULACION, raw?.fechaFinVinculacion, raw?.finVinculacion, raw?.['Fin de VinculaciÃ³n'], raw?.['Fin de VinculaciA3n']);
+  const situacionCategoriaRaw = firstNonEmpty(raw?.SITUACION_CATEGORIA, raw?.situacionCategoria, raw?.situacion_categoria, raw?.['Situacion Categoria'], raw?.['Situacion categoria']);
+  const estadoDocenteRaw = firstNonEmpty(raw?.ESTADO_DOCENTE, raw?.estadoDocente, raw?.estado_docente, raw?.estado, raw?.['Estado Docente'], raw?.['Estado docente']);
+  const regimenNormativoRaw = firstNonEmpty(raw?.REGIMEN_NORMATIVO, raw?.regimenNormativo, raw?.regimen_normativo, raw?.['Regimen Normativo'], raw?.['Regimen normativo']);
+  const sexoBiologicoRaw = firstNonEmpty(raw?.SEXO_BIOLOGICO, raw?.sexoBiologico, raw?.sexo_biologico, raw?.['Sexo Biologico'], raw?.['Sexo biologico']);
+  const horasPtaRaw = parseMaybeInt(raw?.HORAS_PTA ?? raw?.horasPta ?? raw?.horas_pta ?? raw?.horasAsignables ?? raw?.['Horas PTA'] ?? raw?.['Horas Programables (PTA)']);
+  const dedicacionHorasSemanaRaw = parseMaybeInt(raw?.DEDICACION_HORAS_SEMANA ?? raw?.dedicacionHorasSemana ?? raw?.dedicacion_horas_semana ?? raw?.['Dedicacion Horas Semana']);
   const isIndefinido = !finVinculacionStr || finVinculacionStr.toLowerCase().trim() === 'indefinido';
   const fechaFinVinculacion = isIndefinido ? null : parseMaybeDate(finVinculacionStr);
 
@@ -344,6 +384,16 @@ export function normalizeBancoDocentePayload(raw: any) {
     regimenNormativo = 'N/A';
     horasPta = baseHoras;
     observationsList.push('Tipo de vinculaciÃ³n no reconocido');
+  }
+
+  if (regimenNormativoRaw) {
+    regimenNormativo = regimenNormativoRaw;
+  }
+  if (horasPtaRaw !== null && horasPtaRaw >= 0) {
+    horasPta = horasPtaRaw;
+  }
+  if (estadoDocenteRaw) {
+    estadoDocente = normalizeEstadoDocente(estadoDocenteRaw, estadoDocente);
   }
 
   // Merge custom observations
@@ -399,10 +449,13 @@ export function normalizeBancoDocentePayload(raw: any) {
     fechaFinVinculacion,
     puntajeSalarial: parseMaybeFloat(raw?.PUNTAJE_SALARIAL ?? raw?.puntajeSalarial ?? raw?.['Puntaje Salarial']),
     genero: gender,
+    sexoBiologico: sexoBiologicoRaw,
     fechaNacimiento,
     edadReferencia: edad,
-    rangoEdad: computeRangoEdad(edad, raw?.rangoEdad ?? raw?.['Rango de edad']),
+    rangoEdad: firstNonEmpty(raw?.RANGO_EDAD, raw?.rangoEdad, raw?.rango_edad, raw?.['Rango de edad']) || computeRangoEdad(edad),
     horasAsignables: horasPta,
+    dedicacionHorasSemana: getHorasSemanalesFromDedicacion(dedicacion, dedicacionHorasSemanaRaw),
+    situacionCategoria: situacionCategoriaRaw || categorizarSituacion(sitAdmin),
     estado: estadoDocente,
     periodoCarga: firstNonEmpty(raw?.PERIODO_CARGA, raw?.periodoCarga, raw?.periodo_carga, raw?.['Periodo de carga'], raw?.['PERIODO_CARGA']),
     observaciones: observationsList.length > 0 ? observationsList.join('. ') : null,
@@ -444,18 +497,9 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
     }
   }
 
-  // [BR-019] & [BR-020]
-  if (payload.correoInstitucional) {
-    const email = payload.correoInstitucional.toLowerCase().trim();
-    if (!email.endsWith('@esap.edu.co')) {
-      throw new BadRequestException({
-        message: 'Correo no institucional en campo institucional. Requiere correo @esap.edu.co',
-        columna: 'CORREO_INSTITUCIONAL',
-        datoErrado: payload.correoInstitucional,
-        valorEsperado: '*@esap.edu.co'
-      });
-    }
-  }
+  // El archivo oficial puede traer correos personales en CORREO_INSTITUCIONAL.
+  // Se conservan como dato de contacto y quedan marcados en observaciones RUND;
+  // no bloquean la carga masiva.
 }
 
 /**
@@ -496,7 +540,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
   const nombreCompleto = [persona?.primer_nombre, persona?.segundo_nombre, persona?.primer_apellido, persona?.segundo_apellido].filter(Boolean).join(' ').trim() || usuario?.nombre || 'Sin nombre';
 
   const genUpper = (persona?.genero || '').toUpperCase();
-  const sexoBiologico = genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro');
+  const sexoBiologico = docente.sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
 
   return {
     id: docente.id,
@@ -516,7 +560,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     regimenNormativo: docente.regimenNormativo,
     dedicacion: getDedicacionLabel(docente.dedicacion, docente.dedicacionDisplay),
     dedicacion_codigo: docente.dedicacion,
-    dedicacion_horas_semana: docente.dedicacion === 'MT' ? 20 : 40,
+    dedicacion_horas_semana: docente.dedicacionHorasSemana ?? getHorasSemanalesFromDedicacion(docente.dedicacion),
     territorial: (docente as any).territorial?.nombre ?? null,
     territorial_id: docente.territorialId,
     territorial_codigo: (docente as any).territorial?.codigo ?? null,
@@ -536,11 +580,11 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     origen_vinculacion: docente.origenVinculacion ?? null,
     acto_administrativo_vinculacion: docente.actoAdministrativoVinculacion ?? null,
     correo_institucional: docente.correoInstitucional ?? usuario?.email ?? null,
-    correo_personal: persona?.correo_alternativo ?? docente.correoAlternativo ?? null,
+    correo_personal: docente.correoAlternativo ?? persona?.correo_alternativo ?? null,
     telefono: persona?.telefono ?? null,
     ultima_evaluacion: docente.ultimaEvaluacion ?? null,
     situacion_administrativa: docente.situacionAdministrativa ?? null,
-    situacion_categoria: categorizarSituacion(docente.situacionAdministrativa),
+    situacion_categoria: docente.situacionCategoria ?? categorizarSituacion(docente.situacionAdministrativa),
     inicio_vinculacion: docente.fechaInicioVinculacion ?? null,
     fin_vinculacion: docente.fechaFinVinculacion ?? persona?.fecha_fin_contrato ?? null,
     puntaje_salarial: docente.puntajeSalarial ?? null,
@@ -577,10 +621,10 @@ function buildAuthBancoDocenteResponse(row: any) {
   const email = row.email || row.username || null;
 
   const genUpper = (row.genero || '').toUpperCase();
-  const sexoBiologico = genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro');
+  const sexoBiologico = row.sexo_biologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
 
   return {
-    id: row.usuario_id,
+    id: row.docente_id || row.usuario_id,
     persona_id: row.persona_id,
     usuario_id: row.usuario_id,
     docente_id: row.docente_id || null,
@@ -598,7 +642,7 @@ function buildAuthBancoDocenteResponse(row: any) {
     regimenNormativo: row.regimen_normativo || row.regimenNormativo || null,
     dedicacion: dedicacionCodigo ? getDedicacionLabel(dedicacionCodigo, row.dedicacion) : null,
     dedicacion_codigo: dedicacionCodigo,
-    dedicacion_horas_semana: dedicacionCodigo === 'MT' || row.dedicacion === 'Medio Tiempo' ? 20 : 40,
+    dedicacion_horas_semana: row.dedicacion_horas_semana ?? getHorasSemanalesFromDedicacion(dedicacionCodigo || row.dedicacion),
     territorial: row.territorial || row.auth_territorial || null,
     territorial_id: row.territorial_id || row.auth_territorial_id || null,
     territorial_codigo: row.territorial_codigo || row.auth_territorial_codigo || null,
@@ -618,11 +662,11 @@ function buildAuthBancoDocenteResponse(row: any) {
     origen_vinculacion: row.origen_vinculacion ?? null,
     acto_administrativo_vinculacion: row.acto_administrativo_vinculacion ?? null,
     correo_institucional: row.correo_institucional || email,
-    correo_personal: row.correo_personal ?? null,
+    correo_personal: row.correo_personal ?? row.correo_alternativo ?? null,
     telefono: row.telefono ?? null,
     ultima_evaluacion: row.ultima_evaluacion ?? null,
     situacion_administrativa: row.situacion_administrativa ?? null,
-    situacion_categoria: categorizarSituacion(row.situacion_administrativa),
+    situacion_categoria: row.situacion_categoria ?? categorizarSituacion(row.situacion_administrativa),
     inicio_vinculacion: row.inicio_vinculacion ?? null,
     fin_vinculacion: row.fin_vinculacion ?? null,
     puntaje_salarial: row.puntaje_salarial ?? null,
@@ -667,8 +711,26 @@ export class BancoDocentesService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // DDL moved to db/migrations/333_create_rund_tables_and_sequence.sql
+    await this.ensureBancoDocentesExcelColumns();
     this.logger.log('BancoDocentesService initialized');
+  }
+
+  private async ensureBancoDocentesExcelColumns() {
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE academic_work_plan."Docente"
+          ADD COLUMN IF NOT EXISTS "sexoBiologico" TEXT,
+          ADD COLUMN IF NOT EXISTS "dedicacionHorasSemana" INTEGER,
+          ADD COLUMN IF NOT EXISTS "situacionCategoria" TEXT
+      `);
+      await this.dataSource.query(`DROP INDEX IF EXISTS academic_work_plan."Docente_personaId_key"`);
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "Docente_personaId_periodoCarga_key"
+        ON academic_work_plan."Docente" ("personaId", COALESCE("periodoCarga", ''))
+      `);
+    } catch (error: any) {
+      this.logger.warn(`No se pudieron verificar columnas RUND Excel en Docente: ${error?.message || error}`);
+    }
   }
 
   private async getTerritoriales(): Promise<AuthSeccionalTerritorial[]> {
@@ -799,7 +861,7 @@ export class BancoDocentesService implements OnModuleInit {
   private authDocentesBaseSql() {
     return `
       WITH auth_docentes AS (
-        SELECT DISTINCT ON (u.id_user)
+        SELECT
           u.id_user AS usuario_id,
           u.username,
           u.is_active AS activo,
@@ -827,6 +889,7 @@ export class BancoDocentesService implements OnModuleInit {
           d."vinculacionDisplay" AS vinculacion,
           d.dedicacion AS dedicacion_codigo,
           d."dedicacionDisplay" AS dedicacion,
+          d."dedicacionHorasSemana" AS dedicacion_horas_semana,
           COALESCE(d."territorialId", p.id_seccional::text) AS territorial_id,
           sec.nom_seccional AS territorial,
           sec.cod_seccional AS territorial_codigo,
@@ -846,8 +909,11 @@ export class BancoDocentesService implements OnModuleInit {
           d."origenVinculacion" AS origen_vinculacion,
           d."actoAdministrativoVinculacion" AS acto_administrativo_vinculacion,
           d."correoInstitucional" AS correo_institucional,
+          d."correoAlternativo" AS correo_personal,
+          d."sexoBiologico" AS sexo_biologico,
           d."ultimaEvaluacion" AS ultima_evaluacion,
           d."situacionAdministrativa" AS situacion_administrativa,
+          d."situacionCategoria" AS situacion_categoria,
           d."fechaInicioVinculacion" AS inicio_vinculacion,
           d."fechaFinVinculacion" AS fin_vinculacion,
           d."puntajeSalarial" AS puntaje_salarial,
@@ -869,13 +935,17 @@ export class BancoDocentesService implements OnModuleInit {
           ) AS roles
         FROM auth."user" u
         INNER JOIN auth.personas p ON p.id_person = u.id_person
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
-        INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
         LEFT JOIN auth.seccionales sec ON sec.id_seccional = p.id_seccional
         LEFT JOIN auth.sedes sede ON sede.id_sede = p.id_sede
         LEFT JOIN academic_work_plan."Docente" d ON d."personaId"::text = p.id_person::text
-        WHERE (UPPER(r.code) = 'DOCENTE' OR UPPER(r.name) = 'DOCENTE')
-        ORDER BY u.id_user, p.nom_largo ASC
+        WHERE EXISTS (
+          SELECT 1
+          FROM auth.user_roles ur
+          INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+          WHERE ur.id_user = u.id_user
+            AND COALESCE(ur.is_active, true) = true
+            AND (UPPER(r.code) = 'DOCENTE' OR UPPER(r.name) = 'DOCENTE')
+        )
       )
     `;
   }
@@ -999,6 +1069,7 @@ export class BancoDocentesService implements OnModuleInit {
 
     const runWithManager = async (manager: any) => {
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
+      const phoneFinal = normalizePhoneForAuth(payload.telefono);
       const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
       if (!finalFullName) throw new BadRequestException({
         message: `No se pudo construir el nombre del docente ${payload.documentNumber}.`,
@@ -1094,7 +1165,7 @@ export class BancoDocentesService implements OnModuleInit {
           gender || 'N',
           payload.fechaNacimiento,
           emailFinal,
-          payload.telefono,
+          phoneFinal,
           authSeccionalId,
         ];
         const placeholders = values.map((_, idx) => `$${idx + 1}`);
@@ -1134,7 +1205,7 @@ export class BancoDocentesService implements OnModuleInit {
             gender || authPersona.gen_tercero || 'N',
             payload.fechaNacimiento || authPersona.fec_nacimiento || null,
             emailFinal,
-            payload.telefono || authPersona.tel_celular || null,
+            phoneFinal || authPersona.tel_celular || null,
             authSeccionalId,
           ],
         );
@@ -1202,13 +1273,21 @@ export class BancoDocentesService implements OnModuleInit {
         [authUser.id_user, docenteRoleId],
       );
 
-      const existingDocente = await manager.findOne(DocenteEntity, { where: { personaId: authPersonId } });
+      const targetPeriodoCarga = payload.periodoCarga || null;
+      const existingDocente = targetPeriodoCarga
+        ? await manager.findOne(DocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga } as any })
+        : await manager.findOne(DocenteEntity, { where: { personaId: authPersonId } });
 
       if (existingDocente && options.rejectExisting) {
-        throw new BadRequestException(`El documento ${payload.documentNumber} ya existe en el Banco de Docentes.`);
+        throw new BadRequestException({
+          message: `El documento ${payload.documentNumber} ya existe en el Banco de Docentes para el periodo ${targetPeriodoCarga || 'sin periodo'}.`,
+          columna: 'DOCUMENTO_IDENTIDAD',
+          datoErrado: payload.documentNumber,
+          valorEsperado: `Documento no registrado en el periodo ${targetPeriodoCarga || 'seleccionado'}`,
+        });
       }
 
-      let nextIdRund = existingDocente?.idRund;
+      let nextIdRund = payload.idRund || existingDocente?.idRund;
       if (!nextIdRund) {
         const seqRes = await manager.query(`SELECT nextval('academic_work_plan.docente_id_rund_seq') AS next_val`);
         nextIdRund = `RUND-${String(seqRes[0].next_val).padStart(4, '0')}`;
@@ -1226,6 +1305,7 @@ export class BancoDocentesService implements OnModuleInit {
         ordenListado: payload.orderIndex ?? existingDocente?.ordenListado ?? null,
         vinculacionDisplay: payload.vinculacionLabel ?? existingDocente?.vinculacionDisplay ?? null,
         dedicacionDisplay: payload.dedicacionLabel ?? existingDocente?.dedicacionDisplay ?? null,
+        dedicacionHorasSemana: payload.dedicacionHorasSemana ?? existingDocente?.dedicacionHorasSemana ?? null,
         nucleoTematico: payload.nucleoTematico ?? existingDocente?.nucleoTematico ?? null,
         nivelFormacion: payload.nivelFormacion ?? existingDocente?.nivelFormacion ?? null,
         perfilAcademicoPro: payload.perfilAcademicoPro ?? existingDocente?.perfilAcademicoPro ?? null,
@@ -1239,16 +1319,19 @@ export class BancoDocentesService implements OnModuleInit {
         origenVinculacion: payload.origenVinculacion ?? existingDocente?.origenVinculacion ?? null,
         actoAdministrativoVinculacion: payload.actoAdministrativoVinculacion ?? existingDocente?.actoAdministrativoVinculacion ?? null,
         correoInstitucional: emailFinal,
+        correoAlternativo: payload.correoAlternativo ?? existingDocente?.correoAlternativo ?? null,
+        sexoBiologico: payload.sexoBiologico ?? existingDocente?.sexoBiologico ?? null,
         ultimaEvaluacion: payload.ultimaEvaluacion ?? existingDocente?.ultimaEvaluacion ?? null,
         situacionAdministrativa: payload.situacionAdministrativa ?? existingDocente?.situacionAdministrativa ?? null,
+        situacionCategoria: payload.situacionCategoria ?? existingDocente?.situacionCategoria ?? null,
         fechaInicioVinculacion: payload.fechaInicioVinculacion ?? existingDocente?.fechaInicioVinculacion ?? null,
         fechaFinVinculacion: payload.fechaFinVinculacion ?? existingDocente?.fechaFinVinculacion ?? null,
         puntajeSalarial: payload.puntajeSalarial ?? existingDocente?.puntajeSalarial ?? null,
         edadReferencia: payload.edadReferencia ?? existingDocente?.edadReferencia ?? null,
         rangoEdad: payload.rangoEdad ?? existingDocente?.rangoEdad ?? null,
-        regimenNormativo: payload.regimenNormativo,
-        periodoCarga: payload.periodoCarga,
-        observaciones: payload.observaciones,
+        regimenNormativo: payload.regimenNormativo ?? existingDocente?.regimenNormativo ?? null,
+        periodoCarga: payload.periodoCarga ?? existingDocente?.periodoCarga ?? null,
+        observaciones: payload.observaciones ?? existingDocente?.observaciones ?? null,
         idRund: nextIdRund,
         // Â§6 â€” Canal de origen para auditorÃ­a
         canalOrigen: rawPayload?.canal_origen || 'MASIVO',
@@ -1263,7 +1346,7 @@ export class BancoDocentesService implements OnModuleInit {
         docente = await manager.save(DocenteEntity, manager.create(DocenteEntity, docenteData));
       } else {
         let hasChanges = false;
-        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'nucleoTematico', 'nivelFormacion', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'ultimaEvaluacion', 'situacionAdministrativa', 'puntajeSalarial', 'edadReferencia', 'regimenNormativo', 'periodoCarga'];
+        const fieldsToCheck: (keyof DocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
         
         for (const field of fieldsToCheck) {
           const newVal = docenteData[field];
@@ -1298,16 +1381,25 @@ export class BancoDocentesService implements OnModuleInit {
         { campo: 'NOMBRE_COMPLETO', tipo: 'IDENTIDAD' },
         { campo: 'FECHA_NACIMIENTO', tipo: 'IDENTIDAD' },
         { campo: 'GENERO', tipo: 'IDENTIDAD' },
+        { campo: 'SEXO_BIOLOGICO', tipo: 'IDENTIDAD' },
         { campo: 'CORREO_INSTITUCIONAL', tipo: 'CONTACTO' },
+        { campo: 'CORREO_ALTERNATIVO', tipo: 'CONTACTO' },
+        { campo: 'TELEFONO', tipo: 'CONTACTO' },
         { campo: 'VINCULACION', tipo: 'VINCULACION' },
         { campo: 'TERRITORIAL', tipo: 'VINCULACION' },
         { campo: 'DEDICACION', tipo: 'VINCULACION' },
+        { campo: 'DEDICACION_HORAS_SEMANA', tipo: 'VINCULACION' },
+        { campo: 'HORAS_PTA', tipo: 'VINCULACION' },
+        { campo: 'REGIMEN_NORMATIVO', tipo: 'VINCULACION' },
         { campo: 'CATEGORIA_ESCALAFON', tipo: 'ESCALAFON' },
         { campo: 'INICIO_VINCULACION', tipo: 'VINCULACION' },
         { campo: 'FIN_VINCULACION', tipo: 'VINCULACION' },
+        { campo: 'ORIGEN_VINCULACION', tipo: 'VINCULACION' },
         { campo: 'ACTO_ADMINISTRATIVO', tipo: 'VINCULACION' },
         { campo: 'PUNTAJE_SALARIAL', tipo: 'ESCALAFON' },
         { campo: 'SITUACION_ADMINISTRATIVA', tipo: 'SITUACION' },
+        { campo: 'SITUACION_CATEGORIA', tipo: 'SITUACION' },
+        { campo: 'ESTADO_DOCENTE', tipo: 'VINCULACION' },
         { campo: 'NIVEL_FORMACION', tipo: 'FORMACION' },
         { campo: 'TITULO_PREGRADO', tipo: 'FORMACION' },
         { campo: 'TITULO_ESPECIALIZACION', tipo: 'FORMACION' },
@@ -1316,7 +1408,10 @@ export class BancoDocentesService implements OnModuleInit {
         { campo: 'TITULO_POSDOCTORADO', tipo: 'FORMACION' },
         { campo: 'NUCLEO_TEMATICO', tipo: 'VINCULACION' },
         { campo: 'PERFIL_ACADEMICO', tipo: 'FORMACION' },
-        { campo: 'ULTIMA_EVALUACION', tipo: 'EVALUACION' }
+        { campo: 'INVESTIGACION_ACTIVA', tipo: 'EVALUACION' },
+        { campo: 'ULTIMA_EVALUACION', tipo: 'EVALUACION' },
+        { campo: 'OBSERVACIONES', tipo: 'TRANSVERSAL' },
+        { campo: 'ID_RUND', tipo: 'TRANSVERSAL' }
       ];
 
       for (const item of camposSoporte) {
@@ -1357,25 +1452,161 @@ export class BancoDocentesService implements OnModuleInit {
     return result;
   }
 
-  async bulkUpsert(rows: any[], options: { rejectExisting?: boolean, dryRun?: boolean, omitErrors?: boolean } = {}) {
+  private async validateBulkDocumentDuplicates(rows: any[], queryRunner: { query: (sql: string, params?: any[]) => Promise<any[]> }) {
+    type BulkDocumentIssue = {
+      documentNumber: string;
+      periodoCarga: string | null;
+      rowNumber: number;
+      name: string | null;
+      reasons: string[];
+      duplicateRows?: number[];
+      existing?: any;
+    };
+
+    const issuesByRow = new Map<number, BulkDocumentIssue>();
+    const rowsByDocumentPeriod = new Map<string, Array<{ index: number; rowNumber: number; name: string | null; documentNumber: string; periodoCarga: string | null }>>();
+
+    const makeDocumentPeriodKey = (documentNumber: string, periodoCarga: string | null) => `${documentNumber}::${periodoCarga || ''}`;
+
+    const ensureIssue = (index: number, documentNumber: string, periodoCarga: string | null, rowNumber: number, name: string | null) => {
+      const existing = issuesByRow.get(index);
+      if (existing) return existing;
+      const issue: BulkDocumentIssue = { documentNumber, periodoCarga, rowNumber, name, reasons: [] };
+      issuesByRow.set(index, issue);
+      return issue;
+    };
+
+    rows.forEach((row, index) => {
+      const payload = normalizeBancoDocentePayload(row || {});
+      const documentNumber = payload.documentNumber ? String(payload.documentNumber).trim().replace(/\./g, '') : '';
+      if (!documentNumber) return;
+      const periodoCarga = payload.periodoCarga ? String(payload.periodoCarga).trim() : null;
+      const rowNumber = Number(row?.__sourceRowNumber || index + 2);
+      const name = payload.fullName || row?.NOMBRE_COMPLETO || row?.nombreCompleto || null;
+      const key = makeDocumentPeriodKey(documentNumber, periodoCarga);
+      const group = rowsByDocumentPeriod.get(key) || [];
+      group.push({ index, rowNumber, name, documentNumber, periodoCarga });
+      rowsByDocumentPeriod.set(key, group);
+    });
+
+    for (const group of rowsByDocumentPeriod.values()) {
+      if (group.length <= 1) continue;
+      const duplicateRows = group.map((item) => item.rowNumber).sort((a, b) => a - b);
+      for (const item of group) {
+        const issue = ensureIssue(item.index, item.documentNumber, item.periodoCarga, item.rowNumber, item.name);
+        issue.duplicateRows = duplicateRows;
+        issue.reasons.push(`El documento ${item.documentNumber} aparece repetido dentro del archivo para el periodo ${item.periodoCarga || 'sin periodo'} en las filas ${duplicateRows.join(', ')}.`);
+      }
+    }
+
+    const documentNumbers = Array.from(new Set(Array.from(rowsByDocumentPeriod.values()).flat().map((item) => item.documentNumber)));
+    const periodos = Array.from(new Set(Array.from(rowsByDocumentPeriod.values()).flat().map((item) => item.periodoCarga || '')));
+    if (documentNumbers.length > 0 && periodos.length > 0) {
+      const existingRows = await queryRunner.query(
+        `
+        SELECT
+          p.num_identificacion::text AS document_number,
+          p.nom_largo AS nombre,
+          p.id_person AS persona_id,
+          d.id AS docente_id,
+          COALESCE(d."periodoCarga", '') AS periodo_carga
+        FROM auth.personas p
+        INNER JOIN academic_work_plan."Docente" d
+          ON d."personaId"::text = p.id_person::text
+         AND COALESCE(d."periodoCarga", '') = ANY($2::text[])
+        WHERE p.num_identificacion::text = ANY($1::text[])
+        `,
+        [documentNumbers, periodos],
+      );
+      const existingByDocument = new Map<string, any>();
+      for (const existing of existingRows || []) {
+        if (existing?.document_number) {
+          const key = makeDocumentPeriodKey(String(existing.document_number), existing.periodo_carga || null);
+          if (!existingByDocument.has(key)) existingByDocument.set(key, existing);
+        }
+      }
+
+      for (const group of rowsByDocumentPeriod.values()) {
+        const first = group[0];
+        const existing = existingByDocument.get(makeDocumentPeriodKey(first.documentNumber, first.periodoCarga));
+        if (!existing) continue;
+        for (const item of group) {
+          const issue = ensureIssue(item.index, item.documentNumber, item.periodoCarga, item.rowNumber, item.name);
+          issue.existing = existing;
+          issue.reasons.push(`El documento ${item.documentNumber} ya existe en el Banco de Docentes para el periodo ${item.periodoCarga || 'sin periodo'}${existing.nombre ? ` como ${existing.nombre}` : ''}.`);
+        }
+      }
+    }
+
+    const blockedRowIndexes = new Set<number>(issuesByRow.keys());
+    const errors = Array.from(issuesByRow.entries()).map(([index, issue]) => ({
+      row: issue.rowNumber,
+      fila: issue.rowNumber,
+      hoja: 'CARGA_DOCENTES',
+      columna: 'DOCUMENTO_IDENTIDAD',
+      field: 'DOCUMENTO_IDENTIDAD',
+      tipo: 'DUPLICADO_DOCUMENTO',
+      duplicado: true,
+      blocking: true,
+      documentoIdentidad: issue.documentNumber,
+      periodoCarga: issue.periodoCarga,
+      nombre: issue.name,
+      filasDuplicadas: issue.duplicateRows || [],
+      registroExistente: issue.existing || null,
+      datoErrado: issue.documentNumber,
+      valorEsperado: `Documento unico para el periodo ${issue.periodoCarga || 'seleccionado'}`,
+      message: issue.reasons.join(' '),
+      mensaje: issue.reasons.join(' '),
+      data: rows[index],
+    }));
+
+    return { errors, blockedRowIndexes };
+  }
+
+  async bulkUpsert(rows: any[], options: { rejectExisting?: boolean, dryRun?: boolean, omitErrors?: boolean, periodoCarga?: string } = {}) {
     const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' LIMIT 1`);
     const activePeriod = periodRows.length > 0 ? periodRows[0].codigo : null;
+    const fallbackPeriod = options.periodoCarga || activePeriod;
+    const preparedRows = rows.map((item, index) => {
+      const row = { ...item, __sourceRowNumber: item?.__sourceRowNumber || index + 2 };
+      if (fallbackPeriod && !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga) {
+        row.PERIODO_CARGA = fallbackPeriod;
+      }
+      return row;
+    });
 
     let finalResults: any[] = [];
     let finalErrors: any[] = [];
 
     const processRows = async (manager?: any) => {
+      const queryRunner = manager || this.dataSource;
+      const duplicateValidation = await this.validateBulkDocumentDuplicates(preparedRows, queryRunner);
+      if (duplicateValidation.errors.length > 0 && !options.omitErrors && !options.dryRun) {
+        return { results: [], errors: duplicateValidation.errors };
+      }
+
       const results: any[] = [];
-      const errors: any[] = [];
-      for (let i = 0; i < rows.length; i++) {
-        const row = { ...rows[i], __sourceRowNumber: i + 2 };
-        if (activePeriod) {
-          row.PERIODO_CARGA = activePeriod;
-        }
+      const errors: any[] = [...duplicateValidation.errors];
+      for (let i = 0; i < preparedRows.length; i++) {
+        if (duplicateValidation.blockedRowIndexes.has(i)) continue;
+        const row = { ...preparedRows[i] };
+        const useRowSavepoint = Boolean(options.dryRun && manager?.query);
+        const savepointName = `banco_docentes_row_${i}`;
         try {
+          if (useRowSavepoint) {
+            await manager.query(`SAVEPOINT ${savepointName}`);
+          }
           const result = await this.upsertDocente(row, { ...options, outerManager: manager });
           results.push(result);
+          if (useRowSavepoint) {
+            await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+            await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
+          }
         } catch (err: any) {
+          if (useRowSavepoint) {
+            await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`).catch(() => undefined);
+            await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
+          }
           if (!options.omitErrors && !options.dryRun) {
              // If not omitting, we still record it. Or wait, original code recorded all errors.
           }
@@ -1384,14 +1615,19 @@ export class BancoDocentesService implements OnModuleInit {
           if (typeof err.getResponse === 'function') {
             const resp = err.getResponse();
             if (typeof resp === 'object') errorPayload = resp;
+            else if (typeof resp === 'string') errorPayload = { message: resp };
           }
 
           errors.push({ 
-            row: i + 2, 
-            message: errorPayload.message || err.message || 'Error desconocido', 
+            row: row.__sourceRowNumber, 
+            fila: row.__sourceRowNumber,
+            hoja: 'CARGA_DOCENTES',
+            message: errorPayload.message || err.message || 'Error desconocido',
+            mensaje: errorPayload.message || err.message || 'Error desconocido',
             columna: errorPayload.columna,
             datoErrado: errorPayload.datoErrado,
             valorEsperado: errorPayload.valorEsperado,
+            blocking: true,
             data: row 
           });
         }
@@ -1417,7 +1653,7 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     return {
-      total: rows.length,
+      total: preparedRows.length,
       created: finalResults.filter((r) => r.action === 'insert').length,
       updated: finalResults.filter((r) => r.action === 'update').length,
       unchanged: finalResults.filter((r) => r.action === 'unchanged').length,
@@ -1428,14 +1664,15 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async toggleEstado(id: string) {
+    const targetDocente = await this.docenteRepo.findOne({ where: { id } });
     const authRows = await this.dataSource.query(
       `
       SELECT u.id_user, u.id_person, u.is_active
       FROM auth."user" u
-      WHERE u.id_user::text = $1 OR u.id_person::text = $1
+      WHERE u.id_user::text = $1 OR u.id_person::text = $1 OR u.id_person::text = $2
       LIMIT 1
       `,
-      [id],
+      [id, targetDocente?.personaId || null],
     );
 
     let activoFinal = false;
@@ -1448,7 +1685,7 @@ export class BancoDocentesService implements OnModuleInit {
       );
 
       // También sincronizar el estado en DocenteEntity para que la UI refleje el cambio
-      const d = await this.docenteRepo.findOne({ where: { personaId: authRows[0].id_person } as any });
+      const d = targetDocente || await this.docenteRepo.findOne({ where: { personaId: authRows[0].id_person } as any });
       if (d) {
         d.estado = activoFinal ? 'ACTIVO' : 'INACTIVO';
         await this.docenteRepo.save(d);
@@ -1457,7 +1694,7 @@ export class BancoDocentesService implements OnModuleInit {
       return { id: authRows[0].id_user, estado: activoFinal ? 'ACTIVO' : 'INACTIVO', activo: activoFinal };
     }
 
-    const d = await this.docenteRepo.findOne({ where: { id } });
+    const d = targetDocente || await this.docenteRepo.findOne({ where: { id } });
     if (!d) throw new NotFoundException(`Docente ${id} no encontrado`);
     d.estado = d.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
     await this.docenteRepo.save(d);
@@ -1471,7 +1708,11 @@ export class BancoDocentesService implements OnModuleInit {
         `SELECT num_identificacion AS document_number FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
         [d.personaId],
       );
-      const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || authRows[0]?.document_number }, {});
+      const result = await this.upsertDocente({
+        ...body,
+        periodoCarga: body.periodoCarga || body.periodo_carga || d.periodoCarga,
+        documentNumber: body.documentNumber || authRows[0]?.document_number,
+      }, {});
       return result;
     }
 
@@ -1487,7 +1728,11 @@ export class BancoDocentesService implements OnModuleInit {
     );
     if (!authRows[0]?.document_number) throw new NotFoundException(`Docente ${id} no encontrado`);
 
-    const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || authRows[0].document_number }, {});
+    const result = await this.upsertDocente({
+      ...body,
+      periodoCarga: body.periodoCarga || body.periodo_carga || null,
+      documentNumber: body.documentNumber || authRows[0].document_number,
+    }, {});
     return result;
   }
 
@@ -2641,10 +2886,20 @@ export class BancoDocentesService implements OnModuleInit {
       );
     } catch { /* table may not exist */ }
 
+    const fechaNacimiento = p.fec_nacimiento || null;
+    const edad = computeEdad(fechaNacimiento, (docente as any).edadReferencia);
+    const rangoEdad = computeRangoEdad(edad, (docente as any).rangoEdad);
+    const genUpper = (p.gen_tercero || '').toUpperCase();
+    const sexoBiologico = (docente as any).sexoBiologico || (genUpper.startsWith('M') ? 'Hombre' : (genUpper.startsWith('F') ? 'Mujer' : 'Otro'));
+    const territorialNombre = await this.getTerritoriales()
+      .then((territoriales) => territoriales.find((t) => String(t.id) === String((docente as any).territorialId))?.nombre || (docente as any).territorialId || null)
+      .catch(() => (docente as any).territorialId || null);
+
     // Organizar datos por bloque
     const tarjeta = {
       docenteId: docente.id,
       idRund: (docente as any).idRund || null,
+      periodoCarga: (docente as any).periodoCarga || null,
       estadoAprobacion: (docente as any).estadoAprobacion || 'PENDIENTE',
       canalOrigen: (docente as any).canalOrigen || 'MASIVO',
       completitud: (docente as any).completitud || {},
@@ -2657,6 +2912,9 @@ export class BancoDocentesService implements OnModuleInit {
             { campo: 'TIPO_DOCUMENTO', valor: p.tip_identificacion || null, editable: false },
             { campo: 'FECHA_NACIMIENTO', valor: p.fec_nacimiento || null, editable: false },
             { campo: 'GENERO', valor: p.gen_tercero || null, editable: false },
+            { campo: 'SEXO_BIOLOGICO', valor: sexoBiologico, editable: false },
+            { campo: 'EDAD', valor: edad, editable: false },
+            { campo: 'RANGO_EDAD', valor: rangoEdad, editable: false },
           ],
           estado: bloques.find((b: any) => b.bloque === 'IDENTIDAD')?.estado || 'Pendiente',
           soportes: soportes.filter((s: any) => s.bloque === 'IDENTIDAD'),
@@ -2669,6 +2927,7 @@ export class BancoDocentesService implements OnModuleInit {
             { campo: 'TITULO_MAESTRIA', valor: (docente as any).maestria || null, editable: true },
             { campo: 'TITULO_DOCTORADO', valor: (docente as any).doctorado || null, editable: true },
             { campo: 'TITULO_POSDOCTORADO', valor: (docente as any).posDoctorado || null, editable: true },
+            { campo: 'PERFIL_ACADEMICO_PRO', valor: (docente as any).perfilAcademicoPro || null, editable: true },
             { campo: 'PERFIL_ACADEMICO', valor: (docente as any).perfilAcademico || null, editable: true },
           ],
           estado: bloques.find((b: any) => b.bloque === 'FORMACION')?.estado || 'Pendiente',
@@ -2676,15 +2935,21 @@ export class BancoDocentesService implements OnModuleInit {
         },
         VINCULACION: {
           campos: [
-            { campo: 'TIPO_VINCULACION', valor: (docente as any).tipoVinculacion || null, editable: true },
-            { campo: 'DEDICACION', valor: (docente as any).dedicacion || null, editable: true },
+            { campo: 'TIPO_VINCULACION', valor: getTipoVinculacionLabel((docente as any).tipoVinculacion, (docente as any).vinculacionDisplay), editable: true },
+            { campo: 'DEDICACION', valor: getDedicacionLabel((docente as any).dedicacion, (docente as any).dedicacionDisplay), editable: true },
+            { campo: 'DEDICACION_HORAS_SEMANA', valor: (docente as any).dedicacionHorasSemana ?? getHorasSemanalesFromDedicacion((docente as any).dedicacion), editable: true },
+            { campo: 'HORAS_PTA', valor: (docente as any).horasAsignables ?? null, editable: true },
             { campo: 'CATEGORIA_ESCALAFON', valor: (docente as any).escalafon || null, editable: true },
-            { campo: 'TERRITORIAL', valor: (docente as any).territorialId || null, editable: true },
+            { campo: 'TERRITORIAL', valor: territorialNombre, editable: true },
             { campo: 'REGIMEN_NORMATIVO', valor: (docente as any).regimenNormativo || null, editable: true },
+            { campo: 'ORIGEN_VINCULACION', valor: (docente as any).origenVinculacion || null, editable: true },
             { campo: 'ACTO_ADMINISTRATIVO', valor: (docente as any).actoAdministrativoVinculacion || null, editable: true },
+            { campo: 'INICIO_VINCULACION', valor: (docente as any).fechaInicioVinculacion || null, editable: true },
+            { campo: 'FIN_VINCULACION', valor: (docente as any).fechaFinVinculacion || null, editable: true },
             { campo: 'PUNTAJE_SALARIAL', valor: (docente as any).puntajeSalarial || null, editable: true },
             { campo: 'SITUACION_ADMINISTRATIVA', valor: (docente as any).situacionAdministrativa || null, editable: true },
-            { campo: 'NUCLEO_TEMATICO', valor: (docente as any).nucleoTematico || null, editable: true },
+            { campo: 'SITUACION_CATEGORIA', valor: (docente as any).situacionCategoria || categorizarSituacion((docente as any).situacionAdministrativa), editable: true },
+            { campo: 'ESTADO_DOCENTE', valor: (docente as any).estado || null, editable: true },
           ],
           estado: bloques.find((b: any) => b.bloque === 'VINCULACION')?.estado || 'Pendiente',
           soportes: soportes.filter((s: any) => s.bloque === 'VINCULACION'),
@@ -2692,11 +2957,28 @@ export class BancoDocentesService implements OnModuleInit {
         CONTACTO: {
           campos: [
             { campo: 'CORREO_INSTITUCIONAL', valor: (docente as any).correoInstitucional || null, editable: false },
-            { campo: 'CORREO_ALTERNATIVO', valor: p.dir_email !== (docente as any).correoInstitucional ? p.dir_email : null, editable: true },
+            { campo: 'CORREO_ALTERNATIVO', valor: (docente as any).correoAlternativo || null, editable: true },
             { campo: 'TELEFONO', valor: p.tel_celular || null, editable: true },
           ],
           estado: bloques.find((b: any) => b.bloque === 'CONTACTO')?.estado || 'Pendiente',
           soportes: soportes.filter((s: any) => s.bloque === 'CONTACTO'),
+        },
+        ACADEMICO: {
+          campos: [
+            { campo: 'NUCLEO_TEMATICO', valor: (docente as any).nucleoTematico || null, editable: true },
+            { campo: 'INVESTIGACION_ACTIVA', valor: (docente as any).investigacion || null, editable: true },
+            { campo: 'ULTIMA_EVALUACION', valor: (docente as any).ultimaEvaluacion || null, editable: true },
+          ],
+          estado: bloques.find((b: any) => b.bloque === 'ACADEMICO')?.estado || 'Pendiente',
+          soportes: soportes.filter((s: any) => s.bloque === 'ACADEMICO'),
+        },
+        TRANSVERSAL: {
+          campos: [
+            { campo: 'ID_RUND', valor: (docente as any).idRund || null, editable: false },
+            { campo: 'OBSERVACIONES', valor: (docente as any).observaciones || null, editable: true },
+          ],
+          estado: bloques.find((b: any) => b.bloque === 'TRANSVERSAL')?.estado || 'Pendiente',
+          soportes: soportes.filter((s: any) => s.bloque === 'TRANSVERSAL'),
         },
       },
 
@@ -2722,7 +3004,7 @@ export class BancoDocentesService implements OnModuleInit {
    * §6.3 / BR-059 — Lookup tarjeta RUND by persona ID (for Carpeta Digital).
    * Returns null if the persona is not a docente.
    */
-  async getTarjetaRUNDByPersona(personaId: string): Promise<any | null> {
+  async getTarjetaRUNDByPersona(personaId: string, periodoCarga?: string): Promise<any | null> {
     try {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(personaId);
       
@@ -2736,12 +3018,15 @@ export class BancoDocentesService implements OnModuleInit {
         finalPersonaId = result[0].id_person;
       }
 
-      let docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+      const docenteWhere = periodoCarga
+        ? { personaId: finalPersonaId, periodoCarga }
+        : { personaId: finalPersonaId };
+      let docente = await this.docenteRepo.findOne({ where: docenteWhere as any });
       
       // Auto-provisionar docente si no existe (Necesario para sincronizaciA3n con Carpeta Digital)
       if (!docente) {
         const authData = await this.dataSource.query(
-          `SELECT id_person, num_identificacion, nombres, apellidos, correo_electronico FROM auth.personas WHERE id_person = $1 LIMIT 1`,
+          `SELECT id_person, num_identificacion, nom_largo, dir_email FROM auth.personas WHERE id_person = $1 LIMIT 1`,
           [finalPersonaId]
         );
         if (authData && authData.length > 0) {
@@ -2750,13 +3035,14 @@ export class BancoDocentesService implements OnModuleInit {
             personaId: auth.id_person,
             documentNumber: auth.num_identificacion || 'N/A',
             documento_identidad: auth.num_identificacion || 'N/A',
-            nombre_completo: `${auth.nombres || ''} ${auth.apellidos || ''}`.trim() || 'Sin Nombre',
-            correo_institucional: auth.correo_electronico || null,
+            nombre_completo: auth.nom_largo || 'Sin Nombre',
+            correo_institucional: auth.dir_email || null,
             territorial: 'Sede Central',
             vinculacion: 'Ocasional',
-            estado: 'Inactivo'
+            estado: 'Inactivo',
+            periodoCarga: periodoCarga || null,
           }, { rejectExisting: false });
-          docente = await this.docenteRepo.findOne({ where: { personaId: finalPersonaId } });
+          docente = await this.docenteRepo.findOne({ where: docenteWhere as any });
         }
       }
 
