@@ -197,6 +197,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     disciplinado: (proceso as any).investigado || proceso.disciplinado || '',
     cargo: proceso.cargo || '',
     dependencia: proceso.dependencia || '',
+    origen: (proceso as any).origen || '',
+    territorial: (proceso as any).territorial || '',
+    presuntaConducta: (proceso as any).presuntaConducta || '',
     descripcionHechos: proceso.descripcionHechos || (proceso as any).hechos || ''
   });
 
@@ -1302,6 +1305,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                           abogadoSustanciador: editData.abogadoAsignado,
                           cargoInvestigado: editData.cargo,
                           dependenciaInvestigado: editData.dependencia,
+                          origen: editData.origen,
+                          territorial: editData.territorial,
+                          presuntaConducta: editData.presuntaConducta,
                           hechos: editData.descripcionHechos,
                           demandado: editData.disciplinado
                         });
@@ -1347,6 +1353,45 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                     <div>
                       <p className="text-sm text-gray-600">Número de Proceso</p>
                       <p className="font-bold text-lg" style={{ color: '#003DA5' }}>{proceso.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Origen</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.origen}
+                          onChange={(e) => setEditData({ ...editData, origen: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-semibold">{(proceso as any).origen || 'No registrado'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Territorial</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.territorial}
+                          onChange={(e) => setEditData({ ...editData, territorial: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-semibold">{(proceso as any).territorial || 'No registrada'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Presunta Conducta Indisciplinaria</p>
+                      {modoEdicion ? (
+                        <textarea
+                          value={editData.presuntaConducta}
+                          onChange={(e) => setEditData({ ...editData, presuntaConducta: e.target.value })}
+                          rows={2}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        />
+                      ) : (
+                        <p className="font-semibold">{(proceso as any).presuntaConducta || 'No registrada'}</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Tipo de Falta</p>
@@ -1444,6 +1489,61 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 </Card>
               </div>
 
+              {/* Partes del Proceso (disciplinados, denunciantes y víctimas) */}
+              <Card className="p-4 border-2 border-gray-200">
+                <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-gray-800">
+                  <Users className="w-5 h-5" /> Partes del Proceso
+                </h3>
+                {(() => {
+                  const actorsList: any[] = (proceso as any).actors || [];
+                  const rolDe = (a: any) => (a.rol || '').toUpperCase();
+                  const disciplinados = actorsList.filter(a => rolDe(a) === 'DISCIPLINADO' || rolDe(a) === 'DEMANDADO');
+                  const denunciantes = actorsList.filter(a => rolDe(a) === 'DENUNCIANTE' || rolDe(a) === 'VICTIMA');
+                  if (actorsList.length === 0) {
+                    return <p className="text-sm text-gray-500 italic">No hay partes registradas para este proceso.</p>;
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {disciplinados.length > 0 && (
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wide text-blue-700 mb-2">Disciplinados</p>
+                          <div className="space-y-2">
+                            {disciplinados.map((a, i) => (
+                              <div key={`disc-${i}`} className="p-3 rounded-lg bg-blue-50/50 border border-blue-100 text-sm">
+                                <p className="font-bold text-gray-900">{a.nombre}{a.identificacion ? ` — ${a.identificacion}` : ''}</p>
+                                {(a.cargo || a.dependencia) && <p className="text-gray-600">{[a.cargo, a.dependencia].filter(Boolean).join(' · ')}</p>}
+                                {(a.email || a.telefono) && <p className="text-gray-600">{[a.email, a.telefono].filter(Boolean).join(' · ')}</p>}
+                                {a.direccion && <p className="text-gray-600">{a.direccion}</p>}
+                                <p className="mt-1"><span className="text-gray-500">Apoderado:</span> <span className="font-semibold">{a.apoderado || 'Sin apoderado'}</span></p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {denunciantes.length > 0 && (
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wide text-orange-700 mb-2">Denunciantes / Víctimas</p>
+                          <div className="space-y-2">
+                            {denunciantes.map((a, i) => (
+                              <div key={`den-${i}`} className="p-3 rounded-lg bg-orange-50/50 border border-orange-100 text-sm">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-bold text-gray-900">{a.nombre}{a.identificacion ? ` — ${a.identificacion}` : ''}</p>
+                                  <Badge className={rolDe(a) === 'VICTIMA' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}>
+                                    {rolDe(a) === 'VICTIMA' ? 'Víctima' : 'Denunciante'}
+                                  </Badge>
+                                </div>
+                                {(a.email || a.telefono) && <p className="text-gray-600">{[a.email, a.telefono].filter(Boolean).join(' · ')}</p>}
+                                {a.direccion && <p className="text-gray-600">{a.direccion}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </Card>
+
               {/* Cronología de Términos */}
               <Card className="p-4 bg-blue-50 border-2 border-blue-200">
                 <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
@@ -1503,7 +1603,23 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 <h3 className="font-black text-xl mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
                   <AlertTriangle className="w-6 h-6" /> Descripción de los Hechos
                 </h3>
-                <p className="text-gray-700 leading-relaxed mb-4">{(proceso as any).descripcionHechos || (proceso as any).hechos || 'No se han registrado hechos.'}</p>
+                {(() => {
+                  const lista: string[] = ((proceso as any).hechosList && (proceso as any).hechosList.length > 0)
+                    ? (proceso as any).hechosList
+                    : [(proceso as any).descripcionHechos || (proceso as any).hechos].filter(Boolean);
+                  if (lista.length === 0) {
+                    return <p className="text-gray-500 italic">No se han registrado hechos.</p>;
+                  }
+                  return (
+                    <ol className="space-y-3 list-decimal list-inside">
+                      {lista.map((h, i) => (
+                        <li key={`hecho-${i}`} className="text-gray-700 leading-relaxed">
+                          <span className="whitespace-pre-line">{h}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  );
+                })()}
               </Card>
             </TabsContent>
 

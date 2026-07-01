@@ -48,6 +48,11 @@ export class JuzgamientoController {
                 actuaciones: exp.actuaciones || [],
                 evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
+                hechosList: this.resolverHechosList(exp.hechosList, exp.hechos),
+                origen: exp.origen || null,
+                territorial: exp.territorial || (exp.camposAdicionales?.territorial ?? null),
+                presuntaConducta: exp.presuntaConducta || null,
+                actors: exp.actors || [],
                 procesosAnexados: (exp.procesosAnexados || []).map(a => ({
                     id: a.radicado,
                     uuid: a.id,
@@ -87,6 +92,11 @@ export class JuzgamientoController {
             actuaciones: exp.actuaciones || [],
             evidencias: exp.evidencias || [],
             hechos: exp.hechos || '',
+            hechosList: this.resolverHechosList(exp.hechosList, exp.hechos),
+            origen: exp.origen || null,
+            territorial: exp.territorial || (exp.camposAdicionales?.territorial ?? null),
+            presuntaConducta: exp.presuntaConducta || null,
+            actors: exp.actors || [],
             procesosAnexados: (exp.procesosAnexados || []).map((a: any) => ({
                 id: a.radicado,
                 uuid: a.id,
@@ -108,6 +118,21 @@ export class JuzgamientoController {
         if (!fechaHechos) return 'Ley 1952 de 2019'; // Por defecto la más reciente
         const fecha = new Date(fechaHechos);
         return fecha < this.LEY_1952_DESDE ? 'Ley 734 de 2002' : 'Ley 1952 de 2019';
+    }
+
+    /** Devuelve la lista de hechos, cayendo al texto plano `hechos` si la lista está vacía. */
+    private resolverHechosList(hechosList?: string[], hechosTexto?: string): string[] {
+        if (Array.isArray(hechosList) && hechosList.length > 0) return hechosList;
+        return hechosTexto ? [hechosTexto] : [];
+    }
+
+    /** Deriva el texto plano `hechos` a partir de la lista de hechos (compatibilidad con vistas). */
+    private derivarHechosTexto(hechosList?: string[], hechosActual?: string): string | undefined {
+        if (Array.isArray(hechosList) && hechosList.length > 0) {
+            const limpios = hechosList.map(h => (h || '').toString().trim()).filter(Boolean);
+            if (limpios.length > 0) return limpios.join('\n\n');
+        }
+        return hechosActual;
     }
 
     @Post()
@@ -136,12 +161,19 @@ export class JuzgamientoController {
         const leyAplicable = this.calcularLeyAplicable(data.fechaHechos);
 
         const creadoPor = data.creadoPor || data.usuario || 'Sistema';
+
+        // Normalizar hechos múltiples: mantener `hechos` (texto) sincronizado con hechosList
+        const hechosList = Array.isArray(data.hechosList) ? data.hechosList : undefined;
+        const hechosTexto = this.derivarHechosTexto(hechosList, data.hechos);
+
         return this.expedienteService.crearExpediente({
             ...data,
             jurisdiccion: 'DISCIPLINARIO',
             tipoProceso: 'Disciplinario',
             etapa: 'E1_AVOCAMIENTO',
             leyAplicable,
+            hechos: hechosTexto,
+            hechosList: hechosList ?? (data.hechos ? [data.hechos] : []),
             fechaHechos: data.fechaHechos ? new Date(data.fechaHechos) : undefined,
         }, creadoPor);
     }
@@ -151,7 +183,13 @@ export class JuzgamientoController {
         const expediente = await this.expedienteService.findOneByRadicado(radicado);
         if (!expediente) throw new BadRequestException('Expediente no encontrado');
 
-        return this.expedienteService.updateExpediente(expediente.id, data);
+        // Si llega hechosList, mantener el texto plano `hechos` sincronizado
+        const patch: Partial<Expediente> = { ...data };
+        if (Array.isArray(data.hechosList)) {
+            patch.hechos = this.derivarHechosTexto(data.hechosList, data.hechos);
+        }
+
+        return this.expedienteService.updateExpediente(expediente.id, patch);
     }
 
     private calculateDiasRestantes(fechaLimiteEtapa?: Date, fechaPrescripcion?: Date): number {
