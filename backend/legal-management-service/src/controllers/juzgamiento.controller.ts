@@ -35,7 +35,7 @@ export class JuzgamientoController {
                 uuid: exp.id,      // Keep internal UUID available if needed
                 radicado: exp.radicado,
                 etapa: exp.etapa || 'E1_AVOCAMIENTO',
-                leyAplicable: exp.leyAplicable || 'Ley 1952/2019',
+                leyAplicable: exp.leyAplicable || this.calcularLeyAplicable(exp.fechaHechos),
                 investigado: exp.demandado,
                 cargo: exp.cargoInvestigado,
                 dependencia: exp.dependenciaInvestigado,
@@ -80,7 +80,7 @@ export class JuzgamientoController {
             uuid: exp.id,
             radicado: exp.radicado,
             etapa: exp.etapa || 'E1_AVOCAMIENTO',
-            leyAplicable: exp.leyAplicable || 'Ley 1952/2019',
+            leyAplicable: exp.leyAplicable || this.calcularLeyAplicable(exp.fechaHechos),
             investigado: exp.demandado,
             cargo: exp.cargoInvestigado,
             dependencia: exp.dependenciaInvestigado,
