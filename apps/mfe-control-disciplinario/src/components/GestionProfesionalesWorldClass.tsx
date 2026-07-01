@@ -386,9 +386,50 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: { onVerProceso
     return { bg: '#ECFDF5', border: '#10B981', text: '#065F46' };
   };
 
-  const handleExportarPDF = () => {
-    toast.success('Exportar PDF', {
-      description: 'Funcionalidad de exportación en desarrollo'
+  const handleExportarPDF = async () => {
+    const profesionalesConProcesos = profesionalesFiltrados.filter(p => p.procesosAsignados > 0);
+
+    if (profesionalesConProcesos.length === 0) {
+      toast.warning('Sin datos para exportar', {
+        description: 'No hay profesionales con procesos asignados.'
+      });
+      return;
+    }
+
+    const XLSX = await import('xlsx');
+
+    const estadoLabel: Record<string, string> = {
+      activo: 'Activo',
+      inactivo: 'Inactivo',
+      vacaciones: 'Vacaciones',
+      comision: 'Comisión',
+    };
+
+    const filas = profesionalesConProcesos.map(p => ({
+      'Profesional': p.nombre,
+      'Cargo': p.cargo,
+      'Tipo de Contrato': p.tipoContrato,
+      'Estado': estadoLabel[p.estado] ?? p.estado,
+      'Territorial': p.territorial,
+      'Email': p.email,
+      'Procesos Abiertos': p.procesosAsignados,
+      'Al Día': p.procesosAlDia,
+      'En Riesgo': p.procesosEnRiesgo,
+      'Con Vencimiento de Etapa': p.procesosVencidos,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Profesionales');
+
+    const colWidths = Object.keys(filas[0]).map(key => ({ wch: Math.max(key.length + 2, 18) }));
+    ws['!cols'] = colWidths;
+
+    const fecha = new Date().toLocaleDateString('es-CO').replace(/\//g, '-');
+    XLSX.writeFile(wb, `informe_profesionales_${fecha}.xlsx`);
+
+    toast.success('Informe exportado', {
+      description: `${profesionalesConProcesos.length} profesional${profesionalesConProcesos.length !== 1 ? 'es' : ''} incluido${profesionalesConProcesos.length !== 1 ? 's' : ''}`
     });
   };
 
@@ -548,7 +589,7 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: { onVerProceso
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-3 p-4 rounded-xl border-2 grid grid-cols-1 md:grid-cols-3 gap-4" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
+              <div className="mt-3 p-4 rounded-xl border-2 grid grid-cols-1 md:grid-cols-2 gap-4" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
                 {/* Filtro por estado */}
                 <div>
                   <label className="block mb-2 text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
@@ -565,24 +606,6 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: { onVerProceso
                     <option value="vacaciones">Vacaciones</option>
                     <option value="comision">Comisión</option>
                     <option value="inactivo">Inactivo</option>
-                  </select>
-                </div>
-
-                {/* Filtro por territorial */}
-                <div>
-                  <label className="block mb-2 text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                    Territorial
-                  </label>
-                  <select
-                    value={filtroTerritorial}
-                    onChange={(e) => setFiltroTerritorial(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border-2 focus:outline-none focus:border-[#003DA5] text-sm"
-                    style={{ borderColor: '#E5E7EB' }}
-                  >
-                    <option value="todos">Todos los territoriales</option>
-                    {territorialesUnicos.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
                   </select>
                 </div>
 

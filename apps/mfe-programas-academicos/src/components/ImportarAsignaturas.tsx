@@ -711,7 +711,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
               <div className="flex-1 flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h3 className="text-sm font-bold text-gray-800">Resumen del Catálogo</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Detalle de la carga por categoría para el periodo {periodoActivo?.codigo || periodo}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Detalle de la carga por categoría para el período {periodoActivo?.codigo || periodo}</p>
                 </div>
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50/80 sticky top-0 border-b border-gray-100 z-10">
@@ -963,7 +963,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                 </div>
                 <div>
                   <p className="font-bold text-gray-900 text-sm">Procesando catálogo...</p>
-                  <p className="text-[11px] text-gray-400 mt-1">Validando y cargando datos del periodo {periodoActivo?.codigo || periodo}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Validando y cargando datos del período {periodoActivo?.codigo || periodo}</p>
                 </div>
               </div>
             </div>

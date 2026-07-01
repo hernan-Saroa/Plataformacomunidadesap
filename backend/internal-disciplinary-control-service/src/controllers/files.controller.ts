@@ -17,7 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
 import { basename, extname, join, resolve } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -285,6 +285,29 @@ export class FilesController {
     if (existsSync(filePath)) {
       res.sendFile(filePath);
       return;
+    }
+
+    // Search in subdirectories of uploadRootDir (for news attachments stored in radicado subfolders)
+    const uploadsRoot = resolve(getUploadRootDir());
+    if (existsSync(uploadsRoot)) {
+      for (const entry of readdirSync(uploadsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const level1 = join(uploadsRoot, entry.name, safeFilename);
+        if (existsSync(level1)) {
+          res.sendFile(level1);
+          return;
+        }
+        // Also check one level deeper (year/radicado/filename)
+        const subdir = join(uploadsRoot, entry.name);
+        for (const sub of readdirSync(subdir, { withFileTypes: true })) {
+          if (!sub.isDirectory()) continue;
+          const level2 = join(subdir, sub.name, safeFilename);
+          if (existsSync(level2)) {
+            res.sendFile(level2);
+            return;
+          }
+        }
+      }
     }
 
     throw new HttpException('File not found', HttpStatus.NOT_FOUND);
