@@ -39,8 +39,8 @@ export class DocumentConversionService {
     preferredPdfName: string,
     replacements: WordPlaceholderReplacement[] = [],
   ): Promise<ConvertedDocumentResult> {
-    const inputFilename = path.basename(documentUrl);
-    const inputPath = this.storageService.getFullPath(inputFilename);
+    const inputFilename = path.basename(decodeURIComponent(documentUrl));
+    const inputPath = this.storageService.getFullPath(documentUrl);
 
     this.logger.log(`[Conversion] Converting document: ${documentUrl} (${inputFilename})`);
 
@@ -121,8 +121,7 @@ export class DocumentConversionService {
     }
 
     try {
-      const filename = path.basename(documentUrl);
-      const fullPath = this.storageService.getFullPath(filename);
+      const fullPath = this.storageService.getFullPath(documentUrl);
       const stats = await fs.stat(fullPath);
       return stats.size;
     } catch {

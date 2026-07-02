@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as fs from 'fs/promises';
 import { existsSync } from 'fs';
-import * as path from 'path';
 import { StorageService } from './storage.service';
 
 @Injectable()
@@ -14,8 +13,7 @@ export class PdfModifierService {
      */
     async addConsecutive(filename: string, consecutive: string): Promise<void> {
         try {
-            const cleanFilename = path.basename(filename);
-            const filePath = this.storageService.getFullPath(cleanFilename);
+            const filePath = this.storageService.getFullPath(filename);
             const pdfBytes = await fs.readFile(filePath);
             const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
             const helveticaFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -51,8 +49,7 @@ export class PdfModifierService {
      */
     async addSignature(filename: string, signerName: string, role: string): Promise<void> {
         try {
-            const cleanFilename = path.basename(filename);
-            const filePath = this.storageService.getFullPath(cleanFilename);
+            const filePath = this.storageService.getFullPath(filename);
             const pdfBytes = await fs.readFile(filePath);
             const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
             const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
