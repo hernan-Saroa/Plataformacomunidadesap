@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - dev
-      - qa
-      - pre
-      - prod
 
 env:
   REGISTRY: ghcr.io
