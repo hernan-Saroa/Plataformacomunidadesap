@@ -459,17 +459,27 @@ export function ExpedientesElectronicosWorldClass() {
      setLoading(true);
      setError(null);
      try {
-       // Obtener todos los procesos del backend
-       const procesosBackend = await disciplinaryService.getAllProcesos();
+       // ✅ Filtrar procesos según rol: Jefe/Radicador ven todos, Profesional solo los suyos
+       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+       const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
+       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
+       const currentUserId = authService.getCurrentUser()?.id;
+       const procesosBackend = (esJefe || canViewAll)
+         ? await disciplinaryService.getAllProcesos()
+         : canViewMine ? await disciplinaryService.getMisProcesos(currentUserId as string)
+         : [];
        
        // Obtener noticias radicadas del backend (manejo individual de errores)
+       // ✅ Las noticias radicadas aún no tienen profesional asignado: solo Jefe/Radicador las ven
        let noticiasRadicadasBackend: any[] = [];
-       try {
-         noticiasRadicadasBackend = await apiClient.get<any[]>('/control-disciplinario/api/v1/disciplinary-processes/radicated-news');
-       } catch (newsError) {
-         console.warn('Error cargando noticias radicadas, continuando solo con procesos:', newsError);
-         // Continuamos con un array vacío de noticias para no fallar completamente
-         noticiasRadicadasBackend = [];
+       if (esJefe || canViewAll) {
+         try {
+           noticiasRadicadasBackend = await apiClient.get<any[]>('/control-disciplinario/api/v1/disciplinary-processes/radicated-news');
+         } catch (newsError) {
+           console.warn('Error cargando noticias radicadas, continuando solo con procesos:', newsError);
+           // Continuamos con un array vacío de noticias para no fallar completamente
+           noticiasRadicadasBackend = [];
+         }
        }
        
        // Transformar datos del backend al formato del componente
@@ -629,7 +639,8 @@ export function ExpedientesElectronicosWorldClass() {
         
         // Si cargamos procesos pero no noticias, mostrar datos de ejemplo de noticias
         // para que el usuario pueda ver cómo se verían las noticias en estado radicado
-        if (noticiasRadicadasBackend.length === 0 && procesosBackend.length > 0) {
+        // ✅ Solo aplica si el rol tenía permiso de verlas (si no, es intencional, no un fallo de carga)
+        if ((esJefe || canViewAll) && noticiasRadicadasBackend.length === 0 && procesosBackend.length > 0) {
           // Mostrar notificación
           toast.warning('Se cargaron los procesos pero no las noticias radicadas. Mostrando datos de ejemplo.');
           
