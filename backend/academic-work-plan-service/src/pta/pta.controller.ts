@@ -352,8 +352,15 @@ export class PtaController {
   }
 
   @Post(':ptaId/enviar-aprobacion')
-  enviarAprobacion(@Param('ptaId') ptaId: string, @Body() body: any) {
-    return { success: true, data: { ptaId, ...body } };
+  async enviarAprobacion(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    const result = await this.ptaService.updatePTAStatus(ptaId, {
+      ...(body || {}),
+      estado: 'Pendiente Jefatura',
+      actorId: body?.actorId || body?.enviado_por || (req.headers['x-user-id'] as string),
+      actorRol: body?.actorRol || 'Docente',
+      sistemaOrigen: body?.sistemaOrigen || 'portal',
+    });
+    return { success: true, ...result };
   }
 
   // (implementación real arriba, este stub fue reemplazado)

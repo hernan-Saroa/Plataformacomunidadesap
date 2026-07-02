@@ -233,6 +233,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   const [isReporteOpen, setIsReporteOpen] = useState(false);
   const [showSolicitudModal, setShowSolicitudModal] = useState(false);
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
+  const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
 
   // Platform bell notifications
   const { addNotification } = useNotifications();
@@ -243,14 +244,31 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     try {
       const res = await getPTAsByDocente(userPersonId);
       if (res.success && Array.isArray(res.data)) {
-        setPtas(res.data);
+        const loadedPtas = res.data;
+        setPtas(loadedPtas);
+
+        const approvalEntries = await Promise.all(
+          loadedPtas
+            .filter((pta: any) => pta?.id && pta.estado !== 'Borrador')
+            .map(async (pta: any) => {
+              try {
+                const compRes = await getComponentesAprobacion(pta.id);
+                return [pta.id, compRes.success && Array.isArray(compRes.data) ? compRes.data : []] as const;
+              } catch {
+                return [pta.id, []] as const;
+              }
+            })
+        );
+        setComponentApprovalsByPta(Object.fromEntries(approvalEntries));
       } else {
         console.warn('[Portal PTA] Response data is not an array:', res);
         setPtas([]);
+        setComponentApprovalsByPta({});
       }
     } catch (error) {
       console.error('[Portal PTA] Error loading PTAs:', error);
       setPtas([]);
+      setComponentApprovalsByPta({});
     }
     setLoading(false);
   }, [userPersonId]);
@@ -442,7 +460,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
   // ═══ Re-enviar devuelto ═══
   const reenviarPTA = async (ptaId: string) => {
-    const res = await updatePTAStatus(ptaId, { estado: 'PENDIENTE_APROBACION', observaciones: 'Re-envío tras corrección' });
+    const res = await updatePTAStatus(ptaId, { accion: 'reenviar_corregido', observaciones: 'Re-envío tras corrección' });
     if (res.success) {
       toast.success('PTA re-enviado a aprobación');
       loadPtas();
@@ -730,7 +748,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
                           {/* Component Approval Tracker — per-component status */}
                           <div className="mb-5">
-                            <ComponentApprovalBar estado={pta.estado} />
+                            <ComponentApprovalBar
+                              estado={pta.estado}
+                              componentesAprobacion={componentApprovalsByPta[pta.id] || []}
+                            />
                           </div>
 
                           {/* Actions row */}
@@ -1004,6 +1025,65 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
                     <div className="mt-3 px-2.5 py-1.5 rounded-lg bg-blue-50/60 border border-blue-100/60 text-[0.55rem] sm:text-[0.6rem] text-blue-700">
                       <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const acadAdminActs = Array.isArray(selectedPta.academico_admin)
+                  ? selectedPta.academico_admin
+                  : (selectedPta.acad_admin?.actividades || selectedPta.academico_administrativo?.actividades || []);
+                if (!acadAdminActs.length) return null;
+
+                return (
+                  <div className="bg-orange-50/70 rounded-2xl border border-orange-100 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-orange-900 mb-3 flex items-center gap-2">
+                      <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600" />
+                      Actividad Academico-Administrativa
+                    </h4>
+
+                    <div className="space-y-2">
+                      {acadAdminActs.map((actividad: any, idx: number) => (
+                        <div key={actividad.id || actividad.actividad_id || idx} className="bg-white rounded-xl border border-orange-100 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[0.78rem] sm:text-[0.84rem] font-extrabold text-gray-900 leading-tight">
+                                {actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad AADM'}
+                              </div>
+                              {actividad.actividad_id && (
+                                <div className="text-[0.58rem] sm:text-[0.62rem] text-gray-400 font-bold mt-1">
+                                  Codigo: {actividad.actividad_id}
+                                </div>
+                              )}
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-[0.68rem] font-black shrink-0">
+                              {Number(actividad.horas || 0)}h
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-[0.68rem] sm:text-[0.72rem] text-gray-600">
+                            {(actividad.fecha_inicio || actividad.fecha_fin) && (
+                              <div>
+                                <span className="text-gray-400 font-bold">Fechas: </span>
+                                {actividad.fecha_inicio || 'Sin inicio'} - {actividad.fecha_fin || 'Sin fin'}
+                              </div>
+                            )}
+                            {actividad.consumeTotalidad && (
+                              <div>
+                                <span className="text-gray-400 font-bold">Alcance: </span>
+                                Consume el 100% del PTA
+                              </div>
+                            )}
+                          </div>
+
+                          {(actividad.descripcion || actividad.observaciones) && (
+                            <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 text-amber-900 text-[0.68rem] sm:text-[0.72rem] leading-relaxed">
+                              {actividad.descripcion || actividad.observaciones}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );

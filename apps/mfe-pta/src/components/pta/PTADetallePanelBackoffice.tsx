@@ -28,7 +28,7 @@ import {
   Activity, Download, ExternalLink, Lock, ShieldCheck
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
-import { usePermisosPTAGranulares } from './PermisosPTAContext';
+import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
 import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
@@ -38,6 +38,14 @@ import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { PTA_COLORS } from './shared/ptaColors';
+import {
+  PTA_COMPONENT_KEYS,
+  PTA_COMPONENT_LEVELS,
+  PTA_COMPONENT_PERMISSION,
+  PTA_EXTENSION_COMPONENT_KEYS,
+  type PTAComponentKey,
+  componentKeysForApprovalLevel,
+} from './shared/ptaComponentPermissions';
 
 // ═══ TYPES ════════════════════════════════════════════════════════════
 
@@ -90,31 +98,11 @@ const FLUJO_APROBACION_SIMPLE = [
   { key: 'Aprobado', label: 'Aprobado', color: '#059669' },
 ];
 
-const COMPONENT_LEVELS: Record<string, number> = {
-  academica: 1,
-  complementarias: 1,
-  investigacion: 2,
-  ext_capacitacion: 2,
-  ext_procesos: 2,
-  ext_fortalecimiento: 2,
-  ext_gobierno: 2,
-  ext_secciones: 2,
-  academicas_admin: 3,
-};
+const COMPONENT_LEVELS = PTA_COMPONENT_LEVELS as Record<string, number>;
 
 // Permiso granular específico requerido para aprobar cada componente.
 // Coincide con auth.permission creados en la migración 327.
-const COMPONENT_PERMISSION: Record<string, string> = {
-  academica: 'pta.approve.academica',
-  complementarias: 'pta.approve.complementarias',
-  investigacion: 'pta.approve.investigacion',
-  ext_capacitacion: 'pta.approve.extension.capacitacion',
-  ext_procesos: 'pta.approve.extension.procesos_seleccion',
-  ext_fortalecimiento: 'pta.approve.extension.fortalecimiento',
-  ext_gobierno: 'pta.approve.extension.alto_gobierno',
-  ext_secciones: 'pta.approve.extension.secciones_actividades',
-  academicas_admin: 'pta.approve.academicas_admin',
-};
+const COMPONENT_PERMISSION = PTA_COMPONENT_PERMISSION as Record<string, string>;
 
 function getResponsableRoleLabel(key: string): string {
   const lvl = COMPONENT_LEVELS[key];
@@ -137,6 +125,14 @@ function getStatusConfig(estado: string) {
 }
 
 function getNextStateLabel(current: string, hayModificaciones = false): string {
+  const currentKey = String(current || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+  if (['PENDIENTE_JEFATURA', 'PENDIENTE_DECANATURA', 'PENDIENTE_GESTION_PROFESORAL', 'PENDIENTE_APROBACION'].includes(currentKey)) {
+    return hayModificaciones ? 'Aprobar con cambios' : 'Registrar aprobacion';
+  }
   if (hayModificaciones) {
     if (current === 'Pendiente Jefatura') return 'Aprobar con cambios → Docente revisa';
     if (current === 'Pendiente Decanatura') return 'Aprobar con cambios → Docente revisa';
@@ -145,20 +141,25 @@ function getNextStateLabel(current: string, hayModificaciones = false): string {
   if (current === 'Pendiente Jefatura') return 'Aprobar → Avanzar a Decanatura';
   if (current === 'Pendiente Decanatura') return 'Aprobar → Avanzar a G. Profesoral';
   if (current === 'Pendiente Gestión Profesoral') return 'Aprobar PTA (Firma Digital)';
-  if (current === 'PENDIENTE_APROBACION') return 'Aprobar por Componentes';
+  if (current === 'PENDIENTE_APROBACION') return 'Enviar a Jefatura';
   return 'Aprobar';
 }
 
 const ESTADO_NIVEL_APROBACION: Record<string, number> = {
+  'PENDIENTE_APROBACION': 1,
   'Pendiente Jefatura': 1,
   'Pendiente Decanatura': 2,
   'Pendiente Gestión Profesoral': 3,
 };
 
-function puedeAprobarEstadoActual(estado: string, nivelUsuario: number): boolean {
+function puedeAprobarEstadoActual(estado: string, nivelUsuario: number, isSuperUser = false): boolean {
+  if (isSuperUser) return true;
+  if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(estado)) {
+    return nivelUsuario > 0;
+  }
   const nivelRequerido = ESTADO_NIVEL_APROBACION[estado];
   if (!nivelRequerido) return false;
-  return nivelUsuario >= nivelRequerido;
+  return nivelUsuario === nivelRequerido;
 }
 
 function timeAgo(d: string): string {
@@ -325,14 +326,19 @@ function getMimeTypeForExtension(extension: string): string {
 function ApprovalTracker({
   estado,
   componentesAprobacion = [],
-  isMobile = false
+  isMobile = false,
+  visibleComponentKeys,
 }: {
   estado: string;
   componentesAprobacion?: any[];
   isMobile?: boolean;
+  visibleComponentKeys?: string[];
 }) {
+  const visibleSet = visibleComponentKeys?.length ? new Set(visibleComponentKeys) : null;
   const getStatusForComponent = (compKeys: string[]) => {
-    const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
+    const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
+    if (scopedKeys.length === 0) return 'hidden';
+    const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
     if (approvals.every(a => a.estado === 'aprobado')) return 'aprobado';
@@ -376,7 +382,7 @@ function ApprovalTracker({
       status: getStatusForComponent(['academicas_admin']),
       baseColor: '#6B21A8'
     }
-  ];
+  ].filter(step => step.status !== 'hidden');
 
   return (
     <div style={{
@@ -617,13 +623,40 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Si el usuario tiene algún permiso granular pta.approve.*, la autorización se basa
   // EXCLUSIVAMENTE en esos permisos (cada componente exige el suyo). Si no tiene ninguno,
   // se mantiene la compatibilidad con el sistema legacy de niveles (nivelAprobacion).
+  const { permisos: permisosPta } = usePermisosPTA();
   const { puede: puedePerm } = usePermisosPTAGranulares();
   const tieneAlgunPermisoComponente = useMemo(
     () => Object.values(COMPONENT_PERMISSION).some(p => puedePerm(p)),
     [puedePerm],
   );
+  const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
+    if (isSuperUser) return [...PTA_COMPONENT_KEYS];
+    const granularKeys = PTA_COMPONENT_KEYS.filter(key => puedePerm(COMPONENT_PERMISSION[key]));
+    if (granularKeys.length > 0) return granularKeys;
+    const configuredKeys = (permisosPta.componentesAprobables || [])
+      .filter((key): key is PTAComponentKey => PTA_COMPONENT_KEYS.includes(key as PTAComponentKey));
+    if (configuredKeys.length > 0) return configuredKeys;
+    return componentKeysForApprovalLevel(nivelAprobacion);
+  }, [isSuperUser, puedePerm, permisosPta.componentesAprobables, nivelAprobacion]);
+  const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
+  const shouldHideUnauthorizedComponents = !isSuperUser && visibleComponentKeys.length > 0;
+  const componentEditScopeLabel = useMemo(() => {
+    const labels: Record<string, string> = {
+      academica: 'Docencia',
+      investigacion: 'Investigacion',
+      ext_capacitacion: 'Extension - Capacitacion',
+      ext_procesos: 'Extension - Seleccion',
+      ext_fortalecimiento: 'Extension - Fortalecimiento',
+      ext_gobierno: 'Extension - Alto Gobierno',
+      ext_secciones: 'Extension - otras secciones',
+      complementarias: 'Complementarias',
+      academicas_admin: 'AADM',
+    };
+    return visibleComponentKeys.map(key => labels[key] || key).join(', ');
+  }, [visibleComponentKeys]);
   const isComponentAuthorized = useCallback((key: string): boolean => {
     if (isSuperUser) return true;
+    if (visibleComponentKeySet.size > 0) return visibleComponentKeySet.has(key);
     const perm = COMPONENT_PERMISSION[key];
     if (tieneAlgunPermisoComponente) {
       // El usuario opera bajo el esquema granular: solo aprueba el componente de su permiso.
@@ -631,7 +664,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
     // Fallback legacy por nivel (compatibilidad con roles sin permisos granulares).
     return nivelAprobacion === COMPONENT_LEVELS[key];
-  }, [isSuperUser, tieneAlgunPermisoComponente, puedePerm, nivelAprobacion]);
+  }, [isSuperUser, visibleComponentKeySet, tieneAlgunPermisoComponente, puedePerm, nivelAprobacion]);
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 640);
@@ -684,6 +717,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         comentarios,
         scope: 'territorial',
         scopeId: rolLabel === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'),
+        componentesAutorizados: visibleComponentKeys,
+        isSuperUser,
       });
 
       if (res.success) {
@@ -743,7 +778,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const sc = getStatusConfig(pta.estado);
   const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado);
-  const puedeAprobarNivelActual = puedeAprobar && (pta.estado === 'PENDIENTE_APROBACION' || puedeAprobarEstadoActual(pta.estado, nivelAprobacion));
+  const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
@@ -771,6 +806,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const acadAdmin = {
     actividades: Array.isArray(pta.academico_admin) ? pta.academico_admin : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || [])
   };
+  const tieneTotalidadAcadAdmin = acadAdmin.actividades.some((a: any) => a?.consumeTotalidad === true);
+  const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
+  const territorialResumen = pta.territorial || pta.territorial_nombre;
   const historial = pta.historial || [];
   const concertacion = pta.concertacion || {};
 
@@ -874,15 +912,23 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       return;
     }
 
-    // Toda aprobación requiere firma digital antes de avanzar
-    if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado)) {
+    // La aprobación de Gestión Profesoral requiere firma digital antes de registrar el aval.
+    if (nivelAprobacion === 3 && !isSuperUser && ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado)) {
       setShowFirmaDigital(true);
       return;
     }
 
     // El backend detecta automáticamente camposModificadosPorRevisor al recibir 'aprobar'
     setProcesandoAprobacion(true);
-    const res = await updatePTAStatus(pta.id, { accion: 'aprobar' });
+    const res = await updatePTAStatus(pta.id, {
+      accion: 'aprobar',
+      actorRol: rolLabel,
+      actorId,
+      nivelAprobacion,
+      actorTerritorialId: jefaturaTerritorialId,
+      isSuperUser: isSuperUser || false,
+      aprobarTodas: isSuperUser || false,
+    });
     setProcesandoAprobacion(false);
     if (!res.success) {
       toast.error(res.message || 'Error aprobando PTA');
@@ -890,12 +936,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
     const hayModificaciones = pta.camposModificadosPorRevisor &&
       Object.keys(pta.camposModificadosPorRevisor).length > 0;
-    if (hayModificaciones) {
+    if (res.parcial) {
+      toast.success(res.message || 'Aprobación registrada. Faltan otros avales.');
+    } else if (hayModificaciones) {
       toast.success('PTA enviado al docente para revisión de modificaciones');
     } else {
-      toast.success('PTA avanzado a la siguiente fase');
+      toast.success(res.nuevoEstado === 'Aprobado' ? 'PTA aprobado' : 'Aprobación registrada');
     }
-    setPta((prev: any) => ({ ...prev, estado: res.data?.estado || prev.estado }));
+    setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado }));
     onAprobar();
   };
 
@@ -917,10 +965,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       observaciones: `Aprobado con firma digital por ${rolLabel} — Certificado: ${firmaData.certificado_id}`,
       actorRol: rolLabel,
       actorId,
+      nivelAprobacion,
       actorTerritorialId: jefaturaTerritorialId,
       isSuperUser: isSuperUser || false,
-      // Si el aprobador no tiene territorial asignada, aprobar todas las pendientes
-      aprobarTodas: !jefaturaTerritorialId || isSuperUser || false,
+      aprobarTodas: isSuperUser || false,
     } as any);
     setProcesandoAprobacion(false);
     if (!res.success) {
@@ -929,7 +977,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
     guardarFirmaDigitalPTA(pta.id, firmaData).catch(() => {});
     if (res.parcial) {
-      toast.success(res.message || 'Tu aprobación fue registrada. Esperando otras jefaturas.');
+      toast.success(res.message || 'Tu aprobación fue registrada. Esperando otros avales.');
+      setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || prev.estado }));
       // Usar aprobaciones del response (ya tienen nombres del JOIN) o re-fetchear
       if (res.aprobaciones?.length) {
         setAprobacionesJefatura(res.aprobaciones);
@@ -938,7 +987,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       }
     } else {
       toast.success('PTA firmado y enviado a la siguiente fase');
-      setPta((prev: any) => ({ ...prev, estado: res.data?.estado || prev.estado }));
+      setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado }));
       onAprobar();
     }
   };
@@ -951,7 +1000,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     setProcesandoDevolucion(true);
     const res = await updatePTAStatus(pta.id, {
       accion: 'devolver', motivo_devolucion: motivoDevolucion,
+      actorRol: rolLabel,
+      actorId,
+      nivelAprobacion,
       actorTerritorialId: jefaturaTerritorialId,
+      isSuperUser: isSuperUser || false,
     } as any);
     setProcesandoDevolucion(false);
     if (!res.success) {
@@ -972,9 +1025,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Número de la versión del reporte actual (cuenta snapshots guardados)
   const reporteVersionActual = historialEstados.filter((h: any) => h.snapshotPta && typeof h.snapshotPta === 'object').length || 1;
 
-  const componentesPendientes = componentesAprobacion.filter(c => c.estado === 'pendiente' || !c.estado).length;
+  const componentesAprobacionVisibles = useMemo(
+    () => shouldHideUnauthorizedComponents
+      ? componentesAprobacion.filter(c => visibleComponentKeySet.has(c.componente))
+      : componentesAprobacion,
+    [componentesAprobacion, shouldHideUnauthorizedComponents, visibleComponentKeySet],
+  );
+  const componentesPendientes = componentesAprobacionVisibles.filter(c => c.estado === 'pendiente' || !c.estado).length;
   const TABS = [
-    { key: 'resumen', label: 'Resumen', icon: BarChart3 },
+    ...(shouldHideUnauthorizedComponents ? [] : [{ key: 'resumen', label: 'Resumen', icon: BarChart3 }]),
     { key: 'componentes', label: 'Componentes', icon: Layers },
     { key: 'historial', label: 'Aprobación', icon: ShieldCheck, badge: componentesPendientes || undefined },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
@@ -983,6 +1042,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       ? [{ key: 'concertacion', label: 'Concertación', icon: MessageSquare, badge: concertacion.mensajes?.length || 0 }]
       : []),
   ];
+
+  useEffect(() => {
+    if (shouldHideUnauthorizedComponents && activeTab === 'resumen') {
+      setActiveTab('componentes');
+    }
+  }, [shouldHideUnauthorizedComponents, activeTab]);
 
   const getSubcomponentHours = (seccionKey: string) => {
     const acts = pta.extension_actividades || initialPta.extension_actividades || [];
@@ -996,6 +1061,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       .reduce((s: number, e: any) => s + (e.horas || 0), 0);
   };
 
+  const shouldShowComponentKey = useCallback((key: string) => (
+    !shouldHideUnauthorizedComponents || visibleComponentKeySet.has(key)
+  ), [shouldHideUnauthorizedComponents, visibleComponentKeySet]);
+
+  const extensionCards = useMemo(() => ([
+    { key: 'ext_capacitacion', section: 'capacitacion', label: 'Capacitación y Formación', icon: GraduationCap, color: '#059669' },
+    { key: 'ext_procesos', section: 'seleccion', label: 'Procesos de Selección', icon: Briefcase, color: '#0284C7' },
+    { key: 'ext_fortalecimiento', section: 'fortalecimiento', label: 'Fortalecimiento Institucional', icon: Building2, color: '#7C3AED' },
+    { key: 'ext_gobierno', section: 'alto_gobierno', label: 'Escuela de Alto Gobierno', icon: Shield, color: '#B45309' },
+    { key: 'ext_secciones', section: 'otras', label: 'Secciones y Actividades', icon: Layers, color: '#0E7490' },
+  ] as const).filter(item => shouldShowComponentKey(item.key) && getSubcomponentHours(item.section) > 0), [shouldShowComponentKey, pta.extension_actividades, initialPta.extension_actividades]);
+
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
     const estado = approval.estado || 'pendiente';
@@ -1005,6 +1082,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
     const componentAuthorized = isComponentAuthorized(key);
     const canEvaluateComponent = puedeAprobar && isPendiente && componentAuthorized && !isAutoAprobado;
+
+    if (shouldHideUnauthorizedComponents && !componentAuthorized) {
+      return null;
+    }
 
     const getAssignmentDate = () => {
       const transition = (pta.historialEstados || []).find(
@@ -1501,7 +1582,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       idx: i,
     }));
 
-    const compEvents: TimelineEvent[] = componentesAprobacion
+    const compEvents: TimelineEvent[] = componentesAprobacionVisibles
       .filter(c => c.estado !== 'pendiente' && c.aprobadorNombre !== 'Sistema' && c.fechaAprobacion)
       .map(c => ({
         kind: 'componente' as const,
@@ -1812,7 +1893,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
           {/* Approval Tracker */}
           <div style={{ marginTop: 4 }}>
-            <ApprovalTracker estado={pta.estado} componentesAprobacion={componentesAprobacion} isMobile={isMobile} />
+            <ApprovalTracker
+              estado={pta.estado}
+              componentesAprobacion={componentesAprobacion}
+              isMobile={isMobile}
+              visibleComponentKeys={shouldHideUnauthorizedComponents ? visibleComponentKeys : undefined}
+            />
           </div>
         </div>
 
@@ -1866,7 +1952,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         ) : (
           <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 14px 60px' : '16px 20px 60px' }}>
             {/* ═══ TAB: Resumen ═══ */}
-          {activeTab === 'resumen' && (
+          {activeTab === 'resumen' && !shouldHideUnauthorizedComponents && (
             <div>
               {/* KPI Row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 6 : 8, marginBottom: pta.semanas_prorrateo && pta.semanas_prorrateo < 16 ? 4 : 16 }}>
@@ -2063,9 +2149,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 16,
               }}>
                 {[
-                  { label: 'Programa', value: pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico || 'No especificado', icon: GraduationCap },
-                  { label: 'Territorial', value: pta.territorial || pta.territorial_nombre || 'No especificada', icon: MapPin },
-                  { label: 'Asignaturas', value: `${pta.num_asignaturas || asignaturas.length || 0}`, icon: BookOpen },
+                  { label: 'Programa', value: programaResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificado'), icon: GraduationCap },
+                  { label: 'Territorial', value: territorialResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificada'), icon: MapPin },
+                  { label: 'Asignaturas', value: `${pta.num_asignaturas || asignaturas.length || 0}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
                   { label: 'Dedicación', value: pta.dedicacion || 'TC', icon: Clock },
                   { label: 'Vinculación', value: pta.tipo_vinculacion || 'Carrera Administrativa', icon: Award },
                   { label: 'Escalafón', value: pta.escalafon || 'No registrado', icon: TrendingUp },
@@ -2084,6 +2170,100 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </div>
                 ))}
               </div>
+
+              {acadAdmin.actividades.length > 0 && (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: '#FFF7ED',
+                  border: '1px solid #FED7AA',
+                  marginBottom: 14,
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    color: '#9A3412',
+                    textTransform: 'uppercase',
+                    marginBottom: 8,
+                  }}>
+                    <Award style={{ width: 13, height: 13 }} />
+                    Actividad Academico-Administrativa
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {acadAdmin.actividades.map((actividad: any, idx: number) => (
+                      <div key={actividad.id || actividad.actividad_id || idx} style={{
+                        padding: '10px',
+                        borderRadius: 8,
+                        background: 'white',
+                        border: '1px solid #FFEDD5',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#111827', lineHeight: 1.25 }}>
+                              {actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad AADM'}
+                            </div>
+                            {actividad.actividad_id && (
+                              <div style={{ fontSize: '0.64rem', color: '#9CA3AF', fontWeight: 700, marginTop: 2 }}>
+                                Codigo: {actividad.actividad_id}
+                              </div>
+                            )}
+                          </div>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            background: '#FFF7ED',
+                            color: '#C2410C',
+                            border: '1px solid #FDBA74',
+                            fontSize: '0.72rem',
+                            fontWeight: 900,
+                            flexShrink: 0,
+                          }}>
+                            {Number(actividad.horas || 0)}h
+                          </span>
+                        </div>
+
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+                          gap: 8,
+                          marginTop: 8,
+                        }}>
+                          {(actividad.fecha_inicio || actividad.fecha_fin) && (
+                            <div style={{ fontSize: '0.72rem', color: '#4B5563' }}>
+                              <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Fechas: </span>
+                              {actividad.fecha_inicio || 'Sin inicio'} - {actividad.fecha_fin || 'Sin fin'}
+                            </div>
+                          )}
+                          {actividad.consumeTotalidad && (
+                            <div style={{ fontSize: '0.72rem', color: '#4B5563' }}>
+                              <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Alcance: </span>
+                              Consume el 100% del PTA
+                            </div>
+                          )}
+                        </div>
+
+                        {(actividad.descripcion || actividad.observaciones) && (
+                          <div style={{
+                            marginTop: 8,
+                            padding: '8px',
+                            borderRadius: 6,
+                            background: '#FFFBEB',
+                            color: '#78350F',
+                            fontSize: '0.74rem',
+                            lineHeight: 1.45,
+                          }}>
+                            {actividad.descripcion || actividad.observaciones}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Observaciones / Motivo devolución */}
               {pta.motivo_devolucion && (
@@ -2124,7 +2304,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               {((puedeAprobarNivelActual && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
-                    {rolLabel === 'Docente' ? 'Puede editar su PTA' : 'Como revisor puede editar el PTA completo antes de aprobar'}
+                    {rolLabel === 'Docente'
+                      ? 'Puede editar su PTA'
+                      : shouldHideUnauthorizedComponents
+                        ? `Como revisor puede editar solo: ${componentEditScopeLabel}`
+                        : 'Como revisor puede editar el PTA completo antes de aprobar'}
                   </span>
                   <button
                     onClick={() => setShowEditForm(true)}
@@ -2135,12 +2319,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
                     }}
                   >
-                    <Edit2 style={{ width: 12, height: 12 }} /> Editar PTA
+                    <Edit2 style={{ width: 12, height: 12 }} /> {shouldHideUnauthorizedComponents ? 'Editar componente' : 'Editar PTA'}
                   </button>
                 </div>
               )}
 
               {/* Docencia */}
+              {shouldShowComponentKey('academica') && (
               <SectionCollapsible
                 title="Componente Docencia"
                 icon={BookOpen}
@@ -2214,8 +2399,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </p>
                 )}
               </SectionCollapsible>
+              )}
 
               {/* Investigación */}
+              {shouldShowComponentKey('investigacion') && (
               <SectionCollapsible
                 title="Componente Investigación"
                 icon={FlaskConical}
@@ -2288,14 +2475,25 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </span>
                 </div>
               </SectionCollapsible>
+              )}
 
               {/* Extensión */}
+              {PTA_EXTENSION_COMPONENT_KEYS.some(shouldShowComponentKey) && (
               <SectionCollapsible
                 title="Componente Extensión (5 secciones)"
                 icon={Globe}
                 color="#059669"
               >
-                {['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'].map(sec => {
+                {['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'].filter(sec => {
+                  const componentBySection: Record<string, string> = {
+                    capacitacion: 'ext_capacitacion',
+                    seleccion: 'ext_procesos',
+                    fortalecimiento: 'ext_fortalecimiento',
+                    alto_gobierno: 'ext_gobierno',
+                    otras: 'ext_secciones',
+                  };
+                  return shouldShowComponentKey(componentBySection[sec]);
+                }).map(sec => {
                   const LABELS: Record<string, string> = {
                     capacitacion: 'Capacitación y Formación',
                     seleccion: 'Procesos de Selección',
@@ -2344,8 +2542,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </span>
                 </div>
               </SectionCollapsible>
+              )}
 
               {/* Complementarias */}
+              {shouldShowComponentKey('complementarias') && (
               <SectionCollapsible
                 title="Actividades Complementarias"
                 icon={Briefcase}
@@ -2386,8 +2586,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </p>
                 )}
               </SectionCollapsible>
+              )}
 
               {/* Académico Administrativo */}
+              {shouldShowComponentKey('academicas_admin') && (
               <SectionCollapsible
                 title="Actividades Académico Administrativo"
                 icon={Award}
@@ -2428,6 +2630,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </p>
                 )}
               </SectionCollapsible>
+              )}
 
               {/* Summary bar */}
               <div style={{
@@ -2485,10 +2688,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   const visibleComponenteKeys = new Set([
                     'academica', 'investigacion', 'complementarias', 'academicas_admin',
                     ...extConHoras.map(k => extSubKeyMap[k]),
-                  ]);
+                  ].filter(key => shouldShowComponentKey(key)));
                   const total = visibleComponenteKeys.size;
-                  const aprobados = componentesAprobacion.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
-                  const devueltos = componentesAprobacion.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
+                  const aprobados = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
+                  const devueltos = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
                   const pendientes = total - aprobados - devueltos;
                   const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
                   return (
@@ -2555,6 +2758,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   )}
 
                   {/* 3. Extensión Universitaria (Agrupada) */}
+                  {(!shouldHideUnauthorizedComponents || extensionCards.length > 0) && (
                   <motion.div
                     whileHover={{ y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' }}
                     transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -2670,6 +2874,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       )}
                     </div>
                   </motion.div>
+                  )}
 
                   {/* 4. Actividades Complementarias */}
                   {renderComponentCard(
@@ -2964,7 +3169,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {isPendiente && puedeAprobarNivelActual && pta.estado !== 'PENDIENTE_APROBACION' && (
+              {isPendiente && puedeAprobarNivelActual && (
                 <>
                   {yaAproboEstaJefatura ? (
                     <div style={{
@@ -3111,7 +3316,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 )}
               </div>
 
-              {isPendiente && puedeAprobarNivelActual && pta.estado !== 'PENDIENTE_APROBACION' && (
+              {isPendiente && puedeAprobarNivelActual && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   {!yaAproboEstaJefatura && (
                   <button
@@ -3424,8 +3629,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             border: '1.5px solid rgba(0,61,165,0.15)',
             boxShadow: '0 25px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,61,165,0.08)',
             overflowY: 'auto',
+            overflowX: 'hidden',
             display: 'flex', flexDirection: 'column',
-            padding: '0 0 24px 0',
+            padding: 0,
           }}>
             {/* Botón cerrar modal */}
             <button
@@ -3447,6 +3653,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               userPersonId={''}
               isAdminEdit={true}
               jefaturaTerritorialId={jefaturaTerritorialId}
+              allowedComponentKeys={shouldHideUnauthorizedComponents ? visibleComponentKeys : undefined}
+              componentEditScopeLabel={shouldHideUnauthorizedComponents ? componentEditScopeLabel : undefined}
               onBack={async () => {
                 setShowEditForm(false);
                 const res = await getPTAById(pta.id);

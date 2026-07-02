@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
@@ -25,6 +25,141 @@ function coalesceString(...values: unknown[]): string | null {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return null;
+}
+
+function coalesceLookupKey(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    if (typeof value === 'bigint') return value.toString();
+  }
+  return null;
+}
+
+function normalizeEstadoFilter(value: unknown): string {
+  const raw = coalesceString(value);
+  return raw
+    ? raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, '_')
+    : '';
+}
+
+function getGroupedPtaEstados(value: unknown): string[] | null {
+  const key = normalizeEstadoFilter(value);
+  if (!key) return null;
+
+  if (key === 'BORRADOR' || key === 'BORRADORES') {
+    return ['Borrador', 'BORRADOR'];
+  }
+
+  if (key === 'PENDIENTES' || key === 'APROBACION') {
+    return [
+      'Pendiente Jefatura',
+      'Pendiente Decanatura',
+      'Pendiente Gesti\u00f3n Profesoral',
+      'PENDIENTE_JEFATURA',
+      'PENDIENTE_DECANATURA',
+      'PENDIENTE_GESTION_PROFESORAL',
+      'PENDIENTE_APROBACION',
+      'CONCERTADO',
+    ];
+  }
+
+  if (key === 'CONCERTACION') {
+    return [
+      'EN_CONCERTACION',
+      'OBJETADO_DOCENTE',
+      'MODIFICADO_DOCENTE',
+      'DEVUELTO',
+      'Devuelto',
+      'PROPUESTO_POR_DIRECCION',
+      'NOTIFICADO_DOCENTE',
+    ];
+  }
+
+  if (key === 'SNA') return ['ESCALADO_SNA', 'Escalado SNA'];
+  if (key === 'APROBADO' || key === 'APROBADOS') return ['Aprobado', 'APROBADO'];
+  if (key === 'SEGUIMIENTO') return ['En Firme', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION', 'EN_EJECUCI\u00d3N'];
+
+  return null;
+}
+
+const ROLE_APPROVALS = [
+  { nivel: 1, key: 'role_jefatura', label: 'Jefatura', revision: 'REVISION_DOCENTE_N1' },
+  { nivel: 2, key: 'role_decanatura', label: 'Decanatura', revision: 'REVISION_DOCENTE_N2' },
+  { nivel: 3, key: 'role_gestion_profesoral', label: 'Gestión Profesoral', revision: 'REVISION_DOCENTE_N3' },
+];
+
+const ROLE_APPROVAL_KEYS = new Set(ROLE_APPROVALS.map(item => item.key));
+const PENDING_ROLE_APPROVAL_STATES = new Set([
+  'PENDIENTE_APROBACION',
+  'PENDIENTE_JEFATURA',
+  'PENDIENTE_DECANATURA',
+  'PENDIENTE_GESTION_PROFESORAL',
+]);
+
+const COMPONENT_APPROVAL_KEYS = [
+  'academica',
+  'investigacion',
+  'ext_capacitacion',
+  'ext_procesos',
+  'ext_fortalecimiento',
+  'ext_gobierno',
+  'ext_secciones',
+  'complementarias',
+  'academicas_admin',
+];
+
+const COMPONENT_APPROVAL_KEY_SET = new Set(COMPONENT_APPROVAL_KEYS);
+
+const EXTENSION_COMPONENT_BY_SECTION: Record<string, string> = {
+  capacitacion: 'ext_capacitacion',
+  seleccion: 'ext_procesos',
+  fortalecimiento: 'ext_fortalecimiento',
+  alto_gobierno: 'ext_gobierno',
+  laboratorio_innovacion: 'ext_secciones',
+  investigacion_aplicada: 'ext_secciones',
+};
+
+const COMPONENT_REVISION_STATE: Record<string, string> = {
+  academica: 'REVISION_DOCENTE_N1',
+  complementarias: 'REVISION_DOCENTE_N1',
+  investigacion: 'REVISION_DOCENTE_N2',
+  ext_capacitacion: 'REVISION_DOCENTE_N2',
+  ext_procesos: 'REVISION_DOCENTE_N2',
+  ext_fortalecimiento: 'REVISION_DOCENTE_N2',
+  ext_gobierno: 'REVISION_DOCENTE_N2',
+  ext_secciones: 'REVISION_DOCENTE_N2',
+  academicas_admin: 'REVISION_DOCENTE_N3',
+};
+
+function isRoleApprovalComponent(componente?: string | null): boolean {
+  return ROLE_APPROVAL_KEYS.has(String(componente || ''));
+}
+
+function componentKeyForExtensionSection(section: unknown): string {
+  return EXTENSION_COMPONENT_BY_SECTION[String(section || '')] || 'ext_secciones';
+}
+
+function isPendingRoleApprovalState(estado?: string | null): boolean {
+  return PENDING_ROLE_APPROVAL_STATES.has(normalizeEstadoFilter(estado));
+}
+
+function pendingApprovalState(estado?: string | null): string {
+  return normalizeEstadoFilter(estado) === 'PENDIENTE_APROBACION'
+    ? 'Pendiente Jefatura'
+    : (coalesceString(estado) || 'Pendiente Jefatura');
+}
+
+function roleApprovalMetaByLevel(nivel: number) {
+  return ROLE_APPROVALS.find(item => item.nivel === nivel);
+}
+
+function approvalLevelFromRole(role?: string | null): number {
+  const key = normalizeEstadoFilter(role);
+  if (key.includes('JEFATURA')) return 1;
+  if (key.includes('DECAN')) return 2;
+  if (key.includes('GESTION_PROFESORAL') || key.includes('GESTION_PROF') || key.includes('PROFESORAL')) return 3;
+  return 0;
 }
 
 @Injectable()
@@ -455,6 +590,176 @@ export class PtaService {
     };
   }
 
+  private compactNameList(names: string[]): string | undefined {
+    const unique = [...new Set(names.map(n => n.trim()).filter(Boolean))];
+    if (unique.length === 0) return undefined;
+    if (unique.length <= 2) return unique.join(', ');
+    return `${unique[0]} +${unique.length - 1}`;
+  }
+
+  private async enrichPtaSummaries(dtos: any[]): Promise<any[]> {
+    if (!dtos.length) return dtos;
+
+    const programaKeys = new Set<string>();
+    const territorialKeys = new Set<string>();
+    const cetapKeys = new Set<string>();
+
+    for (const dto of dtos) {
+      const asignaturas = Array.isArray(dto.asignaturas) ? dto.asignaturas : [];
+      const dtoPrograma = coalesceLookupKey(dto.programa_id, dto.programaId);
+      const dtoTerritorial = coalesceLookupKey(dto.territorial_id, dto.territorialId);
+      if (dtoPrograma) programaKeys.add(dtoPrograma);
+      if (dtoTerritorial) territorialKeys.add(dtoTerritorial);
+
+      for (const asig of asignaturas) {
+        const programaId = coalesceLookupKey(asig?.programa_id, asig?.programaId, asig?.programa?.id);
+        const territorialId = coalesceLookupKey(asig?.territorial_id, asig?.territorialId, asig?.territorial?.id);
+        const cetapId = coalesceLookupKey(asig?.cetap_id, asig?.cetapId, asig?.sede_id, asig?.sedeId);
+        if (programaId) programaKeys.add(programaId);
+        if (territorialId) territorialKeys.add(territorialId);
+        if (cetapId) cetapKeys.add(cetapId);
+      }
+    }
+
+    const programaMap = new Map<string, { id: string; codigo?: string; nombre: string; nombreCorto?: string }>();
+    const territorialMap = new Map<string, { id: string; codigo?: string; nombre: string }>();
+    const cetapMap = new Map<string, { id: string; codigo?: string; nombre: string }>();
+
+    if (programaKeys.size > 0) {
+      try {
+        const rows = await this.ptaRepo.manager.query(
+          `
+          SELECT id::text AS id, codigo, nombre, nombre_corto AS "nombreCorto"
+          FROM academic_work_plan.programa
+          WHERE id::text = ANY($1::text[]) OR codigo::text = ANY($1::text[])
+          `,
+          [[...programaKeys]],
+        );
+        for (const row of rows) {
+          const item = {
+            id: String(row.id),
+            codigo: row.codigo ? String(row.codigo) : undefined,
+            nombre: row.nombreCorto || row.nombre,
+            nombreCorto: row.nombreCorto || undefined,
+          };
+          programaMap.set(item.id, item);
+          if (item.codigo) programaMap.set(item.codigo, item);
+        }
+      } catch (err: any) {
+        this.logger.warn(`No se pudieron resolver nombres de programas PTA: ${err?.message || err}`);
+      }
+    }
+
+    if (territorialKeys.size > 0) {
+      try {
+        const rows = await this.ptaRepo.manager.query(
+          `
+          SELECT id_seccional::text AS id, cod_seccional::text AS codigo, nom_seccional AS nombre
+          FROM auth.seccionales
+          WHERE id_seccional::text = ANY($1::text[]) OR cod_seccional::text = ANY($1::text[])
+          `,
+          [[...territorialKeys]],
+        );
+        for (const row of rows) {
+          const item = {
+            id: String(row.id),
+            codigo: row.codigo ? String(row.codigo) : undefined,
+            nombre: row.nombre,
+          };
+          territorialMap.set(item.id, item);
+          if (item.codigo) territorialMap.set(item.codigo, item);
+        }
+      } catch (err: any) {
+        this.logger.warn(`No se pudieron resolver nombres de territoriales PTA: ${err?.message || err}`);
+      }
+    }
+
+    if (cetapKeys.size > 0) {
+      try {
+        const rows = await this.ptaRepo.manager.query(
+          `
+          SELECT id_sede::text AS id, cod_sede::text AS codigo, nom_sede AS nombre
+          FROM auth.sedes
+          WHERE id_sede::text = ANY($1::text[]) OR cod_sede::text = ANY($1::text[])
+          `,
+          [[...cetapKeys]],
+        );
+        for (const row of rows) {
+          const item = {
+            id: String(row.id),
+            codigo: row.codigo ? String(row.codigo) : undefined,
+            nombre: row.nombre,
+          };
+          cetapMap.set(item.id, item);
+          if (item.codigo) cetapMap.set(item.codigo, item);
+        }
+      } catch (err: any) {
+        this.logger.warn(`No se pudieron resolver nombres de CETAP/sedes PTA: ${err?.message || err}`);
+      }
+    }
+
+    for (const dto of dtos) {
+      const asignaturas = Array.isArray(dto.asignaturas) ? dto.asignaturas : [];
+      const programaNames: string[] = [];
+      const territorialNames: string[] = [];
+      const cetapNames: string[] = [];
+
+      for (const asig of asignaturas) {
+        const programaId = coalesceLookupKey(asig?.programa_id, asig?.programaId, asig?.programa?.id);
+        const territorialId = coalesceLookupKey(asig?.territorial_id, asig?.territorialId, asig?.territorial?.id);
+        const cetapId = coalesceLookupKey(asig?.cetap_id, asig?.cetapId, asig?.sede_id, asig?.sedeId);
+
+        const programaNombre = coalesceString(asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto)
+          || (programaId ? programaMap.get(programaId)?.nombre : null);
+        const territorialNombre = coalesceString(asig?.territorial_nombre, asig?.territorial?.nombre)
+          || (territorialId ? territorialMap.get(territorialId)?.nombre : null);
+        const cetapNombre = coalesceString(asig?.cetap_nombre, asig?.sede_nombre, asig?.cetap?.nombre, asig?.sede?.nombre)
+          || (cetapId ? cetapMap.get(cetapId)?.nombre : null);
+
+        if (programaNombre) {
+          asig.programa_nombre = programaNombre;
+          programaNames.push(programaNombre);
+        }
+        if (territorialNombre) {
+          asig.territorial_nombre = territorialNombre;
+          territorialNames.push(territorialNombre);
+        }
+        if (cetapNombre) {
+          asig.cetap_nombre = cetapNombre;
+          cetapNames.push(cetapNombre);
+        }
+      }
+
+      const programaResumen = coalesceString(dto.programa_academico, dto.programa, dto.programa_nombre)
+        || this.compactNameList(programaNames);
+      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre)
+        || this.compactNameList(territorialNames);
+      const cetapResumen = coalesceString(dto.cetap, dto.cetap_nombre, dto.sede)
+        || this.compactNameList(cetapNames);
+
+      if (programaResumen) {
+        dto.programa = programaResumen;
+        dto.programa_nombre = dto.programa_nombre || programaResumen;
+      }
+      if (territorialResumen) {
+        dto.territorial = territorialResumen;
+        dto.territorial_nombre = dto.territorial_nombre || territorialResumen;
+      }
+      if (cetapResumen) {
+        dto.cetap = cetapResumen;
+        dto.cetap_nombre = dto.cetap_nombre || cetapResumen;
+      }
+
+      dto.programasAsignaturas = [...new Set(programaNames)];
+      dto.territorialesAsignaturas = [...new Set(territorialNames)];
+      dto.cetapsAsignaturas = [...new Set(cetapNames)];
+      dto.num_programas = dto.programasAsignaturas.length;
+      dto.num_territoriales = dto.territorialesAsignaturas.length;
+    }
+
+    return dtos;
+  }
+
   private toEvidenciaDto(entity: PtaEvidenciaEntity) {
     return {
       id: entity.id,
@@ -494,8 +799,14 @@ export class PtaService {
   async getAllPTAs(filters: any) {
     const qb = this.ptaRepo.createQueryBuilder('pta');
 
-    if (filters?.estado) {
-      qb.andWhere('pta.estado = :estado', { estado: String(filters.estado) });
+    const estadoFilter = coalesceString(filters?.estado);
+    if (estadoFilter) {
+      const groupedEstados = getGroupedPtaEstados(estadoFilter);
+      if (groupedEstados?.length) {
+        qb.andWhere('pta.estado IN (:...estados)', { estados: groupedEstados });
+      } else {
+        qb.andWhere('pta.estado = :estado', { estado: estadoFilter });
+      }
     }
     if (filters?.periodo) {
       qb.andWhere('pta.periodo = :periodo', { periodo: String(filters.periodo) });
@@ -506,7 +817,7 @@ export class PtaService {
 
     const rows = await qb.getMany();
     const extMult = await this.getExtMultiplicadores();
-    return rows.map((row) => this.toPtaDto(row, extMult));
+    return this.enrichPtaSummaries(rows.map((row) => this.toPtaDto(row, extMult)));
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
@@ -517,7 +828,7 @@ export class PtaService {
     qb.orderBy('pta.updatedAt', 'DESC');
     const rows = await qb.getMany();
     const extMult = await this.getExtMultiplicadores();
-    return rows.map((row) => this.toPtaDto(row, extMult));
+    return this.enrichPtaSummaries(rows.map((row) => this.toPtaDto(row, extMult)));
   }
 
   async getPTAById(id: string) {
@@ -529,7 +840,9 @@ export class PtaService {
       this.historialRepo.find({ where: { ptaId: id }, order: { createdAt: 'DESC' } }),
     ]);
 
-    const dto = this.toPtaDto(pta, await this.getExtMultiplicadores()) as any;
+    const [dto] = await this.enrichPtaSummaries([
+      this.toPtaDto(pta, await this.getExtMultiplicadores()) as any,
+    ]);
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
       const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
@@ -566,8 +879,76 @@ export class PtaService {
     };
   }
 
+  private mergeRestrictedAdminEditInput(
+    input: SavePtaInput,
+    existing: PlanTrabajoAcademicoEntity,
+    allowedComponentKeys: string[],
+  ): SavePtaInput {
+    const existingData = existing.datosEstructurados && typeof existing.datosEstructurados === 'object'
+      ? existing.datosEstructurados as Record<string, any>
+      : {};
+    const allowed = new Set(allowedComponentKeys.map(key => String(key)));
+    const merged: SavePtaInput = { ...input };
+
+    const preserveField = (field: string) => {
+      if (Object.prototype.hasOwnProperty.call(existingData, field)) {
+        merged[field] = existingData[field];
+      }
+    };
+
+    merged.id = existing.id;
+    merged.docente_id = existing.docenteId;
+    merged.periodo = existing.periodo;
+    merged.estado = existing.estado;
+    ['docente_nombre', 'dedicacion', 'tipo_vinculacion', 'semanas_vinculacion', 'semanas_prorrateo', 'horas_a_programar'].forEach(preserveField);
+
+    if (!allowed.has('academica')) {
+      preserveField('asignaturas');
+    }
+    if (!allowed.has('investigacion')) {
+      preserveField('investigacion_proyecto');
+      preserveField('investigacion_actividades');
+    }
+    if (!allowed.has('complementarias')) {
+      preserveField('complementarias');
+    }
+    if (!allowed.has('academicas_admin')) {
+      preserveField('academico_admin');
+    }
+
+    const hasAnyExtensionPermission = COMPONENT_APPROVAL_KEYS
+      .filter(key => key.startsWith('ext_'))
+      .some(key => allowed.has(key));
+    if (!hasAnyExtensionPermission) {
+      preserveField('extension_actividades');
+    } else {
+      const submittedExt = Array.isArray(input?.extension_actividades) ? input.extension_actividades : [];
+      const existingExt = Array.isArray(existingData?.extension_actividades) ? existingData.extension_actividades : [];
+      const submittedAllowed = submittedExt.filter((act: any) => allowed.has(componentKeyForExtensionSection(act?.seccion)));
+      const preservedUnauthorized = existingExt.filter((act: any) => !allowed.has(componentKeyForExtensionSection(act?.seccion)));
+      merged.extension_actividades = [...preservedUnauthorized, ...submittedAllowed];
+    }
+
+    return merged;
+  }
+
   async savePTA(input: SavePtaInput) {
     let id = coalesceString(input?.id);
+    const isAdminEdit = Boolean(input?._adminEdit);
+    const allowedComponentKeys = Array.isArray(input?._allowed_component_keys)
+      ? input._allowed_component_keys
+        .map((key: unknown) => String(key))
+        .filter((key: string) => COMPONENT_APPROVAL_KEY_SET.has(key))
+      : [];
+    if (isAdminEdit && id && allowedComponentKeys.length > 0) {
+      const existingForRestrictedEdit = await this.ptaRepo.findOne({ where: { id } });
+      if (!existingForRestrictedEdit) {
+        throw new NotFoundException('PTA no encontrado');
+      }
+      input = this.mergeRestrictedAdminEditInput(input, existingForRestrictedEdit, allowedComponentKeys);
+      id = existingForRestrictedEdit.id;
+    }
+
     const docenteKey = coalesceString(
       input?.docente_id,
       input?.docenteId,
@@ -575,7 +956,6 @@ export class PtaService {
       input?.docente?.personaId,
     );
     const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
-    const isAdminEdit = Boolean(input?._adminEdit);
     const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
 
     // Enrich identity if missing
@@ -709,12 +1089,14 @@ export class PtaService {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
     }
 
-    // Registrar en historial cuando hay cambio de estado o creación inicial
+    // Registrar en historial cuando hay creación, cambio de estado, o edición admin.
+    // La edición admin (misma etapa, sin cambio de estado) también se registra para que
+    // quede trazada en la pestaña "Trazabilidad" con actor "Administrador" y su snapshot R-XX.
     const tipoAccionSave = !estadoAnteriorSave ? 'CREACION'
       : estado !== estadoAnteriorSave ? 'CAMBIO_ESTADO'
       : isAdminEdit ? 'EDICION_ADMIN'
       : 'GUARDADO';
-    if (!estadoAnteriorSave || estado !== estadoAnteriorSave || !id) {
+    if (!estadoAnteriorSave || estado !== estadoAnteriorSave || !id || isAdminEdit) {
       await this.historialRepo.save(this.historialRepo.create({
         ptaId: saved.id,
         estadoAnterior: estadoAnteriorSave,
@@ -767,6 +1149,7 @@ export class PtaService {
 
     const accion = coalesceString(body?.accion, body?.tipoAccion);
     let nuevoEstado = coalesceString(body?.estado);
+    let parallelApprovalResult: any = null;
 
     // Máquina de estados: calcula el siguiente estado según el actual y la acción.
     if (!nuevoEstado && accion) {
@@ -774,54 +1157,44 @@ export class PtaService {
       const estadoActual = existing.estado;
 
       if (a === 'aprobar') {
-        // Cada aprobador avanza al siguiente nivel. Si hay cambios que el docente
-        // debe revisar, pone REVISION_DOCENTE_Nx en vez de avanzar directo.
-        const hayCambios = body?.camposModificados &&
-          typeof body.camposModificados === 'object' &&
-          Object.keys(body.camposModificados).length > 0;
-
-        if (estadoActual === 'Pendiente Jefatura') {
-          nuevoEstado = hayCambios ? 'REVISION_DOCENTE_N1' : 'Pendiente Decanatura';
-        } else if (estadoActual === 'Pendiente Decanatura') {
-          nuevoEstado = hayCambios ? 'REVISION_DOCENTE_N2' : 'Pendiente Gestión Profesoral';
-        } else if (estadoActual === 'Pendiente Gestión Profesoral') {
-          nuevoEstado = 'Aprobado';
+        // Aprobación paralela por roles: cada aprobador registra su aval sin
+        // avanzar en cadena. El estado solo cambia a Aprobado cuando todos avalan.
+        if (isPendingRoleApprovalState(estadoActual)) {
+          nuevoEstado = pendingApprovalState(estadoActual);
         } else {
           // fallback para estados legacy
           nuevoEstado = 'Aprobado';
         }
       } else if (a === 'devolver') {
-        // Devolver desde cada nivel pone al docente en el nivel de revisión correspondiente
-        if (estadoActual === 'Pendiente Jefatura') {
-          nuevoEstado = 'REVISION_DOCENTE_N1';
-        } else if (estadoActual === 'Pendiente Decanatura') {
-          nuevoEstado = 'REVISION_DOCENTE_N2';
-        } else if (estadoActual === 'Pendiente Gestión Profesoral') {
-          // G.Profesoral devuelve al N2 (Decanatura fue quien aprobó antes)
-          nuevoEstado = 'REVISION_DOCENTE_N2';
+        // En flujo paralelo, el rol que devuelve determina el nivel de revisión.
+        if (isPendingRoleApprovalState(estadoActual)) {
+          nuevoEstado = pendingApprovalState(estadoActual);
         } else {
           nuevoEstado = 'Devuelto';
         }
       } else if (a.includes('rechaz')) {
         nuevoEstado = 'Rechazado';
       } else if (a === 'reenviar_corregido') {
-        // Docente reenvía tras revisión: vuelve al nivel que lo devolvió
-        if (estadoActual === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Jefatura';
-        else if (estadoActual === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Decanatura';
-        else if (estadoActual === 'REVISION_DOCENTE_N3') nuevoEstado = 'Pendiente Gestión Profesoral';
-        else nuevoEstado = 'Pendiente Jefatura';
+        // Docente reenvía tras revisión: vuelve a la fase paralela de aprobación.
+        nuevoEstado = 'Pendiente Jefatura';
       } else if (a.includes('reenviar')) {
         nuevoEstado = 'Pendiente Jefatura';
       } else if (a === 'avanzar_sin_cambios') {
-        // Docente acepta los cambios del revisor sin modificar nada
-        if (estadoActual === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Decanatura';
-        else if (estadoActual === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Gestión Profesoral';
-        else if (estadoActual === 'REVISION_DOCENTE_N3') nuevoEstado = 'Aprobado';
+        // Docente acepta los cambios del revisor sin modificar nada: reabre la
+        // aprobación paralela para que todos los roles avalen la versión vigente.
+        nuevoEstado = 'Pendiente Jefatura';
       }
     }
 
     if (!nuevoEstado) {
       nuevoEstado = existing.estado;
+    }
+
+    const a = accion?.toLowerCase() || '';
+    const hasExplicitEstado = !!coalesceString(body?.estado);
+    if (!hasExplicitEstado && (a === 'aprobar' || a === 'devolver') && isPendingRoleApprovalState(existing.estado)) {
+      parallelApprovalResult = await this.applyParallelRoleApproval(existing, body, a);
+      nuevoEstado = parallelApprovalResult.nuevoEstado;
     }
 
     if (nuevoEstado === 'Aprobado' && existing.estado !== 'Aprobado') {
@@ -841,8 +1214,7 @@ export class PtaService {
     }
 
     // ── Lógica multi-jefatura territorial ──────────────────────────────────────
-    const a = accion?.toLowerCase() || '';
-    if (existing.estado === 'Pendiente Jefatura' && (a === 'aprobar' || a === 'devolver')) {
+    if (body?.flujoSecuencial === true && existing.estado === 'Pendiente Jefatura' && (a === 'aprobar' || a === 'devolver')) {
       const aprobaciones = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
 
       // Limpiar filas huérfanas: si hay >1 fila para la misma territorial, borrar duplicadas
@@ -944,7 +1316,7 @@ export class PtaService {
     }
 
     // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
-    if (nuevoEstado === 'PENDIENTE_APROBACION') {
+    if (isPendingRoleApprovalState(nuevoEstado)) {
       const ds = existing.datosEstructurados as any || {};
       const tieneTotalidad = Array.isArray(ds.academico_admin) &&
         ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
@@ -956,10 +1328,48 @@ export class PtaService {
       }
     }
 
-    // ── Cuando el PTA llega a Pendiente Jefatura o PENDIENTE_APROBACION, inicializar aprobaciones ──────
-    const estadosQueInicializan = ['Pendiente Jefatura', 'PENDIENTE_APROBACION'];
-    if (estadosQueInicializan.includes(nuevoEstado) && !estadosQueInicializan.includes(existing.estado)) {
-      await this.initAprobacionesJefatura(ptaId, existing.datosEstructurados);
+    // ── Cuando el PTA llega a aprobación, validar datos completos ──────────────────────────
+    if (isPendingRoleApprovalState(nuevoEstado)) {
+      const ds = existing.datosEstructurados as any || {};
+      const tieneTotalidad = Array.isArray(ds.academico_admin) &&
+        ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+      if (!tieneTotalidad) {
+        const asignaturas = Array.isArray(ds.asignaturas)
+          ? ds.asignaturas.filter((a: any) => a?.asignatura_id)
+          : [];
+        if (asignaturas.length === 0) {
+          throw new BadRequestException('Debe incluir al menos una asignatura válida antes de enviar el PTA a aprobación.');
+        }
+        for (const [idx, asig] of asignaturas.entries()) {
+          const label = asig.asignatura_nombre || `Asignatura ${idx + 1}`;
+          if (!asig.programa_id) {
+            throw new BadRequestException(`Complete el programa de ${label} antes de enviar el PTA.`);
+          }
+          if (!asig.fecha_inicio || !asig.fecha_fin) {
+            throw new BadRequestException(`Complete las fechas de inicio y fin de ${label} antes de enviar el PTA.`);
+          }
+          const inicio = new Date(`${asig.fecha_inicio}T00:00:00`);
+          const fin = new Date(`${asig.fecha_fin}T00:00:00`);
+          if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime()) || fin < inicio) {
+            throw new BadRequestException(`El rango de fechas de ${label} no es válido.`);
+          }
+          const horasAsignatura = Number(asig.total_horas ?? asig.horas);
+          if (!Number.isFinite(horasAsignatura) || horasAsignatura <= 0) {
+            throw new BadRequestException(`La asignatura ${label} no tiene horas calculadas.`);
+          }
+        }
+      }
+    }
+
+    const estadoFinal = nuevoEstado || existing.estado || 'Borrador';
+
+    const debeInicializarAprobacionesJefatura =
+      isPendingRoleApprovalState(estadoFinal) &&
+      (!isPendingRoleApprovalState(existing.estado) ||
+        (existing.estado === 'PENDIENTE_APROBACION' && estadoFinal === 'Pendiente Jefatura'));
+    if (debeInicializarAprobacionesJefatura && !parallelApprovalResult) {
+      await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
+      await this.resetComponentApprovalWorkflow(ptaId);
     }
 
     const estadoAnterior = existing.estado;
@@ -967,7 +1377,7 @@ export class PtaService {
 
     const updated = await this.ptaRepo.save({
       ...existing,
-      estado: nuevoEstado,
+      estado: estadoFinal,
       version: nextVersion,
       motivoDevolucion: body?.motivo_devolucion ?? body?.motivoDevolucion ?? existing.motivoDevolucion,
       datosEstructurados: existing.datosEstructurados,
@@ -977,7 +1387,7 @@ export class PtaService {
       this.historialRepo.create({
         ptaId,
         estadoAnterior,
-        estadoNuevo: nuevoEstado,
+        estadoNuevo: estadoFinal,
         actorId: coalesceString(body?.actorId, body?.aprobador_id, body?.resueltoPor, body?.actor_id),
         actorRol: coalesceString(body?.actorRol, body?.aprobador_rol, body?.actor_rol),
         tipoAccion: accion,
@@ -995,23 +1405,240 @@ export class PtaService {
       docenteId: existing.docenteId,
       docenteNombre: coalesceString(ds?.docente_nombre),
       estadoAnterior,
-      estadoNuevo: nuevoEstado,
+      estadoNuevo: estadoFinal,
       actor: coalesceString(body?.actorId, body?.actor_id),
       actorRol: coalesceString(body?.actorRol, body?.actor_rol),
       sistemaOrigen: body?.sistemaOrigen ?? 'backoffice',
-      mensaje: `${estadoAnterior} → ${nuevoEstado}`,
+      mensaje: `${estadoAnterior} → ${estadoFinal}`,
       metadata: { accion, observaciones: coalesceString(body?.observaciones, body?.comentarios) },
     });
 
     return {
+      ...(parallelApprovalResult || {}),
       version: updated.version,
-      nuevoEstado,
+      nuevoEstado: estadoFinal,
       pta: this.toPtaDto(updated, await this.getExtMultiplicadores()),
     };
   }
 
   async getAprobacionesJefatura(ptaId: string) {
     return this.aprobacionJefaturaRepo.find({ where: { ptaId }, order: { createdAt: 'ASC' } });
+  }
+
+  private resolveApprovalLevel(body: any): number {
+    const explicit = Number(body?.nivelAprobacion ?? body?.nivel_aprobacion ?? body?.nivel);
+    if ([1, 2, 3].includes(explicit)) return explicit;
+    return approvalLevelFromRole(coalesceString(body?.actorRol, body?.aprobador_rol, body?.actor_rol));
+  }
+
+  private async ensureRoleApprovalRows(ptaId: string) {
+    const existing = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+    const existingKeys = new Set(existing.map(row => row.componente));
+    const missing = ROLE_APPROVALS
+      .filter(item => !existingKeys.has(item.key))
+      .map(item => this.ptaComponentApprovalRepo.create({
+        ptaId,
+        componente: item.key,
+        estado: 'pendiente',
+        aprobadorRol: item.label,
+        scope: 'nivel_aprobacion',
+        scopeId: String(item.nivel),
+      }));
+
+    if (missing.length > 0) {
+      await this.ptaComponentApprovalRepo.save(missing);
+    }
+
+    return this.getRoleApprovalRows(ptaId);
+  }
+
+  private async getRoleApprovalRows(ptaId: string) {
+    const rows = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+    return rows
+      .filter(row => isRoleApprovalComponent(row.componente))
+      .sort((a, b) => {
+        const na = Number(roleApprovalMetaByLevel(Number(a.scopeId))?.nivel || ROLE_APPROVALS.find(x => x.key === a.componente)?.nivel || 0);
+        const nb = Number(roleApprovalMetaByLevel(Number(b.scopeId))?.nivel || ROLE_APPROVALS.find(x => x.key === b.componente)?.nivel || 0);
+        return na - nb;
+      });
+  }
+
+  private async resetParallelApprovalWorkflow(ptaId: string, datosEstructurados: any) {
+    await this.ptaComponentApprovalRepo.delete({
+      ptaId,
+      componente: In([...ROLE_APPROVAL_KEYS]),
+    } as any);
+    await this.aprobacionJefaturaRepo.delete({ ptaId });
+    await this.ensureRoleApprovalRows(ptaId);
+    await this.initAprobacionesJefatura(ptaId, datosEstructurados);
+  }
+
+  private async resetComponentApprovalWorkflow(ptaId: string) {
+    await this.ptaComponentApprovalRepo.delete({
+      ptaId,
+      componente: In(COMPONENT_APPROVAL_KEYS),
+    } as any);
+    await this.getComponentesAprobacion(ptaId);
+  }
+
+  private async registerJefaturaTerritorialApproval(
+    ptaId: string,
+    body: any,
+    estado: 'aprobado' | 'aprobado_con_cambios' | 'devuelto',
+  ) {
+    const actorId = coalesceString(body?.actorId, body?.aprobador_id, body?.actor_id) || '';
+    const observaciones = coalesceString(body?.observaciones, body?.comentarios);
+    const isSuperUser = !!body?.isSuperUser;
+    const aprobarTodas = !!body?.aprobarTodas;
+
+    let rows = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
+    if (rows.length === 0) {
+      return { complete: true, rows };
+    }
+
+    let actorTerritorialId = coalesceString(body?.actorTerritorialId, body?.actor_territorial_id);
+    if (!actorTerritorialId && actorId) {
+      const docenteRow = await this.docenteRepo.findOne({ where: { id: actorId } as any });
+      if ((docenteRow as any)?.territorialId) actorTerritorialId = (docenteRow as any).territorialId;
+    }
+    if (!actorTerritorialId && actorId) {
+      const previous = rows.find(ap => ap.jefaturaUserId === actorId);
+      if (previous) actorTerritorialId = previous.territorialId;
+    }
+
+    const updateRows = estado === 'devuelto'
+      ? (isSuperUser || aprobarTodas
+        ? rows
+        : actorTerritorialId
+          ? rows.filter(ap => ap.territorialId === actorTerritorialId)
+          : rows.slice(0, 1))
+      : (isSuperUser || aprobarTodas
+        ? rows.filter(ap => ap.decision === 'pendiente')
+        : actorTerritorialId
+          ? rows.filter(ap => ap.decision === 'pendiente' && ap.territorialId === actorTerritorialId)
+          : rows.filter(ap => ap.decision === 'pendiente').slice(0, 1));
+
+    const effectiveRows = updateRows.length > 0
+      ? updateRows
+      : (estado === 'devuelto' ? rows : rows.filter(ap => ap.decision === 'pendiente').slice(0, 1));
+
+    for (const ap of effectiveRows) {
+      await this.aprobacionJefaturaRepo.save({
+        ...ap,
+        decision: estado,
+        jefaturaUserId: actorId,
+        comentarios: observaciones,
+      });
+    }
+
+    rows = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
+    const complete = rows.length === 0 || rows.every(ap => ['aprobado', 'aprobado_con_cambios'].includes(ap.decision));
+    return { complete, rows };
+  }
+
+  private async applyParallelRoleApproval(existing: PlanTrabajoAcademicoEntity, body: any, action: 'aprobar' | 'devolver') {
+    const ptaId = existing.id;
+    const isSuperUser = !!body?.isSuperUser;
+    const aprobarTodas = !!body?.aprobarTodas;
+    const actorId = coalesceString(body?.actorId, body?.aprobador_id, body?.actor_id);
+    const actorNombre = coalesceString(body?.aprobador_nombre, body?.actorNombre, body?.actor_nombre, body?.actorRol);
+    const actorRol = coalesceString(body?.actorRol, body?.aprobador_rol, body?.actor_rol);
+    const observaciones = coalesceString(body?.observaciones, body?.comentarios);
+    const hayCambios = body?.camposModificados &&
+      typeof body.camposModificados === 'object' &&
+      Object.keys(body.camposModificados).length > 0;
+
+    await this.ensureRoleApprovalRows(ptaId);
+
+    const level = this.resolveApprovalLevel(body);
+    if (!isSuperUser && !aprobarTodas && ![1, 2, 3].includes(level)) {
+      throw new BadRequestException('No se pudo determinar el nivel de aprobación del usuario.');
+    }
+
+    if (action === 'devolver') {
+      const targetLevel = isSuperUser || aprobarTodas ? (level || 1) : level;
+      const meta = roleApprovalMetaByLevel(targetLevel) || roleApprovalMetaByLevel(1)!;
+      const row = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente: meta.key } });
+      if (row) {
+        await this.ptaComponentApprovalRepo.save({
+          ...row,
+          estado: 'devuelto',
+          aprobadorId: actorId,
+          aprobadorNombre: actorNombre,
+          aprobadorRol: actorRol || meta.label,
+          comentarios: observaciones,
+          fechaAprobacion: new Date(),
+          scope: 'nivel_aprobacion',
+          scopeId: String(meta.nivel),
+        });
+      }
+      if (meta.nivel === 1) {
+        await this.registerJefaturaTerritorialApproval(ptaId, body, 'devuelto');
+      }
+      return {
+        nuevoEstado: meta.revision,
+        parcial: false,
+        message: `PTA devuelto por ${meta.label}.`,
+        aprobacionesNiveles: await this.getRoleApprovalRows(ptaId),
+        aprobacionesJefatura: await this.getAprobacionesJefatura(ptaId),
+      };
+    }
+
+    const targetLevels = isSuperUser || aprobarTodas ? [1, 2, 3] : [level];
+    const decision = hayCambios ? 'aprobado_con_cambios' : 'aprobado';
+
+    for (const targetLevel of targetLevels) {
+      const meta = roleApprovalMetaByLevel(targetLevel);
+      if (!meta) continue;
+
+      if (targetLevel === 1) {
+        const jefatura = await this.registerJefaturaTerritorialApproval(ptaId, body, decision);
+        if (!jefatura.complete) {
+          continue;
+        }
+      }
+
+      const row = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente: meta.key } });
+      if (row) {
+        await this.ptaComponentApprovalRepo.save({
+          ...row,
+          estado: 'aprobado',
+          aprobadorId: actorId,
+          aprobadorNombre: actorNombre,
+          aprobadorRol: actorRol || meta.label,
+          comentarios: observaciones,
+          fechaAprobacion: new Date(),
+          scope: 'nivel_aprobacion',
+          scopeId: String(meta.nivel),
+        });
+      }
+    }
+
+    const roleRows = await this.getRoleApprovalRows(ptaId);
+    const allApproved = roleRows.length === ROLE_APPROVALS.length && roleRows.every(row => row.estado === 'aprobado');
+    const anyReturned = roleRows.some(row => row.estado === 'devuelto');
+
+    if (anyReturned) {
+      const returned = roleRows.find(row => row.estado === 'devuelto');
+      const meta = ROLE_APPROVALS.find(item => item.key === returned?.componente) || ROLE_APPROVALS[0];
+      return {
+        nuevoEstado: meta.revision,
+        parcial: false,
+        message: `PTA devuelto por ${meta.label}.`,
+        aprobacionesNiveles: roleRows,
+        aprobacionesJefatura: await this.getAprobacionesJefatura(ptaId),
+      };
+    }
+
+    return {
+      nuevoEstado: allApproved ? 'Aprobado' : pendingApprovalState(existing.estado),
+      parcial: !allApproved,
+      message: allApproved
+        ? 'Todas las aprobaciones requeridas fueron registradas. PTA aprobado.'
+        : 'Tu aprobación fue registrada. El PTA queda pendiente de las demás aprobaciones.',
+      aprobacionesNiveles: roleRows,
+      aprobacionesJefatura: await this.getAprobacionesJefatura(ptaId),
+    };
   }
 
   private async initAprobacionesJefatura(ptaId: string, datosEstructurados: any) {
@@ -1246,8 +1873,9 @@ export class PtaService {
 
   async getSolicitudesPTA(filters?: { estado?: string }) {
     const qb = this.solicitudRepo.createQueryBuilder('s');
-    if (filters?.estado) {
-      qb.andWhere('s.estado = :estado', { estado: String(filters.estado) });
+    const estado = coalesceString(filters?.estado)?.toLowerCase();
+    if (estado) {
+      qb.andWhere('LOWER(s.estado) = :estado', { estado });
     }
     qb.orderBy('s.createdAt', 'DESC');
     qb.take(500);
@@ -2523,7 +3151,7 @@ export class PtaService {
     const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existing) throw new NotFoundException('PTA no encontrado');
 
-    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'PENDIENTE_APROBACION';
+    const estadoDestino = coalesceString(payload?.nuevoEstado) || 'Pendiente Jefatura';
     const updated = await this.updatePTAStatus(ptaId, { estado: estadoDestino, actorId: existing.docenteId, actorRol: 'Docente' });
 
     const certNumber =
@@ -2538,6 +3166,7 @@ export class PtaService {
 
   async getComponentesAprobacion(ptaId: string) {
     const list = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+    const componentList = list.filter(item => !isRoleApprovalComponent(item.componente));
 
     // Fetch PTA content to determine which components have hours
     const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
@@ -2598,28 +3227,46 @@ export class PtaService {
       asignaturas.length + invActs.length + extActs.length + comp.length + acadAdmin.length;
     const hayActividades = totalActividades > 0;
 
-    if (list.length === 0) {
-      // Auto-aprobar componentes con 0h SOLO si el PTA tiene datos estructurados.
-      // Si todos los arrays están vacíos, dejar todo como 'pendiente' para revisión manual.
-      const items = todosComponentes.map(c => {
-        const tieneHoras = horasPorComponente[c] > 0;
-        const autoAprobar = hayActividades && !tieneHoras;
-        return this.ptaComponentApprovalRepo.create({
+    const byComponent = new Map(componentList.map(item => [item.componente, item]));
+    const toSave: PtaComponentApprovalEntity[] = [];
+
+    for (const c of todosComponentes) {
+      const tieneHoras = horasPorComponente[c] > 0;
+      const autoAprobar = hayActividades && !tieneHoras;
+      const existing = byComponent.get(c);
+
+      if (!existing) {
+        const item = this.ptaComponentApprovalRepo.create({
           ptaId,
           componente: c,
           estado: autoAprobar ? 'aprobado' : 'pendiente',
           ...(autoAprobar ? {
             aprobadorNombre: 'Sistema',
-            comentarios: 'Sin actividades — aprobación automática',
+            comentarios: 'Sin actividades - aprobacion automatica',
             fechaAprobacion: new Date(),
           } : {}),
         });
-      });
-      await this.ptaComponentApprovalRepo.save(items);
-      return items;
+        byComponent.set(c, item);
+        toSave.push(item);
+        continue;
+      }
+
+      if (autoAprobar && existing.estado === 'pendiente') {
+        existing.estado = 'aprobado';
+        existing.aprobadorNombre = existing.aprobadorNombre || 'Sistema';
+        existing.comentarios = existing.comentarios || 'Sin actividades - aprobacion automatica';
+        existing.fechaAprobacion = existing.fechaAprobacion || new Date();
+        toSave.push(existing);
+      }
     }
 
-    return list;
+    if (toSave.length > 0) {
+      await this.ptaComponentApprovalRepo.save(toSave);
+    }
+
+    return todosComponentes
+      .map(c => byComponent.get(c))
+      .filter((item): item is PtaComponentApprovalEntity => !!item);
   }
 
   async aprobarComponente(ptaId: string, body: any) {
@@ -2627,6 +3274,20 @@ export class PtaService {
     const estado = coalesceString(body?.estado); // 'aprobado' o 'devuelto'
     if (!componente || !estado) {
       throw new BadRequestException('Componente y estado son requeridos');
+    }
+    if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
+      throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
+    }
+
+    const isSuperUser = body?.isSuperUser === true || body?.is_super_user === true;
+    const componentesAutorizados = Array.isArray(body?.componentesAutorizados)
+      ? body.componentesAutorizados
+      : (Array.isArray(body?.authorizedComponents) ? body.authorizedComponents : null);
+    if (!isSuperUser && componentesAutorizados) {
+      const allowed = new Set(componentesAutorizados.map((item: unknown) => String(item)));
+      if (!allowed.has(componente)) {
+        throw new ForbiddenException('No tiene permisos para aprobar este componente del PTA.');
+      }
     }
 
     const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
@@ -2657,14 +3318,15 @@ export class PtaService {
     // Recalcular estado consolidado del PTA
     const todosComponentes = await this.getComponentesAprobacion(ptaId);
     
-    let nuevoEstadoPta = 'PENDIENTE_APROBACION';
+    const estadoActualPta = existingPta.estado;
+    let nuevoEstadoPta = estadoActualPta;
     const hayDevueltos = todosComponentes.some(c => c.estado === 'devuelto');
     const todosAprobados = todosComponentes.every(c => c.estado === 'aprobado');
 
     if (hayDevueltos) {
-      nuevoEstadoPta = 'Devuelto'; // que agrupa a revisión docente en Kanban
+      nuevoEstadoPta = COMPONENT_REVISION_STATE[componente] || 'Devuelto';
     } else if (todosAprobados) {
-      nuevoEstadoPta = 'Aprobado';
+      nuevoEstadoPta = isPendingRoleApprovalState(estadoActualPta) ? 'Aprobado' : estadoActualPta;
     }
 
     if (existingPta.estado !== nuevoEstadoPta) {
@@ -2672,8 +3334,12 @@ export class PtaService {
       existingPta.estado = nuevoEstadoPta;
       existingPta.version = (existingPta.version || 1) + 1;
       
-      if (nuevoEstadoPta === 'Devuelto') {
+      if (hayDevueltos) {
         existingPta.motivoDevolucion = `Componente ${componente} devuelto: ${approval.comentarios || 'Sin comentarios'}`;
+      }
+
+      if (nuevoEstadoPta === 'Pendiente Jefatura') {
+        await this.initAprobacionesJefatura(ptaId, existingPta.datosEstructurados);
       }
 
       await this.ptaRepo.save(existingPta);

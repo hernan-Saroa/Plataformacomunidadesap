@@ -444,6 +444,10 @@ export async function updatePTAStatus(
     motivo_devolucion?: string;
     actorId?: string;
     actorRol?: string;
+    nivelAprobacion?: number;
+    actorTerritorialId?: string;
+    isSuperUser?: boolean;
+    aprobarTodas?: boolean;
     aprobador_id?: string;
     aprobador_nombre?: string;
   },
@@ -489,6 +493,8 @@ export async function aprobarComponente(ptaId: string, data: {
   comentarios?: string;
   scope?: string;
   scopeId?: string;
+  componentesAutorizados?: string[];
+  isSuperUser?: boolean;
 }) {
   try {
     const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/aprobar-componente`, data);

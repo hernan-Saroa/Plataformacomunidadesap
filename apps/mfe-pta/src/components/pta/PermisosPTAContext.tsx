@@ -22,8 +22,13 @@ import { createContext, useContext, useState, useEffect, useMemo, useCallback, u
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ShieldAlert, ChevronDown, Eye, RefreshCw } from 'lucide-react';
+import {
+  PTA_COMPONENT_KEYS,
+  PTA_COMPONENT_PERMISSION,
+  componentKeysForApprovalLevel,
+} from './shared/ptaComponentPermissions';
 
-export type RolPTA = 'admin' | 'decanatura' | 'jefatura' | 'director' | 'docente' | 'coord_grupo_dt';
+export type RolPTA = 'admin' | 'gestion_profesoral' | 'decanatura' | 'jefatura' | 'director' | 'docente' | 'coord_grupo_dt';
 
 export interface PerfilRolPTA {
   rol: RolPTA;
@@ -45,6 +50,7 @@ export interface PermisosPTA {
   nivelAprobacion: number; // 0=no aprueba, 1=jefatura, 2=decanatura, 3=gestion profesoral
   filtroTerritorial: string[] | null; // null = todas
   filtroPrograma: string[] | null;    // null = todos
+  componentesAprobables: string[];
   /** Origen de los permisos: 'granular' (KV) o 'hardcoded' (fallback) */
   source: 'granular' | 'hardcoded';
   /** Cantidad de permisos granulares PTA encontrados */
@@ -108,6 +114,15 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.pre_aprobacion_sni_snpi': 'pre_aprobacion_sni_snpi',
   'pta.backoffice.banco_docentes': 'banco_docentes', // ✅ Nuevo permiso
   'pta.backoffice.config_reglas': 'config_reglas',
+  'pta.approve.academica': 'gestion',
+  'pta.approve.investigacion': 'gestion',
+  'pta.approve.extension.capacitacion': 'gestion',
+  'pta.approve.extension.procesos_seleccion': 'gestion',
+  'pta.approve.extension.fortalecimiento': 'gestion',
+  'pta.approve.extension.alto_gobierno': 'gestion',
+  'pta.approve.extension.secciones_actividades': 'gestion',
+  'pta.approve.complementarias': 'gestion',
+  'pta.approve.academicas_admin': 'gestion',
 };
 
 /**
@@ -135,6 +150,8 @@ function deriveFromGranular(
     { perm: 'pta.backoffice.aprobador_N2', nivel: 2 },
     { perm: 'pta.backoffice.aprobador_N3', nivel: 3 },
   ];
+  const componentApprovalPerms = Object.values(PTA_COMPONENT_PERMISSION);
+  const componentesAprobables = PTA_COMPONENT_KEYS.filter(key => has(PTA_COMPONENT_PERMISSION[key]));
   const maxNivelAprobador = aprobadorNivelPerms.reduce(
     (max, item) => has(item.perm) ? Math.max(max, item.nivel) : max,
     0,
@@ -160,6 +177,7 @@ function deriveFromGranular(
     nivelAprobacion = maxNivelAprobador;
   } else if (has('pta.backoffice.aprobar')) {
     if (perfil.rol === 'admin') nivelAprobacion = 3;
+    else if (perfil.rol === 'gestion_profesoral') nivelAprobacion = 3;
     else if (perfil.rol === 'decanatura') nivelAprobacion = 2;
     else if (perfil.rol === 'jefatura') nivelAprobacion = 1;
     else if (has('pta.backoffice.aprobacion_masiva') && has('pta.backoffice.seguimiento')) nivelAprobacion = 3;
@@ -168,7 +186,7 @@ function deriveFromGranular(
 
   return {
     vistasPerm,
-    puedeAprobar: tienePermisoAprobador || has('pta.backoffice.aprobar') || has('pta.backoffice.aprobacion_masiva'),
+    puedeAprobar: tienePermisoAprobador || has('pta.backoffice.aprobar') || has('pta.backoffice.aprobacion_masiva') || componentesAprobables.length > 0,
     puedeExportar: has('pta.backoffice.exportar') || has('pta.backoffice.centro_reportes'),
     puedeVerSNA: has('pta.backoffice.panel_sna'),
     puedeArbitrar: has('pta.backoffice.arbitrar'),
@@ -178,6 +196,7 @@ function deriveFromGranular(
     nivelAprobacion,
     filtroTerritorial: perfil.territorial_ids.length > 0 ? perfil.territorial_ids : null,
     filtroPrograma: perfil.programa_ids.length > 0 ? perfil.programa_ids : null,
+    componentesAprobables,
     source: 'granular',
     granularCount: ptaPerms.length,
   };
@@ -200,6 +219,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     nivelAprobacion: 3,
     filtroTerritorial: null,
     filtroPrograma: null,
+    componentesAprobables: [...PTA_COMPONENT_KEYS],
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -215,6 +235,23 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     nivelAprobacion: 0,
     filtroTerritorial: null,
     filtroPrograma: null,
+    componentesAprobables: [],
+    source: 'hardcoded',
+    granularCount: 0,
+  }),
+  gestion_profesoral: () => ({
+    vistasPerm: ['gestion','seguimiento_docs','solicitudes_pta','programacion_institucional','programacion','tablero','reporte','seguimiento','directivo','territorial','catalogo','comparativo','sna','validador','workflow_visualizer','mapa_territorial','alertas','indicadores','acta_concertacion','simulador_carga','benchmarking','exportador_actas','comite_evaluacion','calendario_academico','asignador_automatico','kanban','metricas_sla','generador_resoluciones','gestion_conflictos','preferencias_notificaciones','verificacion_qr','centro_reportes','cronograma','pre_aprobacion_sni_snpi','banco_docentes'],
+    puedeAprobar: true,
+    puedeExportar: true,
+    puedeVerSNA: true,
+    puedeArbitrar: true,
+    puedeEditarCatalogo: false,
+    puedeCargarMasivo: true,
+    puedeConcertar: true,
+    nivelAprobacion: 3,
+    filtroTerritorial: null,
+    filtroPrograma: null,
+    componentesAprobables: componentKeysForApprovalLevel(3),
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -230,6 +267,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     nivelAprobacion: 2,
     filtroTerritorial: null,
     filtroPrograma: null,
+    componentesAprobables: componentKeysForApprovalLevel(2),
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -245,6 +283,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     nivelAprobacion: 1,
     filtroTerritorial: perfil.territorial_ids.length > 0 ? perfil.territorial_ids : null,
     filtroPrograma: null,
+    componentesAprobables: componentKeysForApprovalLevel(1),
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -260,6 +299,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     nivelAprobacion: 0,
     filtroTerritorial: null,
     filtroPrograma: null,
+    componentesAprobables: [],
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -275,6 +315,7 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     nivelAprobacion: 0,
     filtroTerritorial: null,
     filtroPrograma: null,
+    componentesAprobables: [],
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -300,6 +341,7 @@ interface ContextValue {
 
 export const ROL_STYLES: Record<RolPTA, { label: string; color: string; bg: string }> = {
   admin: { label: 'Administrador Sistema', color: '#059669', bg: '#D1FAE5' },
+  gestion_profesoral: { label: 'Gestión Profesoral', color: '#3730A3', bg: '#E0E7FF' },
   director: { label: 'Director Academico', color: '#7C3AED', bg: '#F3E8FF' },
   decanatura: { label: 'Decanatura', color: '#003DA5', bg: '#EFF6FF' },
   jefatura: { label: 'Jefatura de Zona', color: '#D97706', bg: '#FEF3C7' },
@@ -344,9 +386,9 @@ function deriveRolPTA(
   const d = (dependencia || '').toLowerCase().trim();
 
   if (r.includes('super') || r.includes('administrador') || r === 'admin') return 'admin';
-  if (r === 'gestion_profesoral' || r === 'gestion profesoral' || r.includes('gestión profesoral') || r.includes('gestion profesoral')) return 'admin';
-  if (c.includes('gestion profesoral') || c.includes('gestión profesoral')) return 'admin';
-  if (d.includes('gestion profesoral') || d.includes('gestión profesoral')) return 'admin';
+  if (r === 'gestion_profesoral' || r === 'gestion profesoral' || r.includes('gestión profesoral') || r.includes('gestion profesoral')) return 'gestion_profesoral';
+  if (c.includes('gestion profesoral') || c.includes('gestión profesoral')) return 'gestion_profesoral';
+  if (d.includes('gestion profesoral') || d.includes('gestión profesoral')) return 'gestion_profesoral';
   if (r.includes('director') || r.includes('subdirector')) return 'director';
   if (c.includes('director acad') || c.includes('subdirector acad')) return 'director';
   if (r === 'decano' || r === 'decanatura' || r.includes('decano') || r.includes('decanatura')) return 'decanatura';
