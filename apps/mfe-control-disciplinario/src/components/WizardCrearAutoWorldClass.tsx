@@ -656,7 +656,6 @@ export function WizardCrearAutoWorldClass({
     setPaso(1);
     setTipoSeleccionado(null);
     setFechaAuto(new Date().toISOString().split('T')[0]);
-    setFechaVencimiento('');
     setObservaciones('');
     setProrrogaMeses(null);
     setArchivoAdjunto(null);
