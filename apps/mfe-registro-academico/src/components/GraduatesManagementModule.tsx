@@ -69,7 +69,6 @@ import graduadosService, {
   GraduadoArchivo,
   GraduadoData,
 } from '../../services/api/graduados.service';
-import { programasService } from '../../services/api/programas.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
@@ -94,6 +93,8 @@ type GraduateRow = {
   }>;
   location: string;
   program?: string;
+  programName?: string;
+  degreeTitle?: string;
   document: string;
   enrollmentMethod: 'qr' | 'manual' | 'request' | 'massive' | 'integration';
   enrollmentDate: string;
@@ -112,46 +113,8 @@ type GraduateRow = {
 };
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
-const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
-const getPeriodCode = (period: any) =>
-  String(
-    period?.codigo ||
-      period?.periodo ||
-      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
-  ).trim();
-const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
-  // El periodo activo es autoritativo para catálogos académicos como programas.
-  // Territoriales y sedes se leen del catálogo maestro de Estructura Organizacional.
-  const activo = periods.find((period) => period?.estado === 'en_curso');
-  if (activo) return activo;
-  const savedPeriodCode = localStorage.getItem(storageKey) || '';
-  return (
-    periods.find((period) => getPeriodCode(period) === savedPeriodCode) ||
-    periods[0] ||
-    null
-  );
-};
-const getPeriodCreationTime = (period: any) => {
-  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
-  const timestamp = value ? new Date(value).getTime() : Number.NaN;
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-};
-const sortPeriodsByCreation = <T extends {
-  createdAt?: string | Date;
-  created_at?: string | Date;
-  fechaCreacion?: string | Date;
-  anio?: number;
-  semestre?: number;
-}>(periods: T[]) =>
-  [...periods].sort((a, b) => {
-    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
-    if (creationDifference !== 0) return creationDifference;
-    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
-      return Number(b?.anio || 0) - Number(a?.anio || 0);
-    }
-    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
-  });
+const INTEGRATION_PROGRAM_SOURCE_LABEL = 'graduados integrados';
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,9 +130,7 @@ export function GraduatesManagementModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
-  const [programasCatalog, setProgramasCatalog] = useState<string[]>([]);
   const [estructuraPeriodoCatalogo, setEstructuraPeriodoCatalogo] = useState('');
-  const [programasPeriodoCatalogo, setProgramasPeriodoCatalogo] = useState('');
   const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
@@ -468,12 +429,17 @@ export function GraduatesManagementModule() {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
+  const normalizeOptionKey = (value?: string) =>
+    normalizeKey(value)
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   const uniqueSortedText = (values: Array<string | undefined | null>) => {
     const byKey = new Map<string, string>();
 
     values.forEach((value) => {
       const cleaned = normalizeSpaces(value || '');
-      const key = normalizeKey(cleaned);
+      const key = normalizeOptionKey(cleaned);
       if (!key || byKey.has(key)) return;
       byKey.set(key, cleaned);
     });
@@ -858,10 +824,7 @@ export function GraduatesManagementModule() {
       setCatalogRefreshToken((current) => current + 1);
     };
     const handleStorageChange = (event: StorageEvent) => {
-      if (
-        event.key === ESTRUCTURA_PERIOD_STORAGE_KEY ||
-        event.key === PROGRAMAS_PERIOD_STORAGE_KEY
-      ) {
+      if (event.key === ESTRUCTURA_PERIOD_STORAGE_KEY) {
         refreshCatalogs();
       }
     };
@@ -878,80 +841,23 @@ export function GraduatesManagementModule() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadProgramCatalog = async (periodoAcademico: string) => {
-      const pageSize = 200;
-
-      try {
-        const firstPage = await programasService.listar({
-          page: 1,
-          limit: pageSize,
-          periodoAcademico,
-        });
-        const total = Number(firstPage?.total || firstPage?.data?.length || 0);
-        const totalPages = Math.max(1, Math.ceil(total / pageSize));
-        const extraPages =
-          totalPages > 1
-            ? await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, index) =>
-                  programasService
-                    .listar({
-                      page: index + 2,
-                      limit: pageSize,
-                      periodoAcademico,
-                    })
-                    .catch((error) => {
-                      console.warn('No se pudo cargar una página del catálogo de programas:', error);
-                      return null;
-                    }),
-                ),
-              )
-            : [];
-
-        return [firstPage, ...extraPages]
-          .flatMap((page) => page?.data || [])
-          .map((programa) => programa?.nombre)
-          .filter(Boolean) as string[];
-      } catch (error) {
-        console.warn('No se pudo cargar el catálogo dinámico de programas:', error);
-        return [];
-      }
-    };
-
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse, periodosResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
-          estructuraService.obtenerPeriodos().catch((error) => {
-            console.warn('No se pudieron cargar los periodos académicos:', error);
-            return [];
-          }),
         ]);
 
         const { sedes: estructuraSedesMaestras, seccionales: estructuraSeccionalesMaestras } =
           parseEstructuraCatalog(estructuraResponse);
-        const periodos = Array.isArray(periodosResponse)
-          ? sortPeriodsByCreation(periodosResponse)
-          : [];
-        const periodoProgramas = resolveCatalogPeriod(
-          periodos,
-          PROGRAMAS_PERIOD_STORAGE_KEY,
-        );
-        const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
-
-        const programasCatalogResponse = periodoProgramas
-          ? await loadProgramCatalog(codigoPeriodoProgramas)
-          : [];
         const estructuraSedes = estructuraSedesMaestras;
         const estructuraSeccionales = estructuraSeccionalesMaestras;
 
         if (isMounted) {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
-          setProgramasCatalog(programasCatalogResponse);
           setEstructuraPeriodoCatalogo('catálogo maestro');
-          setProgramasPeriodoCatalogo(codigoPeriodoProgramas);
         }
 
         const seccionalByName = new Map<string, Seccional>();
@@ -978,6 +884,8 @@ export function GraduatesManagementModule() {
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
           const rawSeccionalName = (graduate.seccionalName || '').trim();
+          const programName = (graduate.programName || '').trim();
+          const degreeTitle = (graduate.degreeTitle || '').trim();
           const territorialName = rawSeccionalName
             ? seccionalByName.get(normalizeKey(rawSeccionalName))?.nomSeccional
             : undefined;
@@ -1000,9 +908,9 @@ export function GraduatesManagementModule() {
             location: sedeName,
             territorial: territorialName,
             sourceTerritorial: rawSeccionalName || undefined,
-            program:
-              (graduate.programName || graduate.degreeTitle || '').trim() ||
-              'No especificado',
+            program: programName || degreeTitle || 'No especificado',
+            programName: programName || undefined,
+            degreeTitle: degreeTitle || undefined,
             document: graduate.idNumber,
             enrollmentMethod: resolveEnrollmentMethod(createdBy),
             enrollmentDate: graduate.enrollmentDate || '',
@@ -1109,9 +1017,6 @@ export function GraduatesManagementModule() {
     };
   }, [graduatesOnly]);
 
-  const programCatalogOptions = useMemo(() => {
-    return uniqueSortedText(programasCatalog);
-  }, [programasCatalog]);
   // Programas provenientes de la integración: se toman de los graduados creados
   // por ese medio (enrollmentMethod === 'integration'), se descartan los vacíos
   // y "No especificado", y se muestran sin repetidos. Son la fuente dinámica de
@@ -1122,7 +1027,11 @@ export function GraduatesManagementModule() {
       uniqueSortedText(
         graduatesOnly
           .filter((graduate) => graduate.enrollmentMethod === 'integration')
-          .map((graduate) => graduate.program),
+          .flatMap((graduate) => [
+            graduate.programName,
+            graduate.degreeTitle,
+            graduate.program,
+          ]),
       ).filter((programa) => normalizeKey(programa) !== 'no especificado'),
     [graduatesOnly, normalizeKey],
   );
@@ -1143,16 +1052,21 @@ export function GraduatesManagementModule() {
   );
 
   const catalogTerritorialOptions = useMemo(
-    () =>
-      uniqueSortedText([
-        ...seccionalesCatalog.map((seccional) => seccional?.nomSeccional),
-        ...sedesCatalog.map((sede) => sede?.seccional?.nomSeccional),
-      ]),
+    () => {
+      const seccionales = seccionalesCatalog
+        .map((seccional) => normalizeSpaces(seccional?.nomSeccional || ''))
+        .filter(Boolean);
+      if (seccionales.length > 0) return seccionales;
+
+      return sedesCatalog
+        .map((sede) => normalizeSpaces(sede?.seccional?.nomSeccional || ''))
+        .filter(Boolean);
+    },
     [seccionalesCatalog, sedesCatalog],
   );
 
   const catalogSedeOptions = useMemo(
-    () => uniqueSortedText(sedesCatalog.map((sede) => sede?.nomSede)),
+    () => sedesCatalog.map((sede) => normalizeSpaces(sede?.nomSede || '')).filter(Boolean),
     [sedesCatalog],
   );
 
@@ -1222,12 +1136,12 @@ export function GraduatesManagementModule() {
   }, [sedesCatalog, seccionalById, graduatesOnly, knownSedeKeys, normalizeKey]);
 
   const sedesByTerritorial = useMemo(() => {
-    const map = new Map<string, Set<string>>();
+    const map = new Map<string, string[]>();
 
     seccionalesCatalog.forEach((seccional) => {
       const seccionalName = seccional?.nomSeccional?.trim();
       if (seccionalName) {
-        map.set(normalizeKey(seccionalName), new Set<string>());
+        map.set(normalizeKey(seccionalName), []);
       }
     });
 
@@ -1242,12 +1156,12 @@ export function GraduatesManagementModule() {
 
       const seccionalKey = normalizeKey(seccionalName);
       if (!map.has(seccionalKey)) {
-        map.set(seccionalKey, new Set<string>());
+        map.set(seccionalKey, []);
       }
-      map.get(seccionalKey)?.add(sedeName);
+      map.get(seccionalKey)?.push(sedeName);
     });
 
-    const hasCatalogSedeRelations = Array.from(map.values()).some((sedes) => sedes.size > 0);
+    const hasCatalogSedeRelations = Array.from(map.values()).some((sedes) => sedes.length > 0);
 
     if (!hasCatalogSedeRelations) {
       graduatesOnly.forEach((user) => {
@@ -1258,7 +1172,7 @@ export function GraduatesManagementModule() {
 
         const seccionalKey = normalizeKey(seccionalName);
         if (!map.has(seccionalKey)) {
-          map.set(seccionalKey, new Set<string>());
+          map.set(seccionalKey, []);
         }
 
         [
@@ -1267,16 +1181,16 @@ export function GraduatesManagementModule() {
         ].forEach((sedeName) => {
           const cleanedSede = normalizeSpaces(sedeName || '');
           if (cleanedSede) {
-            map.get(seccionalKey)?.add(cleanedSede);
+            map.get(seccionalKey)?.push(cleanedSede);
           }
         });
       });
     }
 
     return new Map<string, string[]>(
-      Array.from(map.entries()).map(([seccionalKey, sedesSet]): [string, string[]] => [
+      Array.from(map.entries()).map(([seccionalKey, sedes]): [string, string[]] => [
         seccionalKey,
-        Array.from(sedesSet).sort((a, b) => a.localeCompare(b, 'es')),
+        sedes,
       ]),
     );
   }, [
@@ -1306,9 +1220,7 @@ export function GraduatesManagementModule() {
       });
     }
 
-    return options.sort((a, b) =>
-      `${a.territorial} ${a.sede}`.localeCompare(`${b.territorial} ${b.sede}`, 'es'),
-    );
+    return options;
   }, [
     territorialOptions,
     sedesByTerritorial,
@@ -1323,7 +1235,7 @@ export function GraduatesManagementModule() {
     }
 
     const sedesForTerritorial = sedesByTerritorial.get(normalizeKey(locationFilter)) || [];
-    return uniqueSortedText(sedesForTerritorial);
+    return sedesForTerritorial;
   }, [locationFilter, sedesOptions, sedesByTerritorial, normalizeKey]);
 
   const sedeFilterGroups = useMemo(() => {
@@ -1345,11 +1257,11 @@ export function GraduatesManagementModule() {
     const mappedTerritorial = editForm.location
       ? territorialBySede.get(normalizeKey(editForm.location))
       : '';
-    return uniqueSortedText([
+    return [
       editForm.territorial,
       mappedTerritorial,
       ...territorialOptions,
-    ]);
+    ].map((territorial) => normalizeSpaces(territorial || '')).filter(Boolean);
   }, [
     editForm.location,
     editForm.territorial,
@@ -1368,7 +1280,9 @@ export function GraduatesManagementModule() {
     // Los graduados integrados pueden conservar una territorial/sede externa al
     // catálogo vigente. En ese caso se mantiene únicamente su sede actual; no se
     // mezclan todas las sedes del catálogo ni se obliga al usuario a reemplazarla.
-    return uniqueSortedText([editForm.location, ...baseOptions]);
+    return [editForm.location, ...baseOptions]
+      .map((sede) => normalizeSpaces(sede || ''))
+      .filter(Boolean);
   }, [
     editForm.location,
     editForm.territorial,
@@ -1703,6 +1617,8 @@ export function GraduatesManagementModule() {
       const firstName = (graduate.firstName || '').trim() || derivedName.firstName;
       const lastName = (graduate.lastName || '').trim() || derivedName.lastName;
       const campus = graduate.campus || 'Sin sede';
+      const programName = (graduate.programName || '').trim();
+      const degreeTitle = (graduate.degreeTitle || '').trim();
       const mappedTerritorial = campus
         ? territorialBySede.get(normalizeKey(campus))
         : undefined;
@@ -1731,9 +1647,9 @@ export function GraduatesManagementModule() {
         location: campus,
         territorial,
         sourceTerritorial: graduate.seccionalName || undefined,
-        program:
-          (graduate.programName || graduate.degreeTitle || '').trim() ||
-          'No especificado',
+        program: programName || degreeTitle || 'No especificado',
+        programName: programName || undefined,
+        degreeTitle: degreeTitle || undefined,
         document: graduate.idNumber,
         enrollmentMethod: resolveEnrollmentMethod(graduate.createdBy || 'bulk_upload'),
         enrollmentDate: graduate.enrollmentDate || graduate.createdAt || '',
@@ -2146,7 +2062,7 @@ export function GraduatesManagementModule() {
         programOptions={integrationProgramOptions}
         territorialOptions={territorialOptions}
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
-        programsPeriod={programasPeriodoCatalogo}
+        programsPeriod={INTEGRATION_PROGRAM_SOURCE_LABEL}
         structurePeriod={estructuraPeriodoCatalogo}
       />
 
@@ -2360,8 +2276,8 @@ export function GraduatesManagementModule() {
                 }}
               >
                 <option value="all">Todas las territoriales</option>
-                {territorialOptions.map((territorial) => (
-                  <option key={territorial} value={territorial}>{territorial}</option>
+                {territorialOptions.map((territorial, index) => (
+                  <option key={`${territorial}-${index}`} value={territorial}>{territorial}</option>
                 ))}
               </select>
               <ChevronDown
@@ -2405,10 +2321,10 @@ export function GraduatesManagementModule() {
                 </option>
                 {locationFilter === 'all' && sedeFilterGroups.groups.length > 0 ? (
                   <>
-                    {sedeFilterGroups.groups.map((group) => (
-                      <optgroup key={group.territorial} label={group.territorial}>
-                        {group.sedes.map((sede) => (
-                          <option key={`${group.territorial}-${sede}`} value={sede}>
+                    {sedeFilterGroups.groups.map((group, groupIndex) => (
+                      <optgroup key={`${group.territorial}-${groupIndex}`} label={group.territorial}>
+                        {group.sedes.map((sede, sedeIndex) => (
+                          <option key={`${group.territorial}-${groupIndex}-${sede}-${sedeIndex}`} value={sede}>
                             {sede}
                           </option>
                         ))}
@@ -2416,8 +2332,8 @@ export function GraduatesManagementModule() {
                     ))}
                     {sedeFilterGroups.ungrouped.length > 0 && (
                       <optgroup label="Sedes sin territorial asociada">
-                        {sedeFilterGroups.ungrouped.map((sede) => (
-                          <option key={`ungrouped-${sede}`} value={sede}>
+                        {sedeFilterGroups.ungrouped.map((sede, sedeIndex) => (
+                          <option key={`ungrouped-${sede}-${sedeIndex}`} value={sede}>
                             {sede}
                           </option>
                         ))}
@@ -2426,8 +2342,8 @@ export function GraduatesManagementModule() {
                   </>
                 ) : (
                   <>
-                    {sedeFilterOptions.map((sede) => (
-                      <option key={sede} value={sede}>{sede}</option>
+                    {sedeFilterOptions.map((sede, index) => (
+                      <option key={`${sede}-${index}`} value={sede}>{sede}</option>
                     ))}
                     {locationFilter !== 'all' && sedeFilterOptions.length === 0 && (
                       <option value="" disabled>No hay sedes asociadas</option>
@@ -3725,9 +3641,9 @@ export function GraduatesManagementModule() {
 
                 <option value="">Sin territorial - seleccione una opción</option>
 
-                {editTerritorialOptions.map((territorial) => (
+                {editTerritorialOptions.map((territorial, index) => (
 
-                  <option key={territorial} value={territorial}>{territorial}</option>
+                  <option key={`${territorial}-${index}`} value={territorial}>{territorial}</option>
 
                 ))}
 
@@ -3770,9 +3686,9 @@ export function GraduatesManagementModule() {
 
                 <option value="">Seleccionar sede</option>
 
-                {editSedesOptions.map((sede) => (
+                {editSedesOptions.map((sede, index) => (
 
-                  <option key={sede} value={sede}>{sede}</option>
+                  <option key={`${sede}-${index}`} value={sede}>{sede}</option>
 
                 ))}
 
