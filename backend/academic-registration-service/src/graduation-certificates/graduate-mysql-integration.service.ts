@@ -231,11 +231,9 @@ export class GraduateMysqlIntegrationService {
   }
 
   private normalizeDocument(document: string): string {
-    const digits = String(document || '').replace(/\D+/g, '');
-    if (digits) return digits;
     return String(document || '')
       .trim()
-      .replace(/\s+/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '')
       .toUpperCase();
   }
 
@@ -391,7 +389,7 @@ export class GraduateMysqlIntegrationService {
            FROM ${config.qualifiedView}
           WHERE (
             TRIM(CAST(${documentColumn} AS CHAR)) = ?
-            OR REPLACE(REPLACE(REPLACE(TRIM(CAST(${documentColumn} AS CHAR)), '.', ''), '-', ''), ' ', '') = ?
+            OR UPPER(REPLACE(REPLACE(REPLACE(TRIM(CAST(${documentColumn} AS CHAR)), '.', ''), '-', ''), ' ', '')) = ?
           )
           LIMIT ?`,
         [cleanedDocument, normalizedDocument, safeLimit],
