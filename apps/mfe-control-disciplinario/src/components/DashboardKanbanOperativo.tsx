@@ -3995,6 +3995,12 @@ export function DashboardKanbanOperativo({
           return; // No continuar con el movimiento hasta que se asigne el profesional
         }
 
+        // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
+        toast.error('No es posible avanzar de etapa mediante arrastre', {
+          description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
+        });
+        return;
+
         const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 
         // ✅ NUEVO: Persistir cambio de etapa en la base de datos
