@@ -3647,8 +3647,8 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
             <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
 
             {actividades.map((actividad, index) => {
-              const Icono = tipoIcono[actividad.tipo];
-              const color = tipoColor[actividad.tipo];
+              const Icono = tipoIcono[actividad.tipo] || FileText;
+              const color = tipoColor[actividad.tipo] || '#6B7280';
 
               return (
                 <div key={actividad.id} className="relative pl-16">
