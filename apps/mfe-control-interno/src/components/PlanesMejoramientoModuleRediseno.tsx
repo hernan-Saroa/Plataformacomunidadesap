@@ -475,13 +475,13 @@ export function PlanesMejoramientoModuleRediseno() {
       {
         description: `Expediente ${plan.codigo} generado automáticamente y disponible en el módulo de Expedientes.`,
         duration: 7000,
-        action: {
-          label: 'Ver Expediente',
-          onClick: () => {
-            console.log('Navegar a expedientes', expediente.id);
-            toast.info('Navegando al módulo de Expedientes...');
-          }
-        }
+        // action: {
+        //   label: 'Ver Expediente',
+        //   onClick: () => {
+        //     console.log('Navegar a expedientes', expediente.id);
+        //     toast.info('Navegando al módulo de Expedientes...');
+        //   }
+        // }
       }
     );
 
@@ -945,8 +945,8 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
           en_ejecucion: 'EJECUCION_DE_ACCIONES',
           EN_EJECUCION: 'EJECUCION_DE_ACCIONES',
           CON_RETRASO: 'EJECUCION_DE_ACCIONES',
-          completado: 'VERIFICACION',
-          COMPLETADO: 'VERIFICACION',
+          // completado: 'VERIFICACION',
+          // COMPLETADO: 'VERIFICACION',
           rechazado: 'SUSCRIPCION_Y_FORMULACION',
           RECHAZADO: 'SUSCRIPCION_Y_FORMULACION',
           SUSPENDIDO: 'SUSCRIPCION_Y_FORMULACION',
@@ -955,6 +955,8 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
           EJECUCION_DE_ACCIONES: 'EJECUCION_DE_ACCIONES',
           VERIFICACION: 'VERIFICACION',
           CERRADO: 'CERRADO',
+          completado: 'CERRADO',
+          COMPLETADO: 'CERRADO',
         };
         const planesColumna = planes.filter(p => {
           const mappedEstado = estadoToColumna[p.estado] ?? p.estado.toUpperCase();

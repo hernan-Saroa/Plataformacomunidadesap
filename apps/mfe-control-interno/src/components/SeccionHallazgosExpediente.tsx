@@ -1316,7 +1316,7 @@ export function SeccionHallazgosExpediente({
                               <span>{(evidencia.tamanioBytes / 1024).toFixed(1)} KB</span>
                               <span className="w-1 h-1 rounded-full bg-gray-300 inline-block"></span>
                               <span className="text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
-                                <Eye className="w-3 h-3" /> Ver
+                                {/* <Eye className="w-3 h-3" /> Ver */}
                               </span>
                             </p>
                           </div>
