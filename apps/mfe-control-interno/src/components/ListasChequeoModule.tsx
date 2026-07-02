@@ -25,6 +25,8 @@ import {
   Filter, X, Save, Paperclip, List, Calendar, Users, Eye, ChevronDown, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { renderAsync } from 'docx-preview';
+import * as XLSX from 'xlsx';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
@@ -64,8 +66,47 @@ const resolveDocumentoUrl = (rawUrl?: string | null): string => {
 
 const getDocumentoFileHeaders = (): HeadersInit => ({
   ...getDefaultHeaders(),
-  Accept: 'application/pdf,image/*,application/octet-stream',
+  Accept: [
+    'application/pdf',
+    'image/*',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/octet-stream',
+  ].join(','),
 });
+
+const getDocumentoExtensionFromName = (documento: Pick<DocumentoBiblioteca, 'nombreArchivo' | 'nombre' | 'extension'>): string => {
+  const filename = documento.nombreArchivo || documento.nombre || '';
+  const ext = filename.includes('.') ? filename.split('.').pop() : documento.extension;
+  return String(ext || '').toLowerCase().replace(/^\./, '');
+};
+
+const isDocumentoWord = (documento: Pick<DocumentoBiblioteca, 'tipoMime' | 'nombreArchivo' | 'nombre' | 'extension'>): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocumentoExtensionFromName(documento);
+  return mime.includes('word') || ext === 'doc' || ext === 'docx';
+};
+
+const isDocumentoDocx = (documento: Pick<DocumentoBiblioteca, 'tipoMime' | 'nombreArchivo' | 'nombre' | 'extension'>): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocumentoExtensionFromName(documento);
+  return mime.includes('officedocument.wordprocessingml.document') || ext === 'docx';
+};
+
+const isDocumentoExcel = (documento: Pick<DocumentoBiblioteca, 'tipoMime' | 'nombreArchivo' | 'nombre' | 'extension'>): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocumentoExtensionFromName(documento);
+  return (
+    mime.includes('excel') ||
+    mime.includes('spreadsheet') ||
+    mime.includes('sheet') ||
+    ext === 'xls' ||
+    ext === 'xlsx' ||
+    ext === 'csv'
+  );
+};
 
 /**
  * Formatea bytes a KB/MB/GB legible
@@ -3034,22 +3075,59 @@ interface ModalVistaPreviaProps {
 
 function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
+  const [excelHtml, setExcelHtml] = useState<string | null>(null);
+  const [docxReady, setDocxReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const docxContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const esImagen = documento.tipoMime?.startsWith('image/');
+  const esPdf = documento.tipoMime === 'application/pdf';
+  const esWord = isDocumentoWord(documento);
+  const esDocx = isDocumentoDocx(documento);
+  const esExcel = isDocumentoExcel(documento);
 
   useEffect(() => {
-    if (!documento.urlPreview) return;
-    const url = resolveDocumentoUrl(documento.urlPreview);
+    const sourceUrl = (esWord || esExcel)
+      ? documento.urlDownload || documento.urlPreview
+      : documento.urlPreview || documento.urlDownload;
+    if (!sourceUrl) return;
+    const url = resolveDocumentoUrl(sourceUrl);
     let revoked = false;
     setLoading(true);
     setError(null);
+    setBlobUrl(null);
+    setDocumentBlob(null);
+    setExcelHtml(null);
+    setDocxReady(false);
     fetch(url, { headers: getDocumentoFileHeaders() })
       .then(res => {
         if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
         return res.blob();
       })
-      .then(blob => {
-        if (!revoked) setBlobUrl(URL.createObjectURL(blob));
+      .then(async (blob) => {
+        if (revoked) return;
+
+        if (esExcel) {
+          const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) throw new Error('El archivo Excel no contiene hojas');
+          const worksheet = workbook.Sheets[firstSheetName];
+          const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-preview-table' });
+          if (!revoked) setExcelHtml(html);
+          return;
+        }
+
+        if (esWord) {
+          if (!esDocx) {
+            throw new Error('La vista previa de Word solo soporta archivos .docx. Descargue el archivo para verlo.');
+          }
+          setDocumentBlob(blob);
+          return;
+        }
+
+        setBlobUrl(URL.createObjectURL(blob));
       })
       .catch(e => {
         if (!revoked) setError(e instanceof Error ? e.message : 'Error al cargar');
@@ -3064,7 +3142,36 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
         return null;
       });
     };
-  }, [documento.urlPreview]);
+  }, [documento.urlPreview, documento.urlDownload, esWord, esExcel, esDocx]);
+
+  useEffect(() => {
+    if (!documentBlob || !esDocx || !docxContainerRef.current) return;
+
+    let cancelled = false;
+    const container = docxContainerRef.current;
+    container.innerHTML = '';
+    setDocxReady(false);
+
+    renderAsync(documentBlob, container, undefined, {
+      inWrapper: true,
+      ignoreWidth: true,
+      ignoreHeight: true,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+    })
+      .then(() => {
+        if (!cancelled) setDocxReady(true);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Error al renderizar Word');
+      });
+
+    return () => {
+      cancelled = true;
+      container.innerHTML = '';
+    };
+  }, [documentBlob, esDocx]);
 
   const handleDescargarDesdeModal = useCallback(async () => {
     if (!documento.urlDownload) return;
@@ -3087,7 +3194,7 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
     }
   }, [documento.urlDownload, documento.nombreArchivo, documento.nombre]);
 
-  const srcParaPreview = documento.tipoMime?.startsWith('image/') || documento.tipoMime === 'application/pdf' ? blobUrl : null;
+  const srcParaPreview = esImagen || esPdf ? blobUrl : null;
 
   return (
     <motion.div
@@ -3178,7 +3285,7 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
                     Descargar archivo
                   </button>
                 </div>
-              ) : documento.tipoMime?.startsWith('image/') && srcParaPreview ? (
+              ) : esImagen && srcParaPreview ? (
                 <img
                   src={srcParaPreview}
                   alt={documento.nombre}
@@ -3187,16 +3294,33 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
                     (e.target as HTMLImageElement).src = 'data:image/svg+xml,...';
                   }}
                 />
-              ) : documento.tipoMime === 'application/pdf' && srcParaPreview ? (
+              ) : esPdf && srcParaPreview ? (
                 <iframe
                   src={srcParaPreview}
                   className="w-full h-96 border-0 rounded"
                   title={`Vista previa de ${documento.nombre}`}
                 />
-              ) : documento.tipoMime?.includes('word') || documento.tipoMime?.includes('excel') || documento.tipoMime?.includes('powerpoint') || documento.tipoMime?.includes('sheet') || documento.tipoMime?.includes('presentation') ? (
+              ) : esDocx ? (
+                <div className="relative w-full max-h-[640px] overflow-auto rounded-lg border border-gray-200 bg-white p-4">
+                  {!docxReady && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/80 text-gray-500">
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm">Renderizando Word...</p>
+                    </div>
+                  )}
+                  <div ref={docxContainerRef} className="docx-preview-content min-h-[240px]" />
+                </div>
+              ) : esExcel && excelHtml ? (
+                <div className="w-full max-h-[640px] overflow-auto rounded-lg border border-gray-200 bg-white p-3">
+                  <div
+                    className="[&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:px-2 [&_td]:py-1 [&_td]:text-sm [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-2 [&_th]:py-1 [&_th]:text-sm"
+                    dangerouslySetInnerHTML={{ __html: excelHtml }}
+                  />
+                </div>
+              ) : esWord || esExcel || documento.tipoMime?.includes('powerpoint') || documento.tipoMime?.includes('presentation') ? (
                 <div className="text-center py-8">
                   <FileText className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-                  <p className="text-amber-700 font-medium mb-4">Este tipo no se puede visualizar.</p>
+                  <p className="text-amber-700 font-medium mb-4">Este tipo no se puede visualizar en el navegador.</p>
                   <p className="text-sm text-gray-600 mb-4">Descargue el archivo para verlo.</p>
                   <button
                     onClick={handleDescargarDesdeModal}
