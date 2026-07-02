@@ -306,9 +306,10 @@ function DateRangePickerField({ filter }: { filter: FilterConfig }) {
   }, []);
 
   const handleApply = () => {
-    if (tempFrom && tempTo) {
+    // Permitir rangos abiertos: solo DESDE ("from:"), solo HASTA (":to") o ambos.
+    if (tempFrom || tempTo) {
       filter.onChange(`${tempFrom}:${tempTo}`);
-    } else if (!tempFrom && !tempTo) {
+    } else {
       filter.onChange('');
     }
     setIsOpen(false);
@@ -344,6 +345,8 @@ function DateRangePickerField({ filter }: { filter: FilterConfig }) {
 
   const formatDisplay = () => {
     if (!fromVal && !toVal) return filter.placeholder || 'Rango';
+    if (fromVal && !toVal) return `Desde ${fromVal}`;
+    if (!fromVal && toVal) return `Hasta ${toVal}`;
     return `${fromVal} al ${toVal}`;
   };
 
