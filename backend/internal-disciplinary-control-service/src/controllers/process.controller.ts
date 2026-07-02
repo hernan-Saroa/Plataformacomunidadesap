@@ -1360,14 +1360,12 @@ export class ProcessController {
         fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
         territorial: noticia.territorial,
         dependenciaDenunciado: noticia.dependenciaDenunciado,
-        denunciante: typeof noticia.denunciante === 'string' 
-          ? JSON.parse(noticia.denunciante) 
-          : noticia.denunciante,
-        disciplinable: typeof noticia.disciplinable === 'string' 
-          ? JSON.parse(noticia.disciplinable) 
-          : noticia.disciplinable,
+        denunciante: (() => { const d = typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante; return Array.isArray(d) ? d[0] : d; })(),
+        disciplinable: (() => { const d = typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable; return Array.isArray(d) ? d[0] : d; })(),
         hechos: noticia.hechos,
         conductas: noticia.conductas,
+        fechaHechos: noticia.fechaHechos || null,
+        fechaCaducidad: noticia.fechaCaducidad || null,
       };
 
       // 3. Construir el contenido HTML del correo
@@ -1397,7 +1395,7 @@ export class ProcessController {
           for (const adjunto of adjuntos) {
             try {
               const filename = adjunto.includes('/') ? adjunto.split('/').pop()! : adjunto;
-              const filePath = this.storageService.getFullPath(adjunto);
+              const filePath = path.join(getProcessUploadDir(noticia.radicado), filename);
               const fileBuffer = await fsPromises.readFile(filePath);
               zip.file(filename, fileBuffer);
             } catch (adjuntoError) {
