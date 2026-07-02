@@ -10,6 +10,7 @@ import {
   IsArray,
   IsUUID,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { 
   TipoAuditoria, 
   FaseAuditoria, 
@@ -20,6 +21,14 @@ import {
   PrioridadKanban,
   RiesgoKanban
 } from '../entities/auditoria.entity';
+
+const toOptionalNumber = ({ value }: { value: unknown }) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') return value;
+
+  const normalized = String(value).replace(/[^0-9.-]+/g, '');
+  return normalized ? Number(normalized) : undefined;
+};
 
 export class UpdateAuditoriaDto {
   @IsString()
@@ -266,6 +275,7 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   periodoFin?: string;
 
+  @Transform(toOptionalNumber)
   @IsNumber()
   @IsOptional()
   presupuestoEstimado?: number;

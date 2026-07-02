@@ -18,6 +18,7 @@ export interface EmailFilters {
     direccion?: string;
     search?: string;
     expedienteId?: string;
+    buzon?: string; // JUDICIAL | CORREOS
 }
 
 export interface EmailClassification {
@@ -36,6 +37,7 @@ export interface SendEmailDto {
     attachments?: { name: string; contentBytes: string; contentType: string }[];
     requestReadReceipt?: boolean;
     requestDeliveryReceipt?: boolean;
+    buzon?: string; // JUDICIAL | CORREOS — cuenta remitente según el tab
 }
 
 import { ActuacionService } from './actuacion.service';
@@ -259,15 +261,24 @@ export class CorreosJuridicosService {
      * Sync one page of emails from Microsoft Graph
      * Returns nextLink for pagination
      */
-    async syncInbox(nextLink?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
-        this.logger.log(`Starting inbox sync page (NextLink provided: ${!!nextLink})...`);
+    async syncInbox(nextLink?: string, buzon: string = 'JUDICIAL'): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        const buzonNorm = String(buzon || 'JUDICIAL').toUpperCase() === 'CORREOS' ? 'CORREOS' : 'JUDICIAL';
+        this.logger.log(`Starting inbox sync page for buzón ${buzonNorm} (NextLink provided: ${!!nextLink})...`);
 
         let synced = 0;
         let errors = 0;
 
+        // Si la cuenta del buzón no está configurada (p. ej. CORREOS aún sin asignar),
+        // no se sincroniza: se devuelve vacío sin error (ready to replace).
+        if (!this.graphService.isBuzonConfigured(buzonNorm)) {
+            this.logger.warn(`Buzón ${buzonNorm} sin cuenta configurada; se omite la sincronización.`);
+            return { synced: 0, errors: 0, total: 0, nextLink: null };
+        }
+
         try {
-            // Fetch one page (50 emails default)
-            const pageResult = await this.graphService.getEmailsPage(nextLink, 50);
+            // Fetch one page (50 emails default) desde la cuenta del buzón
+            const account = this.graphService.resolveAccount(buzonNorm);
+            const pageResult = await this.graphService.getEmailsPage(nextLink, 50, account);
             const emails = pageResult.emails;
             const newNextLink = pageResult.nextLink;
 
@@ -394,6 +405,7 @@ export class CorreosJuridicosService {
                             leido: email.isRead || false,
                             archivado: false,
                             urgente: isUrgente,
+                            buzon: buzonNorm, // bandeja de origen (JUDICIAL | CORREOS)
                             tipo: tipoDB, // JUDICIAL, OFICIO, CORREO
                             categoria: categoriaStr,
                             moduloSugerido: moduleStr,
@@ -478,6 +490,11 @@ export class CorreosJuridicosService {
         }
     }
 
+    /** Buzones de correo configurados (delegado al servicio de Microsoft Graph). */
+    getMailboxes(): Array<{ buzon: string; address: string }> {
+        return this.graphService.getMailboxes();
+    }
+
     /**
      * Get all emails with filters
      */
@@ -506,6 +523,10 @@ export class CorreosJuridicosService {
 
         if (filters?.direccion) {
             where.direccion = filters.direccion;
+        }
+
+        if (filters?.buzon) {
+            where.buzon = filters.buzon;
         }
 
         const correos = await this.correoRepo.find({
@@ -673,11 +694,15 @@ export class CorreosJuridicosService {
         const toList = Array.isArray(dto.to) ? dto.to : [dto.to];
         const destinatariosTo = toList.join(', ');
 
+        // Buzón de envío (según el tab desde el que se compone). Default JUDICIAL.
+        const buzonEnvio = String(dto.buzon || 'JUDICIAL').toUpperCase() === 'CORREOS' ? 'CORREOS' : 'JUDICIAL';
+        const fromAccount = this.graphService.resolveAccount(buzonEnvio);
+
         // 1. Save correo record in DB first (need ID for tracking tokens)
         const newCorreo = this.correoRepo.create({
             graphMessageId: `sent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             asunto: dto.subject || '(Sin asunto)',
-            remitenteEmail: 'oficina.juridica@esap.edu.co',
+            remitenteEmail: fromAccount,
             remitenteNombre: 'Oficina Jurídica ESAP',
             destinatariosTo,
             destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
@@ -689,6 +714,7 @@ export class CorreosJuridicosService {
             archivado: false,
             urgente: false,
             tipo: 'CORREO',
+            buzon: buzonEnvio,
             direccion: 'ENVIADO',
             categoria: 'ENVIADO',
             expedienteId: undefined,
@@ -775,7 +801,8 @@ export class CorreosJuridicosService {
             {
                 requestReadReceipt: !!dto.requestReadReceipt,
                 requestDeliveryReceipt: !!dto.requestDeliveryReceipt,
-            }
+            },
+            fromAccount, // remitente según el buzón del tab
         );
 
         if (!sent) {
@@ -803,9 +830,12 @@ export class CorreosJuridicosService {
         const original = await this.correoRepo.findOne({ where: { id: correoId } });
         if (!original) throw new NotFoundException('Correo original no encontrado');
 
+        // La respuesta sale desde la cuenta del BUZÓN del correo original (depende del tab).
+        const fromAccount = this.graphService.resolveAccount(original.buzon);
+
         // Send reply via Graph API (sendMail — only requires Mail.Send permission)
         const replySubject = original.asunto.startsWith('RE:') ? original.asunto : `RE: ${original.asunto}`;
-        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments, original.remitenteEmail, replySubject);
+        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments, original.remitenteEmail, replySubject, fromAccount);
         if (!sent) return { success: false };
 
         // Save reply record in DB
@@ -813,7 +843,7 @@ export class CorreosJuridicosService {
             const replyCorreo = this.correoRepo.create({
                 graphMessageId: `reply-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 asunto: original.asunto.startsWith('RE:') ? original.asunto : `RE: ${original.asunto}`,
-                remitenteEmail: 'oficina.juridica@esap.edu.co',
+                remitenteEmail: fromAccount,
                 remitenteNombre: 'Oficina Jurídica ESAP',
                 destinatariosTo: original.remitenteEmail,
                 destinatarios: original.destinatarios,
@@ -825,6 +855,7 @@ export class CorreosJuridicosService {
                 archivado: false,
                 urgente: false,
                 tipo: original.tipo,
+                buzon: original.buzon || 'JUDICIAL', // la respuesta queda en el mismo buzón
                 direccion: 'ENVIADO',
                 categoria: 'RESPUESTA',
                 parentEmailId: original.id,
@@ -865,11 +896,14 @@ export class CorreosJuridicosService {
         const original = await this.correoRepo.findOne({ where: { id: correoId }, relations: ['adjuntos'] });
         if (!original) throw new NotFoundException('Correo original no encontrado');
 
+        // El reenvío sale desde la cuenta del BUZÓN del correo original (depende del tab).
+        const fromAccount = this.graphService.resolveAccount(original.buzon);
+
         // Build comment that includes original body so the recipient sees both
         const fullComment = this.buildForwardComment(comment, original);
 
         // Send the native Graph forward — this carries the original body + original attachments
-        const sent = await this.graphService.forwardEmail(original.graphMessageId, to, fullComment);
+        const sent = await this.graphService.forwardEmail(original.graphMessageId, to, fullComment, fromAccount);
         if (!sent) return { success: false };
 
         // If the user also uploaded new attachments, send them in a companion email
@@ -886,7 +920,7 @@ export class CorreosJuridicosService {
                 </blockquote>
             `;
 
-            await this.graphService.sendEmail(to, companionSubject, companionBody, [], additionalAttachments);
+            await this.graphService.sendEmail(to, companionSubject, companionBody, [], additionalAttachments, undefined, fromAccount);
         }
 
         // Persist the forward record in DB
@@ -895,7 +929,7 @@ export class CorreosJuridicosService {
             const forwardCorreo = this.correoRepo.create({
                 graphMessageId: `fwd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 asunto: original.asunto.startsWith('RV:') || original.asunto.startsWith('FW:') ? original.asunto : `RV: ${original.asunto}`,
-                remitenteEmail: 'oficina.juridica@esap.edu.co',
+                remitenteEmail: fromAccount,
                 remitenteNombre: 'Oficina Jurídica ESAP',
                 destinatariosTo: to,
                 fechaRecepcion: new Date(),
@@ -907,6 +941,7 @@ export class CorreosJuridicosService {
                 archivado: false,
                 urgente: original.urgente,
                 tipo: 'CORREO',
+                buzon: original.buzon || 'JUDICIAL', // el reenvío queda en el mismo buzón
                 direccion: 'ENVIADO',
                 categoria: 'REENVIO',
                 parentEmailId: original.id,

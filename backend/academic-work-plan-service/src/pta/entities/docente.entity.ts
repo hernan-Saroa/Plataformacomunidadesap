@@ -41,6 +41,9 @@ export class DocenteEntity {
   @Column({ name: 'dedicacionDisplay', type: 'text', nullable: true })
   dedicacionDisplay: string | null;
 
+  @Column({ name: 'dedicacionHorasSemana', type: 'int', nullable: true })
+  dedicacionHorasSemana: number | null;
+
   @Column({ name: 'escalafon', type: 'text', nullable: true })
   escalafon: string | null;
 
@@ -80,6 +83,9 @@ export class DocenteEntity {
   @Column({ name: 'correoAlternativo', type: 'text', nullable: true })
   correoAlternativo: string | null;
 
+  @Column({ name: 'sexoBiologico', type: 'text', nullable: true })
+  sexoBiologico: string | null;
+
   @Column({ name: 'origenVinculacion', type: 'text', nullable: true })
   origenVinculacion: string | null;
 
@@ -88,6 +94,9 @@ export class DocenteEntity {
 
   @Column({ name: 'situacionAdministrativa', type: 'text', nullable: true })
   situacionAdministrativa: string | null;
+
+  @Column({ name: 'situacionCategoria', type: 'text', nullable: true })
+  situacionCategoria: string | null;
 
   @Column({ name: 'ultimaEvaluacion', type: 'text', nullable: true })
   ultimaEvaluacion: string | null;

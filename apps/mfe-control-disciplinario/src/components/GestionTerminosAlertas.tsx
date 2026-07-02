@@ -328,7 +328,7 @@ export function GestionTerminosAlertas() {
       setNuevoTermino({
         ...nuevoTermino,
         numeroProceso: proceso.radicadoProceso || '',
-        proceso: proceso.news?.disciplinable?.nombre || '',
+        proceso: (Array.isArray(proceso.news?.disciplinable) ? proceso.news?.disciplinable?.[0]?.nombre : proceso.news?.disciplinable?.nombre) || '',
         responsable: proceso.abogadoAsignadoNombre || '',
         emailResponsable: '', // El email no está disponible en el tipo base
       });
@@ -1289,7 +1289,7 @@ export function GestionTerminosAlertas() {
                       <option value="">Seleccione un proceso</option>
                       {procesos.map((proceso) => (
                         <option key={proceso.id} value={proceso.id}>
-                          {proceso.radicadoProceso} - {proceso.news?.disciplinable?.nombre || 'Sin nombre'}
+                          {proceso.radicadoProceso} - {(Array.isArray(proceso.news?.disciplinable) ? proceso.news?.disciplinable?.[0]?.nombre : proceso.news?.disciplinable?.nombre) || 'Sin nombre'}
                         </option>
                       ))}
                     </select>

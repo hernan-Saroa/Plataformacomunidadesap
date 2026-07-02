@@ -142,7 +142,7 @@ function itemMatchesSearch(item: Item, normalizedQuery: string): boolean {
 // ==================== TIPOS ====================
 interface Persona {
   nombre: string;
-  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
+  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT' | 'Email';
   numeroIdentificacion: string;
   apoderado: {
     nombre: string;
@@ -2988,8 +2988,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       estadoActual: proceso.estado || 'ACTIVO',
       profesionalAsignado: {
         nombre: abogado,
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+        tipoIdentificacion: 'Email',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.email || '',
       },
       semaforo,
       diasRestantes,
@@ -3005,7 +3005,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       dependencia: proceso.news?.dependenciaDenunciado || '',
       territorial: proceso.news?.territorial || '',
       fechaHechos: proceso.news?.fechaHechos || '',
-      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || proceso.news?.conducta || '',
       conductaPersonalizada: '',
       conducta: proceso.news?.conducta || '',
       archivosAdjuntos: (proceso.news?.adjuntos || []).map((url: string, i: number) => ({
@@ -3726,8 +3726,8 @@ export function DashboardKanbanOperativo({
       estadoActual: proceso.estado || 'ACTIVO',
       profesionalAsignado: {
         nombre: abogado,
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+        tipoIdentificacion: 'Email',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.email || '',
       },
       semaforo,
       diasRestantes,
@@ -3743,7 +3743,7 @@ export function DashboardKanbanOperativo({
       dependencia: proceso.news?.dependenciaDenunciado || '',
       territorial: proceso.news?.territorial || '',
       fechaHechos: proceso.news?.fechaHechos || '',
-      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || proceso.news?.conducta || '',
       conductaPersonalizada: '',
       conducta: proceso.news?.conducta || '',
       archivosAdjuntos: (proceso.news?.adjuntos || []).map((url: string, i: number) => ({
@@ -3994,6 +3994,12 @@ export function DashboardKanbanOperativo({
           setModalActivo('asignar-profesional');
           return; // No continuar con el movimiento hasta que se asigne el profesional
         }
+
+        // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
+        toast.error('No es posible avanzar de etapa mediante arrastre', {
+          description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
+        });
+        return;
 
         const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 

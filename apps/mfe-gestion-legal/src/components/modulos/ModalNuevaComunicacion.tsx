@@ -24,6 +24,7 @@ interface ModalNuevaComunicacionProps {
   onClose: () => void;
   onSubmit?: (data: NuevaComunicacionData) => void;
   initialData?: Partial<NuevaComunicacionData>;
+  buzon?: string; // JUDICIAL | CORREOS — cuenta remitente para correos nuevos (según el tab)
 }
 
 export interface NuevaComunicacionData {
@@ -187,7 +188,7 @@ function EmailTagInput({
 }
 
 // ── Modal principal ───────────────────────────────────────────────────────────
-export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData }: ModalNuevaComunicacionProps) {
+export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData, buzon }: ModalNuevaComunicacionProps) {
   const [originalBody, setOriginalBody] = useState<string>('');
   const [asunto, setAsunto] = useState('');
   const [cuerpo, setCuerpo] = useState('');
@@ -311,7 +312,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
           // Solo solicitamos read receipt (cuando el destinatario abre el correo).
           // NO requestDeliveryReceipt — genera DSN automáticos del MTA que ensucian la bandeja.
           requestReadReceipt,
-        });
+          buzon: buzon || 'JUDICIAL', // remitente según el tab activo
+        } as any);
         isSuccess = result?.success !== false;
       }
 

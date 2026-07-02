@@ -115,7 +115,8 @@ export class TerminosProcesalesService {
       relations: ['news'],
     });
 
-    const nombreDenunciado = procesoConNoticia?.news?.disciplinable?.[0]?.nombre ||
+    const disc = procesoConNoticia?.news?.disciplinable;
+    const nombreDenunciado = (Array.isArray(disc) ? disc[0]?.nombre : disc?.nombre) ||
       proceso.radicadoProceso ||
       'Proceso sin nombre';
 
@@ -197,7 +198,8 @@ export class TerminosProcesalesService {
     // También actualizar datos del responsable si están desactualizados
     const terminosTransformados = await Promise.all(terminos.map(async (termino) => {
       // Obtener nombre del denunciado desde la noticia
-      const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre ||
+      const disc = termino.proceso?.news?.disciplinable;
+      const nombreDenunciado = (Array.isArray(disc) ? disc[0]?.nombre : disc?.nombre) ||
         termino.numeroProceso ||
         'Proceso sin nombre';
 
@@ -269,7 +271,8 @@ export class TerminosProcesalesService {
     }
 
     // Obtener nombre del denunciado desde la noticia
-    const nombreDenunciado = termino.proceso?.news?.disciplinable?.[0]?.nombre ||
+    const disc = termino.proceso?.news?.disciplinable;
+    const nombreDenunciado = (Array.isArray(disc) ? disc[0]?.nombre : disc?.nombre) ||
       termino.numeroProceso ||
       'Proceso sin nombre';
 
@@ -363,7 +366,8 @@ export class TerminosProcesalesService {
       relations: ['news'],
     });
 
-    const nombreDenunciado = procesoCompleto?.news?.disciplinable?.[0]?.nombre ||
+    const discMc = procesoCompleto?.news?.disciplinable;
+    const nombreDenunciado = (Array.isArray(discMc) ? discMc[0]?.nombre : discMc?.nombre) ||
       terminoGuardado.numeroProceso ||
       'Proceso sin nombre';
 
@@ -402,7 +406,8 @@ export class TerminosProcesalesService {
       relations: ['news'],
     });
 
-    const nombreDenunciado = procesoCompleto?.news?.disciplinable?.[0]?.nombre ||
+    const disc = procesoCompleto?.news?.disciplinable;
+    const nombreDenunciado = (Array.isArray(disc) ? disc[0]?.nombre : disc?.nombre) ||
       terminoGuardado.numeroProceso ||
       'Proceso sin nombre';
 

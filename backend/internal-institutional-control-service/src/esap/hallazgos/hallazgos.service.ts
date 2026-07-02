@@ -9,6 +9,28 @@ import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion } from '../notificaciones/entities/notificacion.entity';
 
+const COLOMBIA_TIME_ZONE = 'America/Bogota';
+
+function getFechaHoraColombia(): { fecha: Date; hora: string } {
+  const ahora = new Date();
+  const fechaString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
+  const hora = new Intl.DateTimeFormat('en-GB', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(ahora);
+  const [year, month, day] = fechaString.split('-').map(Number);
+
+  return { fecha: new Date(year, month - 1, day, 12), hora };
+}
+
 @Injectable()
 export class HallazgosService {
   constructor(
@@ -139,9 +161,7 @@ export class HallazgosService {
     if (!auditoriaId) return;
     
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().split(' ')[0];
+      const { fecha, hora } = getFechaHoraColombia();
       
       // Sanitizar usuarioId: la columna es UUID, el JWT puede enviar un número
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -150,7 +170,7 @@ export class HallazgosService {
       const historial = new HistorialAuditoria();
       historial.auditoriaId = auditoriaId;
       historial.tipoEvento = tipoEvento;
-      historial.fecha = new Date(fecha);
+      historial.fecha = fecha;
       historial.hora = hora;
       historial.usuarioId = sanitizedUserId;
       historial.accion = accion;
@@ -807,4 +827,3 @@ export class HallazgosService {
     return { count: pendientes.length, total: todos };
   }
 }
-

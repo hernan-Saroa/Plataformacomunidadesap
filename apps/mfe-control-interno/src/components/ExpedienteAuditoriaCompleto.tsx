@@ -1839,7 +1839,9 @@ export function ExpedienteAuditoriaCompleto({
                         auditoria={auditoria}
                         onComunicacionCompletada={() => {
                           setRecargarTrigger(t => t + 1);
-                          setActiveTab('seguimiento');
+                          if (auditoria.estado !== 'finalizada') {
+                            setActiveTab('seguimiento');
+                          }
                           onComunicacionCompletadaProp?.();
                         }}
                         readOnly={auditoria.estado === 'finalizada'}

@@ -232,6 +232,21 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
             </div>
           </td>
 
+          {/* Origen */}
+          <td className="px-4 py-3">
+            <span className="text-sm text-gray-700">{(proceso as any).origen || '—'}</span>
+          </td>
+
+          {/* Territorial */}
+          <td className="px-4 py-3">
+            <span className="text-sm text-gray-700">{(proceso as any).territorial || '—'}</span>
+          </td>
+
+          {/* Presunta Conducta */}
+          <td className="px-4 py-3">
+            <span className="text-sm text-gray-700 line-clamp-2 max-w-[200px] block">{(proceso as any).presuntaConducta || '—'}</span>
+          </td>
+
           {/* Etapa */}
           <td className="px-4 py-3">
             <span
@@ -441,6 +456,9 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
                 <tr>
                   <ColumnHeader label="PROCESO" campo="investigado" icon={FileText} />
                   <ColumnHeader label="INVESTIGADO" campo="investigado" icon={User} />
+                  <th className="px-4 py-3 text-left"><span className="text-xs font-black text-gray-700">ORIGEN</span></th>
+                  <th className="px-4 py-3 text-left"><span className="text-xs font-black text-gray-700">TERRITORIAL</span></th>
+                  <th className="px-4 py-3 text-left"><span className="text-xs font-black text-gray-700">PRESUNTA CONDUCTA</span></th>
                   <ColumnHeader label="ETAPA" campo="etapa" icon={Filter} />
                   <ColumnHeader label="TIPO FALTA" campo="etapa" icon={AlertTriangle} />
                   <ColumnHeader label="TÉRMINO" campo="dias" icon={Clock} />
@@ -562,6 +580,13 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
               <Badge className={`${faltaClass} border text-xs`}>
                 {proceso.tipoFalta || 'Sin clasificar'}
               </Badge>
+            </div>
+
+            {/* Origen / Territorial / Presunta conducta */}
+            <div className="text-xs text-gray-600 space-y-0.5 mb-3">
+              {(proceso as any).origen && <p><span className="font-semibold">Origen:</span> {(proceso as any).origen}</p>}
+              {(proceso as any).territorial && <p><span className="font-semibold">Territorial:</span> {(proceso as any).territorial}</p>}
+              {(proceso as any).presuntaConducta && <p className="line-clamp-2"><span className="font-semibold">Conducta:</span> {(proceso as any).presuntaConducta}</p>}
             </div>
 
             {/* Última Actuación */}

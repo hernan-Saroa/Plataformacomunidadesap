@@ -15,15 +15,26 @@ import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 
 import { legalService } from '../../../../services/api/legal.service';
+import { estructuraService } from '../../../../services/api/estructura.service';
+import type { ParteDisciplinaria } from '../core/types';
 import {
   Gavel, User, FileText, AlertTriangle, Calendar,
-  Save, X, Building, Info, CheckCircle, Scale
+  Save, X, Building, Info, CheckCircle, Scale,
+  Plus, Trash2, Users, MapPin, UserPlus
 } from 'lucide-react';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
 
 // ✅ Importar sistema de validación
 import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
 import { FormField, FormSection, FormProgress } from '../design-system/FormField';
 import { ModalHeaderClean } from './ModalHeaderClean';
+
+// Parte vacía reutilizable para disciplinados / denunciantes
+const parteVacia = (rol: string): ParteDisciplinaria => ({
+  nombre: '', tipoPersona: 'NATURAL', identificacion: '', rol,
+  cargo: '', dependencia: '', email: '', telefono: '', direccion: '', apoderado: ''
+});
 
 // ✅ Importar hooks responsive
 import { useKeyboardVisible } from '@esap-mfe/shared-hooks/useKeyboardVisible';
@@ -46,13 +57,27 @@ export function ModalNuevoProcesoDisciplinario({
     identificacion: '',
     cargo: '',
     dependencia: '',
+    apoderado: '',
     tipoFalta: 'LEVE',
+    origen: '',
+    territorial: '',
+    presuntaConducta: '',
     descripcionHechos: '',
     investigador: '',
     abogadoAsignado: '',
     fechaHechos: '',
     observaciones: ''
   };
+
+  // ========== PARTES Y HECHOS MÚLTIPLES (fuera del hook de validación) ==========
+  // Disciplinados adicionales (el principal se captura en los campos validados de arriba)
+  const [disciplinariosAdicionales, setDisciplinariosAdicionales] = useState<ParteDisciplinaria[]>([]);
+  // Denunciantes / víctimas (se diferencian por el campo rol)
+  const [denunciantes, setDenunciantes] = useState<ParteDisciplinaria[]>([]);
+  // Hechos adicionales (el primero se captura en descripcionHechos)
+  const [hechosAdicionales, setHechosAdicionales] = useState<string[]>([]);
+  // Territoriales (seccionales) desde estructura organizacional
+  const [seccionales, setSeccionales] = useState<{ idSeccional: number; nomSeccional: string }[]>([]);
 
   // ========== REGLAS DE VALIDACIÓN ==========
   const validationRules = {
@@ -73,6 +98,16 @@ export function ModalNuevoProcesoDisciplinario({
     ],
     dependencia: [
       CommonValidations.required('La dependencia es obligatoria')
+    ],
+    origen: [
+      CommonValidations.required('El origen del proceso es obligatorio')
+    ],
+    territorial: [
+      CommonValidations.required('La territorial es obligatoria')
+    ],
+    presuntaConducta: [
+      CommonValidations.required('La presunta conducta indisciplinaria es obligatoria'),
+      CommonValidations.minLength(5, 'Describa la presunta conducta')
     ],
     descripcionHechos: [
       CommonValidations.required('La descripción de hechos es obligatoria'),
@@ -136,6 +171,16 @@ export function ModalNuevoProcesoDisciplinario({
           setProfesionales([]);
         });
 
+      // Cargar territoriales (seccionales) desde estructura organizacional
+      estructuraService.seccionales.listar()
+        .then((res: any) => {
+          setSeccionales((res.data || []).map((s: any) => ({
+            idSeccional: s.idSeccional,
+            nomSeccional: s.nomSeccional,
+          })));
+        })
+        .catch(() => setSeccionales([]));
+
       // Cargar configuración de prescripción disciplinaria
       legalService.getConfiguration('prescripcion_juzgamiento')
         .then((config: any) => {
@@ -147,6 +192,32 @@ export function ModalNuevoProcesoDisciplinario({
         });
     }
   }, [isOpen]);
+
+  // ========== OPCIONES ORIGEN Y ROL ==========
+  const origenesProceso = [
+    { value: 'QUEJA', label: 'Queja' },
+    { value: 'DENUNCIA', label: 'Denuncia' },
+    { value: 'DE_OFICIO', label: 'De oficio' },
+    { value: 'INFORME_SERVIDOR', label: 'Informe de servidor público' },
+    { value: 'ANONIMO', label: 'Anónimo' },
+    { value: 'POR_DETERMINAR', label: 'Por determinar' },
+  ];
+
+  const territorialesOpciones = seccionales.map(s => ({
+    value: s.nomSeccional,
+    label: s.nomSeccional,
+  }));
+
+  // ========== HANDLERS DE PARTES/HECHOS ==========
+  const actualizarParte = (
+    lista: ParteDisciplinaria[],
+    setLista: React.Dispatch<React.SetStateAction<ParteDisciplinaria[]>>,
+    index: number,
+    campo: keyof ParteDisciplinaria,
+    valor: string
+  ) => {
+    setLista(lista.map((p, i) => (i === index ? { ...p, [campo]: valor } : p)));
+  };
 
   // ========== OPCIONES DE SELECTS ==========
   const tiposFalta = [
@@ -200,6 +271,35 @@ export function ModalNuevoProcesoDisciplinario({
       // Obtener label legible de la dependencia
       const depLabel = dependenciasESAP.find(d => d.value === formData.dependencia)?.label || formData.dependencia;
 
+      // Hechos múltiples: el primero desde descripcionHechos + los adicionales
+      const hechosList = [formData.descripcionHechos, ...hechosAdicionales]
+        .map(h => (h || '').trim())
+        .filter(Boolean);
+
+      // Partes del proceso (se persisten en la tabla actors del backend)
+      const actors: ParteDisciplinaria[] = [];
+      // Disciplinado principal (de los campos validados)
+      actors.push({
+        nombre: formData.investigado,
+        tipoPersona: 'NATURAL',
+        identificacion: formData.identificacion,
+        rol: 'DISCIPLINADO',
+        cargo: formData.cargo,
+        dependencia: depLabel,
+        apoderado: formData.apoderado || undefined,
+      });
+      // Disciplinados adicionales
+      disciplinariosAdicionales
+        .filter(d => (d.nombre || '').trim())
+        .forEach(d => actors.push({ ...d, rol: 'DISCIPLINADO' }));
+      // Denunciantes / víctimas
+      denunciantes
+        .filter(d => (d.nombre || '').trim())
+        .forEach(d => actors.push({ ...d, rol: d.rol || 'DENUNCIANTE' }));
+
+      // El primer denunciante alimenta el campo demandante; si no hay, es de oficio
+      const primerDenunciante = denunciantes.find(d => (d.nombre || '').trim());
+
       // =============================================
       // Crear expediente disciplinario via legal-management-service
       // POST /legal/api/v1/juzgamiento -> JuzgamientoController.create()
@@ -209,12 +309,18 @@ export function ModalNuevoProcesoDisciplinario({
         cargoInvestigado: formData.cargo,
         dependenciaInvestigado: depLabel,
         tipoFalta: formData.tipoFalta,
-        hechos: formData.descripcionHechos + (formData.observaciones ? `\n\nObservaciones: ${formData.observaciones}` : ''),
+        origen: formData.origen,
+        territorial: formData.territorial,
+        presuntaConducta: formData.presuntaConducta,
+        hechos: hechosList.join('\n\n'),
+        hechosList,
+        actors,
         abogadoSustanciador: formData.investigador,
         fechaRadicacion: new Date(formData.fechaHechos).toISOString(),
         fechaHechos: new Date(formData.fechaHechos).toISOString(),
-        demandante: 'Oficina de Control Interno',
+        demandante: primerDenunciante?.nombre || 'Oficina de Control Interno',
         numeroIdDemandado: formData.identificacion,
+        camposAdicionales: formData.observaciones ? { observaciones: formData.observaciones } : undefined,
         // leyAplicable se calcula en el backend según fechaHechos
       };
 
@@ -233,6 +339,9 @@ export function ModalNuevoProcesoDisciplinario({
       });
 
       resetForm();
+      setDisciplinariosAdicionales([]);
+      setDenunciantes([]);
+      setHechosAdicionales([]);
       onClose();
     } catch (error: any) {
       console.error('❌ Error creando proceso disciplinario:', error);
@@ -260,6 +369,9 @@ export function ModalNuevoProcesoDisciplinario({
   const confirmarCancelacion = () => {
     setShowCancelConfirm(false);
     resetForm();
+    setDisciplinariosAdicionales([]);
+    setDenunciantes([]);
+    setHechosAdicionales([]);
     onClose();
   };
 
@@ -356,6 +468,61 @@ export function ModalNuevoProcesoDisciplinario({
               </div>
             </Card>
 
+            {/* ✅ SECCIÓN 0: CLASIFICACIÓN DEL PROCESO */}
+            <FormSection
+              title="Clasificación del Proceso"
+              description="Origen, territorial y presunta conducta indisciplinaria"
+              icon={<MapPin />}
+              color="blue"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  name="origen"
+                  label="Origen"
+                  type="select"
+                  value={formData.origen}
+                  onChange={(val) => updateField('origen', val)}
+                  onBlur={() => touchField('origen')}
+                  required
+                  error={errors.origen}
+                  state={getFieldState('origen')}
+                  options={origenesProceso.map(o => ({ value: o.value, label: o.label }))}
+                  tooltip="Cómo se origina el proceso: queja, denuncia, de oficio, etc."
+                />
+
+                <FormField
+                  name="territorial"
+                  label="Territorial"
+                  type="select"
+                  value={formData.territorial}
+                  onChange={(val) => updateField('territorial', val)}
+                  onBlur={() => touchField('territorial')}
+                  required
+                  error={errors.territorial}
+                  state={getFieldState('territorial')}
+                  options={territorialesOpciones}
+                  tooltip="Territorial (seccional) a la que corresponde el proceso"
+                />
+              </div>
+
+              <FormField
+                name="presuntaConducta"
+                label="Presunta Conducta Indisciplinaria"
+                type="textarea"
+                value={formData.presuntaConducta}
+                onChange={(val) => updateField('presuntaConducta', val)}
+                onBlur={() => touchField('presuntaConducta')}
+                required
+                error={errors.presuntaConducta}
+                state={getFieldState('presuntaConducta')}
+                placeholder="Describa la presunta conducta indisciplinaria imputada..."
+                tooltip="Conducta que presuntamente constituye falta disciplinaria"
+                rows={3}
+                maxLength={1000}
+                showCharCount
+              />
+            </FormSection>
+
             {/* ✅ SECCIÓN 1: DATOS DEL INVESTIGADO */}
             <FormSection
               title="Datos del Funcionario Investigado"
@@ -427,6 +594,114 @@ export function ModalNuevoProcesoDisciplinario({
                 }))}
                 tooltip="Dependencia a la que pertenece el funcionario"
               />
+
+              <FormField
+                name="apoderado"
+                label="Apoderado del Investigado (Opcional)"
+                type="text"
+                value={formData.apoderado}
+                onChange={(val) => updateField('apoderado', val)}
+                placeholder="Nombre del apoderado / defensor de confianza"
+                helpText="Abogado que representa al disciplinado, si lo tiene"
+                icon={<User className="w-4 h-4" />}
+              />
+
+              {/* Disciplinados adicionales (más de uno) */}
+              {disciplinariosAdicionales.map((d, i) => (
+                <Card key={`disc-${i}`} className="p-3 bg-blue-50/40 border-blue-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-blue-800">Disciplinado adicional #{i + 2}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-red-600 hover:bg-red-50"
+                      onClick={() => setDisciplinariosAdicionales(prev => prev.filter((_, idx) => idx !== i))}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <Input placeholder="Nombre completo *" value={d.nombre} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'nombre', e.target.value)} />
+                    <Input placeholder="Identificación" value={d.identificacion || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'identificacion', e.target.value)} />
+                    <Input placeholder="Cargo" value={d.cargo || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'cargo', e.target.value)} />
+                    <Input placeholder="Dependencia" value={d.dependencia || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'dependencia', e.target.value)} />
+                    <Input placeholder="Correo" value={d.email || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'email', e.target.value)} />
+                    <Input placeholder="Teléfono" value={d.telefono || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'telefono', e.target.value)} />
+                    <Input placeholder="Dirección" value={d.direccion || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'direccion', e.target.value)} />
+                    <Input placeholder="Apoderado (opcional)" value={d.apoderado || ''} onChange={(e) => actualizarParte(disciplinariosAdicionales, setDisciplinariosAdicionales, i, 'apoderado', e.target.value)} />
+                  </div>
+                </Card>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed"
+                onClick={() => setDisciplinariosAdicionales(prev => [...prev, parteVacia('DISCIPLINADO')])}
+              >
+                <Plus className="w-4 h-4 mr-1" /> Agregar otro disciplinado
+              </Button>
+            </FormSection>
+
+            {/* ✅ SECCIÓN DENUNCIANTES / VÍCTIMAS */}
+            <FormSection
+              title="Denunciantes y Víctimas"
+              description="Personas que denuncian o resultan víctimas. Diferencie el rol de cada una."
+              icon={<Users />}
+              color="orange"
+            >
+              {denunciantes.length === 0 && (
+                <p className="text-sm text-gray-500 italic">
+                  Sin denunciantes registrados (proceso de oficio). Agregue uno si aplica.
+                </p>
+              )}
+
+              {denunciantes.map((d, i) => (
+                <Card key={`den-${i}`} className="p-3 bg-orange-50/40 border-orange-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-orange-800">Denunciante / Víctima #{i + 1}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-red-600 hover:bg-red-50"
+                      onClick={() => setDenunciantes(prev => prev.filter((_, idx) => idx !== i))}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="md:col-span-2">
+                      <Label className="text-xs font-semibold text-gray-600">Rol</Label>
+                      <select
+                        className="w-full mt-1 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white"
+                        value={d.rol}
+                        onChange={(e) => actualizarParte(denunciantes, setDenunciantes, i, 'rol', e.target.value)}
+                      >
+                        <option value="DENUNCIANTE">Denunciante</option>
+                        <option value="VICTIMA">Víctima</option>
+                      </select>
+                    </div>
+                    <Input placeholder="Nombre completo *" value={d.nombre} onChange={(e) => actualizarParte(denunciantes, setDenunciantes, i, 'nombre', e.target.value)} />
+                    <Input placeholder="Identificación" value={d.identificacion || ''} onChange={(e) => actualizarParte(denunciantes, setDenunciantes, i, 'identificacion', e.target.value)} />
+                    <Input placeholder="Correo" value={d.email || ''} onChange={(e) => actualizarParte(denunciantes, setDenunciantes, i, 'email', e.target.value)} />
+                    <Input placeholder="Teléfono" value={d.telefono || ''} onChange={(e) => actualizarParte(denunciantes, setDenunciantes, i, 'telefono', e.target.value)} />
+                    <Input placeholder="Dirección" value={d.direccion || ''} onChange={(e) => actualizarParte(denunciantes, setDenunciantes, i, 'direccion', e.target.value)} />
+                  </div>
+                </Card>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed"
+                onClick={() => setDenunciantes(prev => [...prev, parteVacia('DENUNCIANTE')])}
+              >
+                <UserPlus className="w-4 h-4 mr-1" /> Agregar denunciante / víctima
+              </Button>
             </FormSection>
 
             {/* ✅ SECCIÓN 2: TIPO DE FALTA Y HECHOS */}
@@ -467,6 +742,42 @@ export function ModalNuevoProcesoDisciplinario({
                 maxLength={3000}
                 showCharCount
               />
+
+              {/* Hechos adicionales (más de uno) */}
+              {hechosAdicionales.map((h, i) => (
+                <div key={`hecho-${i}`} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-gray-600">Hecho adicional #{i + 2}</Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-red-600 hover:bg-red-50"
+                      onClick={() => setHechosAdicionales(prev => prev.filter((_, idx) => idx !== i))}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <textarea
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none"
+                    rows={3}
+                    maxLength={3000}
+                    placeholder="Describa este hecho adicional..."
+                    value={h}
+                    onChange={(e) => setHechosAdicionales(prev => prev.map((v, idx) => (idx === i ? e.target.value : v)))}
+                  />
+                </div>
+              ))}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed"
+                onClick={() => setHechosAdicionales(prev => [...prev, ''])}
+              >
+                <Plus className="w-4 h-4 mr-1" /> Agregar otro hecho
+              </Button>
             </FormSection>
 
             {/* ✅ SECCIÓN 3: ASIGNACIÓN DE INVESTIGADOR */}

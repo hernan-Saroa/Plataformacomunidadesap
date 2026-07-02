@@ -22,6 +22,28 @@ import { NotificacionesService } from '../notificaciones/notificaciones.service'
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
 
+const COLOMBIA_TIME_ZONE = 'America/Bogota';
+
+function getFechaHoraColombia(): { fecha: Date; hora: string } {
+  const ahora = new Date();
+  const fechaString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
+  const hora = new Intl.DateTimeFormat('en-GB', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(ahora);
+  const [year, month, day] = fechaString.split('-').map(Number);
+
+  return { fecha: new Date(year, month - 1, day, 12), hora };
+}
+
 export interface ConflictoDisponibilidadEquipoAuditor {
   personaId: string;
   personaNombre: string;
@@ -635,6 +657,19 @@ export class AuditoriasService {
       (e) => e.toLowerCase() === estadoNormalizado || e.toLowerCase() === estadoInput.toLowerCase(),
     );
     return estadoDirecto || EstadoKanban.PLANEACION;
+  }
+
+  private mapEstadoKanbanToFase(estadoKanban: EstadoKanban): FaseAuditoria {
+    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
+      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLAN_ANUAL,
+      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
+      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
+      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
+      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
+    };
+
+    return estadoToFase[estadoKanban] || FaseAuditoria.PLAN_ANUAL;
   }
 
   /**
@@ -1253,6 +1288,11 @@ export class AuditoriasService {
       throw new BadRequestException(`Ya existe una auditoría con el código ${codigo}`);
     }
 
+    const estadoKanbanInicial = this.normalizeEstadoKanban(createDto.estadoKanban);
+    const faseInicial = estadoKanbanInicial === EstadoKanban.PLAN_ANUAL
+      ? FaseAuditoria.PLAN_ANUAL
+      : (createDto.fase || this.mapEstadoKanbanToFase(estadoKanbanInicial));
+
     const auditoriaData: any = {
       nombre: createDto.nombre,
       tipo: createDto.tipo,
@@ -1267,7 +1307,7 @@ export class AuditoriasService {
       fechaInicioEjecucion: fechaInicioEjecucion,
       fechaFinEjecucion: fechaFinEjecucion,
       fechaInicioComunicacion: fechaInicioComunicacion,
-      fase: createDto.fase || FaseAuditoria.PLANEACION,
+      fase: faseInicial,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
@@ -1275,7 +1315,7 @@ export class AuditoriasService {
       periodoFin: periodoFin,
       presupuestoEstimado: createDto.presupuestoEstimado,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-      estadoKanban: this.normalizeEstadoKanban(createDto.estadoKanban),
+      estadoKanban: estadoKanbanInicial,
     };
 
     // Incluir campos opcionales si tienen valor
@@ -1467,14 +1507,11 @@ export class AuditoriasService {
 
     // ✅ Registrar evento de creación en el historial
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().split(' ')[0];
-      
+      const { fecha, hora } = getFechaHoraColombia();
       const historialCreacion = new HistorialAuditoria();
       historialCreacion.auditoriaId = auditoriaGuardada.id;
       historialCreacion.tipoEvento = TipoEvento.CREACION;
-      historialCreacion.fecha = new Date(fecha);
+      historialCreacion.fecha = fecha;
       historialCreacion.hora = hora;
       historialCreacion.usuarioId = usuarioId || null;
       historialCreacion.accion = 'Auditoría creada';
@@ -1892,14 +1929,11 @@ export class AuditoriasService {
     // ✅ Registrar evento de actualización en el historial si hay cambios importantes
     if (cambios.length > 0) {
       try {
-        const ahora = new Date();
-        const fecha = ahora.toISOString().split('T')[0];
-        const hora = ahora.toTimeString().split(' ')[0];
-        
+        const { fecha, hora } = getFechaHoraColombia();
         const historialActualizacion = new HistorialAuditoria();
         historialActualizacion.auditoriaId = saved.id;
         historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
-        historialActualizacion.fecha = new Date(fecha);
+        historialActualizacion.fecha = fecha;
         historialActualizacion.hora = hora;
         historialActualizacion.usuarioId = usuarioId || null;
         historialActualizacion.accion = 'Auditoría actualizada';
@@ -1949,6 +1983,7 @@ export class AuditoriasService {
 
     // Estadísticas por fase
     const porFase = [
+      { fase: FaseAuditoria.PLAN_ANUAL, cantidad: 0 },
       { fase: FaseAuditoria.PLANEACION, cantidad: 0 },
       { fase: FaseAuditoria.EN_CURSO, cantidad: 0 },
       { fase: FaseAuditoria.REVISION, cantidad: 0 },
@@ -2040,12 +2075,13 @@ export class AuditoriasService {
     // ✅ Sincronizar estadoKanban con la fase
     // Mapeo de FaseAuditoria -> EstadoKanban
     const faseToEstadoKanban: Record<FaseAuditoria, EstadoKanban> = {
+      [FaseAuditoria.PLAN_ANUAL]: EstadoKanban.PLAN_ANUAL,
       [FaseAuditoria.PLANEACION]: EstadoKanban.PLANEACION,
       [FaseAuditoria.EN_CURSO]: EstadoKanban.EJECUCION,
       [FaseAuditoria.REVISION]: EstadoKanban.COMUNICACION,
       [FaseAuditoria.COMPLETADA]: EstadoKanban.FINALIZADA,
     };
-    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLANEACION;
+    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLAN_ANUAL;
     auditoria.estadoKanban = estadoNuevo;
 
     // Si se completa, asegurar progreso al 100%
@@ -2056,14 +2092,11 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
     
     // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
-
+    const { fecha, hora } = getFechaHoraColombia();
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Cambio de estado';
@@ -2096,15 +2129,7 @@ export class AuditoriasService {
     auditoria.estadoKanban = nuevoEstadoKanban;
     
     // Sincronizar la fase del backend (para compatibilidad)
-    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
-      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLANEACION,
-      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
-      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
-      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
-      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
-      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
-    }
-    auditoria.fase = estadoToFase[nuevoEstadoKanban];
+    auditoria.fase = this.mapEstadoKanbanToFase(nuevoEstadoKanban);
     
     // NO PERMITIR cambiar a FINALIZADA sin usar el endpoint específico
     if (nuevoEstadoKanban === EstadoKanban.FINALIZADA) {
@@ -2147,9 +2172,7 @@ export class AuditoriasService {
     
     // ✅ Registrar en el historial (envuelto en try/catch para no bloquear el cambio de estado)
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().slice(0, 5);
+      const { fecha, hora } = getFechaHoraColombia();
 
       // ✅ FIX: Validar que usuarioId sea UUID válido antes de guardarlo en columna uuid
       const uuidSanitizado = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
@@ -2157,7 +2180,7 @@ export class AuditoriasService {
       const historial = new HistorialAuditoria();
       historial.auditoriaId = id;
       historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-      historial.fecha = new Date(fecha);
+      historial.fecha = fecha;
       historial.hora = hora;
       historial.usuarioId = uuidSanitizado;
       historial.nombreUsuario = usuarioNombre || null;
@@ -2224,14 +2247,11 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
 
     // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
-
+    const { fecha, hora } = getFechaHoraColombia();
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Finalización de auditoría';
@@ -2311,14 +2331,12 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
 
     // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Finalización de auditoría';
@@ -2454,11 +2472,12 @@ export class AuditoriasService {
     if (auditoria.finalizadaPorId == null && idTercero != null) auditoria.finalizadaPorId = idTercero;
     const saved = await this.auditoriaRepository.save(auditoria);
 
+    const { fecha, hora } = getFechaHoraColombia();
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date();
-    historial.hora = new Date().toTimeString().slice(0, 5);
+    historial.fecha = fecha;
+    historial.hora = hora;
     const uuidPersona = typeof aprobadoPorId === 'string' ? aprobadoPorId : (idTercero ? await this.mapIdTerceroToIdPerson(idTercero) : null);
     historial.usuarioId = uuidPersona;
     historial.accion = 'Aprobación Informe de Cierre';
@@ -3008,6 +3027,7 @@ export class AuditoriasService {
    */
   private mapFaseToEstadoKanban(fase: FaseAuditoria): string {
     const mapping = {
+      [FaseAuditoria.PLAN_ANUAL]: 'Plan Anual',
       [FaseAuditoria.PLANEACION]: 'Planeación',
       [FaseAuditoria.EN_CURSO]: 'Ejecución',
       [FaseAuditoria.REVISION]: 'Comunicación',
@@ -3144,9 +3164,7 @@ export class AuditoriasService {
       throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
     }
 
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const nota = this.notaRepository.create({
       auditoriaId,
@@ -3154,7 +3172,7 @@ export class AuditoriasService {
       categoria: createDto.categoria,
       importante: createDto.importante || false,
       autorId: autorId || createDto.autorId || 1, // TODO: Obtener del contexto de autenticación
-      fecha: new Date(fecha),
+      fecha,
       hora,
       editada: false,
       activo: true,
@@ -3343,14 +3361,12 @@ export class AuditoriasService {
     await this.auditoriaRepository.save(auditoria);
 
     // Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.APROBACION;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Aprobación de auditoría';
@@ -3386,14 +3402,12 @@ export class AuditoriasService {
     }
 
     // Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.ACTUALIZACION; // Usamos actualizacion para rechazo
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Rechazo de auditoría';
@@ -3429,14 +3443,12 @@ export class AuditoriasService {
     }
 
     // Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.ACTUALIZACION;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Solicitud de modificación';
@@ -3558,14 +3570,12 @@ export class AuditoriasService {
     }
 
     // Registrar en el historial como solicitud pendiente
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     const uuidPersona = typeof usuarioIdOrUUID === 'string' ? usuarioIdOrUUID : (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
     historial.usuarioId = uuidPersona;
@@ -3713,15 +3723,13 @@ export class AuditoriasService {
     await this.historialRepository.save(solicitudPendiente);
 
     // Actualizar el historial de la solicitud a aprobada
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     // Crear nuevo registro de historial para la aprobación
     const historialAprobacion = new HistorialAuditoria();
     historialAprobacion.auditoriaId = auditoriaId;
     historialAprobacion.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
-    historialAprobacion.fecha = new Date(fecha);
+    historialAprobacion.fecha = fecha;
     historialAprobacion.hora = hora;
     historialAprobacion.usuarioId = historialUsuarioUuid;
     historialAprobacion.accion = 'Aprobación de ampliación de plazo';
@@ -3842,14 +3850,12 @@ export class AuditoriasService {
     await this.historialRepository.save(solicitudPendiente);
 
     // Registrar rechazo en historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historialRechazo = new HistorialAuditoria();
     historialRechazo.auditoriaId = auditoriaId;
     historialRechazo.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
-    historialRechazo.fecha = new Date(fecha);
+    historialRechazo.fecha = fecha;
     historialRechazo.hora = hora;
     historialRechazo.usuarioId = historialUsuarioUuidRechazo;
     historialRechazo.accion = 'Rechazo de ampliación de plazo';
@@ -4496,8 +4502,6 @@ export class AuditoriasService {
     }
   }
 }
-
-
 
 
 
