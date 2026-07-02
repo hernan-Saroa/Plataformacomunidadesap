@@ -16,6 +16,28 @@ import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
+const COLOMBIA_TIME_ZONE = 'America/Bogota';
+
+function getFechaHoraColombia(): { fecha: Date; hora: string } {
+  const ahora = new Date();
+  const fechaString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
+  const hora = new Intl.DateTimeFormat('en-GB', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(ahora);
+  const [year, month, day] = fechaString.split('-').map(Number);
+
+  return { fecha: new Date(year, month - 1, day, 12), hora };
+}
+
 // Interfaz para roles del template
 interface RolTemplate {
   rol_numero: number;
@@ -1173,14 +1195,12 @@ export class PlanAnual5RolesService {
     cambios?: Array<{ campo: string; valorAnterior: string; valorNuevo: string }>
   ): Promise<void> {
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().slice(0, 5);
+      const { fecha, hora } = getFechaHoraColombia();
 
       const historial = new HistorialPlanAnual();
       historial.planId = planId;
       historial.tipoEvento = tipoEvento;
-      historial.fecha = new Date(fecha);
+      historial.fecha = fecha;
       historial.hora = hora;
       historial.usuarioId = await this.resolverIdPersonParaHistorial(usuarioId);
       historial.accion = accion;
@@ -2353,4 +2373,3 @@ export class PlanAnual5RolesService {
     await this.wizardBorradorRepository.delete({ usuarioId: userId });
   }
 }
-
