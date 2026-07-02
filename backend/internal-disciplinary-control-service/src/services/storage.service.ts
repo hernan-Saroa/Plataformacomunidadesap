@@ -124,6 +124,16 @@ export class StorageService {
       .replace(/^\/+/, '')
       .replace(/^(files|uploads)\//, '');
 
+    const processMatch = normalizedFilename.match(/^process\/([^/]+)\/(.+)$/);
+    if (processMatch) {
+      const processFolder = decodeURIComponent(processMatch[1]);
+      const storedFilename = decodeURIComponent(path.basename(processMatch[2]));
+      return path.resolve(
+        this.uploadDir,
+        getProcessStorageRelativePath(processFolder, storedFilename),
+      );
+    }
+
     return path.resolve(this.uploadDir, normalizedFilename);
   }
 
