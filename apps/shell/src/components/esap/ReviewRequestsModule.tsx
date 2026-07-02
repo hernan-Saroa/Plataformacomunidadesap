@@ -60,9 +60,8 @@ const getPeriodCode = (period: any) =>
       (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
   ).trim();
 const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
-  // El periodo ACTIVO (en_curso) es el autoritativo para los consumidores:
-  // sus territoriales/sedes/programas son los "correctos". Solo si no hay ninguno
-  // en curso se respeta el último seleccionado y, como último recurso, el más reciente.
+  // El periodo activo es autoritativo para catálogos académicos como programas.
+  // Territoriales y sedes se leen del catálogo maestro de Estructura Organizacional.
   const activo = periods.find((period) => period?.estado === 'en_curso');
   if (activo) return activo;
   const savedPeriodCode = localStorage.getItem(storageKey) || '';
@@ -416,33 +415,6 @@ export function ReviewRequestsModule({
     }
 
     return { sedes: [], seccionales: [] };
-  };
-
-  const parseSedePeriodStatus = (source: unknown): {
-    idSedesActivas: number[];
-    available: boolean;
-  } => {
-    let current: unknown = source;
-
-    for (let depth = 0; depth < 5; depth += 1) {
-      if (!current || typeof current !== 'object') break;
-      const root = current as {
-        idSedesActivas?: unknown;
-        data?: unknown;
-      };
-
-      if (Array.isArray(root.idSedesActivas)) {
-        return {
-          idSedesActivas: root.idSedesActivas
-            .map((id) => Number(id))
-            .filter((id) => Number.isFinite(id)),
-          available: true,
-        };
-      }
-      current = root.data;
-    }
-
-    return { idSedesActivas: [], available: false };
   };
 
   // Funciones auxiliares
@@ -1174,15 +1146,10 @@ export function ReviewRequestsModule({
         const periodos = Array.isArray(periodosResponse)
           ? sortPeriodsByCreation(periodosResponse)
           : [];
-        const periodoEstructura = resolveCatalogPeriod(
-          periodos,
-          ESTRUCTURA_PERIOD_STORAGE_KEY,
-        );
         const periodoProgramas = resolveCatalogPeriod(
           periodos,
           PROGRAMAS_PERIOD_STORAGE_KEY,
         );
-        const codigoPeriodoEstructura = getPeriodCode(periodoEstructura);
         const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
 
         const loadProgramCatalog = async () => {
@@ -1223,64 +1190,13 @@ export function ReviewRequestsModule({
             .filter(Boolean);
         };
 
-        const estadoEstructuraPromise: Promise<{
-          value: unknown;
-          error: unknown;
-        }> = codigoPeriodoEstructura
-          ? estructuraService
-              .obtenerEstadoSedesPeriodo(codigoPeriodoEstructura)
-              .then((value) => ({ value, error: null }))
-              .catch((error) => ({ value: null, error }))
-          : Promise.resolve({ value: null, error: null });
+        const programasCatalog = await loadProgramCatalog().catch((error) => {
+          console.error('Error cargando programas del periodo:', error);
+          return [];
+        });
 
-        const [estadoEstructuraResult, programasCatalog] = await Promise.all([
-          estadoEstructuraPromise,
-          loadProgramCatalog().catch((error) => {
-            console.error('Error cargando programas del periodo:', error);
-            return [];
-          }),
-        ]);
-
-        const estadoSedes = parseSedePeriodStatus(estadoEstructuraResult.value);
-        const idsSedesActivas = new Set<number>(
-          estadoSedes.idSedesActivas,
-        );
-
-        const useMasterCatalogFallback =
-          !!periodoEstructura && !estadoSedes.available;
-        const sedes = !periodoEstructura
-          ? []
-          : useMasterCatalogFallback
-            ? sedesMaestras
-            : sedesMaestras.filter(
-                (sede) => idsSedesActivas.has(Number(sede?.idSede)),
-              );
-        const idsSeccionales = new Set(
-          sedes
-            .map((sede) => Number(sede.idSeccional))
-            .filter((id) => Number.isFinite(id)),
-        );
-        const seccionales = !periodoEstructura
-          ? []
-          : useMasterCatalogFallback
-            ? seccionalesMaestras
-            : seccionalesMaestras.filter(
-                (seccional) => idsSeccionales.has(Number(seccional.idSeccional)),
-              );
-
-        if (useMasterCatalogFallback) {
-          console.warn(
-            `No se pudo consultar la activación de sedes para ${codigoPeriodoEstructura}; se usará el catálogo maestro de Estructura Organizacional.`,
-            estadoEstructuraResult.error,
-          );
-          setStructureCatalogNotice(
-            `No fue posible consultar la activación del periodo ${codigoPeriodoEstructura}. Se muestra temporalmente el catálogo maestro de Estructura Organizacional.`,
-          );
-        } else if (periodoEstructura && sedes.length === 0) {
-          setStructureCatalogNotice(
-            `El periodo ${codigoPeriodoEstructura} no tiene territoriales o sedes activas en Estructura Organizacional.`,
-          );
-        }
+        const sedes = sedesMaestras;
+        const seccionales = seccionalesMaestras;
 
         const seccionalesList = seccionales
           .map((seccional) => normalizeName(seccional?.nomSeccional))
