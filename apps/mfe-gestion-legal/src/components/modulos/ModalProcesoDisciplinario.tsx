@@ -83,7 +83,7 @@ interface ModalProcesoDisciplinarioProps {
 
 export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh, onVerExpedienteAnexado, readOnly = false }: ModalProcesoDisciplinarioProps) {
   // ✅ Obtener configuraciones desde Context API
-  const { tiposExcepcionesActivos, causalesEspecificasActivas } = useConfiguracionModulo('juzgamiento');
+  const { tiposExcepcionesActivos, causalesEspecificasActivas, estadosActivos, tiempos } = useConfiguracionModulo('juzgamiento');
 
   if (!proceso) return null;
 
@@ -120,36 +120,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
   const [emailInitialData, setEmailInitialData] = useState<Partial<NuevaComunicacionData> | undefined>(undefined);
 
-  // Fuente única para actuaciones con datos iniciales (se sobreescribe al cargar del backend)
-  const [actuaciones, setActuaciones] = useState([
-    {
-      id: 1,
-      fecha: '26/12/2024',
-      tipo: 'Solicitud de Informes',
-      descripcion: proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH',
-      responsable: 'Oficina Control Disciplinario',
-      estado: 'COMPLETADA',
-      colorBorde: '#003DA5'
-    },
-    {
-      id: 2,
-      fecha: '20/12/2024',
-      tipo: 'Auto de Apertura',
-      descripcion: 'Auto de apertura de investigación disciplinaria',
-      responsable: 'Jefe de Control Interno',
-      estado: 'COMPLETADA',
-      colorBorde: '#F59E0B'
-    },
-    {
-      id: 3,
-      fecha: '15/12/2024',
-      tipo: 'Recepción de Queja',
-      descripcion: 'Recepción de queja por irregularidades',
-      responsable: 'Secretaría General',
-      estado: 'COMPLETADA',
-      colorBorde: '#003DA5'
-    }
-  ]);
+  // Actuaciones reales del expediente (se cargan del backend al abrir el modal).
+  const [actuaciones, setActuaciones] = useState<any[]>([]);
 
   const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
   const [decisiones, setDecisiones] = useState<any[]>([]);
@@ -197,8 +169,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     disciplinado: (proceso as any).investigado || proceso.disciplinado || '',
     cargo: proceso.cargo || '',
     dependencia: proceso.dependencia || '',
+    origen: (proceso as any).origen || '',
+    territorial: (proceso as any).territorial || '',
+    presuntaConducta: (proceso as any).presuntaConducta || '',
     descripcionHechos: proceso.descripcionHechos || (proceso as any).hechos || ''
   });
+
+  // UUID real del expediente. proceso.id es el radicado (PD-YYYY-NNNNN); los endpoints
+  // de documentos y comentarios filtran por expediente_id (uuid), así que hay que usar el uuid.
+  const expedienteUuid: string = (proceso as any).uuid || proceso.id;
 
   // ✅ Estado para modal de Anexar Proceso
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
@@ -611,16 +590,25 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
   // ==================== LÓGICA DE NEGOCIO RECUPERADA ====================
 
-  // Calcular días totales de la etapa
-  const diasTotalesEtapa = useMemo(() => {
-    switch (proceso.etapa?.toUpperCase()) {
-      case 'INDAGACIÓN PREVIA': return 180;
-      case 'INVESTIGACIÓN DISCIPLINARIA': return 180;
-      case 'JUZGAMIENTO': return 90;
-      case 'SEGUNDA INSTANCIA': return 45;
-      default: return 180;
-    }
-  }, [proceso.etapa]);
+  // Días totales de la etapa según la configuración del módulo (tiempos por etapa).
+  // Antes estaba quemado (switch con nombres que nunca coincidían → siempre 180).
+  // Ahora se resuelve contra la config real; si no hay término configurado, es null (se muestra "—").
+  const diasTotalesEtapa = useMemo<number | null>(() => {
+    const etapa = proceso.etapa;
+    if (!etapa) return null;
+    const etapaUpper = String(etapa).toUpperCase();
+    // Resolver el nombre legible de la etapa desde los estados activos
+    const estado = (estadosActivos || []).find(
+      (e: any) => e.id === etapa || (e.nombre || '').toUpperCase() === etapaUpper
+    );
+    const nombreEtapa = (estado?.nombre || String(etapa)).toLowerCase();
+    // Buscar un tiempo configurado cuyo "tipo" coincida con la etapa
+    const tiempo = (tiempos || []).find((t: any) => {
+      const tipo = (t.tipo || '').toLowerCase();
+      return tipo && (nombreEtapa.includes(tipo) || tipo.includes(nombreEtapa));
+    });
+    return typeof tiempo?.dias === 'number' ? tiempo.dias : null;
+  }, [proceso.etapa, estadosActivos, tiempos]);
 
   // Consolidar actuaciones (las del prop + las nuevas)
   // Nota: 'actuaciones' ya contiene todo si el backend retorna todo en getJuzgamientoActuaciones
@@ -1208,8 +1196,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCerrar}>
-        <DialogContent hideCloseButton className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col !p-0 overflow-hidden" style={{ width: '80vw', maxWidth: '80vw', top: '2.5vh', padding: 0 }}>
-          <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
+        <DialogContent hideCloseButton className="!w-[96vw] lg:!w-[90vw] !max-w-[1200px] h-[95vh] !max-h-[95vh] flex flex-col !p-0 overflow-hidden" style={{ top: '2.5vh', padding: 0 }}>
+          <div className="flex flex-col flex-1 min-h-0 p-0 m-0">
           <DialogTitle className="sr-only">
             Proceso Disciplinario {proceso.id}
           </DialogTitle>
@@ -1238,8 +1226,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
           {/* ==================== TABS NAVIGATION ==================== */}
           <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-6 pt-4 border-b bg-gray-50">
-              <TabsList className="bg-transparent border-0 p-0 h-auto gap-1">
+            <div className="px-3 sm:px-6 pt-4 border-b bg-gray-50 overflow-x-auto">
+              <TabsList className="bg-transparent border-0 p-0 h-auto gap-1 flex-nowrap w-max">
                 <TabsTrigger
                   value="general"
                   className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
@@ -1248,11 +1236,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   General
                 </TabsTrigger>
                 <TabsTrigger
-                  value="hechos"
+                  value="partes"
                   className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
                 >
-                  <AlertTriangle className="w-4 h-4 mr-2" />
-                  Hechos
+                  <Users className="w-4 h-4 mr-2" />
+                  Partes
                 </TabsTrigger>
                 <TabsTrigger
                   value="documento"
@@ -1302,6 +1290,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                           abogadoSustanciador: editData.abogadoAsignado,
                           cargoInvestigado: editData.cargo,
                           dependenciaInvestigado: editData.dependencia,
+                          origen: editData.origen,
+                          territorial: editData.territorial,
+                          presuntaConducta: editData.presuntaConducta,
                           hechos: editData.descripcionHechos,
                           demandado: editData.disciplinado
                         });
@@ -1347,6 +1338,45 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                     <div>
                       <p className="text-sm text-gray-600">Número de Proceso</p>
                       <p className="font-bold text-lg" style={{ color: '#003DA5' }}>{proceso.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Origen</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.origen}
+                          onChange={(e) => setEditData({ ...editData, origen: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-semibold">{(proceso as any).origen || 'No registrado'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Territorial</p>
+                      {modoEdicion ? (
+                        <input
+                          type="text"
+                          value={editData.territorial}
+                          onChange={(e) => setEditData({ ...editData, territorial: e.target.value })}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <p className="font-semibold">{(proceso as any).territorial || 'No registrada'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Presunta Conducta Indisciplinaria</p>
+                      {modoEdicion ? (
+                        <textarea
+                          value={editData.presuntaConducta}
+                          onChange={(e) => setEditData({ ...editData, presuntaConducta: e.target.value })}
+                          rows={2}
+                          className="w-full px-3 py-1.5 border-2 border-blue-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        />
+                      ) : (
+                        <p className="font-semibold">{(proceso as any).presuntaConducta || 'No registrada'}</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Tipo de Falta</p>
@@ -1444,6 +1474,30 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 </Card>
               </div>
 
+              {/* Descripción de los Hechos */}
+              <Card className="p-4 border-2 border-gray-200">
+                <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
+                  <AlertTriangle className="w-5 h-5" /> Descripción de los Hechos
+                </h3>
+                {(() => {
+                  const lista: string[] = ((proceso as any).hechosList && (proceso as any).hechosList.length > 0)
+                    ? (proceso as any).hechosList
+                    : [(proceso as any).descripcionHechos || (proceso as any).hechos].filter(Boolean);
+                  if (lista.length === 0) {
+                    return <p className="text-gray-500 italic">No se han registrado hechos.</p>;
+                  }
+                  return (
+                    <ol className="space-y-3 list-decimal list-inside">
+                      {lista.map((h, i) => (
+                        <li key={`hecho-${i}`} className="text-gray-700 leading-relaxed">
+                          <span className="whitespace-pre-line">{h}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  );
+                })()}
+              </Card>
+
               {/* Cronología de Términos */}
               <Card className="p-4 bg-blue-50 border-2 border-blue-200">
                 <h3 className="font-black text-lg mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
@@ -1456,11 +1510,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg">
                     <p className="text-sm text-gray-600 mb-1">Días Transcurridos</p>
-                    <p className="text-3xl font-black text-blue-600">{Math.max(0, diasTotalesEtapa - proceso.diasRestantes)}</p>
+                    <p className="text-3xl font-black text-blue-600">{diasTotalesEtapa != null ? Math.max(0, diasTotalesEtapa - proceso.diasRestantes) : '—'}</p>
                   </div>
                   <div className="text-center p-3 bg-white rounded-lg">
                     <p className="text-sm text-gray-600 mb-1">Días Totales Etapa</p>
-                    <p className="text-3xl font-black text-gray-600">{diasTotalesEtapa}</p>
+                    <p className="text-3xl font-black text-gray-600">{diasTotalesEtapa ?? '—'}</p>
                   </div>
                 </div>
               </Card>
@@ -1476,7 +1530,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
                   <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
                   <p className="font-black text-lg text-gray-900">
-                    {proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH'}
+                    {proceso.ultimaActuacion?.descripcion || 'Sin actuaciones registradas'}
                   </p>
                   <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
                     <span>📅 {proceso.fechaActualizacion ? new Date(proceso.fechaActualizacion).toLocaleDateString('es-CO') : 'N/A'}</span>
@@ -1497,23 +1551,70 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
               </Card>
             </TabsContent>
 
-            {/* ==================== TAB: HECHOS ==================== */}
-            <TabsContent value="hechos" className="flex-1 overflow-y-auto p-6">
+            {/* ==================== TAB: PARTES ==================== */}
+            <TabsContent value="partes" className="flex-1 overflow-y-auto p-6">
               <Card className="p-6">
-                <h3 className="font-black text-xl mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                  <AlertTriangle className="w-6 h-6" /> Descripción de los Hechos
+                <h3 className="font-black text-xl mb-4 flex items-center gap-2 text-gray-800">
+                  <Users className="w-6 h-6" style={{ color: '#003DA5' }} /> Partes del Proceso
                 </h3>
-                <p className="text-gray-700 leading-relaxed mb-4">{(proceso as any).descripcionHechos || (proceso as any).hechos || 'No se han registrado hechos.'}</p>
+                {(() => {
+                  const actorsList: any[] = (proceso as any).actors || [];
+                  const rolDe = (a: any) => (a.rol || '').toUpperCase();
+                  const disciplinados = actorsList.filter(a => rolDe(a) === 'DISCIPLINADO' || rolDe(a) === 'DEMANDADO');
+                  const denunciantes = actorsList.filter(a => rolDe(a) === 'DENUNCIANTE' || rolDe(a) === 'VICTIMA');
+                  if (actorsList.length === 0) {
+                    return <p className="text-sm text-gray-500 italic">No hay partes registradas para este proceso.</p>;
+                  }
+                  return (
+                    <div className="space-y-5">
+                      {disciplinados.length > 0 && (
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wide text-blue-700 mb-2">Disciplinados</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {disciplinados.map((a, i) => (
+                              <div key={`disc-${i}`} className="p-3 rounded-lg bg-blue-50/50 border border-blue-100 text-sm">
+                                <p className="font-bold text-gray-900">{a.nombre}{a.identificacion ? ` — ${a.identificacion}` : ''}</p>
+                                {(a.cargo || a.dependencia) && <p className="text-gray-600">{[a.cargo, a.dependencia].filter(Boolean).join(' · ')}</p>}
+                                {(a.email || a.telefono) && <p className="text-gray-600">{[a.email, a.telefono].filter(Boolean).join(' · ')}</p>}
+                                {a.direccion && <p className="text-gray-600">{a.direccion}</p>}
+                                <p className="mt-1"><span className="text-gray-500">Apoderado:</span> <span className="font-semibold">{a.apoderado || 'Sin apoderado'}</span></p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {denunciantes.length > 0 && (
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wide text-orange-700 mb-2">Denunciantes / Víctimas</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {denunciantes.map((a, i) => (
+                              <div key={`den-${i}`} className="p-3 rounded-lg bg-orange-50/50 border border-orange-100 text-sm">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-bold text-gray-900">{a.nombre}{a.identificacion ? ` — ${a.identificacion}` : ''}</p>
+                                  <Badge className={rolDe(a) === 'VICTIMA' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}>
+                                    {rolDe(a) === 'VICTIMA' ? 'Víctima' : 'Denunciante'}
+                                  </Badge>
+                                </div>
+                                {(a.email || a.telefono) && <p className="text-gray-600">{[a.email, a.telefono].filter(Boolean).join(' · ')}</p>}
+                                {a.direccion && <p className="text-gray-600">{a.direccion}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </Card>
             </TabsContent>
 
             {/* ==================== TAB: DOCUMENTO ==================== */}
             <TabsContent value="documento" className="flex-1 overflow-y-auto p-6 space-y-4">
               <TabDocumentosExpediente
-                expedienteId={proceso.id}
+                expedienteId={expedienteUuid}
                 documentos={documentosExpediente}
                 setDocumentos={(_next) => { }}
-                profesionalAsignado={proceso.abogadoAsignado || 'Control Disciplinario'}
+                profesionalAsignado={proceso.abogadoAsignado || 'Sin asignar'}
                 tituloSeccion="Documentos del Proceso Disciplinario"
                 moduloContexto="juzgamiento"
                 onUploadDocument={canUploadDocumento ? handleUploadDocumentoDesdeTab : undefined}
@@ -1561,7 +1662,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 }))}
                 labelRegistrar="Registrar Primera Actuación"
                 onRegistrarPrimera={canRegistrarActuacion ? () => setModalNuevaActuacionOpen(true) : undefined}
-                expedienteId={proceso.id}
+                expedienteId={expedienteUuid}
                 radicadoExpediente={proceso.id}
                 onDeleteActuacion={canEditProceso ? handleDeleteActuacion : undefined}
                 onReloadExpediente={() => {
@@ -1602,7 +1703,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
                 <TabsContent value="trazabilidad" className="space-y-3">
                   <TabTrazabilidadExpediente
-                    expedienteId={proceso.id}
+                    expedienteId={expedienteUuid}
                     profesionalAsignado={proceso.abogadoAsignado}
                     tareas={tareas}
                     actuaciones={actuaciones}
