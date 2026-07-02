@@ -55,6 +55,8 @@ export interface PTARules {
   max_horas_extension_global: number;     // Circular §3: "no podrá superar las 200 horas o el 25%"
   max_pct_complementarias: number;
   max_horas_complementarias_global: number; // Tope global horas complementarias
+  comp_anexo1_validado: boolean;             // Confirmacion manual: catalogo cotejado contra Anexo 1
+  comp_anexo1_fuente: string;                // Fuente/version usada para el cotejo del Anexo 1
   max_horas_aadm_global: number;            // Tope global horas Académica/Docencia
   max_pct_aadm: number;                     // Tope porcentual Académica/Docencia
   // Tope cruzado investigación + extensión para Enlace Territorial / Director de Grupo
@@ -260,6 +262,8 @@ export const defaultPTARules: PTARules = {
   max_horas_extension_global: 200,
   max_pct_complementarias: 25,
   max_horas_complementarias_global: 200,
+  comp_anexo1_validado: false,
+  comp_anexo1_fuente: 'Pendiente de cotejo contra Anexo 1',
   max_horas_aadm_global: 200,
   max_pct_aadm: 25,
   max_pct_inv_ext_combinado: 50,
@@ -539,35 +543,35 @@ export const defaultPTARules: PTARules = {
       }
     ],
     laboratorio_innovacion: [
-      { id: 'LAB_01', nombre: 'Componente Fijo — Espacios de participación y representación', items: [] },
-      { id: 'LAB_02', nombre: 'Componente Fijo — Aspectos administrativos y gestión', items: [] },
-      { id: 'LAB_03', nombre: 'Componente Variable — Elaborar documentos técnicos en el marco de las iniciativas', items: [] },
-      { id: 'LAB_04', nombre: 'Componente Variable — Preparar y compilar documentos técnicos para publicación', items: [] },
-      { id: 'LAB_05', nombre: 'Componente Variable — Elaborar documentos soporte de ejecución de iniciativas', items: [] },
-      { id: 'LAB_06', nombre: 'Componente Variable — Diseñar, ejecutar y/o liderar iniciativas innovadoras', items: [] },
-      { id: 'LAB_07', nombre: 'Componente Variable — Ejecutar trabajo de campo', items: [] },
-      { id: 'LAB_08', nombre: 'Componente Variable — Acompañamiento en planeación de eventos', items: [] },
-      { id: 'LAB_09', nombre: 'Componente Variable — Acompañamiento en trabajo de campo', items: [] },
-      { id: 'LAB_10', nombre: 'Componente Variable — Representar a la ESAP en espacios consultivos', items: [] },
-      { id: 'LAB_11', nombre: 'Componente Variable — Charlas y conferencias (formación)', items: [] },
-      { id: 'LAB_12', nombre: 'Componente Variable — Coordinar enlace de capacitación en temáticas del Lab.', items: [] },
-      { id: 'LAB_13', nombre: 'Componente Variable — Diseño de estrategias de gestión social del conocimiento', items: [] },
+      { id: 'LAB_01', nombre: 'Componente Fijo — Espacios de participación y representación', max_horas: 100, items: [{ nombre: 'Participación, representación y apoyo al Laboratorio', tipo: 'hasta', horas: 100 }] },
+      { id: 'LAB_02', nombre: 'Componente Fijo — Aspectos administrativos y gestión', max_horas: 120, items: [{ nombre: 'Coordinación, planeación, seguimiento y control del Laboratorio', tipo: 'hasta', horas: 120 }] },
+      { id: 'LAB_03', nombre: 'Componente Variable — Elaborar documentos técnicos en el marco de las iniciativas', max_horas: 80, items: [{ nombre: 'Documento técnico académico elaborado', tipo: 'hasta', horas: 80 }] },
+      { id: 'LAB_04', nombre: 'Componente Variable — Preparar y compilar documentos técnicos para publicación', max_horas: 40, items: [{ nombre: 'Documento técnico preparado o compilado', tipo: 'hasta', horas: 40 }] },
+      { id: 'LAB_05', nombre: 'Componente Variable — Elaborar documentos soporte de ejecución de iniciativas', max_horas: 80, items: [{ nombre: 'Documento soporte de ejecución', tipo: 'hasta', horas: 80 }] },
+      { id: 'LAB_06', nombre: 'Componente Variable — Diseñar, ejecutar y/o liderar iniciativas innovadoras', max_horas: 120, items: [{ nombre: 'Informe académico de ejecución de la iniciativa', tipo: 'hasta', horas: 120 }] },
+      { id: 'LAB_07', nombre: 'Componente Variable — Ejecutar trabajo de campo', max_horas: 40, items: [{ nombre: 'Informe ejecutivo del trabajo de campo', tipo: 'hasta', horas: 40 }] },
+      { id: 'LAB_08', nombre: 'Componente Variable — Acompañamiento en planeación de eventos', max_horas: 20, items: [{ nombre: 'Acompañamiento y planeación de eventos', tipo: 'hasta', horas: 20 }] },
+      { id: 'LAB_09', nombre: 'Componente Variable — Acompañamiento en trabajo de campo', max_horas: 40, items: [{ nombre: 'Acompañamiento y planeación del trabajo de campo', tipo: 'hasta', horas: 40 }] },
+      { id: 'LAB_10', nombre: 'Componente Variable — Representar a la ESAP en espacios consultivos', max_horas: 20, items: [{ nombre: 'Representación institucional en espacios consultivos', tipo: 'hasta', horas: 20 }] },
+      { id: 'LAB_11', nombre: 'Componente Variable — Charlas y conferencias (formación)', max_horas: 20, items: [{ nombre: 'Charlas, conferencias o paneles de formación', tipo: 'hasta', horas: 20 }] },
+      { id: 'LAB_12', nombre: 'Componente Variable — Coordinar enlace de capacitación en temáticas del Lab.', max_horas: 60, items: [{ nombre: 'Coordinación y enlace de iniciativas de capacitación', tipo: 'hasta', horas: 60 }] },
+      { id: 'LAB_13', nombre: 'Componente Variable — Diseño de estrategias de gestión social del conocimiento', max_horas: 60, items: [{ nombre: 'Documento de estrategia e informe de gestión', tipo: 'hasta', horas: 60 }] },
     ],
     investigacion_aplicada: [
-      { id: 'INV_AP_01', nombre: 'Documentos técnicos (informe, análisis temático)', items: [] },
-      { id: 'INV_AP_02', nombre: 'Plan de Trabajo de Investigación Aplicada', items: [] },
-      { id: 'INV_AP_03', nombre: 'Productos de Generación de Nuevo Conocimiento (SNCTI)', items: [] },
-      { id: 'INV_AP_04', nombre: 'Productos de Desarrollo Tecnológico e Innovación (SNCTI)', items: [] },
-      { id: 'INV_AP_05', nombre: 'Productos de Apropiación Social del Conocimiento (SNCTI)', items: [] },
-      { id: 'INV_AP_06', nombre: 'Productos de Formación de Recurso Humano para CTeI (SNCTI)', items: [] },
-      { id: 'INV_AP_07', nombre: 'Asistencia a eventos académicos / representación Grupo Inv. Aplicada', items: [] },
-      { id: 'INV_AP_08', nombre: 'Procesos de evaluación de desempeño y productos', items: [] },
+      { id: 'INV_AP_01', nombre: 'Documentos técnicos (informe, análisis temático)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Documento técnico', tipo: 'intervalo', min: 40, horas: 60 }] },
+      { id: 'INV_AP_02', nombre: 'Plan de Trabajo de Investigación Aplicada', min_horas: 2, max_horas: 6, items: [{ nombre: 'Plan de trabajo', tipo: 'intervalo', min: 2, horas: 6 }] },
+      { id: 'INV_AP_03', nombre: 'Productos de Generación de Nuevo Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de generación de nuevo conocimiento', tipo: 'intervalo', min: 40, horas: 60 }] },
+      { id: 'INV_AP_04', nombre: 'Productos de Desarrollo Tecnológico e Innovación (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de desarrollo tecnológico e innovación', tipo: 'intervalo', min: 40, horas: 60 }] },
+      { id: 'INV_AP_05', nombre: 'Productos de Apropiación Social del Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de apropiación social del conocimiento', tipo: 'intervalo', min: 40, horas: 60 }] },
+      { id: 'INV_AP_06', nombre: 'Productos de Formación de Recurso Humano para CTeI (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de formación de recurso humano para CTeI', tipo: 'intervalo', min: 40, horas: 60 }] },
+      { id: 'INV_AP_07', nombre: 'Asistencia a eventos académicos / representación Grupo Inv. Aplicada', max_horas: 8, items: [{ nombre: 'Asistencia o representación académica', tipo: 'hasta', horas: 8 }] },
+      { id: 'INV_AP_08', nombre: 'Procesos de evaluación de desempeño y productos', max_horas: 4, items: [{ nombre: 'Evaluación de desempeño o productos generados', tipo: 'hasta', horas: 4 }] },
     ],
     alto_gobierno: [
-      { id: 'EAG_01', nombre: 'Coaching directivo', items: [] },
-      { id: 'EAG_02', nombre: 'Formación estratégica a la alta gerencia', items: [] },
-      { id: 'EAG_03', nombre: 'Gestión del conocimiento', items: [] },
-      { id: 'EAG_04', nombre: 'Desarrollo de contenidos', items: [] },
+      { id: 'EAG_01', nombre: 'Coaching directivo', min_horas: 80, max_horas: 200, items: [{ nombre: 'Coaching directivo', tipo: 'intervalo', min: 80, horas: 200 }] },
+      { id: 'EAG_02', nombre: 'Formación estratégica a la alta gerencia', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación estratégica', tipo: 'intervalo', min: 80, horas: 200 }] },
+      { id: 'EAG_03', nombre: 'Gestión del conocimiento', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación en gestión del conocimiento', tipo: 'intervalo', min: 80, horas: 200 }] },
+      { id: 'EAG_04', nombre: 'Desarrollo de contenidos', min_horas: 40, max_horas: 120, items: [{ nombre: 'Diseño y desarrollo de contenidos', tipo: 'intervalo', min: 40, horas: 120 }] },
     ],
   },
 
@@ -670,6 +674,114 @@ export const defaultPTARules: PTARules = {
   ],
 };
 
+type ExtActividad = PTARules['ext_actividades'][string][number];
+
+type NormativeRange = { min: number; max: number; label: string };
+
+const NORMATIVE_RULE_RANGES: Record<string, NormativeRange> = {
+  max_pct_investigacion: { min: 0, max: 50, label: 'Tope max. Investigacion' },
+  max_horas_investigacion_global: { min: 0, max: 400, label: 'Tope global Investigacion' },
+  max_pct_extension: { min: 0, max: 25, label: 'Tope max. Extension' },
+  max_horas_extension_global: { min: 0, max: 200, label: 'Tope global Extension' },
+  max_pct_complementarias: { min: 0, max: 25, label: 'Tope max. Complementarias' },
+  max_horas_complementarias_global: { min: 0, max: 200, label: 'Tope global Complementarias' },
+  max_pct_aadm: { min: 0, max: 25, label: 'Tope max. AADM' },
+  max_horas_aadm_global: { min: 0, max: 200, label: 'Tope global AADM' },
+  max_pct_inv_ext_combinado: { min: 0, max: 50, label: 'Tope cruzado Inv+Ext' },
+  horas_base_carrera_009: { min: 600, max: 800, label: 'Horas base Acuerdo 009' },
+  horas_base_carrera_003: { min: 600, max: 900, label: 'Horas base Acuerdo 003' },
+  horas_semanales_tc: { min: 20, max: 48, label: 'Horas semanales TC' },
+  horas_semanales_mt: { min: 10, max: 24, label: 'Horas semanales MT' },
+  min_creditos_docencia: { min: 1, max: 10, label: 'Min. creditos docencia' },
+  min_pct_docencia_no_vinculados: { min: 30, max: 70, label: 'Min. % docencia no vinculados' },
+  criterio_multiplicador_docencia: { min: 1, max: 5, label: 'Multiplicador docencia' },
+  dias_cierre_concertacion: { min: 1, max: 30, label: 'Dias cierre concertacion' },
+  dias_limite_radicacion_ggp: { min: 1, max: 30, label: 'Dias radicar GGP' },
+  dias_verificacion_posterior: { min: 1, max: 30, label: 'Dias verificacion' },
+  sla_consolidacion_nacional: { min: 5, max: 30, label: 'SLA consolidacion nacional' },
+};
+
+function isCircular003Config(rules: Partial<PTARules> | null | undefined): boolean {
+  const version = String(rules?.circular_version || '').toUpperCase();
+  return version.includes('003') && version.includes('2025');
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getNormativeRangeErrors(rules: Partial<PTARules>): string[] {
+  if (!isCircular003Config(rules)) return [];
+  const errors: string[] = [];
+  for (const [field, range] of Object.entries(NORMATIVE_RULE_RANGES)) {
+    const raw = (rules as any)[field];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    if (value < range.min || value > range.max) {
+      errors.push(`${range.label} (${field}) debe estar entre ${range.min} y ${range.max}; valor actual: ${value}.`);
+    }
+  }
+  return errors;
+}
+
+function mergeExtActividad(defaultAct: ExtActividad, savedAct?: ExtActividad): ExtActividad {
+  if (!savedAct) return defaultAct;
+  const merged: ExtActividad = { ...defaultAct, ...savedAct };
+
+  if ((!Array.isArray(savedAct.items) || savedAct.items.length === 0) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
+    merged.items = defaultAct.items;
+  }
+  if ((savedAct.max_horas === undefined || savedAct.max_horas === null) && defaultAct.max_horas !== undefined) {
+    merged.max_horas = defaultAct.max_horas;
+  }
+  if ((savedAct.min_horas === undefined || savedAct.min_horas === null) && defaultAct.min_horas !== undefined) {
+    merged.min_horas = defaultAct.min_horas;
+  }
+  if ((!Array.isArray(savedAct.evidencias) || savedAct.evidencias.length === 0) && Array.isArray(defaultAct.evidencias)) {
+    merged.evidencias = defaultAct.evidencias;
+  }
+
+  return merged;
+}
+
+function mergeExtActividades(defaults: PTARules['ext_actividades'], saved: any): PTARules['ext_actividades'] {
+  const savedRecord = saved && typeof saved === 'object' ? saved : {};
+  const result: PTARules['ext_actividades'] = { ...savedRecord };
+
+  for (const [sectionKey, defaultActivities] of Object.entries(defaults)) {
+    const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
+    const savedById = new Map(savedActivities.map((act: ExtActividad) => [act.id, act]));
+    const defaultIds = new Set(defaultActivities.map(act => act.id));
+
+    result[sectionKey] = [
+      ...defaultActivities.map(defaultAct => mergeExtActividad(defaultAct, savedById.get(defaultAct.id))),
+      ...savedActivities.filter((act: ExtActividad) => !defaultIds.has(act.id)),
+    ];
+  }
+
+  return result;
+}
+
+export function normalizePTARules(input?: Partial<PTARules> | null): PTARules {
+  const inputRules = input || {};
+  const merged = { ...defaultPTARules, ...inputRules } as PTARules;
+  const rawGlobalExtension = (inputRules as any).max_horas_extension_global;
+  const rawLegacyExtension = (inputRules as any).ext_max_horas_enlace;
+  const unifiedExtensionHours = finiteNumber(
+    rawGlobalExtension ?? rawLegacyExtension,
+    defaultPTARules.max_horas_extension_global,
+  );
+
+  merged.max_horas_extension_global = unifiedExtensionHours;
+  merged.ext_max_horas_enlace = unifiedExtensionHours;
+  merged.comp_anexo1_validado = Boolean((inputRules as any).comp_anexo1_validado ?? defaultPTARules.comp_anexo1_validado);
+  merged.comp_anexo1_fuente = String((inputRules as any).comp_anexo1_fuente || defaultPTARules.comp_anexo1_fuente);
+  merged.ext_actividades = mergeExtActividades(defaultPTARules.ext_actividades, (input as any)?.ext_actividades);
+  return merged;
+}
+
 export function usePTARules() {
   const [rules, setRules] = useState<PTARules>(defaultPTARules);
   const [loading, setLoading] = useState(true);
@@ -679,16 +791,16 @@ export function usePTARules() {
       try {
         const res = await getConfiguracionPTAGlobal();
         if (res.success && res.data) {
-          setRules({ ...defaultPTARules, ...res.data });
+          setRules(normalizePTARules(res.data));
         } else {
           // Fallback locale dev
           const stored = localStorage.getItem("pta_rules_v2");
-          if (stored) setRules({ ...defaultPTARules, ...JSON.parse(stored) });
+          if (stored) setRules(normalizePTARules(JSON.parse(stored)));
         }
       } catch (e) {
         console.error("Error fetching PTA rules v2", e);
         const stored = localStorage.getItem("pta_rules_v2");
-        if (stored) setRules({ ...defaultPTARules, ...JSON.parse(stored) });
+        if (stored) setRules(normalizePTARules(JSON.parse(stored)));
       } finally {
         setLoading(false);
       }
@@ -696,16 +808,32 @@ export function usePTARules() {
     load();
   }, []);
 
-  const saveRules = async (newRules: PTARules) => {
-    setRules(newRules);
-    localStorage.setItem("pta_rules_v2", JSON.stringify(newRules));
+  const saveRules = async (newRules: PTARules): Promise<boolean> => {
+    const normalizedRules = normalizePTARules(newRules);
+    const normativeErrors = getNormativeRangeErrors(normalizedRules);
+    if (normativeErrors.length > 0) {
+      toast.error('Configuración Circular 003/2025 fuera de rango', {
+        description: normativeErrors.join(' • '),
+        duration: 9000,
+      });
+      return false;
+    }
+
     try {
-      const res = await updateConfiguracionPTAGlobal(newRules);
+      const res = await updateConfiguracionPTAGlobal(normalizedRules);
       if (res.success) {
         // R5: Refresh rules from server (includes updated changelog)
         if (res.data && typeof res.data === 'object') {
-          const { _warnings, ...serverRules } = res.data as any;
-          const merged = { ...defaultPTARules, ...serverRules };
+          if ((res.data as any)._error) {
+            toast.error((res.data as any)._error, {
+              description: Array.isArray((res.data as any)._warnings) ? (res.data as any)._warnings.join(' • ') : undefined,
+              duration: 9000,
+            });
+            return false;
+          }
+
+          const { _warnings, _error, ...serverRules } = res.data as any;
+          const merged = normalizePTARules(serverRules);
           setRules(merged);
           localStorage.setItem("pta_rules_v2", JSON.stringify(merged));
 
@@ -716,13 +844,21 @@ export function usePTARules() {
               duration: 8000,
             });
           }
+        } else {
+          setRules(normalizedRules);
+          localStorage.setItem("pta_rules_v2", JSON.stringify(normalizedRules));
         }
         toast.success('Configuración guardada exitosamente en la base de datos.');
+        return true;
       } else {
         toast.error('Error al guardar la configuración.');
+        return false;
       }
     } catch (e) {
-      toast.error('Error de conexión al guardar la configuración.');
+      setRules(normalizedRules);
+      localStorage.setItem("pta_rules_v2", JSON.stringify(normalizedRules));
+      toast.warning('No se pudo conectar con la base de datos. La configuración quedó guardada solo localmente.');
+      return true;
     }
   };
 
@@ -786,7 +922,7 @@ export function DeviationBadge({ field, currentValue }: { field: keyof PTARules;
 export function getDeviations(current: PTARules): Array<{ field: string; defaultVal: any; currentVal: any }> {
   const SKIP: (keyof PTARules)[] = [
     'fecha_inicio_semestre', 'fecha_fin_semestre', 'config_changelog', 'config_snapshots',
-    'config_bloqueada', 'circular_version',
+    'config_bloqueada', 'circular_version', 'ext_max_horas_enlace',
     'docencia_por_programa', 'inv_roles', 'inv_actividades',
     'ext_secciones', 'ext_actividades', 'comp_actividades', 'aadm_actividades',
   ];
@@ -854,7 +990,7 @@ export default function ConfiguracionReglasPTA({
     setHasChanges(false);
   }, [rules]);
 
-  const STRING_KEYS: (keyof PTARules)[] = ['fecha_inicio_semestre', 'fecha_fin_semestre', 'circular_version'];
+  const STRING_KEYS: (keyof PTARules)[] = ['fecha_inicio_semestre', 'fecha_fin_semestre', 'circular_version', 'comp_anexo1_fuente'];
 
   const handleChange = (key: keyof PTARules, value: any) => {
     setDraft((prev) => {
@@ -864,6 +1000,11 @@ export default function ConfiguracionReglasPTA({
         nextVal = isNaN(num) ? 0 : num;
       }
       const next = { ...prev, [key]: nextVal } as unknown as PTARules;
+      if (key === 'max_horas_extension_global' || key === 'ext_max_horas_enlace') {
+        const unified = finiteNumber(nextVal, defaultPTARules.max_horas_extension_global);
+        next.max_horas_extension_global = unified;
+        next.ext_max_horas_enlace = unified;
+      }
       setHasChanges(JSON.stringify(next) !== JSON.stringify(rules));
       return next;
     });
@@ -902,7 +1043,7 @@ export default function ConfiguracionReglasPTA({
     return diffs;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // R7: Block save if locked
     if (draft.config_bloqueada) {
       toast.error('Configuración bloqueada. Desbloquee antes de guardar.');
@@ -918,7 +1059,8 @@ export default function ConfiguracionReglasPTA({
       });
     }
 
-    saveRules(draft);
+    const saved = await saveRules(draft);
+    if (!saved) return;
     setGuardado(true);
     setHasChanges(false);
     setShowDiffModal(false);
@@ -937,7 +1079,7 @@ export default function ConfiguracionReglasPTA({
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     setAutoSaveStatus('idle');
-    autoSaveTimerRef.current = setTimeout(() => {
+    autoSaveTimerRef.current = setTimeout(async () => {
       const crossErrors = getCrossValidationErrors();
       if (crossErrors.length > 0) {
         toast.warning(`⚠ ${crossErrors.length} advertencia(s)`, {
@@ -945,7 +1087,11 @@ export default function ConfiguracionReglasPTA({
         });
       }
       setAutoSaveStatus('saving');
-      saveRules(draft);
+      const saved = await saveRules(draft);
+      if (!saved) {
+        setAutoSaveStatus('idle');
+        return;
+      }
       setHasChanges(false);
       setTimeout(() => {
         setAutoSaveStatus('saved');
@@ -972,7 +1118,7 @@ export default function ConfiguracionReglasPTA({
       <h1>📋 Configuración PTA — ${draft.circular_version}</h1>
       <p>Exportado: ${new Date().toLocaleString()}</p>
       <h2>Parámetros Generales</h2><table><tr><th>Campo</th><th>Valor</th><th>Estado</th></tr>
-      ${Object.keys(defaultPTARules).filter(k => !['config_changelog','config_snapshots','config_bloqueada','circular_version','docencia_por_programa','inv_roles','inv_actividades','ext_secciones','ext_actividades','comp_actividades','aadm_actividades'].includes(k)).map(k => {
+      ${Object.keys(defaultPTARules).filter(k => !['config_changelog','config_snapshots','config_bloqueada','circular_version','ext_max_horas_enlace','docencia_por_programa','inv_roles','inv_actividades','ext_secciones','ext_actividades','comp_actividades','aadm_actividades'].includes(k)).map(k => {
         const val = (draft as any)[k];
         const def = (defaultPTARules as any)[k];
         const match = JSON.stringify(val) === JSON.stringify(def);
@@ -992,7 +1138,7 @@ export default function ConfiguracionReglasPTA({
   const handleRollback = (snapshotIdx: number) => {
     const snap = draft.config_snapshots?.[snapshotIdx];
     if (!snap?.snapshot) return;
-    const restored = { ...defaultPTARules, ...snap.snapshot, config_snapshots: draft.config_snapshots, config_changelog: draft.config_changelog };
+    const restored = normalizePTARules({ ...snap.snapshot, config_snapshots: draft.config_snapshots, config_changelog: draft.config_changelog });
     setDraft(restored as PTARules);
     setHasChanges(true);
     setShowRollbackModal(false);

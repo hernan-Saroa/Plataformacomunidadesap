@@ -1050,9 +1050,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
-  const maxExtLimit = Math.min(ptaRules?.ext_max_horas_enlace || 200, horasAProgramar * maxPctExt);
+  const maxExtGlobalHours = ptaRules?.max_horas_extension_global ?? ptaRules?.ext_max_horas_enlace ?? 200;
+  const maxExtLimit = Math.min(maxExtGlobalHours, horasAProgramar * maxPctExt);
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
   const maxInvLimit = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * maxPctInv);
+  const maxCompLimit = Math.min(ptaRules?.max_horas_complementarias_global ?? 200, horasAProgramar * maxPctComp);
+  const maxAadmLimit = Math.min(ptaRules?.max_horas_aadm_global ?? 200, horasAProgramar * ((ptaRules?.max_pct_aadm ?? 25) / 100));
 
   const hCompOrdinary = useMemo(() =>
     complementarias
@@ -1064,17 +1067,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Excedentes: se comparan las horas reales contra el tope máximo del componente
   const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
   const extExcede = !actividadTotalidad && hExtension > maxExtLimit;
-  const compExcede = !actividadTotalidad && hCompOrdinary > horasAProgramar * maxPctComp;
-  const acadExcede = false;
+  const compExcede = !actividadTotalidad && hCompOrdinary > maxCompLimit;
+  const acadExcede = !actividadTotalidad && hAcademicoAdmin > maxAadmLimit;
 
   // ═══ VALIDACIONES COMPLEMENTARIAS ═════════════════════════════════════
   const compWarnings = useMemo(() => {
     const warns: string[] = [];
-    const maxCompLimit = horasAProgramar * maxPctComp;
-    // Con prorrateo: las horas efectivas de complementarias = hCompOrdinary * pct
-    const compOrdinaryProrr = Math.round(hCompOrdinary * maxPctComp);
-    if (compOrdinaryProrr > maxCompLimit) {
-      warns.push(`Las complementarias ponderadas (${hCompOrdinary}h × ${maxPctComp * 100}% = ${compOrdinaryProrr}h) superan el tope de ${maxCompLimit}h, excluyendo Sindicatos.`);
+    if (hCompOrdinary > maxCompLimit) {
+      warns.push(`Las complementarias (${hCompOrdinary}h) superan el tope de ${maxCompLimit}h, excluyendo Sindicatos.`);
     }
     complementarias.forEach(comp => {
       if (!comp.actividad_id) return;
@@ -1087,7 +1087,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       warns.push(`No puedes asignar horas complementarias porque tienes un acto administrativo 100% (${actividadTotalidad.nombre}).`);
     }
     return warns;
-  }, [hCompOrdinary, maxPctComp, horasAProgramar, actividadTotalidad, complementarias, actComplementarias, ptaRules]);
+  }, [hCompOrdinary, maxPctComp, maxCompLimit, actividadTotalidad, complementarias, actComplementarias, ptaRules]);
 
   // ═══ VALIDACIONES ACADÉMICO ADMINISTRATIVAS ═══════════════════════════
   const acadWarnings = useMemo(() => {
@@ -1102,8 +1102,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         warns.push(`La actividad "${a.nombre}" requiere obligatoriamente el Número de Acto Administrativo o Comunicación Oficial en el soporte.`);
       }
     });
+    if (!actividadTotalidad && hAcademicoAdmin > maxAadmLimit) {
+      warns.push(`Las actividades académico-administrativas (${hAcademicoAdmin}h) superan el tope global permitido (${maxAadmLimit}h).`);
+    }
     return warns;
-  }, [academicoAdmin, actAcadAdmin, ptaRules, horasAProgramar]);
+  }, [academicoAdmin, actAcadAdmin, ptaRules, horasAProgramar, actividadTotalidad, hAcademicoAdmin, maxAadmLimit]);
 
   // ═══ VALIDACIONES EXTENSIÓN ═══════════════════════════════════════════
   const extWarnings = useMemo(() => {
@@ -1361,7 +1364,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     setExtActividades(prev => prev.map(e => {
       if (e.id !== id) return e;
       
-      const maxExtLimit = Math.min(ptaRules?.ext_max_horas_enlace || 200, horasAProgramar * (ptaRules?.max_pct_extension ? (ptaRules.max_pct_extension / 100) : 0.25));
       const otherSum = prev.filter(x => x.id !== id).reduce((sum, x) => sum + (x.horas || 0), 0);
       const cupoExt = Math.max(0, maxExtLimit - otherSum);
       // El tope del PTA total es informativo (ya hay advertencia "Excede").
@@ -1518,7 +1520,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const cat = actComplementarias.find(ac => ac.id === value);
         if (cat) {
           const isSindicato = String(cat.nombre).toUpperCase().includes('SINDICATO');
-          const maxCompLimit = horasAProgramar * (ptaRules?.max_pct_complementarias ? (ptaRules.max_pct_complementarias / 100) : 0.25);
           const otherOrdinarySum = prev
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
             .reduce((sum, x) => sum + (x.horas || 0), 0);
@@ -1542,7 +1543,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (cat) {
           const constraint = getComplementariaConstraint(cat, ptaRules);
           const isSindicato = String(cat.nombre).toUpperCase().includes('SINDICATO');
-          const maxCompLimit = horasAProgramar * (ptaRules?.max_pct_complementarias ? (ptaRules.max_pct_complementarias / 100) : 0.25);
           const otherOrdinarySum = prev
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
             .reduce((sum, x) => sum + (x.horas || 0), 0);
@@ -1661,6 +1661,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return true;
   }, [asignaturas, defaultTerritorial]);
 
+  const validarComposicionParaEnvio = useCallback(() => {
+    const tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+    if (tieneTotalidad) return true;
+
+    if (hComplementarias <= 0) {
+      toast.error('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
+      setActiveSection('complementarias');
+      return false;
+    }
+
+    if (hInvestigacion <= 0 && hExtension <= 0) {
+      toast.error('El PTA debe incluir al menos una función misional adicional: Investigación o Extensión.');
+      setActiveSection('investigacion');
+      return false;
+    }
+
+    return true;
+  }, [academicoAdmin, hComplementarias, hInvestigacion, hExtension]);
+
   const handleSave = async (enviar = false, silent = false) => {
     setSaving(true);
     savingRef.current = true;
@@ -1680,6 +1699,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     // Validación: al menos una asignatura con mínimo 3 créditos
     if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
+      setSaving(false);
+      return;
+    }
+
+    if (enviar && !validarComposicionParaEnvio()) {
       setSaving(false);
       return;
     }
@@ -1897,6 +1921,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         return false;
       }
     }
+    if (!validarComposicionParaEnvio()) {
+      return false;
+    }
     if (totalHoras > horasAProgramar) {
       toast.error(`Excedes el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
       return false;
@@ -1926,7 +1953,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
     
     return true;
-  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio]);
+  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -3304,7 +3331,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── EXTENSIÓN (6 subsecciones) ─── */}
             {!actividadTotalidad && hasDocencia && activeVisibleSection === 'extension' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h — ${ptaRules?.max_pct_extension || 25}% o ${ptaRules?.ext_max_horas_enlace || 200}h global)`}
+                <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h — ${ptaRules?.max_pct_extension || 25}% o ${maxExtGlobalHours}h global)`}
                   color={PTA_COLORS.EXTENSION} icon={Globe} excede={extExcede} />
 
                 {extWarnings.length > 0 && (
@@ -3566,11 +3593,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── COMPLEMENTARIAS ─── */}
             {!actividadTotalidad && hasDocencia && activeVisibleSection === 'complementarias' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Actividades Complementarias" subtitle={`${hComplementarias}h programadas (máx ${ptaRules?.max_pct_complementarias || 25}% = ${horasAProgramar * ((ptaRules?.max_pct_complementarias || 25) / 100)}h, máx 17 act.)`}
+                <SectionHeader title="Actividades Complementarias" subtitle={`${hComplementarias}h programadas (máx ${maxCompLimit}h — ${ptaRules?.max_pct_complementarias || 25}% o ${ptaRules?.max_horas_complementarias_global ?? 200}h global, máx 17 act.)`}
                   color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} excede={compExcede}
                   action={(() => {
                     if (!isEditable || complementarias.length >= 17) return undefined;
-                    const maxCompLimit = horasAProgramar * ((ptaRules?.max_pct_complementarias || 25) / 100);
                     const cupoComp = Math.max(0, maxCompLimit - hComplementarias);
                     // Solo ocultar si se alcanzó el tope de complementarias; excedente total es sólo informativo.
                     if (cupoComp <= 0) return undefined;
@@ -3613,7 +3639,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     .filter(a => {
                                       const isSindicato = String(a.nombre).toUpperCase().includes('SINDICATO');
                                       const optionConstraint = getComplementariaConstraint(a, ptaRules);
-                                      const maxCompLimit = horasAProgramar * (ptaRules?.max_pct_complementarias ? (ptaRules.max_pct_complementarias / 100) : 0.25);
                                       const otherOrdinarySum = complementarias
                                         .filter(x => x.id !== comp.id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
                                         .reduce((sum, x) => sum + (x.horas || 0), 0);

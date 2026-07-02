@@ -332,6 +332,40 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
           </p>
         </div>
 
+        <div className={`rounded-2xl border p-4 flex flex-col lg:flex-row lg:items-center gap-4 ${
+          draft.comp_anexo1_validado
+            ? 'bg-emerald-50 border-emerald-200'
+            : 'bg-amber-50 border-amber-200'
+        }`}>
+          <div className="flex items-start gap-3 flex-1">
+            <Info className={`w-5 h-5 mt-0.5 ${draft.comp_anexo1_validado ? 'text-emerald-600' : 'text-amber-600'}`} />
+            <div>
+              <h3 className={`text-sm font-black ${draft.comp_anexo1_validado ? 'text-emerald-900' : 'text-amber-900'}`}>
+                Validacion contra Anexo 1
+              </h3>
+              <p className={`text-xs leading-relaxed ${draft.comp_anexo1_validado ? 'text-emerald-800' : 'text-amber-800'}`}>
+                La Circular referencia el Anexo 1 para confirmar el detalle de horas de Complementarias. El sistema conserva los valores actuales, pero este marcador deja trazabilidad de si ya fueron cotejados contra ese anexo.
+              </p>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-700 shrink-0 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!draft.comp_anexo1_validado}
+              onChange={e => handleChange('comp_anexo1_validado', e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300"
+            />
+            Catalogo cotejado
+          </label>
+          <input
+            type="text"
+            value={draft.comp_anexo1_fuente || ''}
+            onChange={e => handleChange('comp_anexo1_fuente', e.target.value)}
+            placeholder="Fuente/version del Anexo 1"
+            className="w-full lg:w-72 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-500/20 outline-none"
+          />
+        </div>
+
         <div className="space-y-4">
           {/* ── Tope Global — accordion React-controlled ── */}
           <div className="border border-slate-200 rounded-2xl bg-white shadow-sm">

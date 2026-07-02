@@ -402,7 +402,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
             </button>
             {open1 && (
               <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-blue-50/10">
-                {renderInputRow("ext_max_horas_enlace", "Tope Global Extensión (Horas)", "Límite máximo de horas para el Enlace de extensión. Los topes por actividad se configuran abajo en cada sección.", "h")}
+                {renderInputRow("max_horas_extension_global", "Tope Global Extensión (Horas)", "Límite máximo global de horas de extensión. Este valor gobierna el formulario y la validación backend; el alias anterior se sincroniza automáticamente.", "h")}
                 {renderInputRow("max_pct_extension", "Máximo % Extensión", "Límite porcentual sobre el PTA total (Circular §3).", "%")}
               </div>
             )}

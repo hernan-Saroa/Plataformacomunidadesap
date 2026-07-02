@@ -132,6 +132,48 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   academicas_admin: 'REVISION_DOCENTE_N3',
 };
 
+type ExtensionCatalogActivity = {
+  id: string;
+  nombre: string;
+  items?: Array<{ nombre: string; tipo?: string; horas: number; min?: number }>;
+  max_horas?: number;
+  min_horas?: number;
+};
+
+const EXTENSION_ACTIVITY_COMPLETIONS: Record<string, ExtensionCatalogActivity[]> = {
+  laboratorio_innovacion: [
+    { id: 'LAB_01', nombre: 'Componente Fijo — Espacios de participación y representación', max_horas: 100, items: [{ nombre: 'Participación, representación y apoyo al Laboratorio', tipo: 'hasta', horas: 100 }] },
+    { id: 'LAB_02', nombre: 'Componente Fijo — Aspectos administrativos y gestión', max_horas: 120, items: [{ nombre: 'Coordinación, planeación, seguimiento y control del Laboratorio', tipo: 'hasta', horas: 120 }] },
+    { id: 'LAB_03', nombre: 'Componente Variable — Elaborar documentos técnicos en el marco de las iniciativas', max_horas: 80, items: [{ nombre: 'Documento técnico académico elaborado', tipo: 'hasta', horas: 80 }] },
+    { id: 'LAB_04', nombre: 'Componente Variable — Preparar y compilar documentos técnicos para publicación', max_horas: 40, items: [{ nombre: 'Documento técnico preparado o compilado', tipo: 'hasta', horas: 40 }] },
+    { id: 'LAB_05', nombre: 'Componente Variable — Elaborar documentos soporte de ejecución de iniciativas', max_horas: 80, items: [{ nombre: 'Documento soporte de ejecución', tipo: 'hasta', horas: 80 }] },
+    { id: 'LAB_06', nombre: 'Componente Variable — Diseñar, ejecutar y/o liderar iniciativas innovadoras', max_horas: 120, items: [{ nombre: 'Informe académico de ejecución de la iniciativa', tipo: 'hasta', horas: 120 }] },
+    { id: 'LAB_07', nombre: 'Componente Variable — Ejecutar trabajo de campo', max_horas: 40, items: [{ nombre: 'Informe ejecutivo del trabajo de campo', tipo: 'hasta', horas: 40 }] },
+    { id: 'LAB_08', nombre: 'Componente Variable — Acompañamiento en planeación de eventos', max_horas: 20, items: [{ nombre: 'Acompañamiento y planeación de eventos', tipo: 'hasta', horas: 20 }] },
+    { id: 'LAB_09', nombre: 'Componente Variable — Acompañamiento en trabajo de campo', max_horas: 40, items: [{ nombre: 'Acompañamiento y planeación del trabajo de campo', tipo: 'hasta', horas: 40 }] },
+    { id: 'LAB_10', nombre: 'Componente Variable — Representar a la ESAP en espacios consultivos', max_horas: 20, items: [{ nombre: 'Representación institucional en espacios consultivos', tipo: 'hasta', horas: 20 }] },
+    { id: 'LAB_11', nombre: 'Componente Variable — Charlas y conferencias (formación)', max_horas: 20, items: [{ nombre: 'Charlas, conferencias o paneles de formación', tipo: 'hasta', horas: 20 }] },
+    { id: 'LAB_12', nombre: 'Componente Variable — Coordinar enlace de capacitación en temáticas del Lab.', max_horas: 60, items: [{ nombre: 'Coordinación y enlace de iniciativas de capacitación', tipo: 'hasta', horas: 60 }] },
+    { id: 'LAB_13', nombre: 'Componente Variable — Diseño de estrategias de gestión social del conocimiento', max_horas: 60, items: [{ nombre: 'Documento de estrategia e informe de gestión', tipo: 'hasta', horas: 60 }] },
+  ],
+  investigacion_aplicada: [
+    { id: 'INV_AP_01', nombre: 'Documentos técnicos (informe, análisis temático)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Documento técnico', tipo: 'intervalo', min: 40, horas: 60 }] },
+    { id: 'INV_AP_02', nombre: 'Plan de Trabajo de Investigación Aplicada', min_horas: 2, max_horas: 6, items: [{ nombre: 'Plan de trabajo', tipo: 'intervalo', min: 2, horas: 6 }] },
+    { id: 'INV_AP_03', nombre: 'Productos de Generación de Nuevo Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de generación de nuevo conocimiento', tipo: 'intervalo', min: 40, horas: 60 }] },
+    { id: 'INV_AP_04', nombre: 'Productos de Desarrollo Tecnológico e Innovación (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de desarrollo tecnológico e innovación', tipo: 'intervalo', min: 40, horas: 60 }] },
+    { id: 'INV_AP_05', nombre: 'Productos de Apropiación Social del Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de apropiación social del conocimiento', tipo: 'intervalo', min: 40, horas: 60 }] },
+    { id: 'INV_AP_06', nombre: 'Productos de Formación de Recurso Humano para CTeI (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de formación de recurso humano para CTeI', tipo: 'intervalo', min: 40, horas: 60 }] },
+    { id: 'INV_AP_07', nombre: 'Asistencia a eventos académicos / representación Grupo Inv. Aplicada', max_horas: 8, items: [{ nombre: 'Asistencia o representación académica', tipo: 'hasta', horas: 8 }] },
+    { id: 'INV_AP_08', nombre: 'Procesos de evaluación de desempeño y productos', max_horas: 4, items: [{ nombre: 'Evaluación de desempeño o productos generados', tipo: 'hasta', horas: 4 }] },
+  ],
+  alto_gobierno: [
+    { id: 'EAG_01', nombre: 'Coaching directivo', min_horas: 80, max_horas: 200, items: [{ nombre: 'Coaching directivo', tipo: 'intervalo', min: 80, horas: 200 }] },
+    { id: 'EAG_02', nombre: 'Formación estratégica a la alta gerencia', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación estratégica', tipo: 'intervalo', min: 80, horas: 200 }] },
+    { id: 'EAG_03', nombre: 'Gestión del conocimiento', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación en gestión del conocimiento', tipo: 'intervalo', min: 80, horas: 200 }] },
+    { id: 'EAG_04', nombre: 'Desarrollo de contenidos', min_horas: 40, max_horas: 120, items: [{ nombre: 'Diseño y desarrollo de contenidos', tipo: 'intervalo', min: 40, horas: 120 }] },
+  ],
+};
+
 function isRoleApprovalComponent(componente?: string | null): boolean {
   return ROLE_APPROVAL_KEYS.has(String(componente || ''));
 }
@@ -524,6 +566,204 @@ export class PtaService {
 
     const total = sumDocencia + sumInv + sumExt + sumComp + sumAcad;
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
+  }
+
+  private mergeExtensionActivity(defaultAct: ExtensionCatalogActivity, savedAct?: any): any {
+    if (!savedAct) return defaultAct;
+    const merged = { ...defaultAct, ...savedAct };
+
+    if ((!Array.isArray(savedAct.items) || savedAct.items.length === 0) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
+      merged.items = defaultAct.items;
+    }
+    if ((savedAct.max_horas === undefined || savedAct.max_horas === null) && defaultAct.max_horas !== undefined) {
+      merged.max_horas = defaultAct.max_horas;
+    }
+    if ((savedAct.min_horas === undefined || savedAct.min_horas === null) && defaultAct.min_horas !== undefined) {
+      merged.min_horas = defaultAct.min_horas;
+    }
+
+    return merged;
+  }
+
+  private normalizeExtensionActivities(raw: any): Record<string, any[]> {
+    const result: Record<string, any[]> = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+
+    for (const [sectionKey, defaults] of Object.entries(EXTENSION_ACTIVITY_COMPLETIONS)) {
+      const savedActivities = Array.isArray(result[sectionKey]) ? result[sectionKey] : [];
+      const savedById = new Map(savedActivities.map((act: any) => [act?.id, act]));
+      const defaultIds = new Set(defaults.map(act => act.id));
+
+      result[sectionKey] = [
+        ...defaults.map(defaultAct => this.mergeExtensionActivity(defaultAct, savedById.get(defaultAct.id))),
+        ...savedActivities.filter((act: any) => !defaultIds.has(act?.id)),
+      ];
+    }
+
+    return result;
+  }
+
+  private normalizePtaRules(rules: any): any {
+    if (!rules || typeof rules !== 'object') return rules;
+    const maxExtensionGlobal = Number(rules.max_horas_extension_global ?? rules.ext_max_horas_enlace ?? 200);
+    const normalized = {
+      ...rules,
+      max_horas_extension_global: Number.isFinite(maxExtensionGlobal) ? maxExtensionGlobal : 200,
+      ext_max_horas_enlace: Number.isFinite(maxExtensionGlobal) ? maxExtensionGlobal : 200,
+      comp_anexo1_validado: Boolean(rules.comp_anexo1_validado ?? false),
+      comp_anexo1_fuente: String(rules.comp_anexo1_fuente || 'Pendiente de cotejo contra Anexo 1'),
+    };
+
+    if (rules.ext_actividades === undefined || rules.ext_actividades === null) return normalized;
+    return {
+      ...normalized,
+      ext_actividades: this.normalizeExtensionActivities(rules.ext_actividades),
+    };
+  }
+
+  private getRuleNumber(rules: any, key: string, fallback: number): number {
+    const value = Number(rules?.[key]);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  private getInvestigacionLimit(body: any, rules: any, horasAProgramar: number): number {
+    const rolRaw = coalesceString(body?.investigacion_proyecto?.rol);
+    if (!rolRaw) {
+      const maxHoras = this.getRuleNumber(rules, 'max_horas_inv_fomento', 200);
+      const maxPct = this.getRuleNumber(rules, 'max_pct_inv_fomento', 25) / 100;
+      return Math.min(maxHoras, Math.round(horasAProgramar * maxPct));
+    }
+
+    const rolKey = normalizeEstadoFilter(rolRaw);
+    const configuredRoles = Array.isArray(rules?.inv_roles) ? rules.inv_roles : [];
+    const configured = configuredRoles.find((r: any) => {
+      const nameKey = normalizeEstadoFilter(r?.nombre);
+      return nameKey === rolKey || nameKey.includes(rolKey) || rolKey.includes(nameKey);
+    });
+
+    let maxRol = Number(configured?.horas_max);
+    if (!Number.isFinite(maxRol) || maxRol <= 0) {
+      if (rolKey.includes('COINVESTIGADOR')) maxRol = this.getRuleNumber(rules, 'max_horas_inv_coinvestigador', 300);
+      else if (rolKey.includes('ASISTENTE')) maxRol = this.getRuleNumber(rules, 'max_horas_inv_asistente', 200);
+      else maxRol = this.getRuleNumber(rules, 'max_horas_inv_lider', 400);
+    }
+
+    let rolLimit = maxRol;
+    const tipo = normalizeEstadoFilter(body?.tipo_vinculacion ?? body?.tipoVinculacion);
+    if (tipo !== 'CARRERA_009') {
+      const base800 = this.getRuleNumber(rules, 'horas_base_carrera_003', 800);
+      rolLimit = Math.round(maxRol * (horasAProgramar / base800));
+    }
+
+    return Math.min(this.getRuleNumber(rules, 'max_horas_investigacion_global', 400), rolLimit);
+  }
+
+  private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
+    const tieneTotalidad = Array.isArray(body?.academico_admin) &&
+      body.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+
+    if (!tieneTotalidad && horas.total === 0) {
+      throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
+    }
+
+    if (horas.total > horasAProgramar) {
+      throw new BadRequestException(`El PTA excede las horas programables: ${horas.total}h / ${horasAProgramar}h.`);
+    }
+
+    if (tieneTotalidad) return;
+
+    const asignaturas = Array.isArray(body?.asignaturas)
+      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
+      : [];
+
+    if (asignaturas.length === 0) {
+      throw new BadRequestException('Debe incluir al menos una asignatura valida antes de enviar el PTA a aprobacion.');
+    }
+
+    const minCreditos = this.getRuleNumber(rules, 'min_creditos_docencia', 3);
+    if (!asignaturas.some((a: any) => Number(a?.creditos) >= minCreditos)) {
+      throw new BadRequestException(`Debe incluir al menos una asignatura de minimo ${minCreditos} creditos antes de enviar el PTA.`);
+    }
+
+    for (const [idx, asig] of asignaturas.entries()) {
+      const label = asig.asignatura_nombre || `Asignatura ${idx + 1}`;
+      if (!asig.programa_id) {
+        throw new BadRequestException(`Complete el programa de ${label} antes de enviar el PTA.`);
+      }
+      if (!asig.fecha_inicio || !asig.fecha_fin) {
+        throw new BadRequestException(`Complete las fechas de inicio y fin de ${label} antes de enviar el PTA.`);
+      }
+      const inicio = new Date(`${asig.fecha_inicio}T00:00:00`);
+      const fin = new Date(`${asig.fecha_fin}T00:00:00`);
+      if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime()) || fin < inicio) {
+        throw new BadRequestException(`El rango de fechas de ${label} no es valido.`);
+      }
+      const horasAsignatura = Number(asig.total_horas ?? asig.horas);
+      if (!Number.isFinite(horasAsignatura) || horasAsignatura <= 0) {
+        throw new BadRequestException(`La asignatura ${label} no tiene horas calculadas.`);
+      }
+    }
+
+    const tipo = normalizeEstadoFilter(body?.tipo_vinculacion ?? body?.tipoVinculacion);
+    if (['OCASIONAL', 'VISITANTE', 'ESPECIAL'].some(t => tipo.includes(t))) {
+      const minDocencia = horasAProgramar * (this.getRuleNumber(rules, 'min_pct_docencia_no_vinculados', 50) / 100);
+      if (horas.sumDocencia < minDocencia) {
+        throw new BadRequestException(`Los docentes no vinculados deben dedicar al menos ${minDocencia}h a docencia (${rules?.min_pct_docencia_no_vinculados ?? 50}% del PTA).`);
+      }
+    }
+
+    if (horas.sumComp <= 0) {
+      throw new BadRequestException('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
+    }
+
+    if (horas.sumInv <= 0 && horas.sumExt <= 0) {
+      throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
+    }
+
+    const maxInv = this.getInvestigacionLimit(body, rules, horasAProgramar);
+    if (horas.sumInv > maxInv) {
+      throw new BadRequestException(`Investigacion supera el tope permitido: ${horas.sumInv}h / ${maxInv}h.`);
+    }
+
+    const maxExt = Math.min(
+      this.getRuleNumber(rules, 'max_horas_extension_global', this.getRuleNumber(rules, 'ext_max_horas_enlace', 200)),
+      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_extension', 25) / 100),
+    );
+    if (horas.sumExt > maxExt) {
+      throw new BadRequestException(`Extension supera el tope permitido: ${horas.sumExt}h / ${maxExt}h.`);
+    }
+
+    const complementarias = Array.isArray(body?.complementarias) ? body.complementarias : [];
+    const horasComplementariasOrdinarias = complementarias
+      .filter((a: any) => !String(a?.nombre || '').toUpperCase().includes('SINDICATO'))
+      .reduce((sum: number, a: any) => sum + (Number(a?.horas) || 0), 0);
+    const maxComp = Math.min(
+      this.getRuleNumber(rules, 'max_horas_complementarias_global', 200),
+      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
+    );
+    if (horasComplementariasOrdinarias > maxComp) {
+      throw new BadRequestException(`Complementarias supera el tope permitido: ${horasComplementariasOrdinarias}h / ${maxComp}h.`);
+    }
+
+    const maxAadm = Math.min(
+      this.getRuleNumber(rules, 'max_horas_aadm_global', 200),
+      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_aadm', 25) / 100),
+    );
+    if (horas.sumAcad > maxAadm) {
+      throw new BadRequestException(`Actividades academico-administrativas superan el tope permitido: ${horas.sumAcad}h / ${maxAadm}h.`);
+    }
+
+    const invActs = Array.isArray(body?.investigacion_actividades) ? body.investigacion_actividades : [];
+    const aplicaCruceInvExt = invActs.some((a: any) => {
+      const nombre = normalizeEstadoFilter(a?.nombre);
+      return nombre.includes('ENLACE_TERRITORIAL') || nombre.includes('DIRECTOR_DE_GRUPO') || nombre.includes('DIRECTOR_GRUPO');
+    });
+    if (aplicaCruceInvExt) {
+      const maxCruzado = horasAProgramar * (this.getRuleNumber(rules, 'max_pct_inv_ext_combinado', 50) / 100);
+      const sumaInvExt = horas.sumInv + horas.sumExt;
+      if (sumaInvExt > maxCruzado) {
+        throw new BadRequestException(`Investigacion + Extension supera el tope cruzado permitido: ${sumaInvExt}h / ${maxCruzado}h.`);
+      }
+    }
   }
 
   private toPtaDto(entity: PlanTrabajoAcademicoEntity, extMult: Record<string, number> = { capacitacion: 2 }) {
@@ -1060,6 +1300,10 @@ export class PtaService {
         semanas_vinculacion: input?.semanas_vinculacion,
       }));
 
+    if (isPendingRoleApprovalState(estado)) {
+      this.validatePtaForSubmission(input, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
+    }
+
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
       docenteId,
       periodo,
@@ -1359,6 +1603,20 @@ export class PtaService {
           }
         }
       }
+    }
+
+    if (isPendingRoleApprovalState(nuevoEstado)) {
+      const ds = existing.datosEstructurados as any || {};
+      const extMult = await this.getExtMultiplicadores();
+      const horas = this.computeHorasTotales(ds, extMult);
+      const horasAProgramar =
+        Number((existing as any).horasAsignables ?? ds?.horas_a_programar ?? ds?.horasAsignables ?? ds?.horas_asignables) ||
+        (await this.calcHorasProgramables({
+          tipo_vinculacion: ds?.tipo_vinculacion,
+          dedicacion: ds?.dedicacion,
+          semanas_vinculacion: ds?.semanas_vinculacion,
+        }));
+      this.validatePtaForSubmission(ds, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
     }
 
     const estadoFinal = nuevoEstado || existing.estado || 'Borrador';
@@ -1923,7 +2181,7 @@ export class PtaService {
     const keys = ['pta_rules_v2', 'global'];
     for (const key of keys) {
       const row = await this.configuracionRepo.findOne({ where: { id: key } });
-      if (row?.rules != null) return row.rules;
+      if (row?.rules != null) return this.normalizePtaRules(row.rules);
     }
     return null;
   }
@@ -1931,6 +2189,7 @@ export class PtaService {
   async saveConfiguracionPTAGlobal(rules: any, userId?: string) {
     this.extMultCache = null; // invalidar caché de multiplicadores al cambiar la config
     const key = 'pta_rules_v2';
+    rules = this.normalizePtaRules(rules);
 
     // ── R7: Lock check ──────────────────────────────────────────────────
     const existing = await this.configuracionRepo.findOne({ where: { id: key } });
@@ -1942,8 +2201,13 @@ export class PtaService {
     const warnings: string[] = [];
     const NORMATIVE_RANGES: Record<string, { min: number; max: number; label: string }> = {
       max_pct_investigacion: { min: 0, max: 50, label: 'Tope máx. Investigación' },
+      max_horas_investigacion_global: { min: 0, max: 400, label: 'Tope global Investigación' },
       max_pct_extension: { min: 0, max: 25, label: 'Tope máx. Extensión' },
+      max_horas_extension_global: { min: 0, max: 200, label: 'Tope global Extensión' },
       max_pct_complementarias: { min: 0, max: 25, label: 'Tope máx. Complementarias' },
+      max_horas_complementarias_global: { min: 0, max: 200, label: 'Tope global Complementarias' },
+      max_pct_aadm: { min: 0, max: 25, label: 'Tope máx. AADM' },
+      max_horas_aadm_global: { min: 0, max: 200, label: 'Tope global AADM' },
       max_pct_inv_ext_combinado: { min: 0, max: 50, label: 'Tope cruzado Inv+Ext' },
       horas_base_carrera_009: { min: 600, max: 800, label: 'Horas base Acuerdo 009' },
       horas_base_carrera_003: { min: 600, max: 900, label: 'Horas base Acuerdo 003' },
@@ -1959,13 +2223,27 @@ export class PtaService {
     };
 
     if (rules && typeof rules === 'object') {
+      const rangeErrors: string[] = [];
       for (const [field, range] of Object.entries(NORMATIVE_RANGES)) {
         const val = rules[field];
-        if (val !== undefined && val !== null && typeof val === 'number') {
-          if (val < range.min || val > range.max) {
-            warnings.push(`${range.label} (${field}): valor ${val} fuera del rango normativo [${range.min}–${range.max}]`);
+        if (val !== undefined && val !== null && val !== '') {
+          const numericVal = Number(val);
+          if (Number.isFinite(numericVal) && (numericVal < range.min || numericVal > range.max)) {
+            rangeErrors.push(`${range.label} (${field}): valor ${numericVal} fuera del rango normativo [${range.min}-${range.max}]`);
           }
         }
+      }
+
+      const circularVersion = normalizeEstadoFilter(rules?.circular_version);
+      const isCircular003 = circularVersion.includes('003') && circularVersion.includes('2025');
+      if (rangeErrors.length > 0) {
+        if (isCircular003) {
+          return {
+            _error: 'Configuracion Circular 003/2025 fuera de rango. No se guardaron los cambios.',
+            _warnings: rangeErrors,
+          };
+        }
+        warnings.push(...rangeErrors);
       }
 
       // ── R8: Cross-validation ────────────────────────────────────────────
@@ -2623,10 +2901,10 @@ export class PtaService {
   async getCatalogoActividadesExtension() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
     if (rules?.ext_actividades && typeof rules.ext_actividades === 'object' && Object.keys(rules.ext_actividades).length > 0) {
-      return rules.ext_actividades;
+      return this.normalizeExtensionActivities(rules.ext_actividades);
     }
     // Fallback: actividades por defecto idénticas a defaultPTARules
-    return {
+    return this.normalizeExtensionActivities({
       capacitacion: [
         { id: 'CAP_01', nombre: 'Orientación de Talleres', max_horas: 16 },
         { id: 'CAP_02', nombre: 'Orientación de Seminarios', max_horas: 32 },
@@ -2803,7 +3081,7 @@ export class PtaService {
         { id: 'EAG_03', nombre: 'Gestión del conocimiento', items: [] },
         { id: 'EAG_04', nombre: 'Desarrollo de contenidos', items: [] },
       ],
-    };
+    });
   }
 
   async getCatalogoSeccionesExtension() {
