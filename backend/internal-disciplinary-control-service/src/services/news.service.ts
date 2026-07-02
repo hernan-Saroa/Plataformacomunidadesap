@@ -925,16 +925,28 @@ export class NewsService {
       hechos: string;
       conductas?: string[];
       fundamentosLegales?: string[];
+      fechaHechos?: Date | string | null;
+      fechaCaducidad?: Date | string | null;
     },
   ): string {
-    const formatDate = (date: Date | string | undefined): string => {
+    const formatDate = (date: Date | string | undefined | null): string => {
       if (!date) return 'No especificada';
-      return new Date(date).toLocaleDateString('es-CO', {
+      return new Date(date).toLocaleString('es-CO', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: 'America/Bogota',
+      });
+    };
+    const formatDateOnly = (date: Date | string | undefined | null): string => {
+      if (!date) return 'No especificada';
+      return new Date(date).toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'America/Bogota',
       });
     };
 
@@ -962,6 +974,8 @@ export class NewsService {
       hechos: noticia.hechos,
       conductas: noticia.conductas,
       fundamentosLegales: [],
+      fechaHechos: noticia.fechaHechos || null,
+      fechaCaducidad: noticia.fechaCaducidad || null,
     };
 
     return `
@@ -1072,6 +1086,14 @@ export class NewsService {
                 <tr>
                   <td style="font-weight: 600; color: #374151;">Fecha de Recepción:</td>
                   <td style="color: #111827;">${formatDate(datos.fechaRecepcion)}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Fecha de los Hechos:</td>
+                  <td style="color: #111827;">${formatDateOnly(datos.fechaHechos)}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Fecha de Caducidad:</td>
+                  <td style="color: #111827;">${formatDateOnly(datos.fechaCaducidad)}</td>
                 </tr>
               </table>
             </td>
