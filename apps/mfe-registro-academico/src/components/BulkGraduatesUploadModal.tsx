@@ -268,10 +268,20 @@ const downloadBlob = (blob: Blob, fileName: string) => {
   window.URL.revokeObjectURL(url);
 };
 
-const uniqueSorted = (values: string[]) =>
-  Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b, 'es'),
-  );
+const normalizeDisplayValue = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+const uniqueSorted = (values: string[]) => {
+  const byKey = new Map<string, string>();
+
+  values.forEach((value) => {
+    const cleaned = normalizeDisplayValue(value);
+    const key = normalizeKey(cleaned);
+    if (!key || byKey.has(key)) return;
+    byKey.set(key, cleaned);
+  });
+
+  return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, 'es'));
+};
 
 const getTodayIso = () => {
   const now = new Date();
@@ -407,7 +417,7 @@ const buildCatalogs = (
   uniqueSorted(programOptions).forEach((program) => programsByKey.set(normalizeKey(program), program));
 
   const territorialByKey = new Map<string, string>();
-  uniqueSorted(territorialOptions).forEach((territorial) =>
+  territorialOptions.map(normalizeDisplayValue).filter(Boolean).forEach((territorial) =>
     territorialByKey.set(normalizeKey(territorial), territorial),
   );
 
@@ -509,7 +519,7 @@ const buildLocationGroups = (
       territorial: row.territorial,
       sedes: [],
     };
-    if (row.sede && !current.sedes.some((sede) => normalizeKey(sede) === normalizeKey(row.sede))) {
+    if (row.sede) {
       current.sedes.push(row.sede);
     }
     groupsByTerritorial.set(key, current);
@@ -518,7 +528,7 @@ const buildLocationGroups = (
   return Array.from(groupsByTerritorial.values())
     .map((group) => ({
       ...group,
-      sedes: uniqueSorted(group.sedes),
+      sedes: group.sedes,
     }))
     .sort((a, b) => a.territorial.localeCompare(b.territorial, 'es'));
 };
@@ -551,7 +561,7 @@ const buildParametersRows = (
       'Para sedes, copie siempre TERRITORIAL y SEDE desde la misma fila del bloque TERRITORIALES_Y_SEDES_DETALLE.',
     ],
     [
-      `Periodos fuente: PROGRAMAS ACADEMICOS = ${programsPeriod || 'No disponible'} | ESTRUCTURA ORGANIZACIONAL = ${structurePeriod || 'No disponible'}.`,
+      `Fuentes: TITULOS = ${programsPeriod || 'No disponible'} | ESTRUCTURA ORGANIZACIONAL = ${structurePeriod || 'No disponible'}.`,
     ],
     ['RESUMEN DE CATALOGOS'],
     ['CATALOGO', 'CANTIDAD', 'COLUMNA EN GRADUADOS', 'COMO USARLO', 'OBSERVACION'],
@@ -560,7 +570,7 @@ const buildParametersRows = (
       programs.length,
       'TITULO',
       'Copiar un valor del bloque TITULOS_VALIDOS.',
-      'Debe coincidir exactamente con un programa disponible en la plataforma.',
+      'Debe coincidir exactamente con un título o programa proveniente de graduados integrados.',
     ],
     [
       'Territoriales',
@@ -891,15 +901,12 @@ export function BulkGraduatesUploadModal({
   const [importResult, setImportResult] = useState<BulkCreateGraduadosResponse | null>(null);
 
   const validSedeTerritorialOptions = useMemo(() => {
-    const byPair = new Map<string, SedeTerritorialOption>();
-    sedeTerritorialOptions.forEach((option) => {
-      const territorial = option.territorial.trim();
-      const sede = option.sede.trim();
-      const key = `${normalizeKey(territorial)}::${normalizeKey(sede)}`;
-      if (!territorial || !sede || byPair.has(key)) return;
-      byPair.set(key, { territorial, sede });
-    });
-    return Array.from(byPair.values());
+    return sedeTerritorialOptions
+      .map((option) => ({
+        territorial: normalizeDisplayValue(option.territorial),
+        sede: normalizeDisplayValue(option.sede),
+      }))
+      .filter((option) => option.territorial && option.sede);
   }, [sedeTerritorialOptions]);
 
   const catalogs = useMemo(
@@ -940,7 +947,7 @@ export function BulkGraduatesUploadModal({
     if (!catalogsReady) {
       toast.error('No se puede generar la plantilla', {
         description:
-          'Los periodos seleccionados deben tener títulos y relaciones territorial-sede disponibles.',
+          'Los catálogos de origen deben tener títulos integrados y relaciones territorial-sede disponibles.',
       });
       return;
     }
@@ -1020,8 +1027,10 @@ export function BulkGraduatesUploadModal({
       state: 'veryHidden',
     });
     const programs = uniqueSorted(programOptions);
-    const territorials = uniqueSorted(territorialOptions);
-    const sedes = uniqueSorted(validSedeTerritorialOptions.map((option) => option.sede));
+    const territorials = territorialOptions.map(normalizeDisplayValue).filter(Boolean);
+    const sedes = validSedeTerritorialOptions
+      .map((option) => normalizeDisplayValue(option.sede))
+      .filter(Boolean);
     listsSheet.addRow(['TITULOS', 'TERRITORIALES', 'SEDES']);
     const maxCatalogLength = Math.max(programs.length, territorials.length, sedes.length);
     for (let index = 0; index < maxCatalogLength; index += 1) {
@@ -1283,11 +1292,11 @@ export function BulkGraduatesUploadModal({
               <div className="mt-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
                 Catálogos disponibles: {programOptions.length} títulos, {territorialOptions.length} territoriales y {validSedeTerritorialOptions.length} relaciones territorial-sede.
                 <br />
-                Periodos: programas <strong>{programsPeriod || 'no disponible'}</strong> · estructura <strong>{structurePeriod || 'no disponible'}</strong>.
+                Fuentes: títulos <strong>{programsPeriod || 'no disponible'}</strong> · estructura <strong>{structurePeriod || 'no disponible'}</strong>.
               </div>
               {!catalogsReady && (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                  No se puede descargar ni validar una carga porque faltan: <strong>{missingCatalogs.join(', ')}</strong>. Revisa los períodos seleccionados en los módulos de origen.
+                  No se puede descargar ni validar una carga porque faltan: <strong>{missingCatalogs.join(', ')}</strong>. Revisa los catálogos en los módulos de origen.
                 </div>
               )}
             </div>
