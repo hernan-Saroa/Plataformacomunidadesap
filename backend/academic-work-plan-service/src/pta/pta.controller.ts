@@ -13,6 +13,7 @@ import {
   Req,
   UploadedFile,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -22,6 +23,7 @@ import { extname, join } from 'path';
 import * as fs from 'node:fs';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
+import { PtaAuthGuard } from './auth/pta-auth.guard';
 
 const ensureDir = (dir: string) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -272,8 +274,10 @@ export class PtaController {
   }
 
   @Post(':ptaId/estado')
-  async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any) {
-    const result = await this.ptaService.updatePTAStatus(ptaId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // Las acciones de aprobación/devolución se autorizan server-side con req.ptaAuth.
+    const result = await this.ptaService.updatePTAStatus(ptaId, body || {}, req.ptaAuth);
     return { success: true, ...result };
   }
 
@@ -352,14 +356,18 @@ export class PtaController {
   }
 
   @Post(':ptaId/enviar-aprobacion')
+  @UseGuards(PtaAuthGuard)
   async enviarAprobacion(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // El docente envía su propio PTA a aprobación (estado explícito, sin acción de
+    // aprobador), por lo que no dispara la autorización por nivel; el guard solo
+    // garantiza que exista una sesión válida.
     const result = await this.ptaService.updatePTAStatus(ptaId, {
       ...(body || {}),
       estado: 'Pendiente Jefatura',
-      actorId: body?.actorId || body?.enviado_por || (req.headers['x-user-id'] as string),
+      actorId: body?.actorId || body?.enviado_por || req.ptaAuth?.userId || (req.headers['x-user-id'] as string),
       actorRol: body?.actorRol || 'Docente',
       sistemaOrigen: body?.sistemaOrigen || 'portal',
-    });
+    }, req.ptaAuth);
     return { success: true, ...result };
   }
 
@@ -825,8 +833,11 @@ export class PtaController {
   }
 
   @Post(':ptaId/aprobar-componente')
-  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any) {
-    const data = await this.ptaService.aprobarComponente(ptaId, body);
+  @UseGuards(PtaAuthGuard)
+  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // La autorización real (qué componentes puede aprobar) proviene de req.ptaAuth,
+    // resuelto server-side desde los permisos del usuario. NO se confía en el body.
+    const data = await this.ptaService.aprobarComponente(ptaId, body, req.ptaAuth);
     return { success: true, data };
   }
 }

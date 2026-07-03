@@ -17,6 +17,8 @@ import { UsuarioEntity } from './entities/usuario.entity';
 import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './entities/pta-evento.entity';
 import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
+import type { PtaAuthenticatedUser } from './auth/pta-auth.guard';
+import { COMPONENT_PERMISSION } from './auth/pta-permissions.constants';
 
 type SavePtaInput = Record<string, any>;
 
@@ -1446,6 +1448,7 @@ export class PtaService {
   async updatePTAStatus(
     ptaId: string,
     body: any,
+    auth?: PtaAuthenticatedUser,
   ) {
     const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existing) throw new NotFoundException('PTA no encontrado');
@@ -1453,6 +1456,45 @@ export class PtaService {
     const accion = coalesceString(body?.accion, body?.tipoAccion);
     let nuevoEstado = coalesceString(body?.estado);
     let parallelApprovalResult: any = null;
+
+    // ── Autorización server-side de la aprobación global (vía estado) ───────────
+    // Modelo POR COMPONENTE: la aprobación granular se hace vía aprobar-componente.
+    // La aprobación/devolución GLOBAL del PTA por estado (flujo masivo/por nivel, del
+    // modelo anterior) queda reservada al aprobador integral (superusuario del sistema
+    // o rol con pta.approve.all). Un aprobador por componente debe aprobar cada
+    // componente individualmente. Se ignora cualquier isSuperUser/aprobarTodas del body.
+    // `auth` es undefined en llamadas internas (p.ej. firma OTP), que nunca usan
+    // acción "aprobar"/"devolver".
+    const accionLower = (accion || '').toLowerCase();
+    const esAccionAprobacion = accionLower === 'aprobar' || accionLower === 'devolver';
+    if (esAccionAprobacion) {
+      if (!auth) {
+        throw new ForbiddenException('No autenticado para aprobar/devolver el PTA.');
+      }
+      if (auth.approvesAll) {
+        // Aprobador integral: aprueba/devuelve todos los niveles del PTA.
+        body.isSuperUser = true;
+      } else {
+        if (!auth.allowedComponents || auth.allowedComponents.length === 0) {
+          throw new ForbiddenException('No tiene permisos de aprobación de PTA.');
+        }
+        // Aprobador por componente: nunca aprobación integral. Sólo puede actuar en
+        // los niveles de sus componentes (derivados server-side), no en cualquiera.
+        body.isSuperUser = false;
+        body.aprobarTodas = false;
+        const requested = Number(body?.nivelAprobacion ?? body?.nivel_aprobacion ?? body?.nivel);
+        const validRequested = [1, 2, 3].includes(requested) ? requested : null;
+        if (validRequested && !auth.approvalLevels.includes(validRequested)) {
+          throw new ForbiddenException(
+            `No tiene permiso para ${accionLower === 'aprobar' ? 'aprobar' : 'devolver'} en el nivel ${validRequested}. ` +
+              `Niveles autorizados: ${auth.approvalLevels.join(', ') || 'ninguno'}.`,
+          );
+        }
+        body.nivelAprobacion = validRequested ?? auth.approvalLevels[0];
+        // Fijar la identidad del actor desde el token (integridad de auditoría).
+        if (auth.userId) body.actorId = auth.userId;
+      }
+    }
 
     // Máquina de estados: calcula el siguiente estado según el actual y la acción.
     if (!nuevoEstado && accion) {
@@ -3599,7 +3641,7 @@ export class PtaService {
       .filter((item): item is PtaComponentApprovalEntity => !!item);
   }
 
-  async aprobarComponente(ptaId: string, body: any) {
+  async aprobarComponente(ptaId: string, body: any, auth?: PtaAuthenticatedUser) {
     const componente = coalesceString(body?.componente);
     const estado = coalesceString(body?.estado); // 'aprobado' o 'devuelto'
     if (!componente || !estado) {
@@ -3609,15 +3651,21 @@ export class PtaService {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
     }
 
-    const isSuperUser = body?.isSuperUser === true || body?.is_super_user === true;
-    const componentesAutorizados = Array.isArray(body?.componentesAutorizados)
-      ? body.componentesAutorizados
-      : (Array.isArray(body?.authorizedComponents) ? body.authorizedComponents : null);
-    if (!isSuperUser && componentesAutorizados) {
-      const allowed = new Set(componentesAutorizados.map((item: unknown) => String(item)));
-      if (!allowed.has(componente)) {
-        throw new ForbiddenException('No tiene permisos para aprobar este componente del PTA.');
-      }
+    // ── Autorización server-side ──────────────────────────────────────────────
+    // La autorización se resuelve desde los permisos reales del usuario (auth.ptaAuth,
+    // poblado por PtaAuthGuard a partir de auth.role_permissions), NO desde el body.
+    // Esto impide que un cliente se auto-otorgue permisos enviando isSuperUser=true
+    // o componentesAutorizados manipulados.
+    if (!auth) {
+      // Defensa en profundidad: el guard debería haber poblado esto siempre.
+      throw new ForbiddenException('No autenticado para aprobar componentes del PTA.');
+    }
+    if (!auth.isSuperUser && !auth.allowedComponents.includes(componente as any)) {
+      const permisoRequerido = COMPONENT_PERMISSION[componente as keyof typeof COMPONENT_PERMISSION];
+      throw new ForbiddenException(
+        `No tiene permisos para aprobar el componente "${componente}" del PTA.` +
+          (permisoRequerido ? ` Se requiere el permiso: ${permisoRequerido}.` : ''),
+      );
     }
 
     const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
@@ -3635,9 +3683,11 @@ export class PtaService {
     }
 
     approval.estado = estado;
-    approval.aprobadorId = coalesceString(body?.aprobadorId, body?.aprobador_id);
-    approval.aprobadorNombre = coalesceString(body?.aprobadorNombre, body?.aprobador_nombre);
-    approval.aprobadorRol = coalesceString(body?.aprobadorRol, body?.aprobador_rol);
+    // La identidad del aprobador proviene del token (integridad de auditoría), con
+    // fallback al body para compatibilidad.
+    approval.aprobadorId = auth.userId || coalesceString(body?.aprobadorId, body?.aprobador_id);
+    approval.aprobadorNombre = auth.name || coalesceString(body?.aprobadorNombre, body?.aprobador_nombre);
+    approval.aprobadorRol = coalesceString(body?.aprobadorRol, body?.aprobador_rol) || (auth.roles || []).join(', ') || null;
     approval.comentarios = coalesceString(body?.comentarios, body?.observaciones);
     approval.scope = coalesceString(body?.scope);
     approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);

@@ -42,6 +42,7 @@ import {
   PTA_COMPONENT_KEYS,
   PTA_COMPONENT_LEVELS,
   PTA_COMPONENT_PERMISSION,
+  PTA_APPROVE_ALL_PERMISSION,
   PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   componentKeysForApprovalLevel,
@@ -637,19 +638,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // se mantiene la compatibilidad con el sistema legacy de niveles (nivelAprobacion).
   const { permisos: permisosPta } = usePermisosPTA();
   const { puede: puedePerm } = usePermisosPTAGranulares();
+  const apruebaTodo = useMemo(() => puedePerm(PTA_APPROVE_ALL_PERMISSION), [puedePerm]);
   const tieneAlgunPermisoComponente = useMemo(
-    () => Object.values(COMPONENT_PERMISSION).some(p => puedePerm(p)),
-    [puedePerm],
+    () => apruebaTodo || Object.values(COMPONENT_PERMISSION).some(p => puedePerm(p)),
+    [apruebaTodo, puedePerm],
   );
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
-    if (isSuperUser) return [...PTA_COMPONENT_KEYS];
+    if (isSuperUser || apruebaTodo) return [...PTA_COMPONENT_KEYS];
     const granularKeys = PTA_COMPONENT_KEYS.filter(key => puedePerm(COMPONENT_PERMISSION[key]));
     if (granularKeys.length > 0) return granularKeys;
     const configuredKeys = (permisosPta.componentesAprobables || [])
       .filter((key): key is PTAComponentKey => PTA_COMPONENT_KEYS.includes(key as PTAComponentKey));
     if (configuredKeys.length > 0) return configuredKeys;
     return componentKeysForApprovalLevel(nivelAprobacion);
-  }, [isSuperUser, puedePerm, permisosPta.componentesAprobables, nivelAprobacion]);
+  }, [isSuperUser, apruebaTodo, puedePerm, permisosPta.componentesAprobables, nivelAprobacion]);
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
   const shouldHideUnauthorizedComponents = !isSuperUser && visibleComponentKeys.length > 0;
   const componentEditScopeLabel = useMemo(() => {
@@ -667,7 +669,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return visibleComponentKeys.map(key => labels[key] || key).join(', ');
   }, [visibleComponentKeys]);
   const isComponentAuthorized = useCallback((key: string): boolean => {
-    if (isSuperUser) return true;
+    if (isSuperUser || apruebaTodo) return true;
     if (visibleComponentKeySet.size > 0) return visibleComponentKeySet.has(key);
     const perm = COMPONENT_PERMISSION[key];
     if (tieneAlgunPermisoComponente) {
@@ -676,7 +678,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
     // Fallback legacy por nivel (compatibilidad con roles sin permisos granulares).
     return nivelAprobacion === COMPONENT_LEVELS[key];
-  }, [isSuperUser, visibleComponentKeySet, tieneAlgunPermisoComponente, puedePerm, nivelAprobacion]);
+  }, [isSuperUser, apruebaTodo, visibleComponentKeySet, tieneAlgunPermisoComponente, puedePerm, nivelAprobacion]);
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 640);

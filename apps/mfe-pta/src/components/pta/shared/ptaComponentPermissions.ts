@@ -23,6 +23,12 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
 
 export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTAComponentKey[];
 
+/**
+ * Permiso de aprobador integral ("aprueba todo"): habilita la aprobación de todos
+ * los componentes del PTA. Espejo de pta-permissions.constants.ts en el backend.
+ */
+export const PTA_APPROVE_ALL_PERMISSION = 'pta.approve.all';
+
 export const PTA_EXTENSION_COMPONENT_KEYS: PTAComponentKey[] = [
   'ext_capacitacion',
   'ext_procesos',
