@@ -701,18 +701,15 @@ export function TabActuacionesExpediente({
           </h4>
             <div className="flex items-center gap-2">
               {botonesAccion.map((btn, idx) => {
-                const getBtnClasses = (color: string) => {
-                  if (color === '#003DA5') return 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs';
-                  if (color === '#10B981') return 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs';
-                  if (color === '#7C3AED') return 'bg-violet-600 hover:bg-violet-700 text-white shadow-xs';
-                  if (color === '#EF4444') return 'bg-red-600 hover:bg-red-700 text-white shadow-xs';
-                  return 'bg-slate-700 hover:bg-slate-800 text-white shadow-xs';
-                };
                 const isLocked = lockedButtons.includes(idx);
                 return (
                   <Button
                     key={idx}
-                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md' : 'opacity-60 cursor-not-allowed pointer-events-none'} border-none ${getBtnClasses(btn.color)}`}
+                    // El color de fondo y el texto blanco se fuerzan por estilo inline para
+                    // garantizar que el botón siempre sea visible, sin importar el color recibido
+                    // (evita que quede blanco/invisible por conflictos de clases utilitarias).
+                    style={{ backgroundColor: btn.color, color: '#FFFFFF' }}
+                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 border-none shadow-xs transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md hover:brightness-95' : 'opacity-60 cursor-not-allowed pointer-events-none'}`}
                     onClick={() => handleButtonClick(btn, idx)}
                     disabled={isLocked}
                   >

@@ -6,6 +6,7 @@
 import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -39,6 +40,7 @@ export function FormularioRegistrarDecision({
   const [fundamentosJuridicos, setFundamentosJuridicos] = useState('');
   const [responsable, setResponsable] = useState('');
   const [cargoResponsable, setCargoResponsable] = useState('');
+  const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
 
   const tiposDecision = [
     'Fallo de Primera Instancia',
@@ -138,25 +140,33 @@ export function FormularioRegistrarDecision({
     }, 2000);
   };
 
+  const limpiarFormulario = () => {
+    setTipoDecision('');
+    setTipoFallo('');
+    setSancion('');
+    setConsideraciones('');
+    setFundamentosJuridicos('');
+    setResponsable('');
+    setCargoResponsable('');
+  };
+
   const handleCancelar = () => {
+    // Si hay datos ingresados, se pide confirmación con el modal propio de la plataforma
+    // (DialogoConfirmacion) en lugar del confirm() nativo del navegador.
     if (tipoDecision || tipoFallo || consideraciones) {
-      if (confirm('⚠️ ¿Estás seguro de cancelar? Se perderán los datos ingresados.')) {
-        // Limpiar formulario
-        setTipoDecision('');
-        setTipoFallo('');
-        setSancion('');
-        setConsideraciones('');
-        setFundamentosJuridicos('');
-        setResponsable('');
-        setCargoResponsable('');
-        onClose();
-      }
+      setMostrarConfirmCancelar(true);
     } else {
       onClose();
     }
   };
 
+  const confirmarCancelar = () => {
+    limpiarFormulario();
+    onClose();
+  };
+
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[75vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
@@ -448,5 +458,18 @@ export function FormularioRegistrarDecision({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Confirmación de cancelación con modal propio de la plataforma (no confirm() nativo) */}
+    <DialogoConfirmacion
+      isOpen={mostrarConfirmCancelar}
+      onClose={() => setMostrarConfirmCancelar(false)}
+      onConfirm={confirmarCancelar}
+      titulo="¿Cancelar registro?"
+      mensaje="Se perderán los datos ingresados en el formulario de decisión. Esta acción no se puede deshacer."
+      tipo="advertencia"
+      textoConfirmar="Sí, cancelar"
+      textoCancelar="Continuar editando"
+    />
+    </>
   );
 }

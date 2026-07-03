@@ -1226,46 +1226,46 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
           {/* ==================== TABS NAVIGATION ==================== */}
           <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-3 sm:px-6 pt-4 border-b bg-gray-50 overflow-x-auto">
-              <TabsList className="bg-transparent border-0 p-0 h-auto gap-1 flex-nowrap w-max">
+            <div className="px-3 sm:px-6 py-3 border-b bg-gray-50 overflow-x-auto flex items-center">
+              <TabsList className="bg-transparent border-0 p-0 h-auto gap-1 flex-nowrap w-max items-center">
                 <TabsTrigger
                   value="general"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-lg font-semibold"
                 >
                   <FileText className="w-4 h-4 mr-2" />
                   General
                 </TabsTrigger>
                 <TabsTrigger
                   value="partes"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-lg font-semibold"
                 >
                   <Users className="w-4 h-4 mr-2" />
                   Partes
                 </TabsTrigger>
                 <TabsTrigger
                   value="documento"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-lg font-semibold"
                 >
                   <FileText className="w-4 h-4 mr-2" />
                   Documento
                 </TabsTrigger>
                 <TabsTrigger
                   value="actuaciones"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-lg font-semibold"
                 >
                   <Clock className="w-4 h-4 mr-2" />
                   Actuaciones
                 </TabsTrigger>
                 <TabsTrigger
                   value="comunicaciones"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-lg font-semibold"
                 >
                   <MessageSquare className="w-4 h-4 mr-2" />
                   Comunicaciones
                 </TabsTrigger>
                 <TabsTrigger
                   value="anexos"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-lg font-semibold"
                 >
                   <LinkIcon className="w-4 h-4 mr-2" />
                   Anexos
