@@ -23,7 +23,7 @@ import type { ProcesoAuditable as BackendProcesoAuditable } from '../../services
 // ════════════════════════════════════════════════════════════════════════════
 
 export type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
-export type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
+export type TipoProceso = string;
 
 export interface ProcesoAuditableUI {
   id: string;
@@ -63,25 +63,38 @@ export interface ProcesoAuditableUI {
 // ════════════════════════════════════════════════════════════════════════════
 
 /** Mapea tipo del backend (lowercase) al tipo UI (capitalizado) */
-function mapTipoProceso(tipo: string): TipoProceso {
+function mapTipoProceso(proceso: BackendProcesoAuditable): TipoProceso {
+  const tipoRelacionado = (proceso as any).tipoProceso;
+  if (tipoRelacionado?.nombre) return tipoRelacionado.nombre;
+
+  const tipo = proceso.tipo;
   const map: Record<string, TipoProceso> = {
     'estrategico': 'Estratégico',
     'misional': 'Misional',
     'apoyo': 'Apoyo',
+    'transversal': 'Transversal',
     'evaluacion': 'Evaluación',
+    'territorial': 'Territorial',
   };
-  return map[tipo?.toLowerCase()] || 'Apoyo';
+  return map[tipo?.toLowerCase()] || tipo || 'Apoyo';
 }
 
 /** Mapea tipo UI al tipo backend */
 function mapTipoProcesoToBackend(tipo: TipoProceso): string {
-  const map: Record<TipoProceso, string> = {
+  const map: Record<string, string> = {
     'Estratégico': 'estrategico',
     'Misional': 'misional',
     'Apoyo': 'apoyo',
     'Evaluación': 'evaluacion',
+    'Transversal': 'transversal',
+    'Territorial': 'territorial',
   };
-  return map[tipo] || 'apoyo';
+  return map[tipo] || tipo
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'apoyo';
 }
 
 /** Mapea nivel de riesgo del backend al UI */
@@ -138,7 +151,7 @@ function mapFrecuenciaAuditoria(frecuencia: string): 'Anual' | 'Semestral' | 'Bi
 
 /** Convierte un proceso del backend al formato del UI */
 export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditableUI {
-  const tipoProceso = mapTipoProceso(proceso.tipo);
+  const tipoProceso = mapTipoProceso(proceso);
   const nivelRiesgo = mapNivelRiesgo(proceso.evaluacionRiesgo);
   const puntajeRiesgo = calcularPuntajeRiesgo(proceso.evaluacionRiesgo);
   const frecuencia = mapFrecuenciaAuditoria(proceso.frecuenciaAuditoria);

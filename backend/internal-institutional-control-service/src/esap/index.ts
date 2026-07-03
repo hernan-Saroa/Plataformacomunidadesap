@@ -37,6 +37,7 @@ export * from './universo-auditorias/universo-auditorias.module';
 export * from './universo-auditorias/universo-auditorias.service';
 export * from './universo-auditorias/universo-auditorias.controller';
 export * from './universo-auditorias/entities/proceso-auditable.entity';
+export * from './universo-auditorias/entities/tipo-proceso.entity';
 
 // Documentos
 export * from './documentos/documentos.module';
