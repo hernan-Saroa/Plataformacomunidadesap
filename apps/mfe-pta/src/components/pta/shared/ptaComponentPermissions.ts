@@ -68,7 +68,7 @@ export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolea
     case 'ext_procesos':
       return hasExtensionSectionData(pta, ['seleccion']);
     case 'ext_fortalecimiento':
-      return hasExtensionSectionData(pta, ['fortalecimiento']);
+      return hasExtensionSectionData(pta, ['fortalecimiento', 'laboratorio_innovacion', 'investigacion_aplicada']);
     case 'ext_gobierno':
       return hasExtensionSectionData(pta, ['alto_gobierno']);
     case 'ext_secciones':
@@ -102,7 +102,7 @@ function hasExtensionSectionData(pta: any, sections: string[]): boolean {
 
 function hasExtensionOtherSectionData(pta: any): boolean {
   const acts = Array.isArray(pta?.extension_actividades) ? pta.extension_actividades : [];
-  const known = new Set(['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno']);
+  const known = new Set(['capacitacion', 'seleccion', 'fortalecimiento', 'laboratorio_innovacion', 'investigacion_aplicada', 'alto_gobierno']);
   return acts.some((act: any) => {
     const section = String(act?.seccion || '');
     const hours = Number(act?.horas_ejecutadas ?? act?.horas ?? 0);

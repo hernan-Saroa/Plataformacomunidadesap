@@ -434,13 +434,22 @@ const ROLES_INVESTIGACION_HORAS: Record<string, number> = {
 // Elimina la race condition: el formulario conoce el multiplicador x2 de capacitación
 // desde el primer render, antes de que responda la API.
 const DEFAULT_EXT_SECCIONES: Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number }> = [
-  { key: 'capacitacion',         label: 'Capacitación (SNPI)',    color: '#059669', orden: 1, multiplicador: 2 },
-  { key: 'seleccion',            label: 'Selección (SNPI)',        color: '#0284C7', orden: 2, multiplicador: 1 },
-  { key: 'fortalecimiento',      label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3, multiplicador: 1 },
-  { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4, multiplicador: 1 },
-  { key: 'investigacion_aplicada', label: 'Investigación Aplicada',    color: '#15803D', orden: 5, multiplicador: 1 },
-  { key: 'alto_gobierno',        label: 'Alto Gobierno (EAG)',    color: '#B45309', orden: 6, multiplicador: 1 },
+  { key: 'capacitacion',         label: '3.1.1. Dirección de Capacitación', color: '#059669', orden: 1, multiplicador: 2 },
+  { key: 'seleccion',            label: '3.1.2. Dirección de Procesos de Selección', color: '#0284C7', orden: 2, multiplicador: 1 },
+  { key: 'fortalecimiento',      label: '3.1.3. Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', color: '#7C3AED', orden: 3, multiplicador: 1 },
+  { key: 'alto_gobierno',        label: '3.2. Escuela de Alto Gobierno', color: '#B45309', orden: 4, multiplicador: 1 },
 ];
+
+const EXT_SECTION_ALIASES: Record<string, string> = {
+  laboratorio_innovacion: 'fortalecimiento',
+  investigacion_aplicada: 'fortalecimiento',
+};
+
+function normalizeExtensionSectionKey(section: unknown): string {
+  const key = String(section || '');
+  if (DEFAULT_EXT_SECCIONES.some(s => s.key === key)) return key;
+  return EXT_SECTION_ALIASES[key] || 'fortalecimiento';
+}
 
 // ═══ COMPONENT ═══════════════════════════════════════════════════════
 
@@ -463,8 +472,8 @@ const EXT_SUBSECTION_TO_COMPONENT: Record<string, PTAComponentKey> = {
   seleccion: 'ext_procesos',
   fortalecimiento: 'ext_fortalecimiento',
   alto_gobierno: 'ext_gobierno',
-  laboratorio_innovacion: 'ext_secciones',
-  investigacion_aplicada: 'ext_secciones',
+  laboratorio_innovacion: 'ext_fortalecimiento',
+  investigacion_aplicada: 'ext_fortalecimiento',
 };
 
 function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
@@ -634,14 +643,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (actExt.success && actExt.data) {
         const normalized: Record<string, any[]> = {};
         Object.entries(actExt.data).forEach(([key, val]) => {
-          if (key === 'capacitacion') {
-            normalized[key] = val as any[];
-          } else {
-            normalized[key] = (val as any[]).map((a: any) => ({
+          const sectionKey = normalizeExtensionSectionKey(key);
+          const acts = key === 'capacitacion'
+            ? (val as any[])
+            : (val as any[]).map((a: any) => ({
               ...a,
               items: a.items || []
             }));
-          }
+          normalized[sectionKey] = [...(normalized[sectionKey] || []), ...acts];
         });
         setActExtension(normalized);
       }
@@ -654,12 +663,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         // El multiplicador de la config (ext_secciones[].multiplicador) es la fuente de verdad
         // y el backend ya lo aplica. Solo usamos el default por key si la config NO trae el campo,
         // respetando un multiplicador explícito (incluido 1) configurado por el admin.
-        const merged = secciones.data.map((s: any) => {
-          const def = DEFAULT_EXT_SECCIONES.find(d => d.key === s.key);
+        const savedByKey = new Map<string, any>();
+        secciones.data.forEach((s: any) => {
+          const key = normalizeExtensionSectionKey(s.key);
+          if (!savedByKey.has(key)) savedByKey.set(key, s);
+        });
+        const merged = DEFAULT_EXT_SECCIONES.map((def) => {
+          const s = savedByKey.get(def.key) || {};
           const mult = (s.multiplicador != null && Number(s.multiplicador) > 0)
             ? Number(s.multiplicador)
-            : (def?.multiplicador || 1);
-          return { ...s, multiplicador: mult };
+            : (def.multiplicador || 1);
+          return { ...def, color: s.color || def.color, columnas: s.columnas || (def as any).columnas, multiplicador: mult };
         });
         const sorted = merged.sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0));
         setExtSecciones(sorted);
@@ -692,16 +706,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   useEffect(() => {
     if (!extSecciones.length) return;
     setExtActividades(prev => prev.map(e => {
-      const secConfig = extSecciones.find(s => s.key === e.seccion);
+      const normalizedSection = normalizeExtensionSectionKey(e.seccion);
+      const baseAct = normalizedSection === e.seccion ? e : { ...e, seccion: normalizedSection };
+      const secConfig = extSecciones.find(s => s.key === normalizedSection);
       const mult = secConfig?.multiplicador || 1;
-      if (mult <= 1) return e;
-      const ejec = Number(e.horas_ejecutadas ?? 0);
-      const horas = Number(e.horas ?? 0);
+      if (mult <= 1) return baseAct;
+      const ejec = Number(baseAct.horas_ejecutadas ?? 0);
+      const horas = Number(baseAct.horas ?? 0);
       // Si horas === horas_ejecutadas en una sección con multiplicador, no se aplicó el x2
       if (ejec > 0 && horas === ejec) {
-        return { ...e, horas: ejec * mult };
+        return { ...baseAct, horas: ejec * mult };
       }
-      return e;
+      return baseAct;
     }));
   }, [extSecciones]);
 
@@ -712,21 +728,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     setExtActividades(prev => {
       let changed = false;
       const next = prev.map(e => {
-        const cat = (actExtension[e.seccion] || []).find((c: any) => c.id === e.actividad_id);
+        const sectionKey = normalizeExtensionSectionKey(e.seccion);
+        const baseAct = sectionKey === e.seccion ? e : { ...e, seccion: sectionKey };
+        if (baseAct !== e) changed = true;
+        const cat = (actExtension[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
         if (cat && Array.isArray(cat.items) && cat.items.length > 0) {
-          const newCantidades = e.items_cantidades || {};
+          const newCantidades = baseAct.items_cantidades || {};
           const totalHoras = cat.items.reduce((sum: number, item: any, i: number) => {
             if (item.tipo === 'fija') return sum + (item.horas || 0);
             if (item.tipo === 'hasta') return sum + Math.min(item.horas || 0, Math.max(0, Number(newCantidades[i]) || 0));
             const qty = Math.max(0, Number(newCantidades[i]) || 0);
             return sum + (qty * (item.horas || 0));
           }, 0);
-          if (e.horas !== totalHoras || e.horas_ejecutadas !== totalHoras) {
+          if (baseAct.horas !== totalHoras || baseAct.horas_ejecutadas !== totalHoras) {
             changed = true;
-            return { ...e, horas: totalHoras, horas_ejecutadas: totalHoras };
+            return { ...baseAct, horas: totalHoras, horas_ejecutadas: totalHoras };
           }
         }
-        return e;
+        return baseAct;
       });
       return changed ? next : prev;
     });
@@ -780,20 +799,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         // (puede pasar con PTAs guardados antes del fix o en race condition)
         const rawExtActs: ExtensionActividad[] = d.extension_actividades || [];
         const normalizedExtActs = rawExtActs.map(e => {
-          const secConfig = extSecciones.find(s => s.key === e.seccion);
+          const normalizedSection = normalizeExtensionSectionKey(e.seccion);
+          const baseAct = normalizedSection === e.seccion ? e : { ...e, seccion: normalizedSection };
+          const secConfig = extSecciones.find(s => s.key === normalizedSection);
           const mult = secConfig?.multiplicador || 1;
-          if (mult <= 1) return e;
-          const ejec = Number(e.horas_ejecutadas ?? 0);
-          const horas = Number(e.horas ?? 0);
+          if (mult <= 1) return baseAct;
+          const ejec = Number(baseAct.horas_ejecutadas ?? 0);
+          const horas = Number(baseAct.horas ?? 0);
           if (ejec > 0 && horas === ejec) {
             // Guardado sin multiplicar (simple input) → corregir
-            return { ...e, horas: ejec * mult };
+            return { ...baseAct, horas: ejec * mult };
           }
           if (ejec === 0 && horas > 0) {
             // Solo horas seteado (formato antiguo) → tratar como ejecutadas
-            return { ...e, horas_ejecutadas: horas, horas: horas * mult };
+            return { ...baseAct, horas_ejecutadas: horas, horas: horas * mult };
           }
-          return e;
+          return baseAct;
         });
         setExtActividades(normalizedExtActs);
         setComplementarias(d.complementarias || []);
@@ -950,7 +971,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const hExtension = useMemo(() =>
     extActividades.reduce((t, e) => {
-      const secConfig = extSecciones.find(s => s.key === e.seccion);
+      const sectionKey = normalizeExtensionSectionKey(e.seccion);
+      const secConfig = extSecciones.find(s => s.key === sectionKey);
       const mult = secConfig?.multiplicador || 1;
       // Siempre calcular desde horas_ejecutadas para evitar inconsistencias
       // cuando horas no fue correctamente multiplicado (race condition con extSecciones)
@@ -1375,10 +1397,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const mult = (secConfig?.multiplicador && secConfig.multiplicador > 1) ? secConfig.multiplicador : 1;
       const tieneMultiplicador = mult > 1;
       
-      const updated = { ...e, [field]: value };
+      const updated = { ...e, seccion: sectionKey, [field]: value };
       
       if (field === 'actividad_id') {
-        const cat = (actExtension?.[e.seccion] || []).find((c: any) => c.id === value);
+        const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === value);
         if (cat) {
           updated.nombre = cat.nombre;
           // Detectar si es una etapa con ítems jerárquicos
@@ -1478,8 +1500,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const handleExtItemQtyChange = (extId: number, itemIdx: number, val: number) => {
     setExtActividades(prev => prev.map(e => {
       if (e.id !== extId) return e;
-      const cat = (actExtension?.[e.seccion] || []).find((c: any) => c.id === e.actividad_id);
-      if (!cat || !Array.isArray(cat.items)) return e;
+      const sectionKey = normalizeExtensionSectionKey(e.seccion);
+      const baseAct = sectionKey === e.seccion ? e : { ...e, seccion: sectionKey };
+      const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
+      if (!cat || !Array.isArray(cat.items)) return baseAct;
       
       const item = cat.items[itemIdx];
       const itemTipo = (item.tipo || 'fija').toLowerCase();
@@ -1488,7 +1512,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         cleanedVal = Math.min(item.horas || 0, cleanedVal);
       }
       
-      const newCantidades = { ...(e.items_cantidades || {}), [itemIdx]: cleanedVal };
+      const newCantidades = { ...(baseAct.items_cantidades || {}), [itemIdx]: cleanedVal };
       const totalHoras = cat.items.reduce((sum: number, it: any, i: number) => {
         const tipo = (it.tipo || 'fija').toLowerCase();
         if (tipo === 'fija') return sum + (it.horas || 0);
@@ -1496,7 +1520,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const qty = newCantidades[i] || 0;
         return sum + (qty * (it.horas || 0));
       }, 0);
-      return { ...e, items_cantidades: newCantidades, horas: totalHoras, horas_ejecutadas: totalHoras };
+      return { ...baseAct, items_cantidades: newCantidades, horas: totalHoras, horas_ejecutadas: totalHoras };
     }));
   };
 
@@ -2097,7 +2121,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const getAsignaturasFiltradas = (programaId: string) => asignaturasCat.filter(a => a.programaId === programaId);
   const getExtCatalog = (sec: string): any[] => {
     if (!actExtension) return [];
-    return (actExtension as Record<string, any[]>)[sec] || [];
+    return (actExtension as Record<string, any[]>)[normalizeExtensionSectionKey(sec)] || [];
   };
 
   return (
@@ -3328,7 +3352,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               </div>
             )}
 
-            {/* ─── EXTENSIÓN (6 subsecciones) ─── */}
+            {/* ─── EXTENSIÓN (4 subsecciones fijas) ─── */}
             {!actividadTotalidad && hasDocencia && activeVisibleSection === 'extension' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h — ${ptaRules?.max_pct_extension || 25}% o ${maxExtGlobalHours}h global)`}
@@ -3351,7 +3375,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <button key={s.key} onClick={() => setExtSubseccion(s.key)}
                       className={`px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${currentExtSubseccion === s.key ? 'text-white border-transparent' : 'text-gray-600 border-gray-200 bg-white hover:bg-gray-50'}`}
                       style={{ background: currentExtSubseccion === s.key ? s.color : undefined }}>
-                      {s.label} ({extActividades.filter(e => e.seccion === s.key).length})
+                      {s.label} ({extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === s.key).length})
                     </button>
                   ))}
                 </div>
@@ -3360,7 +3384,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   {(() => {
                     const secActual = visibleExtSecciones.find(s => s.key === currentExtSubseccion);
                     const secMult = secActual?.multiplicador || 1;
-                    const actsSec = extActividades.filter(e => e.seccion === currentExtSubseccion);
+                    const actsSec = extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion);
                     const horasEjecSec = actsSec.reduce((t, e) => t + (Number(e.horas_ejecutadas) || 0), 0);
                     const horasPtaSec = secMult > 1
                       ? horasEjecSec * secMult
@@ -3396,14 +3420,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   })()}
 
 
-                  {extActividades.filter(e => e.seccion === currentExtSubseccion).length === 0 ? (
+                  {extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion).length === 0 ? (
                     <EmptyState icon={Globe} text={`Sin actividades de ${visibleExtSecciones.find(s => s.key === currentExtSubseccion)?.label}`} small />
                   ) : (
                     <div className="flex flex-col gap-2">
-                      {extActividades.filter(e => e.seccion === currentExtSubseccion).map(ext => {
-                        const catExt = (actExtension?.[ext.seccion] || []).find((c: any) => c.id === ext.actividad_id);
+                      {extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion).map(ext => {
+                        const extSectionKey = normalizeExtensionSectionKey(ext.seccion);
+                        const catExt = (actExtension?.[extSectionKey] || []).find((c: any) => c.id === ext.actividad_id);
                         const hasItemsExt = catExt && Array.isArray(catExt.items) && catExt.items.length > 0;
-                        const secMult = extSecciones.find(s => s.key === ext.seccion)?.multiplicador || 1;
+                        const secMult = extSecciones.find(s => s.key === extSectionKey)?.multiplicador || 1;
                         return (
                           <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
                             {isEditable && (

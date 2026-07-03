@@ -116,8 +116,8 @@ const EXTENSION_COMPONENT_BY_SECTION: Record<string, string> = {
   seleccion: 'ext_procesos',
   fortalecimiento: 'ext_fortalecimiento',
   alto_gobierno: 'ext_gobierno',
-  laboratorio_innovacion: 'ext_secciones',
-  investigacion_aplicada: 'ext_secciones',
+  laboratorio_innovacion: 'ext_fortalecimiento',
+  investigacion_aplicada: 'ext_fortalecimiento',
 };
 
 const COMPONENT_REVISION_STATE: Record<string, string> = {
@@ -139,6 +139,59 @@ type ExtensionCatalogActivity = {
   max_horas?: number;
   min_horas?: number;
 };
+
+const FIXED_EXTENSION_SECTIONS = [
+  { key: 'capacitacion', label: '3.1.1. Dirección de Capacitación', color: '#059669', orden: 1, multiplicador: 2 },
+  { key: 'seleccion', label: '3.1.2. Dirección de Procesos de Selección', color: '#0284C7', orden: 2, multiplicador: 1 },
+  { key: 'fortalecimiento', label: '3.1.3. Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', color: '#7C3AED', orden: 3, multiplicador: 1 },
+  { key: 'alto_gobierno', label: '3.2. Escuela de Alto Gobierno', color: '#B45309', orden: 4, multiplicador: 1 },
+];
+
+const EXTENSION_SECTION_ALIASES: Record<string, string> = {
+  laboratorio_innovacion: 'fortalecimiento',
+  investigacion_aplicada: 'fortalecimiento',
+};
+
+function normalizeExtensionSectionKey(section: unknown): string {
+  const key = String(section || '');
+  if (FIXED_EXTENSION_SECTIONS.some(s => s.key === key)) return key;
+  return EXTENSION_SECTION_ALIASES[key] || 'fortalecimiento';
+}
+
+function normalizeExtensionSections(raw: any): any[] {
+  const savedByKey = new Map<string, any>();
+  if (Array.isArray(raw)) {
+    for (const section of raw) {
+      const key = normalizeExtensionSectionKey(section?.key);
+      if (!savedByKey.has(key)) savedByKey.set(key, section);
+    }
+  }
+
+  return FIXED_EXTENSION_SECTIONS.map(section => {
+    const previous = savedByKey.get(section.key);
+    return {
+      ...section,
+      color: previous?.color || section.color,
+      columnas: Array.isArray(previous?.columnas) ? previous.columnas : (section as any).columnas,
+    };
+  });
+}
+
+function canonicalizeExtensionActivities(raw: any): Record<string, any[]> {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const result: Record<string, any[]> = {};
+
+  for (const [sectionKey, value] of Object.entries(source)) {
+    if (!Array.isArray(value)) continue;
+    const targetKey = normalizeExtensionSectionKey(sectionKey);
+    result[targetKey] = [
+      ...(result[targetKey] || []),
+      ...value.map((act: any) => ({ ...act })),
+    ];
+  }
+
+  return result;
+}
 
 const EXTENSION_ACTIVITY_COMPLETIONS: Record<string, ExtensionCatalogActivity[]> = {
   laboratorio_innovacion: [
@@ -179,7 +232,7 @@ function isRoleApprovalComponent(componente?: string | null): boolean {
 }
 
 function componentKeyForExtensionSection(section: unknown): string {
-  return EXTENSION_COMPONENT_BY_SECTION[String(section || '')] || 'ext_secciones';
+  return EXTENSION_COMPONENT_BY_SECTION[normalizeExtensionSectionKey(section)] || 'ext_secciones';
 }
 
 function isPendingRoleApprovalState(estado?: string | null): boolean {
@@ -516,7 +569,7 @@ export class PtaService {
     const map: Record<string, number> = {};
     if (secciones && secciones.length) {
       for (const s of secciones) {
-        const key = String(s?.key || '');
+        const key = normalizeExtensionSectionKey(s?.key);
         if (!key) continue;
         // Respeta el multiplicador explícito (incluido 1); si falta, usa el default normativo de la sección.
         map[key] = Number(s?.multiplicador) > 0 ? Number(s.multiplicador) : (DEFAULTS[key] ?? 1);
@@ -533,6 +586,7 @@ export class PtaService {
     const actId = String(a?.actividad_id || a?.id || '');
     let seccion = String(a?.seccion || '');
     if (!seccion && actId.startsWith('CAP_')) seccion = 'capacitacion';
+    else seccion = normalizeExtensionSectionKey(seccion);
     const m = Number(mult?.[seccion]);
     return m > 0 ? m : 1;
   }
@@ -586,10 +640,14 @@ export class PtaService {
   }
 
   private normalizeExtensionActivities(raw: any): Record<string, any[]> {
-    const result: Record<string, any[]> = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+    const savedRecord = canonicalizeExtensionActivities(raw);
+    const defaultRecord = canonicalizeExtensionActivities(EXTENSION_ACTIVITY_COMPLETIONS);
+    const result: Record<string, any[]> = {};
 
-    for (const [sectionKey, defaults] of Object.entries(EXTENSION_ACTIVITY_COMPLETIONS)) {
-      const savedActivities = Array.isArray(result[sectionKey]) ? result[sectionKey] : [];
+    for (const section of FIXED_EXTENSION_SECTIONS) {
+      const sectionKey = section.key;
+      const defaults = defaultRecord[sectionKey] || [];
+      const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
       const savedById = new Map(savedActivities.map((act: any) => [act?.id, act]));
       const defaultIds = new Set(defaults.map(act => act.id));
 
@@ -611,6 +669,7 @@ export class PtaService {
       ext_max_horas_enlace: Number.isFinite(maxExtensionGlobal) ? maxExtensionGlobal : 200,
       comp_anexo1_validado: Boolean(rules.comp_anexo1_validado ?? false),
       comp_anexo1_fuente: String(rules.comp_anexo1_fuente || 'Pendiente de cotejo contra Anexo 1'),
+      ext_secciones: normalizeExtensionSections(rules.ext_secciones),
     };
 
     if (rules.ext_actividades === undefined || rules.ext_actividades === null) return normalized;
@@ -3087,15 +3146,8 @@ export class PtaService {
   async getCatalogoSeccionesExtension() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
     if (Array.isArray(rules?.ext_secciones) && rules.ext_secciones.length > 0) return rules.ext_secciones;
-    // Fallback: secciones por defecto idénticas a defaultPTARules
-    return [
-      { key: 'capacitacion', label: 'Capacitación (SNPI)', color: '#059669', orden: 1, multiplicador: 2 },
-      { key: 'seleccion', label: 'Selección (SNPI)', color: '#0284C7', orden: 2, multiplicador: 1 },
-      { key: 'fortalecimiento', label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3, multiplicador: 1 },
-      { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4, multiplicador: 1 },
-      { key: 'investigacion_aplicada', label: 'Investigación Aplicada', color: '#15803D', orden: 5, multiplicador: 1 },
-      { key: 'alto_gobierno', label: 'Alto Gobierno (EAG)', color: '#B45309', orden: 6, multiplicador: 1 },
-    ];
+    // Fallback: secciones fijas segun Circular 003/2025.
+    return normalizeExtensionSections(null);
   }
 
   async getCatalogoActividadesInvestigacion() {
@@ -3465,7 +3517,7 @@ export class PtaService {
     const extMult = await this.getExtMultiplicadores();
     const extBySeccion = (secciones: string[]) =>
       extActs
-        .filter((a: any) => secciones.includes(String(a?.seccion || '')))
+        .filter((a: any) => secciones.includes(normalizeExtensionSectionKey(a?.seccion)))
         .reduce((s: number, a: any) => {
           const m = this.multiplicadorDeExt(a, extMult);
           const h = m === 1
@@ -3476,7 +3528,7 @@ export class PtaService {
 
     const extOtras = () =>
       extActs
-        .filter((a: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(String(a?.seccion || '')))
+        .filter((a: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(normalizeExtensionSectionKey(a?.seccion)))
         .reduce((s: number, a: any) => {
           const m = this.multiplicadorDeExt(a, extMult);
           const h = m === 1

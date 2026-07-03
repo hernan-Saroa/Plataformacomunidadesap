@@ -243,6 +243,7 @@ export interface PTARules {
     horas_en_etapa?: boolean;
     max_horas?: number;
     min_horas?: number;
+    consumeTotalidad?: boolean;
   }>>;
 
   // Actividades Académico-Administrativas (configurables)
@@ -409,12 +410,10 @@ export const defaultPTARules: PTARules = {
   ],
 
   ext_secciones: [
-    { key: 'capacitacion', label: 'Capacitación (SNPI)', color: '#059669', orden: 1, multiplicador: 2 },
-    { key: 'seleccion', label: 'Selección (SNPI)', color: '#0284C7', orden: 2, multiplicador: 1 },
-    { key: 'fortalecimiento', label: 'Fortalecimiento (SNPI)', color: '#7C3AED', orden: 3, multiplicador: 1 },
-    { key: 'laboratorio_innovacion', label: 'Laboratorio de Innovación', color: '#0E7490', orden: 4, multiplicador: 1 },
-    { key: 'investigacion_aplicada', label: 'Investigación Aplicada', color: '#15803D', orden: 5, multiplicador: 1 },
-    { key: 'alto_gobierno', label: 'Alto Gobierno (EAG)', color: '#B45309', orden: 6, multiplicador: 1 },
+    { key: 'capacitacion', label: '3.1.1. Dirección de Capacitación', color: '#059669', orden: 1, multiplicador: 2 },
+    { key: 'seleccion', label: '3.1.2. Dirección de Procesos de Selección', color: '#0284C7', orden: 2, multiplicador: 1 },
+    { key: 'fortalecimiento', label: '3.1.3. Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', color: '#7C3AED', orden: 3, multiplicador: 1 },
+    { key: 'alto_gobierno', label: '3.2. Escuela de Alto Gobierno', color: '#B45309', orden: 4, multiplicador: 1 },
   ],
   ext_actividades: {
     capacitacion: [
@@ -609,11 +608,8 @@ export const defaultPTARules: PTARules = {
 
   // Secciones Complementarias (nueva arquitectura)
   comp_secciones: [
-    { key: 'acompanamiento', label: 'Acompañamiento Pregrado y Posgrado', color: '#3B82F6', orden: 1, multiplicador: 1, columnas: ['Línea', '_items_', 'Evidencia'] },
-    { key: 'diseno', label: 'Diseño y Desarrollo Curricular', color: '#10B981', orden: 2, multiplicador: 1, columnas: ['Línea', '_items_', 'Evidencia'] },
-    { key: 'coordinacion', label: 'Coordinación y Eventos Académicos', color: '#F59E0B', orden: 3, multiplicador: 1, columnas: ['Línea', '_items_', 'Evidencia'] },
-    { key: 'evaluaciones', label: 'Evaluaciones y Jurados', color: '#F43F5E', orden: 4, multiplicador: 1, columnas: ['Línea', '_items_', 'Evidencia'] },
-    { key: 'sindicatos', label: 'Sindicatos y Formación Docente', color: '#0EA5E9', orden: 5, multiplicador: 1, columnas: ['Línea', '_items_', 'Evidencia'] },
+    { key: 'complementarias_docencia', label: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA', color: '#D97706', orden: 1, multiplicador: 1, columnas: ['_items_'] },
+    { key: 'academico_administrativas', label: 'ACTIVIDADES ACADÉMICO-ADMINISTRATIVAS', color: '#2563EB', orden: 2, multiplicador: 1, columnas: ['_items_'] },
   ],
   comp_actividades_v2: {
     acompanamiento: [
@@ -675,6 +671,36 @@ export const defaultPTARules: PTARules = {
 };
 
 type ExtActividad = PTARules['ext_actividades'][string][number];
+type CompActividadV2 = PTARules['comp_actividades_v2'][string][number];
+
+const FIXED_EXT_SECCIONES: PTARules['ext_secciones'] = [
+  { key: 'capacitacion', label: '3.1.1. Dirección de Capacitación', color: '#059669', orden: 1, multiplicador: 2 },
+  { key: 'seleccion', label: '3.1.2. Dirección de Procesos de Selección', color: '#0284C7', orden: 2, multiplicador: 1 },
+  { key: 'fortalecimiento', label: '3.1.3. Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', color: '#7C3AED', orden: 3, multiplicador: 1 },
+  { key: 'alto_gobierno', label: '3.2. Escuela de Alto Gobierno', color: '#B45309', orden: 4, multiplicador: 1 },
+];
+
+const FIXED_COMP_SECCIONES: PTARules['comp_secciones'] = [
+  { key: 'complementarias_docencia', label: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA', color: '#D97706', orden: 1, multiplicador: 1, columnas: ['_items_'] },
+  { key: 'academico_administrativas', label: 'ACTIVIDADES ACADÉMICO-ADMINISTRATIVAS', color: '#2563EB', orden: 2, multiplicador: 1, columnas: ['_items_'] },
+];
+
+const EXT_SECTION_ALIASES: Record<string, string> = {
+  laboratorio_innovacion: 'fortalecimiento',
+  investigacion_aplicada: 'fortalecimiento',
+};
+
+const COMP_DOCENCIA_SECTION = 'complementarias_docencia';
+const COMP_AADM_SECTION = 'academico_administrativas';
+const COMP_SECTION_ALIASES: Record<string, string> = {
+  acompanamiento: COMP_DOCENCIA_SECTION,
+  diseno: COMP_DOCENCIA_SECTION,
+  coordinacion: COMP_DOCENCIA_SECTION,
+  evaluaciones: COMP_DOCENCIA_SECTION,
+  sindicatos: COMP_DOCENCIA_SECTION,
+  complementarias_docencia: COMP_DOCENCIA_SECTION,
+  academico_administrativas: COMP_AADM_SECTION,
+};
 
 type NormativeRange = { min: number; max: number; label: string };
 
@@ -746,11 +772,67 @@ function mergeExtActividad(defaultAct: ExtActividad, savedAct?: ExtActividad): E
   return merged;
 }
 
-function mergeExtActividades(defaults: PTARules['ext_actividades'], saved: any): PTARules['ext_actividades'] {
-  const savedRecord = saved && typeof saved === 'object' ? saved : {};
-  const result: PTARules['ext_actividades'] = { ...savedRecord };
+function normalizeFixedExtSecciones(saved: any): PTARules['ext_secciones'] {
+  const savedByKey = new Map(
+    (Array.isArray(saved) ? saved : [])
+      .filter((s: any) => s?.key)
+      .map((s: any) => [String(s.key), s])
+  );
 
-  for (const [sectionKey, defaultActivities] of Object.entries(defaults)) {
+  return FIXED_EXT_SECCIONES.map(sec => {
+    const previous = savedByKey.get(sec.key) as Partial<PTARules['ext_secciones'][number]> | undefined;
+    return {
+      ...sec,
+      color: previous?.color || sec.color,
+      columnas: Array.isArray(previous?.columnas) ? previous?.columnas : sec.columnas,
+    };
+  });
+}
+
+function normalizeFixedCompSecciones(saved: any): PTARules['comp_secciones'] {
+  const savedByKey = new Map(
+    (Array.isArray(saved) ? saved : [])
+      .filter((s: any) => s?.key)
+      .map((s: any) => [String(s.key), s])
+  );
+
+  return FIXED_COMP_SECCIONES.map(sec => {
+    const previous = savedByKey.get(sec.key) as Partial<PTARules['comp_secciones'][number]> | undefined;
+    return {
+      ...sec,
+      color: previous?.color || sec.color,
+      columnas: Array.isArray(previous?.columnas) ? previous?.columnas : sec.columnas,
+    };
+  });
+}
+
+function canonicalExtSectionKey(sectionKey: string): string {
+  if (FIXED_EXT_SECCIONES.some(s => s.key === sectionKey)) return sectionKey;
+  return EXT_SECTION_ALIASES[sectionKey] || 'fortalecimiento';
+}
+
+function canonicalizeExtActivities(raw: any): PTARules['ext_actividades'] {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const result: PTARules['ext_actividades'] = {};
+
+  for (const [sectionKey, value] of Object.entries(source)) {
+    if (!Array.isArray(value)) continue;
+    const targetKey = canonicalExtSectionKey(sectionKey);
+    result[targetKey] = [
+      ...(result[targetKey] || []),
+      ...value.map((act: any) => ({ ...act })),
+    ];
+  }
+
+  return result;
+}
+
+function mergeExtActividades(defaults: PTARules['ext_actividades'], saved: any): PTARules['ext_actividades'] {
+  const defaultRecord = canonicalizeExtActivities(defaults);
+  const savedRecord = canonicalizeExtActivities(saved);
+  const result: PTARules['ext_actividades'] = {};
+
+  for (const [sectionKey, defaultActivities] of Object.entries(defaultRecord)) {
     const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
     const savedById = new Map(savedActivities.map((act: ExtActividad) => [act.id, act]));
     const defaultIds = new Set(defaultActivities.map(act => act.id));
@@ -762,6 +844,133 @@ function mergeExtActividades(defaults: PTARules['ext_actividades'], saved: any):
   }
 
   return result;
+}
+
+function canonicalCompSectionKey(sectionKey: string): string {
+  return COMP_SECTION_ALIASES[sectionKey] || COMP_DOCENCIA_SECTION;
+}
+
+function aadmToCompActividadV2(activity: PTARules['aadm_actividades'][number]): CompActividadV2 {
+  return {
+    id: activity.id,
+    nombre: activity.nombre,
+    max_horas: activity.max_horas ?? undefined,
+    consumeTotalidad: activity.consumeTotalidad,
+    items: [{
+      nombre: activity.nombre,
+      tipo: activity.consumeTotalidad ? 'fija' : 'hasta',
+      horas: activity.max_horas ?? 0,
+    }],
+  };
+}
+
+function legacyComplementariaToV2(activity: PTARules['comp_actividades'][number]): CompActividadV2 {
+  const maxHoras = activity.max_horas ?? 0;
+  const tipo = activity.tipo || (activity.min_horas !== undefined ? 'intervalo' : 'hasta');
+  return {
+    id: activity.id,
+    nombre: activity.nombre,
+    max_horas: activity.max_horas ?? undefined,
+    min_horas: activity.min_horas,
+    consumeTotalidad: activity.consumeTotalidad,
+    items: [{
+      nombre: activity.nombre,
+      tipo: tipo as ExtItem['tipo'],
+      horas: Number(maxHoras) || 0,
+      horas_min: activity.min_horas,
+    }],
+  };
+}
+
+function canonicalizeCompActividadesV2(raw: any): PTARules['comp_actividades_v2'] {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const result: PTARules['comp_actividades_v2'] = {};
+
+  for (const [sectionKey, value] of Object.entries(source)) {
+    if (!Array.isArray(value)) continue;
+    const targetKey = canonicalCompSectionKey(sectionKey);
+    result[targetKey] = [
+      ...(result[targetKey] || []),
+      ...value.map((act: any) => ({ ...act })),
+    ];
+  }
+
+  return result;
+}
+
+function mergeLegacyCompIntoV2(inputRules: Partial<PTARules>): PTARules['comp_actividades_v2'] {
+  const base = canonicalizeCompActividadesV2((inputRules as any).comp_actividades_v2);
+  if (Array.isArray((inputRules as any).comp_actividades) && (inputRules as any).comp_actividades.length > 0) {
+    base[COMP_DOCENCIA_SECTION] = [
+      ...(base[COMP_DOCENCIA_SECTION] || []),
+      ...(inputRules as any).comp_actividades.map(legacyComplementariaToV2),
+    ];
+  }
+  return base;
+}
+
+function mergeCompActividadV2(defaultAct: CompActividadV2, savedAct?: CompActividadV2): CompActividadV2 {
+  if (!savedAct) return defaultAct;
+  const merged: CompActividadV2 = { ...defaultAct, ...savedAct };
+  if ((!Array.isArray(savedAct.items) || savedAct.items.length === 0) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
+    merged.items = defaultAct.items;
+  }
+  return merged;
+}
+
+function mergeCompActividadesV2(
+  defaults: PTARules['comp_actividades_v2'],
+  saved: any,
+  defaultAadm: PTARules['aadm_actividades'],
+): PTARules['comp_actividades_v2'] {
+  const defaultRecord = canonicalizeCompActividadesV2(defaults);
+  defaultRecord[COMP_AADM_SECTION] = defaultAadm.map(aadmToCompActividadV2);
+
+  const savedRecord = canonicalizeCompActividadesV2(saved);
+  const result: PTARules['comp_actividades_v2'] = {};
+
+  for (const fixedSection of FIXED_COMP_SECCIONES) {
+    const sectionKey = fixedSection.key;
+    const defaultActivities = defaultRecord[sectionKey] || [];
+    const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
+    const savedById = new Map(savedActivities.map((act: CompActividadV2) => [act.id, act]));
+    const defaultIds = new Set(defaultActivities.map(act => act.id));
+
+    result[sectionKey] = [
+      ...defaultActivities.map(defaultAct => mergeCompActividadV2(defaultAct, savedById.get(defaultAct.id))),
+      ...savedActivities.filter((act: CompActividadV2) => !defaultIds.has(act.id)),
+    ];
+  }
+
+  return result;
+}
+
+function activityMaxHoursFromV2(activity: CompActividadV2): number | null {
+  if (activity.consumeTotalidad) return null;
+  if (activity.max_horas !== undefined && activity.max_horas !== null) return Number(activity.max_horas) || 0;
+  const itemHours = (activity.items || []).map(item => Number(item.horas || 0)).filter(Number.isFinite);
+  return itemHours.length > 0 ? Math.max(...itemHours) : 0;
+}
+
+function syncLegacyComplementariasFromV2(v2: PTARules['comp_actividades_v2']): PTARules['comp_actividades'] {
+  return (v2[COMP_DOCENCIA_SECTION] || []).map(activity => ({
+    id: activity.id,
+    nombre: activity.nombre,
+    max_horas: activityMaxHoursFromV2(activity),
+    min_horas: activity.min_horas,
+    tipo: activity.items?.[0]?.tipo,
+    seccion: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA',
+    consumeTotalidad: activity.consumeTotalidad,
+  }));
+}
+
+function syncLegacyAadmFromV2(v2: PTARules['comp_actividades_v2']): PTARules['aadm_actividades'] {
+  return (v2[COMP_AADM_SECTION] || []).map(activity => ({
+    id: activity.id,
+    nombre: activity.nombre,
+    max_horas: activityMaxHoursFromV2(activity),
+    consumeTotalidad: Boolean(activity.consumeTotalidad),
+  }));
 }
 
 export function normalizePTARules(input?: Partial<PTARules> | null): PTARules {
@@ -778,12 +987,23 @@ export function normalizePTARules(input?: Partial<PTARules> | null): PTARules {
   merged.ext_max_horas_enlace = unifiedExtensionHours;
   merged.comp_anexo1_validado = Boolean((inputRules as any).comp_anexo1_validado ?? defaultPTARules.comp_anexo1_validado);
   merged.comp_anexo1_fuente = String((inputRules as any).comp_anexo1_fuente || defaultPTARules.comp_anexo1_fuente);
-  merged.ext_actividades = mergeExtActividades(defaultPTARules.ext_actividades, (input as any)?.ext_actividades);
+  merged.ext_secciones = normalizeFixedExtSecciones((inputRules as any).ext_secciones);
+  merged.ext_actividades = mergeExtActividades(defaultPTARules.ext_actividades, (inputRules as any).ext_actividades);
+  merged.comp_secciones = normalizeFixedCompSecciones((inputRules as any).comp_secciones);
+  merged.comp_actividades_v2 = mergeCompActividadesV2(
+    defaultPTARules.comp_actividades_v2,
+    mergeLegacyCompIntoV2(inputRules),
+    Array.isArray((inputRules as any).aadm_actividades) && (inputRules as any).aadm_actividades.length > 0
+      ? (inputRules as any).aadm_actividades
+      : defaultPTARules.aadm_actividades,
+  );
+  merged.comp_actividades = syncLegacyComplementariasFromV2(merged.comp_actividades_v2);
+  merged.aadm_actividades = syncLegacyAadmFromV2(merged.comp_actividades_v2);
   return merged;
 }
 
 export function usePTARules() {
-  const [rules, setRules] = useState<PTARules>(defaultPTARules);
+  const [rules, setRules] = useState<PTARules>(() => normalizePTARules(defaultPTARules));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

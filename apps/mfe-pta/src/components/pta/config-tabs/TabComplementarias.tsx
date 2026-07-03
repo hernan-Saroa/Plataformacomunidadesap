@@ -402,7 +402,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
               {/* ── Guía contextual ── */}
               <div className="bg-gradient-to-r from-blue-50/80 to-violet-50/50 border border-blue-100 rounded-xl p-4 space-y-2">
                 <p className="text-xs text-slate-600 font-medium">
-                  📋 Define las secciones de actividades complementarias y las actividades disponibles en cada una. Los cambios se guardan con el botón "Guardar Configuración".
+                  📋 Las secciones de este submódulo son fijas según el Anexo 1. Configura aquí las actividades disponibles dentro de cada bloque.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500">
                   <div className="flex items-start gap-1.5">
@@ -433,10 +433,6 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                     {s.label} ({actsDeSeccion(s.key).length})
                   </button>
                 ))}
-                <button onClick={addSeccion}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-slate-300 text-slate-500 text-xs font-semibold hover:border-violet-400 hover:text-violet-600 transition-colors bg-white">
-                  <Plus className="w-3 h-3" /> Nueva sección
-                </button>
               </div>
 
               {/* ── Editor de sección activa ── */}
@@ -447,8 +443,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                     <div className="flex-1 min-w-0">
                       <label className="block text-[0.65rem] font-bold text-slate-500 uppercase tracking-wider mb-1">Etiqueta</label>
                       <input type="text" value={sec.label}
-                        onChange={e => updateSeccion(idx, 'label', e.target.value)}
-                        className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-sm rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
+                        disabled
+                        className="w-full bg-slate-100 border border-slate-200 text-slate-600 font-semibold text-sm rounded-lg px-3 py-1.5 cursor-not-allowed" />
                     </div>
                     <div className="w-36 shrink-0">
                       <label className="block text-[0.65rem] font-bold text-slate-500 uppercase tracking-wider mb-1">Clave (key)</label>
@@ -476,10 +472,9 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                       </div>
                     )}
                     <div className="shrink-0">
-                      <button onClick={() => removeSeccion(idx)}
-                        className="flex items-center gap-1 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-500 text-xs font-semibold hover:bg-red-100 transition-colors">
-                        <Trash2 className="w-3 h-3" /> Eliminar
-                      </button>
+                      <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-semibold">
+                        <Lock className="w-3 h-3" /> Sección fija
+                      </div>
                     </div>
                   </div>
 

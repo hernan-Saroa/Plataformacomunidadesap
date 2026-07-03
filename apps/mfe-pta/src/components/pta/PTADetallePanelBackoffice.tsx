@@ -6,7 +6,7 @@
  * - Resumen visual de distribución de carga por componente
  * - Desglose de Docencia con fórmulas K15/L15 del Excel GTH-F081
  * - Investigación: proyectos y actividades
- * - Extensión: 4 secciones (Asesoría, Consultoría, Capacitación, Comunidad)
+ * - Extensión: 4 secciones fijas (Capacitación, Selección, Fortalecimiento, Alto Gobierno)
  * - Actividades Complementarias
  * - Timeline interactivo del historial
  * - Mensajes de concertación (si aplica)
@@ -573,21 +573,33 @@ function SectionCollapsible({ title, icon: Icon, color, count, children, default
   );
 }
 
+function normalizeExtensionSectionForDisplay(section: unknown): string {
+  const key = String(section || '');
+  if (key === 'laboratorio_innovacion' || key === 'investigacion_aplicada') return 'fortalecimiento';
+  if (['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(key)) return key;
+  return 'otras';
+}
+
 function normalizePTAData(d: any, fallbackPta: any = {}) {
   if (!d) return d;
+  const extensionActs = (d.extension_actividades || []).map((e: any) => ({
+    ...e,
+    seccion: normalizeExtensionSectionForDisplay(e.seccion),
+  }));
   return {
     ...fallbackPta,
     ...d,
+    extension_actividades: extensionActs,
     investigacion: {
       proyectos: (d.investigacion_proyecto?.nombre || d.investigacion_proyecto?.rol) ? [d.investigacion_proyecto] : [],
       actividades: d.investigacion_actividades || [],
     },
     extension: {
-      capacitacion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'capacitacion'),
-      seleccion: (d.extension_actividades || []).filter((e: any) => e.seccion === 'seleccion'),
-      fortalecimiento: (d.extension_actividades || []).filter((e: any) => e.seccion === 'fortalecimiento'),
-      alto_gobierno: (d.extension_actividades || []).filter((e: any) => e.seccion === 'alto_gobierno'),
-      otras: (d.extension_actividades || []).filter((e: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(e.seccion)),
+      capacitacion: extensionActs.filter((e: any) => e.seccion === 'capacitacion'),
+      seleccion: extensionActs.filter((e: any) => e.seccion === 'seleccion'),
+      fortalecimiento: extensionActs.filter((e: any) => e.seccion === 'fortalecimiento'),
+      alto_gobierno: extensionActs.filter((e: any) => e.seccion === 'alto_gobierno'),
+      otras: extensionActs.filter((e: any) => e.seccion === 'otras'),
     },
     complementarias: { actividades: d.complementarias || [] },
     acad_admin: { actividades: d.academico_admin || [] },
@@ -789,14 +801,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     actividades: Array.isArray(pta.investigacion_actividades) ? pta.investigacion_actividades : (pta.investigacion?.actividades || [])
   };
   
-  const extActsRaw = Array.isArray(pta.extension_actividades) ? pta.extension_actividades : [];
+  const extActsRaw = (Array.isArray(pta.extension_actividades) ? pta.extension_actividades : []).map((a: any) => ({
+    ...a,
+    seccion: normalizeExtensionSectionForDisplay(a.seccion),
+  }));
   const extension = {
+    ...(pta.extension || {}),
     capacitacion: extActsRaw.filter((a: any) => a.seccion === 'capacitacion'),
     seleccion: extActsRaw.filter((a: any) => a.seccion === 'seleccion'),
     fortalecimiento: extActsRaw.filter((a: any) => a.seccion === 'fortalecimiento'),
     alto_gobierno: extActsRaw.filter((a: any) => a.seccion === 'alto_gobierno'),
-    otras: extActsRaw.filter((a: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(a.seccion)),
-    ...(pta.extension || {})
+    otras: extActsRaw.filter((a: any) => a.seccion === 'otras'),
   };
   
   const complementarias = {
@@ -1053,11 +1068,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const acts = pta.extension_actividades || initialPta.extension_actividades || [];
     if (seccionKey === 'otras') {
       return acts
-        .filter((e: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(e.seccion))
+        .filter((e: any) => normalizeExtensionSectionForDisplay(e.seccion) === 'otras')
         .reduce((s: number, e: any) => s + (e.horas || 0), 0);
     }
     return acts
-      .filter((e: any) => e.seccion === seccionKey)
+      .filter((e: any) => normalizeExtensionSectionForDisplay(e.seccion) === seccionKey)
       .reduce((s: number, e: any) => s + (e.horas || 0), 0);
   };
 
@@ -1066,9 +1081,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   ), [shouldHideUnauthorizedComponents, visibleComponentKeySet]);
 
   const extensionCards = useMemo(() => ([
-    { key: 'ext_capacitacion', section: 'capacitacion', label: 'Capacitación y Formación', icon: GraduationCap, color: '#059669' },
-    { key: 'ext_procesos', section: 'seleccion', label: 'Procesos de Selección', icon: Briefcase, color: '#0284C7' },
-    { key: 'ext_fortalecimiento', section: 'fortalecimiento', label: 'Fortalecimiento Institucional', icon: Building2, color: '#7C3AED' },
+    { key: 'ext_capacitacion', section: 'capacitacion', label: 'Dirección de Capacitación', icon: GraduationCap, color: '#059669' },
+    { key: 'ext_procesos', section: 'seleccion', label: 'Dirección de Procesos de Selección', icon: Briefcase, color: '#0284C7' },
+    { key: 'ext_fortalecimiento', section: 'fortalecimiento', label: 'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', icon: Building2, color: '#7C3AED' },
     { key: 'ext_gobierno', section: 'alto_gobierno', label: 'Escuela de Alto Gobierno', icon: Shield, color: '#B45309' },
     { key: 'ext_secciones', section: 'otras', label: 'Secciones y Actividades', icon: Layers, color: '#0E7490' },
   ] as const).filter(item => shouldShowComponentKey(item.key) && getSubcomponentHours(item.section) > 0), [shouldShowComponentKey, pta.extension_actividades, initialPta.extension_actividades]);
@@ -2480,7 +2495,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               {/* Extensión */}
               {PTA_EXTENSION_COMPONENT_KEYS.some(shouldShowComponentKey) && (
               <SectionCollapsible
-                title="Componente Extensión (5 secciones)"
+                title="Componente Extensión (4 secciones)"
                 icon={Globe}
                 color="#059669"
               >
@@ -2495,11 +2510,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   return shouldShowComponentKey(componentBySection[sec]);
                 }).map(sec => {
                   const LABELS: Record<string, string> = {
-                    capacitacion: 'Capacitación y Formación',
-                    seleccion: 'Procesos de Selección',
-                    fortalecimiento: 'Fortalecimiento Institucional',
+                    capacitacion: 'Dirección de Capacitación',
+                    seleccion: 'Dirección de Procesos de Selección',
+                    fortalecimiento: 'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
                     alto_gobierno: 'Escuela de Alto Gobierno',
-                    otras: 'Secciones y Actividades (Asesoría, Consultoría, etc.)',
+                    otras: 'Otras actividades registradas',
                   };
                   const acts = extension[sec] || [];
                   if (acts.length === 0) return null;
@@ -2826,7 +2841,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {/* Sub 1: Capacitación — solo si tiene horas */}
                       {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
                         'ext_capacitacion',
-                        'Capacitación y Formación',
+                        'Dirección de Capacitación',
                         GraduationCap,
                         '#059669',
                         `Horas: ${getSubcomponentHours('capacitacion')}h`,
@@ -2836,7 +2851,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {/* Sub 2: Procesos de Selección — solo si tiene horas */}
                       {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
                         'ext_procesos',
-                        'Procesos de Selección',
+                        'Dirección de Procesos de Selección',
                         Briefcase,
                         '#0284C7',
                         `Horas: ${getSubcomponentHours('seleccion')}h`,
@@ -2846,7 +2861,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
                       {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
                         'ext_fortalecimiento',
-                        'Fortalecimiento Institucional',
+                        'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
                         Building2,
                         '#7C3AED',
                         `Horas: ${getSubcomponentHours('fortalecimiento')}h`,
