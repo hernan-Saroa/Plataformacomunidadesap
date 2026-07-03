@@ -2199,6 +2199,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
           onClose={() => setModalNuevaActuacionOpen(false)}
           onSave={handleGuardarActuacion}
           procesoId={proceso.id}
+          abogadoEncargadoNombre={proceso.abogadoAsignado}
         />
         )}
         {/* ==================== MODAL: CREAR TAREA ==================== */}

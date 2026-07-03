@@ -21,6 +21,13 @@ import type {
 export const PERMISO_RESPONSABLE_ACTUACION =
   'gestion-legal.defensa-judicial.actuacion.responsable';
 
+/**
+ * Permiso que habilita a una persona para ser responsable de una actuación
+ * en Juzgamiento Disciplinario. Debe coincidir con el code insertado en la migración 370.
+ */
+export const PERMISO_RESPONSABLE_ACTUACION_JUZGAMIENTO =
+  'gestion-legal.juzgamiento-disciplinario.actuacion.responsable';
+
 class AuthService {
   // In-memory user cache — never written to sessionStorage/localStorage (OTIC-002)
   private _cachedUser: AuthUser | null = null;
@@ -404,6 +411,15 @@ class AuthService {
    */
   async getResponsablesActuacion(): Promise<AbogadoResuelve[]> {
     return this.getUsuariosConPermiso(PERMISO_RESPONSABLE_ACTUACION);
+  }
+
+  /**
+   * Personas habilitadas para ser responsables de una actuación en Juzgamiento
+   * Disciplinario (tienen un rol con el permiso
+   * 'gestion-legal.juzgamiento-disciplinario.actuacion.responsable').
+   */
+  async getResponsablesActuacionJuzgamiento(): Promise<AbogadoResuelve[]> {
+    return this.getUsuariosConPermiso(PERMISO_RESPONSABLE_ACTUACION_JUZGAMIENTO);
   }
 
   async getTodosLosUsuariosActivos(): Promise<AbogadoResuelve[]> {
