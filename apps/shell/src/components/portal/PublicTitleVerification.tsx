@@ -67,8 +67,8 @@ type CreatedReviewDetails = {
   supportFileName?: string;
 };
 
-const COLOMBIAN_ID_MIN_LENGTH = 5;
-const COLOMBIAN_ID_MAX_LENGTH = 10;
+const DOCUMENT_MIN_LENGTH = 5;
+const DOCUMENT_MAX_LENGTH = 20;
 const PERSON_NAME_MAX_LENGTH = 80;
 const COMPANY_NAME_MAX_LENGTH = 120;
 const COMPANY_NIT_MIN_LENGTH = 9;
@@ -80,6 +80,12 @@ const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/
 
 const sanitizeDigits = (value: string, maxLength: number) =>
   value.replace(/\D+/g, "").slice(0, maxLength);
+
+const sanitizeDocumentNumber = (value: string) =>
+  value
+    .replace(/[^A-Za-z0-9]+/g, "")
+    .toUpperCase()
+    .slice(0, DOCUMENT_MAX_LENGTH);
 
 const sanitizePersonName = (value: string) =>
   value
@@ -278,9 +284,7 @@ export function PublicTitleVerification({
 
   const handleGraduateDocumentChange = (documentNumber: string) => {
     clearMatchSuggestions();
-    setGraduateDocumentNumber(
-      sanitizeDigits(documentNumber, COLOMBIAN_ID_MAX_LENGTH),
-    );
+    setGraduateDocumentNumber(sanitizeDocumentNumber(documentNumber));
   };
 
   const handleGraduateNameChange = (name: string) => {
@@ -355,7 +359,7 @@ export function PublicTitleVerification({
 
   const applyMissingTitleBaseRecord = (baseRecord: MissingTitleBaseRecord) => {
     const normalizedIdNumber =
-      sanitizeDigits(baseRecord.idNumber, COLOMBIAN_ID_MAX_LENGTH) ||
+      sanitizeDocumentNumber(baseRecord.idNumber) ||
       baseRecord.idNumber;
 
     setMissingTitleBaseRecord({
@@ -397,18 +401,14 @@ export function PublicTitleVerification({
   };
 
   const titleAlreadyExistsForMissingReview = (programName: string) => {
-    const normalizedDocumentNumber = sanitizeDigits(
+    const normalizedDocumentNumber = sanitizeDocumentNumber(
       missingTitleBaseRecord?.idNumber || graduateDocumentNumber,
-      COLOMBIAN_ID_MAX_LENGTH,
     );
 
     return (
       matchesExistingAcademicTitle(programName, missingTitleBaseRecord) ||
       matchSuggestions.some((suggestion) => {
-        const suggestionDocumentNumber = sanitizeDigits(
-          suggestion.idNumber,
-          COLOMBIAN_ID_MAX_LENGTH,
-        );
+        const suggestionDocumentNumber = sanitizeDocumentNumber(suggestion.idNumber);
 
         return (
           suggestionDocumentNumber === normalizedDocumentNumber &&
@@ -535,15 +535,15 @@ export function PublicTitleVerification({
     const normalizedRequesterEmail = requesterEmail.trim();
 
     if (!normalizedDocumentNumber) {
-      return "Por favor, ingresa el número de cédula del graduado";
+      return "Por favor, ingresa el número de documento del graduado";
     }
 
     if (
-      !/^\d+$/.test(normalizedDocumentNumber) ||
-      normalizedDocumentNumber.length < COLOMBIAN_ID_MIN_LENGTH ||
-      normalizedDocumentNumber.length > COLOMBIAN_ID_MAX_LENGTH
+      !/^[A-Za-z0-9]+$/.test(normalizedDocumentNumber) ||
+      normalizedDocumentNumber.length < DOCUMENT_MIN_LENGTH ||
+      normalizedDocumentNumber.length > DOCUMENT_MAX_LENGTH
     ) {
-      return `El número de cédula debe tener entre ${COLOMBIAN_ID_MIN_LENGTH} y ${COLOMBIAN_ID_MAX_LENGTH} dígitos`;
+      return `El número de documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} caracteres y solo puede contener letras y números`;
     }
 
     const graduateNameError = getPersonNameValidationError(
@@ -760,7 +760,7 @@ export function PublicTitleVerification({
         description:
           isMissingTitleReview
             ? "Se creó una solicitud de revisión para validar otro título que no aparece en la plataforma."
-            : "No encontramos coincidencias con esa cédula. Se generó una solicitud de revisión manual (15 días hábiles).",
+            : "No encontramos coincidencias con ese documento. Se generó una solicitud de revisión manual (15 días hábiles).",
       });
       return;
     }
@@ -829,7 +829,7 @@ export function PublicTitleVerification({
       setManualReviewSupportUploadProgress(0);
       if (error?.status === 409) {
         setManualReviewAlertMessage(
-          "Ya registramos una solicitud de revisión manual para esta cédula y todavía se encuentra en proceso. Mientras esa solicitud siga activa, no es posible crear otra.",
+          "Ya registramos una solicitud de revisión manual para este documento y todavía se encuentra en proceso. Mientras esa solicitud siga activa, no es posible crear otra.",
         );
         return;
       }
@@ -876,7 +876,7 @@ export function PublicTitleVerification({
       toast.info("Selecciona la persona correcta para continuar", {
         description:
           response.message ||
-          "Encontramos coincidencias con esa cédula. Debes elegir una para generar el certificado.",
+          "Encontramos coincidencias con ese documento. Debes elegir una para generar el certificado.",
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
@@ -926,7 +926,7 @@ export function PublicTitleVerification({
       toast.info("Selecciona la persona correcta para continuar", {
         description:
           response.message ||
-          "Encontramos coincidencias con esa cédula. Debes elegir una para generar el certificado.",
+          "Encontramos coincidencias con ese documento. Debes elegir una para generar el certificado.",
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
@@ -939,11 +939,11 @@ export function PublicTitleVerification({
   const handleSelectSuggestion = (suggestion: GraduateMatchSuggestion) => {
     setSelectedSuggestionId(suggestion.graduateId);
     setGraduateLastName(suggestion.fullName);
-    setGraduateDocumentNumber(suggestion.idNumber.replace(/\D+/g, ""));
+    setGraduateDocumentNumber(sanitizeDocumentNumber(suggestion.idNumber));
     if (manualReviewReason === "missing_title") {
       setMissingTitleBaseRecord({
         graduateId: suggestion.graduateId,
-        idNumber: suggestion.idNumber.replace(/\D+/g, ""),
+        idNumber: sanitizeDocumentNumber(suggestion.idNumber),
         fullName: suggestion.fullName,
         programName: suggestion.programName,
         degreeTitle: suggestion.degreeTitle,
@@ -1153,7 +1153,7 @@ export function PublicTitleVerification({
                     {isMissingTitleReviewCreated ? (
                       <>
                         Creamos una solicitud para revisar otro título asociado
-                        a la cédula{" "}
+                        al documento{" "}
                         <span className="font-mono font-bold text-[#1e5da8]">
                           {reviewConfirmationDocument}
                         </span>{" "}
@@ -1171,7 +1171,7 @@ export function PublicTitleVerification({
                       </>
                     ) : (
                       <>
-                        No encontramos el registro del graduado con la cédula{" "}
+                        No encontramos el registro del graduado con el documento{" "}
                         <span className="font-mono font-bold text-[#1e5da8]">
                           {graduateDocumentNumber}
                         </span>{" "}
@@ -1196,7 +1196,7 @@ export function PublicTitleVerification({
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">
-                        Cédula Consultada
+                        Documento consultado
                       </p>
                       <p className="font-mono font-bold text-lg text-gray-900">
                         {reviewConfirmationDocument}
@@ -1992,7 +1992,7 @@ export function PublicTitleVerification({
                           htmlFor="graduateDocument"
                           className="text-xs font-semibold text-gray-700 mb-2 block"
                         >
-                          Número de Cédula{" "}
+                          Número de Documento{" "}
                           <span className="text-red-500">*</span>
                         </Label>
                         <Input
@@ -2002,17 +2002,17 @@ export function PublicTitleVerification({
                           onChange={(e) =>
                             handleGraduateDocumentChange(e.target.value)
                           }
-                          inputMode="numeric"
-                          minLength={COLOMBIAN_ID_MIN_LENGTH}
-                          maxLength={COLOMBIAN_ID_MAX_LENGTH}
-                          pattern={`[0-9]{${COLOMBIAN_ID_MIN_LENGTH},${COLOMBIAN_ID_MAX_LENGTH}}`}
-                          placeholder="Ej: 1234567890"
+                          inputMode="text"
+                          minLength={DOCUMENT_MIN_LENGTH}
+                          maxLength={DOCUMENT_MAX_LENGTH}
+                          pattern={`[A-Za-z0-9]{${DOCUMENT_MIN_LENGTH},${DOCUMENT_MAX_LENGTH}}`}
+                          placeholder="Ej: AB1234567"
                           className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                           required
                         />
                         <p className="text-xs text-gray-500 mt-1">
-                          Solo números, entre {COLOMBIAN_ID_MIN_LENGTH} y{" "}
-                          {COLOMBIAN_ID_MAX_LENGTH} dígitos.
+                          Entre {DOCUMENT_MIN_LENGTH} y {DOCUMENT_MAX_LENGTH}{" "}
+                          caracteres, únicamente letras y números.
                         </p>
                       </div>
 
@@ -2150,7 +2150,7 @@ export function PublicTitleVerification({
                         </p>
                         <p className="text-xs text-gray-600">
                           Selecciona la persona correcta entre las coincidencias
-                          encontradas con esa cédula antes de generar el
+                          encontradas con ese documento antes de generar el
                           certificado.
                         </p>
                       </div>
@@ -2186,7 +2186,7 @@ export function PublicTitleVerification({
                                   {index + 1}. {suggestion.fullName}
                                 </p>
                                 <p className="text-xs text-gray-600">
-                                  CC {suggestion.idNumber} |{" "}
+                                  Documento {suggestion.idNumber} |{" "}
                                   {suggestion.programName}
                                 </p>
                               </div>

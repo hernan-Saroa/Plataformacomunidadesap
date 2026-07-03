@@ -290,11 +290,9 @@ export class GraduateOracleIntegrationService {
   }
 
   private normalizeDocument(document: string): string {
-    const digits = String(document || '').replace(/\D+/g, '');
-    if (digits) return digits;
     return String(document || '')
       .trim()
-      .replace(/\s+/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '')
       .toUpperCase();
   }
 
@@ -485,7 +483,7 @@ export class GraduateOracleIntegrationService {
            FROM ${config.qualifiedView}
           WHERE (
             TRIM(TO_CHAR(NUM_IDENTIFICACION)) = :documento
-            OR REPLACE(REPLACE(REPLACE(TRIM(TO_CHAR(NUM_IDENTIFICACION)), '.', ''), '-', ''), ' ', '') = :documentoNormalizado
+            OR UPPER(REPLACE(REPLACE(REPLACE(TRIM(TO_CHAR(NUM_IDENTIFICACION)), '.', ''), '-', ''), ' ', '')) = :documentoNormalizado
           )
             AND ROWNUM <= :limite`,
         {
