@@ -13,7 +13,7 @@ import {
   Archive, Mail, FileCheck, History, Download, Upload, Search,
   Bell, Share2, ExternalLink, AlertTriangle, User, Briefcase,
   Calendar, Clock, ChevronRight, ChevronDown, ChevronUp, Plus,
-  CheckCircle, AlertCircle, ClipboardList, MessageSquare, Printer,
+  CheckCircle, AlertCircle, ClipboardList, MessageSquare,
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
   Loader2, XCircle, HardDrive, Shield,
@@ -6129,9 +6129,8 @@ export function ModalDetallesProceso({
 
             <div className="flex items-center gap-1.5">
               {[
-                { label: 'Notificar', icon: <Bell    className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar',           { description: proceso.numeroProceso }) },
-                { label: 'Compartir', icon: <Share2  className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir')           },
-                { label: 'PDF',       icon: <Printer className="w-3.5 h-3.5" />, fn: () => toast.success('Generando PDF...') },
+                { label: 'Notificar', icon: <Bell   className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar', { description: proceso.numeroProceso }) },
+                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir') },
               ].map(({ label, icon, fn }) => (
                 <button key={label} onClick={fn}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-white hover:border-gray-400 transition-all">
