@@ -25,6 +25,8 @@ import { ShieldAlert, ChevronDown, Eye, RefreshCw } from 'lucide-react';
 import {
   PTA_COMPONENT_KEYS,
   PTA_COMPONENT_PERMISSION,
+  PTA_COMPONENT_LEVELS,
+  PTA_APPROVE_ALL_PERMISSION,
   componentKeysForApprovalLevel,
 } from './shared/ptaComponentPermissions';
 
@@ -68,12 +70,6 @@ export interface PermisosPTA {
 const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.ver_gestion': 'gestion',
   'pta.backoffice.ver_detalle': 'gestion',
-  'pta.backoffice.aprobador_N1': 'gestion',
-  'pta.backoffice.aprobador_N2': 'gestion',
-  'pta.backoffice.aprobador_N3': 'gestion',
-  'pta.backoffice.revisor_N1': 'gestion',
-  'pta.backoffice.revisor_N2': 'gestion',
-  'pta.backoffice.revisor_N3': 'gestion',
   'pta.backoffice.tablero_control': 'tablero',
   'pta.backoffice.dashboard_directivo': 'directivo',
   'pta.backoffice.kanban': 'kanban',
@@ -122,6 +118,7 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.approve.extension.alto_gobierno': 'gestion',
   'pta.approve.complementarias': 'gestion',
   'pta.approve.academicas_admin': 'gestion',
+  'pta.approve.all': 'gestion',
 };
 
 /**
@@ -142,20 +139,15 @@ function deriveFromGranular(
   const hasWildcard = allPermisos.includes('*');
   const normalizedPerms = new Set(allPermisos.map(p => p.toLowerCase()));
   const has = (perm: string) => hasWildcard || allPermisos.includes(perm) || normalizedPerms.has(perm.toLowerCase());
-  const hasAny = (perms: string[]) => perms.some(has);
 
-  const aprobadorNivelPerms = [
-    { perm: 'pta.backoffice.aprobador_N1', nivel: 1 },
-    { perm: 'pta.backoffice.aprobador_N2', nivel: 2 },
-    { perm: 'pta.backoffice.aprobador_N3', nivel: 3 },
-  ];
-  const componentApprovalPerms = Object.values(PTA_COMPONENT_PERMISSION);
-  const componentesAprobables = PTA_COMPONENT_KEYS.filter(key => has(PTA_COMPONENT_PERMISSION[key]));
-  const maxNivelAprobador = aprobadorNivelPerms.reduce(
-    (max, item) => has(item.perm) ? Math.max(max, item.nivel) : max,
-    0,
-  );
-  const tienePermisoAprobador = maxNivelAprobador > 0;
+  // ── Modelo POR COMPONENTE ──────────────────────────────────────────────────
+  // La capacidad de aprobar se deriva EXCLUSIVAMENTE de los permisos granulares
+  // pta.approve.<componente>. Un rol con pta.approve.all (o wildcard) aprueba todos.
+  const apruebaTodo = hasWildcard || has(PTA_APPROVE_ALL_PERMISSION);
+  const componentesAprobables = apruebaTodo
+    ? [...PTA_COMPONENT_KEYS]
+    : PTA_COMPONENT_KEYS.filter(key => has(PTA_COMPONENT_PERMISSION[key]));
+  const puedeAprobar = componentesAprobables.length > 0;
 
   // Derivar vistas
   const vistasSet = new Set<string>();
@@ -170,28 +162,24 @@ function deriveFromGranular(
   }
   const vistasPerm = Array.from(vistasSet);
 
-  // Derivar nivel de aprobacion
-  let nivelAprobacion = 0;
-  if (tienePermisoAprobador) {
-    nivelAprobacion = maxNivelAprobador;
-  } else if (has('pta.backoffice.aprobar')) {
-    if (perfil.rol === 'admin') nivelAprobacion = 3;
-    else if (perfil.rol === 'gestion_profesoral') nivelAprobacion = 3;
-    else if (perfil.rol === 'decanatura') nivelAprobacion = 2;
-    else if (perfil.rol === 'jefatura') nivelAprobacion = 1;
-    else if (has('pta.backoffice.aprobacion_masiva') && has('pta.backoffice.seguimiento')) nivelAprobacion = 3;
-    else nivelAprobacion = 1;
-  }
+  // nivelAprobacion: shim de compatibilidad para la máquina de estados legacy
+  // (estados "Pendiente Jefatura/Decanatura/..."). Se deriva del componente de mayor
+  // nivel que el usuario puede aprobar; 0 si no aprueba ninguno. No representa un
+  // permiso por sí mismo en el modelo nuevo.
+  const nivelAprobacion = componentesAprobables.reduce(
+    (max, key) => Math.max(max, PTA_COMPONENT_LEVELS[key] || 0),
+    0,
+  );
 
   return {
     vistasPerm,
-    puedeAprobar: tienePermisoAprobador || has('pta.backoffice.aprobar') || has('pta.backoffice.aprobacion_masiva') || componentesAprobables.length > 0,
+    puedeAprobar,
     puedeExportar: has('pta.backoffice.exportar') || has('pta.backoffice.centro_reportes'),
     puedeVerSNA: has('pta.backoffice.panel_sna'),
     puedeArbitrar: has('pta.backoffice.arbitrar'),
     puedeEditarCatalogo: has('pta.backoffice.editar_catalogo'),
     puedeCargarMasivo: has('pta.backoffice.carga_masiva'),
-    puedeConcertar: has('pta.backoffice.concertar') || has('pta.portal.concertar') || hasAny(aprobadorNivelPerms.map(item => item.perm)),
+    puedeConcertar: has('pta.backoffice.concertar') || has('pta.portal.concertar') || puedeAprobar,
     nivelAprobacion,
     filtroTerritorial: perfil.territorial_ids.length > 0 ? perfil.territorial_ids : null,
     filtroPrograma: perfil.programa_ids.length > 0 ? perfil.programa_ids : null,
