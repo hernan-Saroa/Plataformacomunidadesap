@@ -730,8 +730,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         comentarios,
         scope: 'territorial',
         scopeId: rolLabel === 'Gestión Profesoral' ? 'Sede Nacional' : (pta.territorial || 'Sede Nacional'),
-        componentesAutorizados: visibleComponentKeys,
-        isSuperUser,
       });
 
       if (res.success) {
@@ -1581,7 +1579,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       academica: 'Docencia', investigacion: 'Investigación',
       ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
       ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
-      ext_secciones: 'Ext. Secciones', complementarias: 'Complementarias',
+      complementarias: 'Complementarias',
       academicas_admin: 'Acad. Admin.',
     };
 
