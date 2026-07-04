@@ -1756,6 +1756,7 @@ class DisciplinaryService {
     async obtenerExpedientePublico(token: string): Promise<{
         token: string;
         requiereClave: boolean;
+        fechaExpiracionEnlace: string | null;
         proceso: {
             id: string;
             radicado: string;

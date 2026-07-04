@@ -36,6 +36,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 interface ExpedienteCompartidoData {
   token: string;
   requiereClave: boolean;
+  fechaExpiracionEnlace: string | null;
   proceso: {
     id: string;
     radicado: string;
@@ -612,12 +613,12 @@ export function ExpedienteCompartidoPage() {
               <div className="bg-gray-50 rounded-xl p-4">
                 <div className="flex items-center gap-2 text-gray-600 mb-1">
                   <Calendar className="w-4 h-4" />
-                  <span className="text-sm font-medium">Vencimiento</span>
+                  <span className="text-sm font-medium">Vencimiento del Enlace</span>
                 </div>
                 <p className="font-semibold text-gray-900">
-                  {expedienteData.proceso.fechaVencimientoEtapa 
-                    ? new Date(expedienteData.proceso.fechaVencimientoEtapa).toLocaleDateString('es-CO')
-                    : 'Sin fecha'
+                  {expedienteData.fechaExpiracionEnlace
+                    ? new Date(expedienteData.fechaExpiracionEnlace).toLocaleDateString('es-CO')
+                    : 'Sin expiración'
                   }
                 </p>
               </div>
