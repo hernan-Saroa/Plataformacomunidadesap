@@ -104,7 +104,6 @@ const COMPONENT_APPROVAL_KEYS = [
   'ext_procesos',
   'ext_fortalecimiento',
   'ext_gobierno',
-  'ext_secciones',
   'complementarias',
   'academicas_admin',
 ];
@@ -128,8 +127,34 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   ext_procesos: 'REVISION_DOCENTE_N2',
   ext_fortalecimiento: 'REVISION_DOCENTE_N2',
   ext_gobierno: 'REVISION_DOCENTE_N2',
-  ext_secciones: 'REVISION_DOCENTE_N2',
   academicas_admin: 'REVISION_DOCENTE_N3',
+};
+
+// Permiso granular (auth.permission.code) que autoriza aprobar/devolver cada componente.
+// Debe mantenerse en sincronía con PTA_COMPONENT_PERMISSION del frontend
+// (apps/mfe-pta/src/components/pta/shared/ptaComponentPermissions.ts).
+const COMPONENT_PERMISSION_BY_KEY: Record<string, string> = {
+  academica: 'pta.approve.academica',
+  investigacion: 'pta.approve.investigacion',
+  ext_capacitacion: 'pta.approve.extension.capacitacion',
+  ext_procesos: 'pta.approve.extension.procesos_seleccion',
+  ext_fortalecimiento: 'pta.approve.extension.fortalecimiento',
+  ext_gobierno: 'pta.approve.extension.alto_gobierno',
+  complementarias: 'pta.approve.complementarias',
+  academicas_admin: 'pta.approve.academicas_admin',
+};
+
+// Nivel de aprobación legacy por componente (compatibilidad con roles que solo
+// tienen pta.backoffice.aprobador_N1/N2/N3 sin permisos granulares pta.approve.*).
+const COMPONENT_LEVEL_BY_KEY: Record<string, number> = {
+  academica: 1,
+  complementarias: 1,
+  investigacion: 2,
+  ext_capacitacion: 2,
+  ext_procesos: 2,
+  ext_fortalecimiento: 2,
+  ext_gobierno: 2,
+  academicas_admin: 3,
 };
 
 type ExtensionCatalogActivity = {
@@ -232,7 +257,7 @@ function isRoleApprovalComponent(componente?: string | null): boolean {
 }
 
 function componentKeyForExtensionSection(section: unknown): string {
-  return EXTENSION_COMPONENT_BY_SECTION[normalizeExtensionSectionKey(section)] || 'ext_secciones';
+  return EXTENSION_COMPONENT_BY_SECTION[normalizeExtensionSectionKey(section)] || 'ext_fortalecimiento';
 }
 
 function isPendingRoleApprovalState(estado?: string | null): boolean {
@@ -3526,16 +3551,9 @@ export class PtaService {
           return s + h;
         }, 0);
 
-    const extOtras = () =>
-      extActs
-        .filter((a: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(normalizeExtensionSectionKey(a?.seccion)))
-        .reduce((s: number, a: any) => {
-          const m = this.multiplicadorDeExt(a, extMult);
-          const h = m === 1
-            ? Number(a?.horas ?? 0)
-            : Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * m;
-          return s + h;
-        }, 0);
+    // Nota: las actividades de extensión se canonizan a las 4 secciones fijas
+    // (normalizeExtensionSectionKey mapea cualquier sección desconocida a
+    // 'fortalecimiento'), por lo que no existe componente comodín "otras".
 
     const horasPorComponente: Record<string, number> = {
       academica: hDocencia,
@@ -3544,7 +3562,6 @@ export class PtaService {
       ext_procesos: extBySeccion(['seleccion']),
       ext_fortalecimiento: extBySeccion(['fortalecimiento']),
       ext_gobierno: extBySeccion(['alto_gobierno']),
-      ext_secciones: extOtras(),
       complementarias: hComp,
       academicas_admin: hAcad,
     };
@@ -3599,7 +3616,85 @@ export class PtaService {
       .filter((item): item is PtaComponentApprovalEntity => !!item);
   }
 
-  async aprobarComponente(ptaId: string, body: any) {
+  /**
+   * Resuelve, contra el esquema auth, qué componentes de aprobación PTA puede
+   * gestionar el usuario indicado (por id_user / id_person / id_tercero).
+   * - isSuperUser: rol SUPER_ADMIN o permiso wildcard '*'.
+   * - Si tiene permisos granulares pta.approve.*, solo esos componentes.
+   * - Si no, cae al esquema legacy por nivel (pta.backoffice.aprobador_N1/2/3).
+   */
+  private async resolveUserApprovalAuthorization(
+    userId: string,
+  ): Promise<{ isSuperUser: boolean; componentes: Set<string> }> {
+    const key = coalesceString(userId);
+    if (!key) return { isSuperUser: false, componentes: new Set<string>() };
+
+    const [userHasIdPerson, userHasIdTercero] = await Promise.all([
+      this.hasColumn('auth', 'user', 'id_person'),
+      this.hasColumn('auth', 'user', 'id_tercero'),
+    ]);
+
+    const keyPredicates = [
+      `u.id_user::text = $1`,
+      userHasIdPerson ? `u.id_person::text = $1` : null,
+      userHasIdTercero ? `u.id_tercero::text = $1` : null,
+    ].filter(Boolean);
+
+    const sql = `
+      SELECT
+        BOOL_OR(UPPER(COALESCE(r.code, '')) = 'SUPER_ADMIN' OR COALESCE(perm.code, '') = '*') AS is_super,
+        COALESCE(ARRAY_AGG(perm.code) FILTER (WHERE perm.code IS NOT NULL), '{}') AS codes
+      FROM auth."user" u
+      JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
+      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+      LEFT JOIN auth.role_permissions rp ON rp.id_rol = r.id AND COALESCE(rp.is_active, true) = true
+      LEFT JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND COALESCE(perm.is_active, true) = true
+      WHERE (${keyPredicates.join(' OR ')})
+    `;
+
+    let rows: any[] = [];
+    try {
+      rows = await this.ptaRepo.query(sql, [key]);
+    } catch (err) {
+      // Si la resolución falla (esquema inesperado), negar por defecto salvo
+      // que el flujo caiga al respaldo del body en el llamador.
+      return { isSuperUser: false, componentes: new Set<string>() };
+    }
+
+    const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    if (!row) return { isSuperUser: false, componentes: new Set<string>() };
+
+    const isSuperUser = row.is_super === true;
+    if (isSuperUser) {
+      return { isSuperUser: true, componentes: new Set(COMPONENT_APPROVAL_KEYS) };
+    }
+
+    const codes = new Set<string>((row.codes || []).map((c: unknown) => String(c)));
+    const componentes = new Set<string>();
+
+    // 1) Permisos granulares pta.approve.<componente>
+    for (const compKey of COMPONENT_APPROVAL_KEYS) {
+      const perm = COMPONENT_PERMISSION_BY_KEY[compKey];
+      if (perm && codes.has(perm)) componentes.add(compKey);
+    }
+
+    // 2) Respaldo legacy por nivel (solo si no tiene granulares)
+    if (componentes.size === 0) {
+      const levels = new Set<number>();
+      if (codes.has('pta.backoffice.aprobador_N1')) levels.add(1);
+      if (codes.has('pta.backoffice.aprobador_N2')) levels.add(2);
+      if (codes.has('pta.backoffice.aprobador_N3')) levels.add(3);
+      if (levels.size > 0) {
+        for (const compKey of COMPONENT_APPROVAL_KEYS) {
+          if (levels.has(COMPONENT_LEVEL_BY_KEY[compKey])) componentes.add(compKey);
+        }
+      }
+    }
+
+    return { isSuperUser: false, componentes };
+  }
+
+  async aprobarComponente(ptaId: string, body: any, userId?: string) {
     const componente = coalesceString(body?.componente);
     const estado = coalesceString(body?.estado); // 'aprobado' o 'devuelto'
     if (!componente || !estado) {
@@ -3609,14 +3704,31 @@ export class PtaService {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
     }
 
-    const isSuperUser = body?.isSuperUser === true || body?.is_super_user === true;
-    const componentesAutorizados = Array.isArray(body?.componentesAutorizados)
-      ? body.componentesAutorizados
-      : (Array.isArray(body?.authorizedComponents) ? body.authorizedComponents : null);
-    if (!isSuperUser && componentesAutorizados) {
-      const allowed = new Set(componentesAutorizados.map((item: unknown) => String(item)));
-      if (!allowed.has(componente)) {
+    // ── Autorización por componente ──────────────────────────────────────────
+    // Fuente de verdad: los permisos reales del usuario (x-user-id inyectado por
+    // el gateway) resueltos contra el esquema auth. Solo quien tenga
+    // pta.approve.<componente> (o sea SUPER_ADMIN / wildcard) puede aprobar o
+    // devolver ese componente. La lista componentesAutorizados/isSuperUser del
+    // body es controlada por el cliente y NO se usa como autoridad; solo sirve de
+    // respaldo cuando no llega x-user-id (gateways antiguos).
+    const authKey = coalesceString(userId);
+    if (authKey) {
+      const authz = await this.resolveUserApprovalAuthorization(authKey);
+      if (!authz.isSuperUser && !authz.componentes.has(componente)) {
         throw new ForbiddenException('No tiene permisos para aprobar este componente del PTA.');
+      }
+    } else {
+      // Respaldo legacy: sin x-user-id se confía en el body, pero se niega si la
+      // lista no viene (antes el chequeo se saltaba por completo).
+      const isSuperUser = body?.isSuperUser === true || body?.is_super_user === true;
+      if (!isSuperUser) {
+        const componentesAutorizados = Array.isArray(body?.componentesAutorizados)
+          ? body.componentesAutorizados
+          : (Array.isArray(body?.authorizedComponents) ? body.authorizedComponents : null);
+        const allowed = new Set((componentesAutorizados || []).map((item: unknown) => String(item)));
+        if (!allowed.has(componente)) {
+          throw new ForbiddenException('No tiene permisos para aprobar este componente del PTA.');
+        }
       }
     }
 

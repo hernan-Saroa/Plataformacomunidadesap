@@ -365,8 +365,7 @@ function ApprovalTracker({
         'ext_capacitacion',
         'ext_procesos',
         'ext_fortalecimiento',
-        'ext_gobierno',
-        'ext_secciones'
+        'ext_gobierno'
       ]),
       baseColor: '#059669'
     },
@@ -1085,7 +1084,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     { key: 'ext_procesos', section: 'seleccion', label: 'Dirección de Procesos de Selección', icon: Briefcase, color: '#0284C7' },
     { key: 'ext_fortalecimiento', section: 'fortalecimiento', label: 'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', icon: Building2, color: '#7C3AED' },
     { key: 'ext_gobierno', section: 'alto_gobierno', label: 'Escuela de Alto Gobierno', icon: Shield, color: '#B45309' },
-    { key: 'ext_secciones', section: 'otras', label: 'Secciones y Actividades', icon: Layers, color: '#0E7490' },
   ] as const).filter(item => shouldShowComponentKey(item.key) && getSubcomponentHours(item.section) > 0), [shouldShowComponentKey, pta.extension_actividades, initialPta.extension_actividades]);
 
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
@@ -2878,15 +2876,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         true
                       )}
 
-                      {/* Sub 5: Secciones y Actividades — solo si tiene horas */}
-                      {getSubcomponentHours('otras') > 0 && renderComponentCard(
-                        'ext_secciones',
-                        'Secciones y Actividades',
-                        Layers,
-                        '#0E7490',
-                        `Horas: ${getSubcomponentHours('otras')}h`,
-                        true
-                      )}
                     </div>
                   </motion.div>
                   )}

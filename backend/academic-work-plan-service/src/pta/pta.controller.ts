@@ -825,8 +825,9 @@ export class PtaController {
   }
 
   @Post(':ptaId/aprobar-componente')
-  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any) {
-    const data = await this.ptaService.aprobarComponente(ptaId, body);
+  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    const userId = (req.headers['x-user-id'] as string) || '';
+    const data = await this.ptaService.aprobarComponente(ptaId, body, userId);
     return { success: true, data };
   }
 }

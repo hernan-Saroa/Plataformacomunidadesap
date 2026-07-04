@@ -96,7 +96,7 @@ function timeAgo(d: string): string {
 const COMPONENT_STEPS = [
   { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
-  { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno', 'ext_secciones'] },
+  { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
   { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
   { key: 'academicas_admin', label: 'AADM', icon: Award, color: '#6B21A8' },
 ];
