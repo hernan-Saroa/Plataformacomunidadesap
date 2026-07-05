@@ -1384,18 +1384,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const handleExtActChange = (id: number, field: string, value: any) => {
     setExtActividades(prev => prev.map(e => {
       if (e.id !== id) return e;
-      
+
+      // Clave de sección canónica (maneja alias legacy, ej. laboratorio_innovacion → fortalecimiento).
+      // Debe definirse aquí: se usa más abajo para leer el catálogo y guardar la sección.
+      const sectionKey = normalizeExtensionSectionKey(e.seccion);
+
       const otherSum = prev.filter(x => x.id !== id).reduce((sum, x) => sum + (x.horas || 0), 0);
       const cupoExt = Math.max(0, maxExtLimit - otherSum);
       // El tope del PTA total es informativo (ya hay advertencia "Excede").
       // Aqui solo respetamos el tope de extensión para no bloquear el ingreso de actividades.
       const remainingLimit = cupoExt;
-      
+
       // Multiplicador dinámico desde configuración de la sección
-      const secConfig = extSecciones.find(s => s.key === e.seccion);
+      const secConfig = extSecciones.find(s => s.key === sectionKey);
       const mult = (secConfig?.multiplicador && secConfig.multiplicador > 1) ? secConfig.multiplicador : 1;
       const tieneMultiplicador = mult > 1;
-      
+
       const updated = { ...e, seccion: sectionKey, [field]: value };
       
       if (field === 'actividad_id') {
