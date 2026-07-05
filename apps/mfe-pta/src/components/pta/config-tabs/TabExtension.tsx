@@ -321,13 +321,14 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
   };
-  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas', val: any) => {
+  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_min' | 'horas_en', val: any) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
     const meta = [...(act.columnas_meta?.[colName] || [])];
     // Ensure meta array is long enough
     while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 0 });
-    meta[valIdx] = { ...meta[valIdx], [field]: field === 'horas' ? Number(val) || 0 : val };
+    const isNumeric = field === 'horas' || field === 'horas_min';
+    meta[valIdx] = { ...meta[valIdx], [field]: isNumeric ? (val === '' ? '' : Number(val) || 0) : val };
     const updated = { ...act, columnas_meta: { ...(act.columnas_meta || {}), [colName]: meta } };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });

@@ -557,20 +557,20 @@ export const defaultPTARules: PTARules = {
       { id: 'LAB_13', nombre: 'Componente Variable — Diseño de estrategias de gestión social del conocimiento', max_horas: 60, items: [{ nombre: 'Documento de estrategia e informe de gestión', tipo: 'hasta', horas: 60 }] },
     ],
     investigacion_aplicada: [
-      { id: 'INV_AP_01', nombre: 'Documentos técnicos (informe, análisis temático)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Documento técnico', tipo: 'intervalo', min: 40, horas: 60 }] },
-      { id: 'INV_AP_02', nombre: 'Plan de Trabajo de Investigación Aplicada', min_horas: 2, max_horas: 6, items: [{ nombre: 'Plan de trabajo', tipo: 'intervalo', min: 2, horas: 6 }] },
-      { id: 'INV_AP_03', nombre: 'Productos de Generación de Nuevo Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de generación de nuevo conocimiento', tipo: 'intervalo', min: 40, horas: 60 }] },
-      { id: 'INV_AP_04', nombre: 'Productos de Desarrollo Tecnológico e Innovación (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de desarrollo tecnológico e innovación', tipo: 'intervalo', min: 40, horas: 60 }] },
-      { id: 'INV_AP_05', nombre: 'Productos de Apropiación Social del Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de apropiación social del conocimiento', tipo: 'intervalo', min: 40, horas: 60 }] },
-      { id: 'INV_AP_06', nombre: 'Productos de Formación de Recurso Humano para CTeI (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de formación de recurso humano para CTeI', tipo: 'intervalo', min: 40, horas: 60 }] },
+      { id: 'INV_AP_01', nombre: 'Documentos técnicos (informe, análisis temático)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Documento técnico', tipo: 'intervalo', horas_min:40, horas: 60 }] },
+      { id: 'INV_AP_02', nombre: 'Plan de Trabajo de Investigación Aplicada', min_horas: 2, max_horas: 6, items: [{ nombre: 'Plan de trabajo', tipo: 'intervalo', horas_min:2, horas: 6 }] },
+      { id: 'INV_AP_03', nombre: 'Productos de Generación de Nuevo Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de generación de nuevo conocimiento', tipo: 'intervalo', horas_min:40, horas: 60 }] },
+      { id: 'INV_AP_04', nombre: 'Productos de Desarrollo Tecnológico e Innovación (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de desarrollo tecnológico e innovación', tipo: 'intervalo', horas_min:40, horas: 60 }] },
+      { id: 'INV_AP_05', nombre: 'Productos de Apropiación Social del Conocimiento (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de apropiación social del conocimiento', tipo: 'intervalo', horas_min:40, horas: 60 }] },
+      { id: 'INV_AP_06', nombre: 'Productos de Formación de Recurso Humano para CTeI (SNCTI)', min_horas: 40, max_horas: 60, items: [{ nombre: 'Producto de formación de recurso humano para CTeI', tipo: 'intervalo', horas_min:40, horas: 60 }] },
       { id: 'INV_AP_07', nombre: 'Asistencia a eventos académicos / representación Grupo Inv. Aplicada', max_horas: 8, items: [{ nombre: 'Asistencia o representación académica', tipo: 'hasta', horas: 8 }] },
       { id: 'INV_AP_08', nombre: 'Procesos de evaluación de desempeño y productos', max_horas: 4, items: [{ nombre: 'Evaluación de desempeño o productos generados', tipo: 'hasta', horas: 4 }] },
     ],
     alto_gobierno: [
-      { id: 'EAG_01', nombre: 'Coaching directivo', min_horas: 80, max_horas: 200, items: [{ nombre: 'Coaching directivo', tipo: 'intervalo', min: 80, horas: 200 }] },
-      { id: 'EAG_02', nombre: 'Formación estratégica a la alta gerencia', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación estratégica', tipo: 'intervalo', min: 80, horas: 200 }] },
-      { id: 'EAG_03', nombre: 'Gestión del conocimiento', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación en gestión del conocimiento', tipo: 'intervalo', min: 80, horas: 200 }] },
-      { id: 'EAG_04', nombre: 'Desarrollo de contenidos', min_horas: 40, max_horas: 120, items: [{ nombre: 'Diseño y desarrollo de contenidos', tipo: 'intervalo', min: 40, horas: 120 }] },
+      { id: 'EAG_01', nombre: 'Coaching directivo', min_horas: 80, max_horas: 200, items: [{ nombre: 'Coaching directivo', tipo: 'intervalo', horas_min:80, horas: 200 }] },
+      { id: 'EAG_02', nombre: 'Formación estratégica a la alta gerencia', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación estratégica', tipo: 'intervalo', horas_min:80, horas: 200 }] },
+      { id: 'EAG_03', nombre: 'Gestión del conocimiento', min_horas: 80, max_horas: 200, items: [{ nombre: 'Diseño y formación en gestión del conocimiento', tipo: 'intervalo', horas_min:80, horas: 200 }] },
+      { id: 'EAG_04', nombre: 'Desarrollo de contenidos', min_horas: 40, max_horas: 120, items: [{ nombre: 'Diseño y desarrollo de contenidos', tipo: 'intervalo', horas_min:40, horas: 120 }] },
     ],
   },
 
@@ -756,7 +756,10 @@ function mergeExtActividad(defaultAct: ExtActividad, savedAct?: ExtActividad): E
   if (!savedAct) return defaultAct;
   const merged: ExtActividad = { ...defaultAct, ...savedAct };
 
-  if ((!Array.isArray(savedAct.items) || savedAct.items.length === 0) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
+  // Solo rellenar ítems desde el default cuando el guardado NO trae el arreglo
+  // (config legacy sin `items`). Un arreglo vacío es una eliminación deliberada
+  // del usuario y debe respetarse (no re-poblar).
+  if (!Array.isArray(savedAct.items) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
     merged.items = defaultAct.items;
   }
   if ((savedAct.max_horas === undefined || savedAct.max_horas === null) && defaultAct.max_horas !== undefined) {
@@ -832,15 +835,24 @@ function mergeExtActividades(defaults: PTARules['ext_actividades'], saved: any):
   const savedRecord = canonicalizeExtActivities(saved);
   const result: PTARules['ext_actividades'] = {};
 
-  for (const [sectionKey, defaultActivities] of Object.entries(defaultRecord)) {
-    const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
-    const savedById = new Map(savedActivities.map((act: ExtActividad) => [act.id, act]));
-    const defaultIds = new Set(defaultActivities.map(act => act.id));
+  const sectionKeys = new Set<string>([...Object.keys(defaultRecord), ...Object.keys(savedRecord)]);
+  for (const sectionKey of sectionKeys) {
+    const defaultActivities = defaultRecord[sectionKey] || [];
+    const defaultById = new Map(defaultActivities.map(act => [act.id, act]));
 
-    result[sectionKey] = [
-      ...defaultActivities.map(defaultAct => mergeExtActividad(defaultAct, savedById.get(defaultAct.id))),
-      ...savedActivities.filter((act: ExtActividad) => !defaultIds.has(act.id)),
-    ];
+    // Si la sección ya fue guardada (clave presente, aunque el arreglo esté vacío),
+    // el arreglo guardado es la fuente de verdad: se respetan las eliminaciones y NO
+    // se re-agregan las actividades por defecto que el usuario ya borró. Los defaults
+    // solo se usan para rellenar campos de actividades que aún existen (por id).
+    if (Object.prototype.hasOwnProperty.call(savedRecord, sectionKey)) {
+      const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
+      result[sectionKey] = savedActivities.map((savedAct: ExtActividad) =>
+        mergeExtActividad(defaultById.get(savedAct.id) || savedAct, savedAct)
+      );
+    } else {
+      // Sección nunca guardada → sembrar valores por defecto (primer uso / migración).
+      result[sectionKey] = defaultActivities.map(act => ({ ...act }));
+    }
   }
 
   return result;
@@ -899,8 +911,13 @@ function canonicalizeCompActividadesV2(raw: any): PTARules['comp_actividades_v2'
 }
 
 function mergeLegacyCompIntoV2(inputRules: Partial<PTARules>): PTARules['comp_actividades_v2'] {
-  const base = canonicalizeCompActividadesV2((inputRules as any).comp_actividades_v2);
-  if (Array.isArray((inputRules as any).comp_actividades) && (inputRules as any).comp_actividades.length > 0) {
+  const rawV2 = (inputRules as any).comp_actividades_v2;
+  const hasV2 = rawV2 && typeof rawV2 === 'object' && !Array.isArray(rawV2) && Object.keys(rawV2).length > 0;
+  const base = canonicalizeCompActividadesV2(rawV2);
+  // Solo importar el arreglo legacy plano (`comp_actividades`) cuando NO existe aún la
+  // estructura v2 (migración real de una config antigua). Si ya hay v2, ese arreglo es
+  // solo un espejo derivado; re-importarlo duplicaría o "resucitaría" actividades borradas.
+  if (!hasV2 && Array.isArray((inputRules as any).comp_actividades) && (inputRules as any).comp_actividades.length > 0) {
     base[COMP_DOCENCIA_SECTION] = [
       ...(base[COMP_DOCENCIA_SECTION] || []),
       ...(inputRules as any).comp_actividades.map(legacyComplementariaToV2),
@@ -912,7 +929,9 @@ function mergeLegacyCompIntoV2(inputRules: Partial<PTARules>): PTARules['comp_ac
 function mergeCompActividadV2(defaultAct: CompActividadV2, savedAct?: CompActividadV2): CompActividadV2 {
   if (!savedAct) return defaultAct;
   const merged: CompActividadV2 = { ...defaultAct, ...savedAct };
-  if ((!Array.isArray(savedAct.items) || savedAct.items.length === 0) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
+  // Un arreglo `items` vacío es una eliminación deliberada; solo rellenar cuando el
+  // guardado no trae el arreglo en absoluto (config legacy).
+  if (!Array.isArray(savedAct.items) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
     merged.items = defaultAct.items;
   }
   return merged;
@@ -932,14 +951,18 @@ function mergeCompActividadesV2(
   for (const fixedSection of FIXED_COMP_SECCIONES) {
     const sectionKey = fixedSection.key;
     const defaultActivities = defaultRecord[sectionKey] || [];
-    const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
-    const savedById = new Map(savedActivities.map((act: CompActividadV2) => [act.id, act]));
-    const defaultIds = new Set(defaultActivities.map(act => act.id));
+    const defaultById = new Map(defaultActivities.map(act => [act.id, act]));
 
-    result[sectionKey] = [
-      ...defaultActivities.map(defaultAct => mergeCompActividadV2(defaultAct, savedById.get(defaultAct.id))),
-      ...savedActivities.filter((act: CompActividadV2) => !defaultIds.has(act.id)),
-    ];
+    // Igual que Extensión: si la sección ya fue guardada, el arreglo guardado manda
+    // (se respetan las eliminaciones). Los defaults solo siembran secciones nuevas.
+    if (Object.prototype.hasOwnProperty.call(savedRecord, sectionKey)) {
+      const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
+      result[sectionKey] = savedActivities.map((savedAct: CompActividadV2) =>
+        mergeCompActividadV2(defaultById.get(savedAct.id) || savedAct, savedAct)
+      );
+    } else {
+      result[sectionKey] = defaultActivities.map(act => ({ ...act }));
+    }
   }
 
   return result;

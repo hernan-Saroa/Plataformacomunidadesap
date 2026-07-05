@@ -628,7 +628,9 @@ export class PtaService {
     if (!savedAct) return defaultAct;
     const merged = { ...defaultAct, ...savedAct };
 
-    if ((!Array.isArray(savedAct.items) || savedAct.items.length === 0) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
+    // Un arreglo `items` vacío es una eliminación deliberada del usuario; solo rellenar
+    // cuando el guardado no trae el arreglo en absoluto (config legacy sin ítems).
+    if (!Array.isArray(savedAct.items) && Array.isArray(defaultAct.items) && defaultAct.items.length > 0) {
       merged.items = defaultAct.items;
     }
     if ((savedAct.max_horas === undefined || savedAct.max_horas === null) && defaultAct.max_horas !== undefined) {
@@ -646,17 +648,26 @@ export class PtaService {
     const defaultRecord = canonicalizeExtensionActivities(EXTENSION_ACTIVITY_COMPLETIONS);
     const result: Record<string, any[]> = {};
 
-    for (const section of FIXED_EXTENSION_SECTIONS) {
-      const sectionKey = section.key;
-      const defaults = defaultRecord[sectionKey] || [];
-      const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
-      const savedById = new Map(savedActivities.map((act: any) => [act?.id, act]));
-      const defaultIds = new Set(defaults.map(act => act.id));
+    const sectionKeys = new Set<string>([
+      ...FIXED_EXTENSION_SECTIONS.map(s => s.key),
+      ...Object.keys(savedRecord),
+    ]);
 
-      result[sectionKey] = [
-        ...defaults.map(defaultAct => this.mergeExtensionActivity(defaultAct, savedById.get(defaultAct.id))),
-        ...savedActivities.filter((act: any) => !defaultIds.has(act?.id)),
-      ];
+    for (const sectionKey of sectionKeys) {
+      const defaults = defaultRecord[sectionKey] || [];
+      const defaultById = new Map(defaults.map((act: any) => [act.id, act]));
+
+      // Si la sección ya fue guardada, el arreglo guardado es la fuente de verdad: se
+      // respetan las eliminaciones del usuario y NO se re-agregan las actividades por
+      // defecto ya borradas. Los defaults solo siembran secciones aún no configuradas.
+      if (Object.prototype.hasOwnProperty.call(savedRecord, sectionKey)) {
+        const savedActivities = Array.isArray(savedRecord[sectionKey]) ? savedRecord[sectionKey] : [];
+        result[sectionKey] = savedActivities.map((savedAct: any) =>
+          this.mergeExtensionActivity(defaultById.get(savedAct?.id) || savedAct, savedAct),
+        );
+      } else {
+        result[sectionKey] = defaults.map(act => ({ ...act }));
+      }
     }
 
     return result;
@@ -3151,37 +3162,11 @@ export class PtaService {
           ]
         }
       ],
-      laboratorio_innovacion: [
-        { id: 'LAB_01', nombre: 'Componente Fijo — Espacios de participación y representación', items: [] },
-        { id: 'LAB_02', nombre: 'Componente Fijo — Aspectos administrativos y gestión', items: [] },
-        { id: 'LAB_03', nombre: 'Componente Variable — Elaborar documentos técnicos en el marco de las iniciativas', items: [] },
-        { id: 'LAB_04', nombre: 'Componente Variable — Preparar y compilar documentos técnicos para publicación', items: [] },
-        { id: 'LAB_05', nombre: 'Componente Variable — Elaborar documentos soporte de ejecución de iniciativas', items: [] },
-        { id: 'LAB_06', nombre: 'Componente Variable — Diseñar, ejecutar y/o liderar iniciativas innovadoras', items: [] },
-        { id: 'LAB_07', nombre: 'Componente Variable — Ejecutar trabajo de campo', items: [] },
-        { id: 'LAB_08', nombre: 'Componente Variable — Acompañamiento en planeación de eventos', items: [] },
-        { id: 'LAB_09', nombre: 'Componente Variable — Acompañamiento en trabajo de campo', items: [] },
-        { id: 'LAB_10', nombre: 'Componente Variable — Representar a la ESAP en espacios consultivos', items: [] },
-        { id: 'LAB_11', nombre: 'Componente Variable — Charlas y conferencias (formación)', items: [] },
-        { id: 'LAB_12', nombre: 'Componente Variable — Coordinar enlace de capacitación en temáticas del Lab.', items: [] },
-        { id: 'LAB_13', nombre: 'Componente Variable — Diseño de estrategias de gestión social del conocimiento', items: [] },
-      ],
-      investigacion_aplicada: [
-        { id: 'INV_AP_01', nombre: 'Documentos técnicos (informe, análisis temático)', items: [] },
-        { id: 'INV_AP_02', nombre: 'Plan de Trabajo de Investigación Aplicada', items: [] },
-        { id: 'INV_AP_03', nombre: 'Productos de Generación de Nuevo Conocimiento (SNCTI)', items: [] },
-        { id: 'INV_AP_04', nombre: 'Productos de Desarrollo Tecnológico e Innovación (SNCTI)', items: [] },
-        { id: 'INV_AP_05', nombre: 'Productos de Apropiación Social del Conocimiento (SNCTI)', items: [] },
-        { id: 'INV_AP_06', nombre: 'Productos de Formación de Recurso Humano para CTeI (SNCTI)', items: [] },
-        { id: 'INV_AP_07', nombre: 'Asistencia a eventos académicos / representación Grupo Inv. Aplicada', items: [] },
-        { id: 'INV_AP_08', nombre: 'Procesos de evaluación de desempeño y productos', items: [] },
-      ],
-      alto_gobierno: [
-        { id: 'EAG_01', nombre: 'Coaching directivo', items: [] },
-        { id: 'EAG_02', nombre: 'Formación estratégica a la alta gerencia', items: [] },
-        { id: 'EAG_03', nombre: 'Gestión del conocimiento', items: [] },
-        { id: 'EAG_04', nombre: 'Desarrollo de contenidos', items: [] },
-      ],
+      // Estas sub-secciones traen sus ítems reales desde el catálogo de completaciones
+      // (antes venían con items:[] y dependían del backfill; ahora son autosuficientes).
+      laboratorio_innovacion: EXTENSION_ACTIVITY_COMPLETIONS.laboratorio_innovacion,
+      investigacion_aplicada: EXTENSION_ACTIVITY_COMPLETIONS.investigacion_aplicada,
+      alto_gobierno: EXTENSION_ACTIVITY_COMPLETIONS.alto_gobierno,
     });
   }
 
