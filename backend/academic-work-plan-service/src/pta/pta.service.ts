@@ -19,6 +19,7 @@ import { PtaEventoEntity } from './entities/pta-evento.entity';
 import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
 import type { PtaAuthenticatedUser } from './auth/pta-auth.guard';
 import { COMPONENT_PERMISSION } from './auth/pta-permissions.constants';
+import { PtaNotificationsService } from './notifications/pta-notifications.service';
 
 type SavePtaInput = Record<string, any>;
 
@@ -299,6 +300,7 @@ export class PtaService {
     private readonly eventoRepo: Repository<PtaEventoEntity>,
     @InjectRepository(PtaComponentApprovalEntity)
     private readonly ptaComponentApprovalRepo: Repository<PtaComponentApprovalEntity>,
+    private readonly ptaNotifications: PtaNotificationsService,
   ) {}
 
   private safeUsuario(usuario: any) {
@@ -1783,6 +1785,27 @@ export class PtaService {
       mensaje: `${estadoAnterior} → ${estadoFinal}`,
       metadata: { accion, observaciones: coalesceString(body?.observaciones, body?.comentarios) },
     });
+
+    // ── Notificación: PTA entró a revisión → avisar a los aprobadores de cada
+    // componente pendiente (según su permiso pta.approve.<componente>). Best-effort.
+    if (debeInicializarAprobacionesJefatura) {
+      try {
+        const componentes = await this.getComponentesAprobacion(ptaId);
+        const pendientes = componentes
+          .filter((c) => c.estado === 'pendiente')
+          .map((c) => c.componente);
+        if (pendientes.length > 0) {
+          await this.ptaNotifications.notifyApproversPtaEnRevision({
+            ptaId,
+            docenteNombre: coalesceString(ds?.docente_nombre),
+            periodo: coalesceString((existing as any).periodo, (ds as any)?.periodo),
+            componentes: pendientes,
+          });
+        }
+      } catch (error: any) {
+        this.logger.warn(`No se pudo notificar a aprobadores del PTA ${ptaId}: ${error?.message}`);
+      }
+    }
 
     return {
       ...(parallelApprovalResult || {}),
@@ -3748,6 +3771,21 @@ export class PtaService {
         mensaje: `Componente ${componente} actualizado a ${estado}`,
         metadata: { componente, estado, comentarios: approval.comentarios },
       });
+    }
+
+    // ── Notificación de vuelta al profesor cuando el componente fue APROBADO.
+    // Texto: "Esta componente ha sido aprobada por [Nombre del aprobador]". Best-effort.
+    if (estado === 'aprobado') {
+      try {
+        await this.ptaNotifications.notifyProfesorComponenteAprobado({
+          ptaId,
+          docenteId: existingPta.docenteId,
+          componente,
+          aprobadorNombre: approval.aprobadorNombre,
+        });
+      } catch (error: any) {
+        this.logger.warn(`No se pudo notificar al profesor del PTA ${ptaId}: ${error?.message}`);
+      }
     }
 
     return {

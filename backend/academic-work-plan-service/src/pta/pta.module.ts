@@ -5,6 +5,7 @@ import { PtaController } from './pta.controller';
 import { PtaService } from './pta.service';
 import { PtaPermissionsService } from './auth/pta-permissions.service';
 import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './entities/pta-evidencia.entity';
@@ -76,6 +77,6 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
     ]),
   ],
   controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController],
-  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard],
+  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaNotificationsService],
 })
 export class PtaModule {}
