@@ -643,7 +643,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     [apruebaTodo, puedePerm],
   );
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
-    if (isSuperUser || apruebaTodo) return [...PTA_COMPONENT_KEYS];
+    if (apruebaTodo) return [...PTA_COMPONENT_KEYS];
     const granularKeys = PTA_COMPONENT_KEYS.filter(key => puedePerm(COMPONENT_PERMISSION[key]));
     if (granularKeys.length > 0) return granularKeys;
     const configuredKeys = (permisosPta.componentesAprobables || [])
@@ -668,7 +668,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return visibleComponentKeys.map(key => labels[key] || key).join(', ');
   }, [visibleComponentKeys]);
   const isComponentAuthorized = useCallback((key: string): boolean => {
-    if (isSuperUser || apruebaTodo) return true;
+    if (apruebaTodo) return true;
     if (visibleComponentKeySet.size > 0) return visibleComponentKeySet.has(key);
     const perm = COMPONENT_PERMISSION[key];
     if (tieneAlgunPermisoComponente) {

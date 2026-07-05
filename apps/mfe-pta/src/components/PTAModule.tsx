@@ -23,9 +23,12 @@ export type PTAModuleProps = {
 function deriveIsSuperUser(userRoles?: string[], userEmail?: string) {
   if (userEmail && String(userEmail).toLowerCase().trim() === 'desarrollo.ccd@esap.edu.co') return true;
   if (!Array.isArray(userRoles)) return false;
+  // Solo el rol EXACTO SUPER_ADMIN es superusuario (alineado con el backend y con
+  // PermisosPTAContext). Un rol que solo contenga "admin" en el nombre NO debe
+  // heredar acceso total; la autorización de aprobación va por permisos granulares.
   return userRoles.some((role) => {
-    const r = String(role).toLowerCase();
-    return r.includes('super') || r.includes('admin');
+    const code = String(typeof role === 'string' ? role : ((role as any)?.code ?? '')).toUpperCase().trim();
+    return code === 'SUPER_ADMIN';
   });
 }
 
