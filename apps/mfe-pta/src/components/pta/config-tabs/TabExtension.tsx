@@ -486,8 +486,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                         <span className="text-xs font-mono text-slate-500">{sec.color}</span>
                       </div>
                     </div>
-                    {/* Multiplicador — visible solo si > 1 (ej: Capacitación ×2) */}
-                    {(sec.multiplicador ?? 1) > 1 && (
+                    {/* Multiplicador (×Factor) — editable para todas las secciones */}
+                    {(
                       <div className="shrink-0">
                         <label className="block text-[0.65rem] font-bold text-amber-600 uppercase tracking-wider mb-1"
                           title="Factor de conversión: horas ejecutadas × multiplicador = horas en el PTA">

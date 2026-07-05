@@ -169,10 +169,13 @@ function normalizeExtensionSections(raw: any): any[] {
 
   return FIXED_EXTENSION_SECTIONS.map(section => {
     const previous = savedByKey.get(section.key);
+    const savedMult = Number(previous?.multiplicador);
     return {
       ...section,
       color: previous?.color || section.color,
       columnas: Array.isArray(previous?.columnas) ? previous.columnas : (section as any).columnas,
+      // El multiplicador (×Factor) es configurable por el admin y debe persistir en guardado/lectura.
+      multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : section.multiplicador,
     };
   });
 }

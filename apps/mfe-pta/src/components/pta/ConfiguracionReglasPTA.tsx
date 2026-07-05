@@ -784,10 +784,13 @@ function normalizeFixedExtSecciones(saved: any): PTARules['ext_secciones'] {
 
   return FIXED_EXT_SECCIONES.map(sec => {
     const previous = savedByKey.get(sec.key) as Partial<PTARules['ext_secciones'][number]> | undefined;
+    const savedMult = Number(previous?.multiplicador);
     return {
       ...sec,
       color: previous?.color || sec.color,
       columnas: Array.isArray(previous?.columnas) ? previous?.columnas : sec.columnas,
+      // El multiplicador (×Factor) lo edita el admin y debe persistir; el fijo es solo default.
+      multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : sec.multiplicador,
     };
   });
 }

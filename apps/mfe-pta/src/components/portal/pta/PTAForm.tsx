@@ -226,25 +226,27 @@ function getComplementariaConstraint(activity: any, rules?: any): HourConstraint
     return buildHourConstraint(fallbackMax, fallbackMax, false, 'fixed');
   }
 
+  // Para actividades de rango, el máximo por actividad configurado (fallbackMax = catalog
+  // max_horas) manda; el escalar legacy solo es fallback. El mínimo conserva el piso normativo.
   switch (id) {
     case 'COMP_08':
       return buildHourConstraint(
         getPositiveRuleNumber(rules?.comp_act_unidades_min, 60),
-        getPositiveRuleNumber(rules?.comp_act_unidades_max, fallbackMax || 120),
+        getPositiveRuleNumber(fallbackMax, getPositiveRuleNumber(rules?.comp_act_unidades_max, 120)),
         true,
         'range'
       );
     case 'COMP_13':
       return buildHourConstraint(
         getPositiveRuleNumber(rules?.comp_coord_escuela_doc_min, 40),
-        getPositiveRuleNumber(rules?.comp_coord_escuela_doc_max, fallbackMax || 80),
+        getPositiveRuleNumber(fallbackMax, getPositiveRuleNumber(rules?.comp_coord_escuela_doc_max, 80)),
         true,
         'range'
       );
     case 'COMP_15':
       return buildHourConstraint(
         getPositiveRuleNumber(rules?.comp_lider_posgrado_min, 120),
-        getPositiveRuleNumber(rules?.comp_lider_posgrado_max, fallbackMax || 200),
+        getPositiveRuleNumber(fallbackMax, getPositiveRuleNumber(rules?.comp_lider_posgrado_max, 200)),
         true,
         'range'
       );
@@ -261,33 +263,36 @@ function getAcademicoAdminConstraint(activity: any, rules: any, horasAProgramar:
     return buildHourConstraint(horasAProgramar, horasAProgramar, false, 'exclusive');
   }
 
+  // Nota: el máximo por actividad configurado en la Configuración de Reglas (catalogMax,
+  // proveniente de aadm_actividades[].max_horas) manda. Los campos escalares legacy
+  // (aadm_misiones_horas, comp_doc_*) solo se usan como fallback cuando el catálogo no trae valor.
   switch (id) {
     case 'AA_06': {
       const maxPct = getPositiveRuleNumber(rules?.aadm_misiones_pct, 25) / 100;
-      const maxHoras = getPositiveRuleNumber(rules?.aadm_misiones_horas, catalogMax || 200);
+      const maxHoras = getPositiveRuleNumber(catalogMax, getPositiveRuleNumber(rules?.aadm_misiones_horas, 200));
       return buildHourConstraint(1, Math.min(maxHoras, Math.round(horasAProgramar * maxPct)), true, 'upto');
     }
     case 'AA_07':
-      return buildHourConstraint(1, getPositiveRuleNumber(rules?.aadm_acreditacion_max, catalogMax || 64), true, 'upto');
-    case 'AA_08':
-      return buildHourConstraint(
-        getPositiveRuleNumber(rules?.comp_doc_coord_comision, catalogMax || 200),
-        getPositiveRuleNumber(rules?.comp_doc_coord_comision, catalogMax || 200),
-        false,
-        'fixed'
-      );
+      return buildHourConstraint(1, getPositiveRuleNumber(catalogMax, getPositiveRuleNumber(rules?.aadm_acreditacion_max, 64)), true, 'upto');
+    case 'AA_08': {
+      const aa08 = getPositiveRuleNumber(catalogMax, getPositiveRuleNumber(rules?.comp_doc_coord_comision, 200));
+      return buildHourConstraint(aa08, aa08, false, 'fixed');
+    }
     case 'AA_09':
-      return buildHourConstraint(1, getPositiveRuleNumber(rules?.comp_doc_comisionado, catalogMax || 60), true, 'upto');
+      return buildHourConstraint(1, getPositiveRuleNumber(catalogMax, getPositiveRuleNumber(rules?.comp_doc_comisionado, 60)), true, 'upto');
     case 'AA_10':
-      return buildHourConstraint(1, getPositiveRuleNumber(rules?.comp_doc_eval_propuesta, catalogMax || 10), true, 'upto');
+      return buildHourConstraint(1, getPositiveRuleNumber(catalogMax, getPositiveRuleNumber(rules?.comp_doc_eval_propuesta, 10)), true, 'upto');
     case 'AA_11':
-      return buildHourConstraint(1, getPositiveRuleNumber(rules?.comp_doc_ajuste_microcv, catalogMax || 100), true, 'upto');
+      return buildHourConstraint(1, getPositiveRuleNumber(catalogMax, getPositiveRuleNumber(rules?.comp_doc_ajuste_microcv, 100)), true, 'upto');
     case 'AA_12':
       return buildHourConstraint(
         1,
-        Math.max(
-          getPositiveRuleNumber(rules?.comp_doc_gestor_intl, catalogMax || 100),
-          getPositiveRuleNumber(rules?.comp_doc_gestor_ext, catalogMax || 100)
+        getPositiveRuleNumber(
+          catalogMax,
+          Math.max(
+            getPositiveRuleNumber(rules?.comp_doc_gestor_intl, 100),
+            getPositiveRuleNumber(rules?.comp_doc_gestor_ext, 100)
+          )
         ),
         true,
         'upto'
@@ -409,7 +414,9 @@ function calcHorasProgramables(tipoVinc: string, dedicacion: string, semanas?: n
     // CARRERA_003 and PERIODO_PRUEBA apply proportionality RN-003
     const base = rules?.horas_base_carrera_003 || tipo.horas_tc || 800;
     const baseDedicacion = dedicacion === 'Medio Tiempo' ? Math.round(base / 2) : base;
-    const semanasPeriodo = rules?.semanas_periodo || 20;
+    // La clave correcta en PTARules es `semanas_periodo_academico` (TabGenerales la edita).
+    // Se conserva `semanas_periodo` como fallback defensivo por si hubiera datos legacy.
+    const semanasPeriodo = rules?.semanas_periodo_academico || rules?.semanas_periodo || 20;
     const sEfectivas = semanas || semanasPeriodo;
     return Math.round((sEfectivas / semanasPeriodo) * baseDedicacion);
   }
