@@ -116,7 +116,6 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.approve.extension.procesos_seleccion': 'gestion',
   'pta.approve.extension.fortalecimiento': 'gestion',
   'pta.approve.extension.alto_gobierno': 'gestion',
-  'pta.approve.extension.secciones_actividades': 'gestion',
   'pta.approve.complementarias': 'gestion',
   'pta.approve.academicas_admin': 'gestion',
   'pta.approve.all': 'gestion',

@@ -1,6 +1,7 @@
 -- =============================================================================
--- 369: Limpieza del modelo de aprobación del PTA → modelo POR COMPONENTE
+-- 370: Limpieza del modelo de aprobación del PTA → modelo POR COMPONENTE
 -- =============================================================================
+-- (Corre después de la 369, que elimina el permiso comodín de extensión.)
 -- El PTA ya no se aprueba por jerarquía/niveles (N1 Jefatura → N2 Decano →
 -- N3 Gestión Profesoral). Ahora cada rol aprueba los componentes para los que
 -- tiene permiso granular (pta.approve.<componente>), y existe un permiso de

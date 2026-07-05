@@ -5,7 +5,6 @@ export type PTAComponentKey =
   | 'ext_procesos'
   | 'ext_fortalecimiento'
   | 'ext_gobierno'
-  | 'ext_secciones'
   | 'complementarias'
   | 'academicas_admin';
 
@@ -16,7 +15,6 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   ext_procesos: 'pta.approve.extension.procesos_seleccion',
   ext_fortalecimiento: 'pta.approve.extension.fortalecimiento',
   ext_gobierno: 'pta.approve.extension.alto_gobierno',
-  ext_secciones: 'pta.approve.extension.secciones_actividades',
   complementarias: 'pta.approve.complementarias',
   academicas_admin: 'pta.approve.academicas_admin',
 };
@@ -34,7 +32,6 @@ export const PTA_EXTENSION_COMPONENT_KEYS: PTAComponentKey[] = [
   'ext_procesos',
   'ext_fortalecimiento',
   'ext_gobierno',
-  'ext_secciones',
 ];
 
 export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
@@ -45,7 +42,6 @@ export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
   ext_procesos: 2,
   ext_fortalecimiento: 2,
   ext_gobierno: 2,
-  ext_secciones: 2,
   academicas_admin: 3,
 };
 
@@ -77,8 +73,6 @@ export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolea
       return hasExtensionSectionData(pta, ['fortalecimiento', 'laboratorio_innovacion', 'investigacion_aplicada']);
     case 'ext_gobierno':
       return hasExtensionSectionData(pta, ['alto_gobierno']);
-    case 'ext_secciones':
-      return hasExtensionOtherSectionData(pta);
     case 'complementarias':
       return Number(pta?.horas_complementarias || 0) > 0
         || (Array.isArray(pta?.complementarias) && pta.complementarias.length > 0);
@@ -104,14 +98,4 @@ function hasExtensionSectionData(pta: any, sections: string[]): boolean {
   });
   if (sectionMatches) return true;
   return Number(pta?.horas_extension || 0) > 0 && acts.length === 0;
-}
-
-function hasExtensionOtherSectionData(pta: any): boolean {
-  const acts = Array.isArray(pta?.extension_actividades) ? pta.extension_actividades : [];
-  const known = new Set(['capacitacion', 'seleccion', 'fortalecimiento', 'laboratorio_innovacion', 'investigacion_aplicada', 'alto_gobierno']);
-  return acts.some((act: any) => {
-    const section = String(act?.seccion || '');
-    const hours = Number(act?.horas_ejecutadas ?? act?.horas ?? 0);
-    return !known.has(section) && (hours > 0 || act?.actividad_id || act?.actividad_nombre);
-  });
 }

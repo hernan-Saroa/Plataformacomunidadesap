@@ -106,7 +106,6 @@ const COMPONENT_APPROVAL_KEYS = [
   'ext_procesos',
   'ext_fortalecimiento',
   'ext_gobierno',
-  'ext_secciones',
   'complementarias',
   'academicas_admin',
 ];
@@ -130,7 +129,6 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   ext_procesos: 'REVISION_DOCENTE_N2',
   ext_fortalecimiento: 'REVISION_DOCENTE_N2',
   ext_gobierno: 'REVISION_DOCENTE_N2',
-  ext_secciones: 'REVISION_DOCENTE_N2',
   academicas_admin: 'REVISION_DOCENTE_N3',
 };
 
@@ -234,7 +232,7 @@ function isRoleApprovalComponent(componente?: string | null): boolean {
 }
 
 function componentKeyForExtensionSection(section: unknown): string {
-  return EXTENSION_COMPONENT_BY_SECTION[normalizeExtensionSectionKey(section)] || 'ext_secciones';
+  return EXTENSION_COMPONENT_BY_SECTION[normalizeExtensionSectionKey(section)] || 'ext_fortalecimiento';
 }
 
 function isPendingRoleApprovalState(estado?: string | null): boolean {
@@ -3553,16 +3551,9 @@ export class PtaService {
           return s + h;
         }, 0);
 
-    const extOtras = () =>
-      extActs
-        .filter((a: any) => !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(normalizeExtensionSectionKey(a?.seccion)))
-        .reduce((s: number, a: any) => {
-          const m = this.multiplicadorDeExt(a, extMult);
-          const h = m === 1
-            ? Number(a?.horas ?? 0)
-            : Number(a?.horas_ejecutadas ?? a?.horas ?? 0) * m;
-          return s + h;
-        }, 0);
+    // Nota: las actividades de extensión se canonizan a las 4 secciones fijas
+    // (normalizeExtensionSectionKey mapea cualquier sección desconocida a
+    // 'fortalecimiento'), por lo que no existe componente comodín "otras".
 
     const horasPorComponente: Record<string, number> = {
       academica: hDocencia,
@@ -3571,7 +3562,6 @@ export class PtaService {
       ext_procesos: extBySeccion(['seleccion']),
       ext_fortalecimiento: extBySeccion(['fortalecimiento']),
       ext_gobierno: extBySeccion(['alto_gobierno']),
-      ext_secciones: extOtras(),
       complementarias: hComp,
       academicas_admin: hAcad,
     };

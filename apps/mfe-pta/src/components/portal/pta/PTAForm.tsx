@@ -462,7 +462,6 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   ext_procesos: 'extension',
   ext_fortalecimiento: 'extension',
   ext_gobierno: 'extension',
-  ext_secciones: 'extension',
   complementarias: 'complementarias',
   academicas_admin: 'academico_admin',
 };
@@ -477,7 +476,7 @@ const EXT_SUBSECTION_TO_COMPONENT: Record<string, PTAComponentKey> = {
 };
 
 function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
-  return EXT_SUBSECTION_TO_COMPONENT[section] || 'ext_secciones';
+  return EXT_SUBSECTION_TO_COMPONENT[section] || 'ext_fortalecimiento';
 }
 
 export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel }: PTAFormProps) {

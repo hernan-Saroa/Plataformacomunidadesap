@@ -17,7 +17,6 @@ export type PTAComponentKey =
   | 'ext_procesos'
   | 'ext_fortalecimiento'
   | 'ext_gobierno'
-  | 'ext_secciones'
   | 'academicas_admin';
 
 /** Todas las claves de componente aprobable, en orden estable. */
@@ -29,7 +28,6 @@ export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'ext_procesos',
   'ext_fortalecimiento',
   'ext_gobierno',
-  'ext_secciones',
   'academicas_admin',
 ];
 
@@ -42,7 +40,6 @@ export const COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   ext_procesos: 'pta.approve.extension.procesos_seleccion',
   ext_fortalecimiento: 'pta.approve.extension.fortalecimiento',
   ext_gobierno: 'pta.approve.extension.alto_gobierno',
-  ext_secciones: 'pta.approve.extension.secciones_actividades',
   academicas_admin: 'pta.approve.academicas_admin',
 };
 
@@ -55,7 +52,6 @@ export const COMPONENT_LEVEL: Record<PTAComponentKey, 1 | 2 | 3> = {
   ext_procesos: 2,
   ext_fortalecimiento: 2,
   ext_gobierno: 2,
-  ext_secciones: 2,
   academicas_admin: 3,
 };
 
