@@ -3719,7 +3719,7 @@
                                                 </div>
 
                                                 {/* Botones de Descarga */}
-                                                <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
+                                                {/* <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
                                                   <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                                                     <Download className="w-5 h-5 text-gray-600" />
                                                     Documentos de Cierre
@@ -3740,7 +3740,7 @@
                                                       </div>
                                                     </button>
                                                   </div>
-                                                </div>
+                                                </div> */}
 
                                                 {/* Trazabilidad de Decisiones */}
                                                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

@@ -117,6 +117,7 @@ export enum Permissions {
   // Verificación de títulos - Graduados
   GRADUATES_CREATE = 'graduates.create',
   GRADUATES_EDIT = 'graduates.edit',
+  GRADUATES_BULK_UPLOAD = 'graduates.bulk_upload',
   GRADUATES_VERIFY_CERTIFICATE = 'graduates.verify_certificate',
   GRADUATES_EXPORT = 'graduates.export',
 

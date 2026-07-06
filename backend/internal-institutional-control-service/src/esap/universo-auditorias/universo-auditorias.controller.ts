@@ -19,10 +19,67 @@ import { ControlInternoPermissions as CIP } from '../../common/permissions.const
 import { UniversoAuditoriasService } from './universo-auditorias.service';
 import { CreateProcesoAuditableDto } from './dto/create-proceso-auditable.dto';
 import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
+import { CreateTipoProcesoDto, UpdateTipoProcesoDto } from './dto/tipo-proceso.dto';
 
 @Controller('universo-auditorias')
 export class UniversoAuditoriasController {
   constructor(private readonly universoAuditoriasService: UniversoAuditoriasService) {}
+
+  /**
+   * GET /universo-auditorias/tipos-proceso
+   * Obtiene los tipos de proceso parametrizados.
+   */
+  @Get('tipos-proceso')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  findTiposProceso(@Query('soloActivos') soloActivos?: string) {
+    return this.universoAuditoriasService.findTiposProceso(soloActivos !== 'false');
+  }
+
+  /**
+   * POST /universo-auditorias/tipos-proceso/seed-defaults
+   * Restaura/reactiva los tipos base sin eliminar tipos personalizados.
+   */
+  @Post('tipos-proceso/seed-defaults')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  seedTiposProcesoDefaults() {
+    return this.universoAuditoriasService.seedTiposProcesoDefaults();
+  }
+
+  /**
+   * POST /universo-auditorias/tipos-proceso
+   * Crea un tipo de proceso parametrizado.
+   */
+  @Post('tipos-proceso')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_CREATE)
+  @HttpCode(HttpStatus.CREATED)
+  createTipoProceso(@Body() createDto: CreateTipoProcesoDto) {
+    return this.universoAuditoriasService.createTipoProceso(createDto);
+  }
+
+  /**
+   * PUT /universo-auditorias/tipos-proceso/:id
+   * Actualiza un tipo de proceso parametrizado.
+   */
+  @Put('tipos-proceso/:id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  updateTipoProceso(@Param('id') id: string, @Body() updateDto: UpdateTipoProcesoDto) {
+    return this.universoAuditoriasService.updateTipoProceso(id, updateDto);
+  }
+
+  /**
+   * PATCH /universo-auditorias/tipos-proceso/:id/inactivar
+   * Inactiva un tipo de proceso si no tiene procesos activos asociados.
+   */
+  @Patch('tipos-proceso/:id/inactivar')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT)
+  inactivarTipoProceso(@Param('id') id: string) {
+    return this.universoAuditoriasService.inactivarTipoProceso(id);
+  }
 
   /**
    * GET /universo-auditorias/procesos
@@ -161,4 +218,3 @@ export class UniversoAuditoriasController {
     return this.universoAuditoriasService.getPriorizacion();
   }
 }
-

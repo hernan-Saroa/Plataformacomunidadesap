@@ -5,7 +5,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { TipoProceso } from './tipo-proceso.entity';
 
 
 
@@ -39,6 +42,16 @@ export class ProcesoAuditable {
     nullable: false,
   })
   tipo: string;
+
+  @Column({ name: 'tipo_proceso_id', type: 'uuid', nullable: true })
+  tipoProcesoId?: string;
+
+  @ManyToOne(() => TipoProceso, tipoProceso => tipoProceso.procesos, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'tipo_proceso_id' })
+  tipoProceso?: TipoProceso;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   macroproceso?: string;
@@ -128,4 +141,3 @@ export class ProcesoAuditable {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }
-

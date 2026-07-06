@@ -85,6 +85,7 @@ const GRADUATES_PERMISSION_CODES = [
   'graduates.edit',
   'graduates.export',
   'graduates.verify_certificate',
+  'graduates.bulk_upload',
 ];
 
 const TITLE_VERIFICATION_PERMISSION_CODES = [
@@ -125,6 +126,7 @@ const ACADEMIC_PROFILES: AcademicProfile[] = [
     label: 'Aprobador',
     allowed: [
       'graduates.verify_certificate',
+      'graduates.bulk_upload',
       'graduates-certificates.solicitude.aprobar',
       'graduates-certificates.certificates.view',
       'graduates-certificates.solicitude.review',
@@ -147,6 +149,7 @@ const ACADEMIC_PROFILES: AcademicProfile[] = [
     label: 'Revisor',
     allowed: [
       'graduates.verify_certificate',
+      'graduates.bulk_upload',
       'graduates-certificates.certificates.view',
       'graduates-certificates.solicitude.review',
       'graduates-certificates.certificates.reenviar',

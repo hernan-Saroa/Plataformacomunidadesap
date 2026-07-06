@@ -39,6 +39,7 @@ import { EventoTimeline } from './esap/planes-mejoramiento/entities/evento-timel
 import { Aprobacion } from './esap/aprobaciones/entities/aprobacion.entity';
 import { ProcesoAuditable } from './esap/universo-auditorias/entities/proceso-auditable.entity';
 import { EvaluacionProceso } from './esap/universo-auditorias/entities/evaluacion-proceso.entity';
+import { TipoProceso } from './esap/universo-auditorias/entities/tipo-proceso.entity';
 import { Documento } from './esap/documentos/entities/documento.entity';
 import { ProgramaAnual } from './esap/programa-anual/entities/programa-anual.entity';
 import { AuditoriaProgramada } from './esap/programa-anual/entities/auditoria-programada.entity';
@@ -126,6 +127,7 @@ import { SeguimientoPlan } from './esap/planes-mejoramiento/entities/seguimiento
             EventoTimeline,
             Aprobacion,
             ProcesoAuditable,
+            TipoProceso,
             EvaluacionProceso,
             Documento,
             ProgramaAnual,
