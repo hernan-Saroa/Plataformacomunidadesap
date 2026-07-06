@@ -1565,7 +1565,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             boxShadow: '0 1px 2px rgba(0,0,0,0.01)',
           }}>
             <Lock style={{ width: 13, height: 13, color: '#94A3B8' }} />
-            <span>Este componente es gestionado y concertado por {getResponsableRoleLabel(key)}.</span>
+            <span>
+              {!componentAuthorized
+                ? 'No tienes los permisos para aprobar este componente.'
+                : `Este componente es gestionado y concertado por ${getResponsableRoleLabel(key)}.`}
+            </span>
           </div>
         )}
       </motion.div>

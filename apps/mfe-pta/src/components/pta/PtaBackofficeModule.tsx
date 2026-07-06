@@ -3598,6 +3598,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const isPendiente = isEstadoPendienteAprobacion(pta.estado);
                       const isSelected = selectedIds.has(pta.id);
                       const estadoLabel = pta.estado?.replace(/_/g, ' ') || 'Sin estado';
+                      // El flujo ahora es granular por componente: en los estados "pendientes" mostramos
+                      // el avance de aprobación (X/N componentes) en vez del rótulo de nivel (ej. "Pendiente Jefatura").
+                      // Si el backend no envía los conteos, caemos al rótulo de estado.
+                      const compAprobados = Number(pta.componentes_aprobados);
+                      const compTotal = Number(pta.componentes_total);
+                      const tieneAvanceComponentes = Number.isFinite(compAprobados) && Number.isFinite(compTotal) && compTotal > 0;
+                      const badgeText = (isPendiente && tieneAvanceComponentes)
+                        ? `${compAprobados}/${compTotal} componentes`
+                        : estadoLabel;
+                      const badgeTitle = (isPendiente && tieneAvanceComponentes)
+                        ? `${compAprobados} de ${compTotal} componentes aprobados — ${estadoLabel}`
+                        : estadoLabel;
                       const tieneTotalidadAcadAdmin = Array.isArray(pta.academico_admin) &&
                         pta.academico_admin.some((a: any) => a?.consumeTotalidad === true);
 
@@ -3704,9 +3716,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                   setInlineStatusPtaId(inlineStatusPtaId === pta.id ? null : pta.id);
                                 }
                               }}
-                              title={permisos.puedeAprobar && isPendiente ? `Clic para cambio rápido de estado: ${estadoLabel}` : estadoLabel}
+                              title={permisos.puedeAprobar && isPendiente ? `Clic para cambio rápido de estado: ${badgeTitle}` : badgeTitle}
                             >
-                              <span style={{ minWidth: 0 }}>{estadoLabel}</span>
+                              <span style={{ minWidth: 0 }}>{badgeText}</span>
                               {permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective) && (
                                 <Zap style={{ width: 7, height: 7, flexShrink: 0 }} />
                               )}

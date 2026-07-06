@@ -1072,7 +1072,89 @@ export class PtaService {
       dto.num_territoriales = dto.territorialesAsignaturas.length;
     }
 
+    // Solo lectura y aditivo: si algo falla, la lista sigue funcionando igual (sin conteos).
+    try {
+      await this.attachComponentApprovalProgress(dtos);
+    } catch (err: any) {
+      this.logger.warn(`Avance de aprobación por componente omitido: ${err?.message || err}`);
+    }
     return dtos;
+  }
+
+  /**
+   * Adjunta a cada DTO de la lista el avance de aprobación por componente
+   * (componentes_aprobados / componentes_total), usando el mismo criterio que el
+   * panel de detalle: 4 componentes base (Docencia, Investigación, Complementarias,
+   * Acad-Admin) siempre + las sub-secciones de Extensión que tengan horas > 0.
+   * Es SOLO LECTURA (no persiste ni auto-aprueba) y tolerante a fallos: si algo falla,
+   * simplemente no adjunta los conteos y el front cae al rótulo de estado.
+   */
+  private async attachComponentApprovalProgress(dtos: any[]): Promise<void> {
+    const ids = dtos.map(d => d?.id).filter(Boolean);
+    if (!ids.length) return;
+
+    let approvals: PtaComponentApprovalEntity[] = [];
+    try {
+      approvals = await this.ptaComponentApprovalRepo.find({ where: { ptaId: In(ids) } });
+    } catch (err: any) {
+      this.logger.warn(`No se pudo cargar el avance de aprobación por componente: ${err?.message || err}`);
+      return;
+    }
+
+    const estadoByPta = new Map<string, Map<string, string>>();
+    for (const a of approvals) {
+      if (!a?.ptaId || !a?.componente || isRoleApprovalComponent(a.componente)) continue;
+      if (!estadoByPta.has(a.ptaId)) estadoByPta.set(a.ptaId, new Map());
+      estadoByPta.get(a.ptaId)!.set(a.componente, String(a.estado || 'pendiente'));
+    }
+
+    const BASE_KEYS = ['academica', 'investigacion', 'complementarias', 'academicas_admin'];
+    const EXT_SUB_SECTIONS: Record<string, string[]> = {
+      ext_capacitacion: ['capacitacion'],
+      ext_procesos: ['seleccion'],
+      ext_fortalecimiento: ['fortalecimiento', 'laboratorio_innovacion', 'investigacion_aplicada'],
+      ext_gobierno: ['alto_gobierno'],
+    };
+
+    for (const dto of dtos) {
+      try {
+        const extActs = Array.isArray(dto?.extension_actividades) ? dto.extension_actividades : [];
+        const extHoras = (secs: string[]) => extActs
+          .filter((a: any) => secs.includes(normalizeExtensionSectionKey(a?.seccion)))
+          .reduce((s: number, a: any) => s + (Number(a?.horas_ejecutadas ?? a?.horas ?? 0) || 0), 0);
+
+        const horasPorComp: Record<string, number> = {
+          academica: Number(dto?.horas_docencia || 0),
+          investigacion: Number(dto?.horas_investigacion || 0),
+          complementarias: Number(dto?.horas_complementarias || 0),
+          academicas_admin: Number(dto?.horas_acad_admin || 0),
+          ext_capacitacion: extHoras(EXT_SUB_SECTIONS.ext_capacitacion),
+          ext_procesos: extHoras(EXT_SUB_SECTIONS.ext_procesos),
+          ext_fortalecimiento: extHoras(EXT_SUB_SECTIONS.ext_fortalecimiento),
+          ext_gobierno: extHoras(EXT_SUB_SECTIONS.ext_gobierno),
+        };
+
+        const componentSet = [
+          ...BASE_KEYS,
+          ...Object.keys(EXT_SUB_SECTIONS).filter(k => horasPorComp[k] > 0),
+        ];
+
+        const hayActividades = Object.values(horasPorComp).some(h => h > 0);
+        const recs = estadoByPta.get(dto.id) || new Map<string, string>();
+
+        let aprobados = 0;
+        for (const c of componentSet) {
+          // Auto-aprobación de componentes vacíos (consistente con getComponentesAprobacion; aquí sin persistir).
+          const autoAprobado = hayActividades && horasPorComp[c] === 0;
+          if (recs.get(c) === 'aprobado' || autoAprobado) aprobados++;
+        }
+
+        dto.componentes_total = componentSet.length;
+        dto.componentes_aprobados = aprobados;
+      } catch {
+        // No romper la lista por un DTO problemático.
+      }
+    }
   }
 
   private toEvidenciaDto(entity: PtaEvidenciaEntity) {
