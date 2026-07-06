@@ -26,7 +26,7 @@ import {
   getAllPtasConEvidencias, revisarEvidenciaPTA,
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
 } from '../../services/api/ptaApi';
-import { apiClient } from '../../../../shell/src/services/api';
+import { apiClient, getBaseURL } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
 import { PTASyncIndicator } from './PTASyncIndicator';
 import {
@@ -211,6 +211,23 @@ function SortableHeader({ label, field, sortBy, sortDir, onSort }: {
 
 // ═══ Solicitudes PTA — Vista Admin ═══════════════════════════════════
 
+/**
+ * Construye la URL pública (vía API Gateway) de un archivo servido por el microservicio PTA.
+ * El gateway expone los estáticos del servicio en /pta/uploads/... (ruta pública) y los reenvía
+ * a /uploads/... del backend. Usa la MISMA base que las llamadas API (getBaseURL), por lo que
+ * funciona en cualquier entorno. Antes se armaba con http://localhost:5000 hardcodeado —un puerto
+ * inexistente en este entorno— y por eso fallaba con ERR_CONNECTION_REFUSED.
+ */
+function resolvePtaFileUrl(raw?: string | null): string {
+  const value = String(raw || '').trim();
+  if (!value) return '#';
+  if (/^https?:\/\//i.test(value)) return value; // ya es absoluta
+  const base = (getBaseURL() || '').replace(/\/$/, '');
+  if (value.startsWith('/pta/')) return `${base}${value}`;          // ya trae el prefijo de servicio
+  if (value.startsWith('/uploads')) return `${base}/pta${value}`;   // /uploads/... → /pta/uploads/...
+  return `${base}/pta/${value.replace(/^\/+/, '')}`;
+}
+
 function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -359,7 +376,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
                             <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#374151', marginBottom: 4 }}>Archivos adjuntos ({archivos.length}):</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                               {archivos.map((a: any, i: number) => (
-                                <a key={i} href={a.url?.startsWith('/uploads') ? `http://localhost:5000${a.url}` : a.url} target="_blank" rel="noopener noreferrer"
+                                <a key={i} href={resolvePtaFileUrl(a.url)} target="_blank" rel="noopener noreferrer"
                                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: '0.68rem', fontWeight: 600, color: '#DC2626', textDecoration: 'none' }}>
                                   <FileText style={{ width: 12, height: 12 }} /> {a.nombre || `Archivo ${i + 1}`}
                                 </a>
@@ -592,12 +609,12 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   {/* Progress pills per component */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {COMPONENTES_SEG.map(comp => {
+                      // Se muestran SIEMPRE los 5 componentes fijos (aunque el PTA tenga 0h en alguno).
                       const horasTotal: number = (pta as any)[`horas_${comp.key}`] || 0;
-                      if (horasTotal === 0) return null;
                       const aprobadas = (pta.evidencias || [])
                         .filter((e: any) => e.componente_pta === comp.key && e.estado_revision === 'aprobado')
                         .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0);
-                      const pct = Math.min(Math.round((aprobadas / horasTotal) * 100), 100);
+                      const pct = horasTotal > 0 ? Math.min(Math.round((aprobadas / horasTotal) * 100), 100) : 0;
                       return (
                         <div key={comp.key} title={`${comp.label}: ${aprobadas}h / ${horasTotal}h`}
                           style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>
@@ -663,9 +680,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                       const hasRealFile = !!(ev.storage_url && ev.storage_url.startsWith('/uploads'));
                                       const canPreview = hasRealFile && ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
                                       const rawUrl = ev.storage_url || ev.storage_path || '';
-                                      // Resolver URL: /uploads/xxx → backend absoluto
-                                      const backendOrigin = (window as any).__API_ORIGIN__ || 'http://localhost:5000';
-                                      const fileUrl = rawUrl.startsWith('/uploads') ? `${backendOrigin}${rawUrl}` : rawUrl.startsWith('http') ? rawUrl : rawUrl ? `${backendOrigin}/${rawUrl}` : '#';
+                                      // Resolver URL a través del API Gateway (/pta/uploads/...), no un puerto hardcodeado.
+                                      const fileUrl = resolvePtaFileUrl(rawUrl);
                                       return (
                                         <>
                                           {canPreview && (
@@ -679,6 +695,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                           <a
                                             href={fileUrl}
                                             download={ev.nombre}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                             onClick={e2 => e2.stopPropagation()}
                                             style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
                                           >
@@ -741,7 +759,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>{previewFile.nombre}</span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <a href={previewFile.url} download={previewFile.nombre} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
+                <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
                   <Download style={{ width: 14, height: 14 }} /> Descargar
                 </a>
                 <button onClick={() => setPreviewFile(null)} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -758,7 +776,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                 <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
                   <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
                   <p style={{ fontSize: '0.85rem' }}>Este tipo de archivo no se puede previsualizar</p>
-                  <a href={previewFile.url} download={previewFile.nombre} style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
+                  <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
                 </div>
               )}
             </div>
