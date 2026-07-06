@@ -63,17 +63,21 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'EN_CONCERTACION': { bg: '#F3E8FF', color: '#6B21A8', border: '#DDD6FE', label: 'En Concertación' },
   'CONCERTADO': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Concertado' },
   'ESCALADO_SNA': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'En Arbitraje SNA' },
-  'Pendiente Jefatura': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente Jefatura' },
-  'Pendiente Decanatura': { bg: '#DBEAFE', color: '#1E40AF', border: '#93C5FD', label: 'Pendiente Decanatura' },
-  'Pendiente Gestión Profesoral': { bg: '#E0E7FF', color: '#3730A3', border: '#A5B4FC', label: 'Pendiente G. Profesoral' },
+  // Estados de aprobación por nivel (flujo anterior). En la vista del docente se
+  // muestran todos como "Pendiente de Aprobación": el docente no ve la jerarquía
+  // interna (Jefatura/Decanatura/Gestión Profesoral). Alineado con el modelo de
+  // aprobación por componente.
+  'Pendiente Jefatura': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
+  'Pendiente Decanatura': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
+  'Pendiente Gestión Profesoral': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Aprobado': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Aprobado' },
   'En Firme': { bg: '#047857', color: '#FFFFFF', border: '#059669', label: 'En Firme — Firmado y Radicado' },
   'Rechazado': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Rechazado' },
-  'PENDIENTE_APROBACION': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente Aprobación' },
+  'PENDIENTE_APROBACION': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Devuelto': { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74', label: 'Devuelto — Corrección requerida' },
-  'REVISION_DOCENTE_N1': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — Jefatura aprobó' },
-  'REVISION_DOCENTE_N2': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — Decanatura aprobó' },
-  'REVISION_DOCENTE_N3': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — G. Profesoral aprobó' },
+  'REVISION_DOCENTE_N1': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
+  'REVISION_DOCENTE_N2': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
+  'REVISION_DOCENTE_N3': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
 };
 
 const getEstadoCfg = (estado: string) => ESTADO_CONFIG[estado] || { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB', label: estado?.replace(/_/g, ' ') || estado };
