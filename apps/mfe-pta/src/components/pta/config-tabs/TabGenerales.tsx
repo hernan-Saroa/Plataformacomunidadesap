@@ -100,6 +100,7 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
               {renderInputRow("dias_cierre_concertacion", "Plazo Concertación", "Días para que docentes sometan su PTA después del inicio de clases.", false, "días")}
               {renderInputRow("dias_verificacion_posterior", "Plazo Jefaturas Regionales", "Días hábiles después de inicio para dar feedback al docente.", false, "días")}
               {renderInputRow("plazo_consolidacion_semanas", "Plazo Consolidación Nacional", "Circular §5: 'dentro de las 4 semanas siguientes al inicio de clases'.", false, "sem")}
+              {renderInputRow("semanas_limite_aprobacion_pta", "Límite para aprobar PTA", "Semanas desde la creación para aprobar el PTA. Si se supera, el PTA se elimina automáticamente.", false, "sem")}
             </div>
           </details>
 

@@ -25,6 +25,7 @@ import {
   guardarFirmaDigitalPTA, getPTAUserData, savePTAUserData, deletePTA,
   getAllPtasConEvidencias, revisarEvidenciaPTA,
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
+  getPTAById,
 } from '../../services/api/ptaApi';
 import { apiClient, getBaseURL } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
@@ -144,6 +145,8 @@ function getStatusConfig(estado: string) {
     case 'RADICADO': return { bg: '#047857', color: '#FFFFFF', border: '#059669' };
     case 'Rechazado': return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
     case 'Devuelto': return { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74' };
+    case 'Terminado':
+    case 'TERMINADO': return { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB' };
     default: return { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' };
   }
 }
@@ -1054,6 +1057,41 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   const [showReporteR01, setShowReporteR01] = useState(false);
+
+  // ── Listener: abrir detalle de PTA desde una notificación (bandeja/correo) ──
+  // El backend (`pta-notifications.service.ts`) emite notificaciones con
+  // url_accion='/pta?ptaId=<id>'. NotificationsPanelV2 despacha el evento
+  // 'pta:open-detalle' con {ptaId, componente} en vez de recargar la página.
+  // Si el módulo aún no estaba montado, se guarda en sessionStorage como respaldo
+  // (mismo patrón que Gestión Legal / Control Interno).
+  useEffect(() => {
+    const abrirDetallePorId = async (ptaId: string) => {
+      if (!ptaId) return;
+      setModuleView('gestion');
+      const res = await getPTAById(ptaId);
+      if (res.success && res.data) setSelectedPTA(res.data);
+    };
+
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.ptaId) abrirDetallePorId(detail.ptaId);
+    };
+
+    window.addEventListener('pta:open-detalle', handleOpen);
+
+    const pending = sessionStorage.getItem('pta:pendingOpenDetalle');
+    if (pending) {
+      sessionStorage.removeItem('pta:pendingOpenDetalle');
+      try {
+        const detail = JSON.parse(pending);
+        if (detail?.ptaId) abrirDetallePorId(detail.ptaId);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return () => window.removeEventListener('pta:open-detalle', handleOpen);
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<string>('docente_nombre');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');

@@ -197,7 +197,12 @@ export class PtaNotificationsService {
       return { notificados: 0 };
     }
 
-    const url = `${this.resolvePublicAppUrl()}/?view=backoffice`;
+    // url_accion apunta a una ruta reconocida por NotificationsPanelV2
+    // (tryHandlePtaNotificationInApp) para abrir el detalle del PTA in-app, sin
+    // recargar la página. El ptaId también va en la ruta (además de
+    // datos_adicionales) siguiendo el mismo patrón que usan Legal/Control Interno.
+    const url = `/pta?ptaId=${opts.ptaId}`;
+    const linkAbsoluto = `${this.resolvePublicAppUrl()}/?view=backoffice`;
     const docente = opts.docenteNombre || 'un docente';
     const periodoTxt = opts.periodo ? ` (${opts.periodo})` : '';
     const dtos: any[] = [];
@@ -226,7 +231,7 @@ export class PtaNotificationsService {
         const html = `
           <p>Hola ${this.escapeHtml(user.nombre || '')},</p>
           <p>El PTA de <strong>${this.escapeHtml(docente)}</strong>${this.escapeHtml(periodoTxt)} requiere tu revisión en: <strong>${this.escapeHtml(labels)}</strong>.</p>
-          <p><a href="${url}">Abrir la plataforma para revisar</a></p>
+          <p><a href="${linkAbsoluto}">Abrir la plataforma para revisar</a></p>
         `;
         // fire-and-forget: no esperamos el correo para no serializar N envíos.
         void this.sendEmail(user.email, titulo, mensaje, html);
@@ -259,7 +264,10 @@ export class PtaNotificationsService {
     const aprobador = opts.aprobadorNombre || 'un aprobador';
     const titulo = `Componente aprobado: ${compLabel}`;
     const mensaje = `Esta componente ha sido aprobada por ${aprobador}`;
-    const url = `${this.resolvePublicAppUrl()}/?view=portal`;
+    // PortalNotificationBell resuelve el "section" a navegar quitando el slash
+    // inicial de url_accion. 'pta' hace que el portal abra el módulo "Mi PTA" del
+    // docente in-app (ver PortalTransaccional: mapa navbarNavigateTo -> {type:'pta'}).
+    const url = 'pta';
 
     await this.createInApp({
       id_usuario_destinatario: prof.idUser,
@@ -278,10 +286,12 @@ export class PtaNotificationsService {
     });
 
     if (prof.email) {
+      const linkAbsoluto = `${this.resolvePublicAppUrl()}/?view=portal`;
       const html = `
         <p>Hola ${this.escapeHtml(prof.nombre || '')},</p>
         <p>El componente <strong>${this.escapeHtml(compLabel)}</strong> de tu PTA ha sido aprobado.</p>
         <p>${this.escapeHtml(mensaje)}.</p>
+        <p><a href="${linkAbsoluto}">Ver mi PTA</a></p>
       `;
       void this.sendEmail(prof.email, titulo, `${compLabel}: ${mensaje}.`, html);
     }

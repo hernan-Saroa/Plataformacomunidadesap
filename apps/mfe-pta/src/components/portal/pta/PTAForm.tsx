@@ -851,21 +851,53 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     })();
   }, [ptaId]);
 
-  // Carga SIEMPRE las fechas del período académico activo — fuente de verdad para los date-pickers.
-  // Dinámica: aplica tanto al crear como al editar un PTA, garantizando coherencia con Programas Académicos.
+  // Rango de fechas para los date-pickers de los componentes.
+  // Se deriva del PERÍODO DEL PTA (no de un único "período activo" global), de modo
+  // que corresponda al semestre real del plan (alineado con la Circular 003: las
+  // actividades se registran dentro del período académico del PTA). Si el período no
+  // existe en BD o no tiene fechas, se usa el rango del semestre según el código
+  // (YYYY-1 => ene–jun; YYYY-2 => jul–dic), evitando quedar topado a un período viejo.
   useEffect(() => {
+    let cancelado = false;
+
+    // Fallback determinístico por código de período.
+    const rangoPorCodigo = (cod: string): { min?: string; max?: string } => {
+      const m = /^(\d{4})-([12])$/.exec(String(cod || '').trim());
+      if (!m) return {};
+      const anio = m[1];
+      return m[2] === '1'
+        ? { min: `${anio}-01-01`, max: `${anio}-06-30` }
+        : { min: `${anio}-07-01`, max: `${anio}-12-31` };
+    };
+
     (async () => {
+      const codigoPeriodo = String(periodo || '').trim();
       try {
-        const activePer = await getActivePeriodoAcademico();
-        const fi = activePer?.fecha_inicio || activePer?.fechaInicio;
-        const ff = activePer?.fecha_fin || activePer?.fechaFin;
-        if (fi) setPeriodoFechaMin(String(fi).substring(0, 10));
-        if (ff) setPeriodoFechaMax(String(ff).substring(0, 10));
+        const res = await getPeriodosAcademicos();
+        const lista = Array.isArray(res?.data) ? res.data : [];
+        const match = codigoPeriodo
+          ? lista.find((p: any) => String(p.codigo) === codigoPeriodo)
+          : lista.find((p: any) => p.estado === 'en_curso');
+        const fi = match?.fecha_inicio || match?.fechaInicio;
+        const ff = match?.fecha_fin || match?.fechaFin;
+        if (!cancelado && fi && ff) {
+          setPeriodoFechaMin(String(fi).substring(0, 10));
+          setPeriodoFechaMax(String(ff).substring(0, 10));
+          return;
+        }
       } catch (err) {
-        console.warn('[PTAForm] No se pudo cargar fechas del período activo:', err?.message || err);
+        console.warn('[PTAForm] No se pudieron cargar periodos académicos:', err?.message || err);
+      }
+      // Sin período en BD (o sin fechas): usar el rango del semestre según el código.
+      if (!cancelado) {
+        const rango = rangoPorCodigo(codigoPeriodo);
+        setPeriodoFechaMin(rango.min);
+        setPeriodoFechaMax(rango.max);
       }
     })();
-  }, []); // Sin dependencias: se monta una vez y siempre refleja el período activo del sistema
+
+    return () => { cancelado = true; };
+  }, [periodo]); // Re-evalúa cuando cambia el período del PTA
 
     // Load Docente User Profile and Banco Docentes info to prepopulate defaults
     useEffect(() => {
