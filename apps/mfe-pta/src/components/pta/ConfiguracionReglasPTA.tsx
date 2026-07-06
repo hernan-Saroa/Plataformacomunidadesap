@@ -63,6 +63,8 @@ export interface PTARules {
   max_pct_inv_ext_combinado: number;
   // Plazo de consolidación nacional (en semanas calendario)
   plazo_consolidacion_semanas: number; // Circular §5: "4 semanas siguientes al inicio de clases"
+  // Límite (en semanas) para que un PTA sea aprobado; si se supera, el PTA se elimina.
+  semanas_limite_aprobacion_pta: number;
   // SLAs Operativos (Días)
   sla_radicacion_pta: number;
   sla_verificacion_jefaturas: number;
@@ -269,6 +271,7 @@ export const defaultPTARules: PTARules = {
   max_pct_aadm: 25,
   max_pct_inv_ext_combinado: 50,
   plazo_consolidacion_semanas: 4,
+  semanas_limite_aprobacion_pta: 4,
 
   sla_radicacion_pta: 5,
   sla_verificacion_jefaturas: 15,
@@ -725,6 +728,7 @@ const NORMATIVE_RULE_RANGES: Record<string, NormativeRange> = {
   dias_limite_radicacion_ggp: { min: 1, max: 30, label: 'Dias radicar GGP' },
   dias_verificacion_posterior: { min: 1, max: 30, label: 'Dias verificacion' },
   sla_consolidacion_nacional: { min: 5, max: 30, label: 'SLA consolidacion nacional' },
+  semanas_limite_aprobacion_pta: { min: 1, max: 52, label: 'Límite aprobación PTA (semanas)' },
 };
 
 function isCircular003Config(rules: Partial<PTARules> | null | undefined): boolean {

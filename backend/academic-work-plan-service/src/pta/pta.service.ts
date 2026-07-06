@@ -266,6 +266,9 @@ export class PtaService {
   private readonly otpStore = new Map<string, { code: string; expiresAt: Date }>();
   private readonly logger = new Logger(PtaService.name);
 
+  // Timestamp del último barrido de PTAs vencidos (para throttling del sweep perezoso).
+  private lastPurgeAt = 0;
+
   // MOCK de firma OTP: mientras esté activo, cualquier código de 6 dígitos es válido
   // para avanzar (no se valida contra el código generado). Se desactiva con
   // PTA_MOCK_FIRMA_OTP=false. Por ahora viene mockeado por defecto para pruebas.
@@ -1194,6 +1197,10 @@ export class PtaService {
   }
 
   async getAllPTAs(filters: any) {
+    // Sweep perezoso: elimina PTAs vencidos (sin aprobar dentro del plazo) al
+    // consultar el listado del backoffice, como máximo una vez por hora.
+    this.purgarPtasVencidosThrottled();
+
     const qb = this.ptaRepo.createQueryBuilder('pta');
 
     const estadoFilter = coalesceString(filters?.estado);
@@ -1548,6 +1555,9 @@ export class PtaService {
   ) {
     const existing = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existing) throw new NotFoundException('PTA no encontrado');
+    if (['Terminado', 'TERMINADO'].includes(String(existing.estado))) {
+      throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios de estado.');
+    }
 
     const accion = coalesceString(body?.accion, body?.tipoAccion);
     let nuevoEstado = coalesceString(body?.estado);
@@ -2365,6 +2375,91 @@ export class PtaService {
     ]);
     await this.ptaRepo.delete({ id: ptaId });
     return { deleted: true };
+  }
+
+  // ── Cierre de PTAs al poner "en curso" un nuevo período académico ───────────
+  // Cuando un período se activa (estado 'en_curso'), todos los PTA de períodos
+  // anteriores pasan a 'Terminado' (solo lectura / observación), incluso los que
+  // están en seguimiento. No se tocan los que ya están en un estado terminal.
+  async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
+    const codigo = coalesceString(nuevoCodigo) || '';
+    const terminales = ['Terminado', 'TERMINADO', 'Rechazado', 'RECHAZADO'];
+
+    const qb = this.ptaRepo
+      .createQueryBuilder()
+      .update(PlanTrabajoAcademicoEntity)
+      .set({ estado: 'Terminado', updatedAt: () => 'NOW()' })
+      .where('estado NOT IN (:...terminales)', { terminales });
+
+    // No finalizar los PTA del propio período recién creado (si llegaran a existir).
+    if (codigo) {
+      qb.andWhere('(periodo IS DISTINCT FROM :codigo)', { codigo });
+    }
+
+    const result = await qb.execute();
+    const finalizados = result.affected || 0;
+    if (finalizados > 0) {
+      this.logger.log(
+        `[Período ${codigo || 'nuevo'}] ${finalizados} PTA(s) pasaron a 'Terminado' (solo lectura).`,
+      );
+    }
+    return { finalizados };
+  }
+
+  // ── Límite de aprobación: PTAs no aprobados dentro del plazo se eliminan ─────
+  // El plazo (en semanas) es configurable vía la regla 'semanas_limite_aprobacion_pta'
+  // (Configuraciones PTA). Se cuenta desde la fecha de inicio del PTA (createdAt).
+  // Los PTA aprobados, en ejecución o terminales quedan a salvo.
+  async purgarPtasVencidos(): Promise<{ eliminados: number; ids: string[]; semanas: number }> {
+    const rules = (await this.getConfiguracionPTAGlobal()) || {};
+    const semanas = this.getRuleNumber(rules, 'semanas_limite_aprobacion_pta', 4);
+    if (!Number.isFinite(semanas) || semanas <= 0) {
+      return { eliminados: 0, ids: [], semanas: 0 };
+    }
+
+    const cutoff = new Date(Date.now() - semanas * 7 * 24 * 60 * 60 * 1000);
+
+    // Estados "a salvo": aprobado / en ejecución / terminal. El resto (borrador,
+    // pendientes de aprobación, devuelto, revisión, concertación, escalado) es
+    // elegible para purga si superó el plazo.
+    const safe = [
+      'Aprobado', 'APROBADO', 'En Firme', 'EN_FIRME', 'RADICADO',
+      'EN_EJECUCION', 'EN_EJECUCIÓN', 'Terminado', 'TERMINADO', 'Rechazado', 'RECHAZADO',
+    ];
+
+    const vencidos = await this.ptaRepo
+      .createQueryBuilder('pta')
+      .where('pta.estado NOT IN (:...safe)', { safe })
+      .andWhere('pta.createdAt < :cutoff', { cutoff })
+      .getMany();
+
+    const ids: string[] = [];
+    for (const pta of vencidos) {
+      try {
+        await this.deletePTA(pta.id);
+        ids.push(pta.id);
+      } catch (error: any) {
+        this.logger.warn(`No se pudo eliminar PTA vencido ${pta.id}: ${error?.message}`);
+      }
+    }
+
+    this.lastPurgeAt = Date.now();
+    if (ids.length > 0) {
+      this.logger.log(
+        `Purga PTA: ${ids.length} plan(es) eliminados por superar ${semanas} semana(s) sin aprobación.`,
+      );
+    }
+    return { eliminados: ids.length, ids, semanas };
+  }
+
+  /** Ejecuta la purga de vencidos como máximo una vez por hora (sweep perezoso). */
+  private purgarPtasVencidosThrottled(): void {
+    const UNA_HORA = 60 * 60 * 1000;
+    if (Date.now() - this.lastPurgeAt < UNA_HORA) return;
+    this.lastPurgeAt = Date.now(); // marcar de inmediato para evitar barridos concurrentes
+    this.purgarPtasVencidos().catch((error) =>
+      this.logger.warn(`Purga PTA (sweep) falló: ${error?.message}`),
+    );
   }
 
   async getAllPtasConEvidencias(periodo?: string) {
@@ -3754,6 +3849,9 @@ export class PtaService {
     const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!existingPta) {
       throw new NotFoundException('PTA no encontrado');
+    }
+    if (['Terminado', 'TERMINADO'].includes(String(existingPta.estado))) {
+      throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
     }
 
     let approval = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });

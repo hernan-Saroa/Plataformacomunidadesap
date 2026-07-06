@@ -314,6 +314,14 @@ export class PtaController {
     return { success: true, data };
   }
 
+  // Purga manual de PTAs vencidos (no aprobados dentro del plazo configurado).
+  // El barrido también corre de forma automática (perezosa) al listar PTAs.
+  @Post('mantenimiento/purgar-vencidos')
+  async purgarVencidos() {
+    const data = await this.ptaService.purgarPtasVencidos();
+    return { success: true, data };
+  }
+
   @Get('concertacion')
   getConcertacion(@Query() _query: any) {
     return { success: true, data: [] };

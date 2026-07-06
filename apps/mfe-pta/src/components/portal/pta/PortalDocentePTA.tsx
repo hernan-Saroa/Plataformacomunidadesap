@@ -72,6 +72,8 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'Pendiente Gestión Profesoral': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Aprobado': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Aprobado' },
   'En Firme': { bg: '#047857', color: '#FFFFFF', border: '#059669', label: 'En Firme — Firmado y Radicado' },
+  // Cerrado por apertura de un nuevo período académico: solo lectura / observación.
+  'Terminado': { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB', label: 'Terminado (solo lectura)' },
   'Rechazado': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Rechazado' },
   'PENDIENTE_APROBACION': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Devuelto': { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74', label: 'Devuelto — Corrección requerida' },

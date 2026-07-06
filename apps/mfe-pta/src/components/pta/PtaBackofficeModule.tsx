@@ -145,6 +145,8 @@ function getStatusConfig(estado: string) {
     case 'RADICADO': return { bg: '#047857', color: '#FFFFFF', border: '#059669' };
     case 'Rechazado': return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
     case 'Devuelto': return { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74' };
+    case 'Terminado':
+    case 'TERMINADO': return { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB' };
     default: return { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' };
   }
 }
