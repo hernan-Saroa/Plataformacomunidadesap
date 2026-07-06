@@ -100,13 +100,15 @@ function generarR02(ptas: any[]): ReporteGenerado {
     const hBase = pta.horas_a_programar || 800;
     const hDoc = pta.horas_docencia || 0, hInv = pta.horas_investigacion || 0;
     const hExt = pta.horas_extension || 0, hComp = pta.horas_complementarias || 0;
-    const total = pta.total_horas_programadas || (hDoc + hInv + hExt + hComp);
+    const hAadm = pta.horas_acad_admin || 0;
+    const total = pta.total_horas_programadas || (hDoc + hInv + hExt + hComp + hAadm);
     const pct = hBase > 0 ? ((total / hBase) * 100).toFixed(1) : '0.0';
     const cumple = hInv <= hBase * 0.5 && hExt <= hBase * 0.25 && hComp <= hBase * 0.25;
     return {
       documento: pta.cedula || pta.numero_documento || '-', nombre: pta.docente_nombre || 'N/A',
       territorial: pta.territorial || pta.sede || '-', dedicacion: pta.dedicacion || '-',
       h_docencia: hDoc, h_investigacion: hInv, h_extension: hExt, h_complementarias: hComp,
+      h_acad_admin: hAadm,
       total, pct: `${pct}%`, estado: pta.estado || 'Borrador', cumple: cumple ? 'SI' : 'NO',
     };
   });
@@ -118,6 +120,7 @@ function generarR02(ptas: any[]): ReporteGenerado {
       { key: 'territorial', label: 'Territorial' }, { key: 'dedicacion', label: 'Ded.' },
       { key: 'h_docencia', label: 'H.Doc', align: 'center' }, { key: 'h_investigacion', label: 'H.Inv', align: 'center' },
       { key: 'h_extension', label: 'H.Ext', align: 'center' }, { key: 'h_complementarias', label: 'H.Comp', align: 'center' },
+      { key: 'h_acad_admin', label: 'H.AADM', align: 'center' },
       { key: 'total', label: 'Total', align: 'center' }, { key: 'pct', label: '%', align: 'center' },
       { key: 'estado', label: 'Estado' }, { key: 'cumple', label: 'Cumple', align: 'center' },
     ],
@@ -125,6 +128,7 @@ function generarR02(ptas: any[]): ReporteGenerado {
     totales: {
       h_docencia: filas.reduce((s, f) => s + f.h_docencia, 0), h_investigacion: filas.reduce((s, f) => s + f.h_investigacion, 0),
       h_extension: filas.reduce((s, f) => s + f.h_extension, 0), h_complementarias: filas.reduce((s, f) => s + f.h_complementarias, 0),
+      h_acad_admin: filas.reduce((s, f) => s + f.h_acad_admin, 0),
       total: filas.reduce((s, f) => s + f.total, 0),
     },
   };
@@ -173,13 +177,15 @@ function generarR04(ptas: any[]): ReporteGenerado {
   const tInv = p.reduce((s, x) => s + (x.horas_investigacion || 0), 0);
   const tExt = p.reduce((s, x) => s + (x.horas_extension || 0), 0);
   const tCom = p.reduce((s, x) => s + (x.horas_complementarias || 0), 0);
-  const tot = tDoc + tInv + tExt + tCom; const n = p.length || 1;
+  const tAadm = p.reduce((s, x) => s + (x.horas_acad_admin || 0), 0);
+  const tot = tDoc + tInv + tExt + tCom + tAadm; const n = p.length || 1;
   const pf = (v: number) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '0%';
   const filas = [
     { componente: 'Docencia', total_horas: tDoc, porcentaje: pf(tDoc), promedio: Math.round(tDoc / n), maximo: 'Sin limite' },
     { componente: 'Investigacion', total_horas: tInv, porcentaje: pf(tInv), promedio: Math.round(tInv / n), maximo: '50%' },
     { componente: 'Extension', total_horas: tExt, porcentaje: pf(tExt), promedio: Math.round(tExt / n), maximo: '25%' },
     { componente: 'Complementarias', total_horas: tCom, porcentaje: pf(tCom), promedio: Math.round(tCom / n), maximo: '25%' },
+    { componente: 'Acad. Admin.', total_horas: tAadm, porcentaje: pf(tAadm), promedio: Math.round(tAadm / n), maximo: 'Sin limite' },
   ];
   return {
     titulo: 'R-04: Distribucion de Horas por Componente',
@@ -194,6 +200,7 @@ function generarR04(ptas: any[]): ReporteGenerado {
     chartData: [
       { name: 'Docencia', value: tDoc }, { name: 'Investigacion', value: tInv },
       { name: 'Extension', value: tExt }, { name: 'Complementarias', value: tCom },
+      { name: 'Acad. Admin.', value: tAadm },
     ],
     chartType: 'pie',
   };
@@ -347,7 +354,9 @@ function generarR09(ptas: any[]): ReporteGenerado {
     if (hInv > 0) {
       t.docentes++;
       t.horasInv += hInv;
-      if (p.investigacion_proyecto?.nombre) t.proyectos.add(p.investigacion_proyecto.nombre);
+      if (p.investigacion_proyecto?.nombre || p.investigacion_proyecto?.rol) {
+        t.proyectos.add(p.investigacion_proyecto.nombre || p.investigacion_proyecto.rol);
+      }
       t.actividades += (p.investigacion_actividades?.length || 0);
     }
   });
@@ -601,7 +610,8 @@ function generarR15(ptas: any[]): ReporteGenerado {
     const hBase = p.horas_a_programar || 800;
     const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
     const hExt = p.horas_extension || 0, hComp = p.horas_complementarias || 0;
-    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp);
+    const hAadm = p.horas_acad_admin || 0;
+    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp + hAadm);
     const pctInv = hBase > 0 ? (hInv / hBase) * 100 : 0;
     const pctExt = hBase > 0 ? (hExt / hBase) * 100 : 0;
     const pctComp = hBase > 0 ? (hComp / hBase) * 100 : 0;
@@ -679,6 +689,7 @@ function generarEXP01_SIIF(ptas: any[]) {
       { comp: 'INV', horas: p.horas_investigacion || 0 },
       { comp: 'EXT', horas: p.horas_extension || 0 },
       { comp: 'COMP', horas: p.horas_complementarias || 0 },
+      { comp: 'AADM', horas: p.horas_acad_admin || 0 },
     ];
     const principal = comps.reduce((a, b) => a.horas >= b.horas ? a : b);
     lines.push([
@@ -705,7 +716,7 @@ function generarEXP03_Nomina(ptas: any[]) {
   const aprobados = ptas.filter(p => p.estado === 'Aprobado');
   const BOM = '\uFEFF';
   const headers = ['DOCUMENTO', 'NOMBRE_COMPLETO', 'TERRITORIAL', 'DEDICACION', 'ESCALAFON',
-    'HORAS_DOCENCIA', 'HORAS_INVESTIGACION', 'HORAS_EXTENSION', 'HORAS_COMPLEMENTARIAS',
+    'HORAS_DOCENCIA', 'HORAS_INVESTIGACION', 'HORAS_EXTENSION', 'HORAS_COMPLEMENTARIAS', 'HORAS_ACAD_ADMIN',
     'TOTAL_HORAS', 'PORCENTAJE_PROGRAMACION', 'ESTADO_PTA', 'FECHA_APROBACION', 'TIPO_VINCULACION'];
   const lines = [headers.map(h => `"${h}"`).join(',')];
   aprobados.forEach(p => {
@@ -715,7 +726,7 @@ function generarEXP03_Nomina(ptas: any[]) {
       `"${p.cedula || p.numero_documento || ''}"`,
       `"${(p.docente_nombre || '').replace(/"/g, '""')}"`,
       `"${p.territorial || ''}"`, `"${p.dedicacion || ''}"`, `"${p.categoria_escalafon || ''}"`,
-      p.horas_docencia || 0, p.horas_investigacion || 0, p.horas_extension || 0, p.horas_complementarias || 0,
+      p.horas_docencia || 0, p.horas_investigacion || 0, p.horas_extension || 0, p.horas_complementarias || 0, p.horas_acad_admin || 0,
       total, base > 0 ? `${((total / base) * 100).toFixed(1)}%` : '0%',
       `"Aprobado"`,
       `"${p.updated_at ? new Date(p.updated_at).toISOString().slice(0, 10) : ''}"`,
@@ -761,7 +772,8 @@ function generarEXP02_XML(ptas: any[]) {
   aprobados.forEach((p, idx) => {
     const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
     const hExt = p.horas_extension || 0, hComp = p.horas_complementarias || 0;
-    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp);
+    const hAadm = p.horas_acad_admin || 0;
+    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp + hAadm);
     const base = p.horas_a_programar || 800;
     xmlLines.push(`    <PTA secuencia="${idx + 1}">`);
     xmlLines.push(`      <Identificacion>`);
@@ -779,6 +791,7 @@ function generarEXP02_XML(ptas: any[]) {
     xmlLines.push(`        <Investigacion>${hInv}</Investigacion>`);
     xmlLines.push(`        <Extension>${hExt}</Extension>`);
     xmlLines.push(`        <Complementarias>${hComp}</Complementarias>`);
+    xmlLines.push(`        <AcademicoAdministrativo>${hAadm}</AcademicoAdministrativo>`);
     xmlLines.push(`        <TotalProgramado>${total}</TotalProgramado>`);
     xmlLines.push(`        <PorcentajeProgramacion>${base > 0 ? ((total / base) * 100).toFixed(2) : '0'}</PorcentajeProgramacion>`);
     xmlLines.push(`      </DistribucionHoras>`);
@@ -811,12 +824,14 @@ function generarEXP02_XML(ptas: any[]) {
   const totalInv = aprobados.reduce((s, p) => s + (p.horas_investigacion || 0), 0);
   const totalExt = aprobados.reduce((s, p) => s + (p.horas_extension || 0), 0);
   const totalComp = aprobados.reduce((s, p) => s + (p.horas_complementarias || 0), 0);
+  const totalAadm = aprobados.reduce((s, p) => s + (p.horas_acad_admin || 0), 0);
   xmlLines.push(`    <TotalDocentes>${aprobados.length}</TotalDocentes>`);
   xmlLines.push(`    <TotalHorasProgramadas>${totalH}</TotalHorasProgramadas>`);
   xmlLines.push(`    <HorasDocencia>${totalDoc}</HorasDocencia>`);
   xmlLines.push(`    <HorasInvestigacion>${totalInv}</HorasInvestigacion>`);
   xmlLines.push(`    <HorasExtension>${totalExt}</HorasExtension>`);
   xmlLines.push(`    <HorasComplementarias>${totalComp}</HorasComplementarias>`);
+  xmlLines.push(`    <HorasAcademicoAdministrativo>${totalAadm}</HorasAcademicoAdministrativo>`);
   const ters = new Set(aprobados.map(p => p.territorial));
   xmlLines.push(`    <TerritorialesActivas>${ters.size}</TerritorialesActivas>`);
   xmlLines.push('  </Resumen>');

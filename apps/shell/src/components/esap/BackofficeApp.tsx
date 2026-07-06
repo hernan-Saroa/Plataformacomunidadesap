@@ -293,13 +293,13 @@ function resolveModuleView(module?: string): ModuleView | undefined {
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
-  console.log('BackofficeApp', userData, userRoles)
+
   const currentUser = userData || {
     name: usuario?.nombre || 'Administrador ESAP',
     email: usuario?.email || 'admin@esap.edu.co',
     personId: usuario?.id || 'admin-001'
   };
-  console.log('📋 Usuario actual:', userData?.module);
+
 
   // Layout por rol: Docentes/Estudiantes (Portal) vs Administrativo (Backoffice)
   if (shouldUseAcademicLayout(userData, userRoles)) {
@@ -375,7 +375,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   const getDefaultSidebarModule = (view: ModuleView) => MODULE_TO_DEFAULT_SIDEBAR[view] || '';
 
-  console.log('📋 Inicial module:', finalInitialModule);
+
 
   // Siempre iniciar en la primera vista habilitada del menu visible para el rol.
   const [currentModule, setCurrentModule] = useState<ModuleView>(

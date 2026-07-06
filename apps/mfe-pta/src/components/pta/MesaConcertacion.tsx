@@ -367,7 +367,12 @@ export function MesaConcertacion({ ptaId, onBack, userRole = 'direccion', userNa
     {
       key: 'complementarias', label: 'Complementarias', icon: Briefcase, color: '#D97706',
       horasDir: propuesta.horas_complementarias || 0,
-      horasDoc: pta?.horas_complementarias_calculadas ?? (propuesta.horas_complementarias || 0),
+      horasDoc: pta?.horas_complementarias ?? (propuesta.horas_complementarias || 0),
+    },
+    {
+      key: 'academicas_admin', label: 'Acad. Admin.', icon: Award, color: '#6B21A8',
+      horasDir: propuesta.horas_acad_admin || 0,
+      horasDoc: pta?.horas_acad_admin ?? (propuesta.horas_acad_admin || 0),
     },
   ], [pta, propuesta, respuesta]);
 

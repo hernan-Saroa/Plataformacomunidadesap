@@ -275,7 +275,7 @@ export function V11CalendarioAcademico({ ptas, periodo }: CalendarioAcademicoPro
 
 // Componentes del PTA
 const COMPONENTES_PTA = [
-  // { key: 'docencia', label: 'Docencia', color: PTA_COLORS.DOCENCIA, icon: BookOpen },
+  { key: 'docencia', label: 'Docencia', color: PTA_COLORS.DOCENCIA, icon: BookOpen },
   { key: 'investigacion', label: 'Investigación', color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },
   { key: 'extension', label: 'Extensión', color: PTA_COLORS.EXTENSION, icon: Globe },
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
@@ -466,7 +466,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           const total = horasPorComponente[comp.key] || 0;
           const aprobadas = horasAprobadasPorComponente[comp.key] || 0;
           const pct = total > 0 ? Math.min((aprobadas / total) * 100, 100) : 0;
-          if (total === 0) return null;
+          // Se muestran SIEMPRE los 5 componentes fijos (aunque el PTA tenga 0h en alguno).
           const Ic = comp.icon;
           return (
             <div key={comp.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -515,8 +515,8 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                   onChange={e => setFormComponente(e.target.value)}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
                 >
-                  {COMPONENTES_PTA.filter(c => (horasPorComponente[c.key] || 0) > 0).map(c => (
-                    <option key={c.key} value={c.key}>{c.label} ({horasPorComponente[c.key]}h)</option>
+                  {COMPONENTES_PTA.map(c => (
+                    <option key={c.key} value={c.key}>{c.label} ({horasPorComponente[c.key] || 0}h)</option>
                   ))}
                 </select>
               </div>
@@ -589,7 +589,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         <button onClick={() => setFiltroComponente('')} style={{ padding: '3px 9px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 600, border: !filtroComponente ? '1.5px solid #003DA5' : '1px solid #E5E7EB', background: !filtroComponente ? '#EFF6FF' : 'white', color: !filtroComponente ? '#003DA5' : '#6B7280', cursor: 'pointer' }}>
           Todos
         </button>
-        {COMPONENTES_PTA.filter(c => (horasPorComponente[c.key] || 0) > 0).map(comp => (
+        {COMPONENTES_PTA.map(comp => (
           <button key={comp.key} onClick={() => setFiltroComponente(comp.key)} style={{ padding: '3px 9px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 600, border: filtroComponente === comp.key ? `1.5px solid ${comp.color}` : '1px solid #E5E7EB', background: filtroComponente === comp.key ? `${comp.color}15` : 'white', color: filtroComponente === comp.key ? comp.color : '#6B7280', cursor: 'pointer' }}>
             {comp.label}
           </button>

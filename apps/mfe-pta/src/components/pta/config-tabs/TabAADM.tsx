@@ -92,11 +92,26 @@ export function TabAADM({ draft, handleChange }: { draft: PTARules; handleChange
         </div>
 
         <div className="space-y-4">
+
+          {/* ── Tope Global ── */}
+          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
+            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-blue-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="font-bold text-slate-800 flex items-center gap-3">
+                <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">1</span>
+                Tope Global de Académica / Docencia
+              </span>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
+            </summary>
+            <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-blue-50/10">
+              {renderInputRow("max_horas_aadm_global", "Tope Global Académica / Docencia (Horas)", "Límite máximo de horas para actividades académico-administrativas. Los topes por actividad se configuran abajo.", "h")}
+              {renderInputRow("max_pct_aadm", "Máximo % Académica / Docencia", "Límite porcentual sobre el PTA total.", "%")}
+            </div>
+          </details>
           
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-blue-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs">A</span>
+                <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs">2</span>
                 Actividades Doctorado (Tabla 15)
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
@@ -114,7 +129,7 @@ export function TabAADM({ draft, handleChange }: { draft: PTARules; handleChange
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-emerald-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">B</span>
+                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">3</span>
                 Misiones y Acreditación Institucional
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
@@ -200,7 +215,7 @@ export function TabAADM({ draft, handleChange }: { draft: PTARules; handleChange
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-amber-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">D</span>
+                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">4</span>
                 Catálogo de Actividades Académico-Administrativas
                 <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{actividades.length} actividades</span>
               </span>
@@ -227,6 +242,28 @@ export function TabAADM({ draft, handleChange }: { draft: PTARules; handleChange
                 <div className="space-y-2">
                   {actividades.map((act, idx) => (
                     <div key={act.id} className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-xl transition-all shadow-sm group gap-4 ${act.consumeTotalidad ? 'bg-amber-50/60 border-amber-200 hover:border-amber-300' : 'bg-white border-slate-100 hover:border-amber-200'}`}>
+                      <input
+                        type="text"
+                        key={`pos-aadm-${act.id}-${idx}`}
+                        defaultValue={idx + 1}
+                        title={`Posición ${idx + 1}`}
+                        onFocus={e => e.target.select()}
+                        onBlur={e => {
+                          const val = parseInt(e.target.value, 10);
+                          const max = actividades.length;
+                          const newPos = isNaN(val) ? idx + 1 : Math.max(1, Math.min(max, val));
+                          e.target.value = String(idx + 1);
+                          if (newPos !== idx + 1) {
+                            const acts = [...actividades];
+                            const [moved] = acts.splice(idx, 1);
+                            acts.splice(newPos - 1, 0, moved);
+                            handleChange('aadm_actividades', acts);
+                          }
+                        }}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        className="w-10 h-10 rounded-xl text-white font-black text-sm shrink-0 shadow-sm border-2 border-white/30 outline-none text-center cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 transition-all"
+                        style={{ background: '#3B82F6', padding: 0 }}
+                      />
                       <div className="w-full sm:w-28 shrink-0">
                         <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">ID</span>
                         <input type="text" value={act.id}

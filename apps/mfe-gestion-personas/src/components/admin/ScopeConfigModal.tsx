@@ -73,38 +73,67 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
   const [searchCetap, setSearchCetap] = useState('');
   const [searchPrograma, setSearchPrograma] = useState('');
 
-  // Load initial data
+  // ========== INICIALIZACIÓN ==========
   useEffect(() => {
-    if (isOpen && role) {
-      loadTerritoriales();
-      loadProgramas();
-      loadUsers(role.id);
+    if (!isOpen || !role) return;
 
-      // Load existing alcance data
-      if (role?.alcance) {
-        setTipoAlcance(role.alcance.tipo);
-        setSelTerritorial(role.alcance.territorial === 'Todas' ? 'Todas' : role.alcance.territorial);
-        setSelCetap(role.alcance.cetap === 'Todos' ? 'Todos' : role.alcance.cetap);
-        setSelPrograma(role.alcance.programa === 'Todos' ? 'Todos' : role.alcance.programa);
-      } else {
-        // Default values
-        setTipoAlcance('Global');
-        setSelTerritorial('Todas');
-        setSelCetap('Todos');
-        setSelPrograma('Todos');
+    // Cargar datos base
+    loadTerritoriales();
+    loadUsers(role.id);
+
+    // Restaurar selección guardada o defaults
+    const savedAlcance = role.alcance;
+    const savedTipo = savedAlcance?.tipo || 'Global';
+    const savedTerritorial = savedAlcance?.territorial || 'Todas';
+    const savedCetap = savedAlcance?.cetap || 'Todos';
+    const savedPrograma = savedAlcance?.programa || 'Todos';
+
+    setTipoAlcance(savedTipo);
+    setSelTerritorial(savedTerritorial);
+    setSelCetap(savedCetap);
+    setSelPrograma(savedPrograma);
+
+    // Cargar CETAPs y Programas según la selección guardada
+    (async () => {
+      try {
+        if (savedTerritorial !== 'Todas') {
+          // Cargar territoriales y buscar la guardada
+          const terrData = await localRolesService.getTerritoriales();
+          const terr = terrData.find(t => t.nombre === savedTerritorial);
+          if (terr) {
+            // Cargar CETAPs de esa territorial
+            setLoadingCetaps(true);
+            const cetapsData = await localRolesService.getCETAPs(terr.id);
+            setCetaps(cetapsData);
+            setLoadingCetaps(false);
+
+            // Si hay CETAP guardado, cargar programas filtrados
+            if (savedCetap !== 'Todos') {
+              const cetap = cetapsData.find(c => c.nombre === savedCetap);
+              if (cetap) {
+                setLoadingProgramas(true);
+                const progsData = await localRolesService.getProgramasAcademicos(cetap.id);
+                setProgramas(progsData);
+                setLoadingProgramas(false);
+                return; // ya cargamos todo
+              }
+            }
+          }
+        }
+        // Caso default: cargar todos los programas
+        setLoadingProgramas(true);
+        const allProgs = await localRolesService.getProgramasAcademicos();
+        setProgramas(allProgs);
+        setLoadingProgramas(false);
+      } catch (error) {
+        console.error('[ScopeConfig] Error cargando datos iniciales:', error);
+        setLoadingCetaps(false);
+        setLoadingProgramas(false);
       }
-    }
+    })();
   }, [isOpen, role]);
 
-  // Fetch CETAPs when territorial changes
-  useEffect(() => {
-    if (selTerritorial !== 'Todas' && territoriales.length > 0) {
-      const territorial = territoriales.find(t => t.nombre === selTerritorial);
-      if (territorial) loadCetaps(territorial.id);
-    } else {
-      setCetaps([]);
-    }
-  }, [selTerritorial, territoriales]);
+  // NO HAY useEffect de cascada — toda la cascada se maneja via handlers
 
   // Filtered data
   const filteredTerritoriales = territoriales.filter(t => t.nombre.toLowerCase().includes(searchTerritorial.toLowerCase()));
@@ -141,10 +170,10 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
     }
   };
 
-  const loadProgramas = async () => {
+  const loadProgramas = async (sedeId?: string) => {
     try {
       setLoadingProgramas(true);
-      const programasData = await localRolesService.getProgramasAcademicos();
+      const programasData = await localRolesService.getProgramasAcademicos(sedeId);
       setProgramas(programasData);
     } catch (error) {
       console.error('Error loading programas académicos:', error);
@@ -171,15 +200,34 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
     }
   };
 
+  // ========== HANDLERS DE CASCADA (solo por acción del usuario) ==========
+
   const handleTerritorialChange = (v: string) => {
     setSelTerritorial(v);
-    setSelCetap('Todos'); // reset cascade
+    setSelCetap('Todos');
+    setSelPrograma('Todos');
     if (v !== 'Todas') {
       const territorial = territoriales.find(t => t.nombre === v);
       if (territorial) loadCetaps(territorial.id);
     } else {
       setCetaps([]);
     }
+    loadProgramas(); // cargar todos los programas al cambiar territorial
+  };
+
+  const handleCetapChange = (v: string) => {
+    setSelCetap(v);
+    setSelPrograma('Todos');
+    if (v !== 'Todos') {
+      const cetap = cetaps.find(c => c.nombre === v);
+      if (cetap) loadProgramas(cetap.id); // filtrar por CETAP
+    } else {
+      loadProgramas(); // todos los programas
+    }
+  };
+
+  const handleProgramaChange = (v: string) => {
+    setSelPrograma(v);
   };
 
   const handleSubmit = () => {
@@ -385,7 +433,7 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                           name="cetap"
                           value="Todos"
                           checked={selCetap === 'Todos'}
-                          onChange={() => setSelCetap('Todos')}
+                          onChange={() => handleCetapChange('Todos')}
                           disabled={selTerritorial === 'Todas'}
                           className="hidden"
                         />
@@ -401,7 +449,7 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                             name="cetap"
                             value={cetap.nombre}
                             checked={selCetap === cetap.nombre}
-                            onChange={() => setSelCetap(cetap.nombre)}
+                            onChange={() => handleCetapChange(cetap.nombre)}
                             className="hidden"
                           />
                           <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selCetap === cetap.nombre ? 'border-[#003DA5] bg-[#003DA5]' : 'border-gray-300'}`}>
@@ -433,7 +481,7 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                           name="programa"
                           value="Todos"
                           checked={selPrograma === 'Todos'}
-                          onChange={() => setSelPrograma('Todos')}
+                          onChange={() => handleProgramaChange('Todos')}
                           className="hidden"
                         />
                         <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selPrograma === 'Todos' ? 'border-[#003DA5] bg-[#003DA5]' : 'border-gray-300'}`}>
@@ -448,7 +496,7 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                             name="programa"
                             value={programa.nombre}
                             checked={selPrograma === programa.nombre}
-                            onChange={() => setSelPrograma(programa.nombre)}
+                            onChange={() => handleProgramaChange(programa.nombre)}
                             className="hidden"
                           />
                           <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selPrograma === programa.nombre ? 'border-[#003DA5] bg-[#003DA5]' : 'border-gray-300'}`}>

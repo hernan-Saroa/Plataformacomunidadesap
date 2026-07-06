@@ -23,12 +23,13 @@ import {
   Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
   Shield, ChevronRight, ExternalLink, ListChecks,
-  FlaskConical, Globe, Briefcase, X,
+  FlaskConical, Globe, Briefcase, X, Award,
 } from 'lucide-react';
 import {
   getPTAsByDocente, getPTAById, enviarAprobacionPTA,
   agregarComentarioConcertacion, updatePTAStatus,
   getMisSolicitudesPTA, marcarSolicitudLeida,
+  getComponentesAprobacion,
 } from '../../../services/api/ptaApi';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
@@ -62,34 +63,26 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'EN_CONCERTACION': { bg: '#F3E8FF', color: '#6B21A8', border: '#DDD6FE', label: 'En Concertación' },
   'CONCERTADO': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Concertado' },
   'ESCALADO_SNA': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'En Arbitraje SNA' },
-  'Pendiente Jefatura': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente Jefatura' },
-  'Pendiente Decanatura': { bg: '#DBEAFE', color: '#1E40AF', border: '#93C5FD', label: 'Pendiente Decanatura' },
-  'Pendiente Gestión Profesoral': { bg: '#E0E7FF', color: '#3730A3', border: '#A5B4FC', label: 'Pendiente G. Profesoral' },
+  // Estados de aprobación por nivel (flujo anterior). En la vista del docente se
+  // muestran todos como "Pendiente de Aprobación": el docente no ve la jerarquía
+  // interna (Jefatura/Decanatura/Gestión Profesoral). Alineado con el modelo de
+  // aprobación por componente.
+  'Pendiente Jefatura': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
+  'Pendiente Decanatura': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
+  'Pendiente Gestión Profesoral': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Aprobado': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Aprobado' },
   'En Firme': { bg: '#047857', color: '#FFFFFF', border: '#059669', label: 'En Firme — Firmado y Radicado' },
+  // Cerrado por apertura de un nuevo período académico: solo lectura / observación.
+  'Terminado': { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB', label: 'Terminado (solo lectura)' },
   'Rechazado': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Rechazado' },
-  'PENDIENTE_APROBACION': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente Aprobación' },
+  'PENDIENTE_APROBACION': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Devuelto': { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74', label: 'Devuelto — Corrección requerida' },
-  'REVISION_DOCENTE_N1': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — Jefatura aprobó' },
-  'REVISION_DOCENTE_N2': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — Decanatura aprobó' },
-  'REVISION_DOCENTE_N3': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión Docente — G. Profesoral aprobó' },
+  'REVISION_DOCENTE_N1': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
+  'REVISION_DOCENTE_N2': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
+  'REVISION_DOCENTE_N3': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
 };
 
 const getEstadoCfg = (estado: string) => ESTADO_CONFIG[estado] || { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB', label: estado?.replace(/_/g, ' ') || estado };
-
-const FLUJO_APROBACION = [
-  { key: 'Borrador', label: 'Borrador', short: 'Borr.' },
-  { key: 'Pendiente Jefatura', label: 'Jefatura', short: 'Jef.' },
-  { key: 'Pendiente Decanatura', label: 'Decanatura', short: 'Dec.' },
-  { key: 'Pendiente Gestión Profesoral', label: 'G. Profesoral', short: 'G.P.' },
-  { key: 'Aprobado', label: 'Aprobado', short: 'Apro.' },
-];
-
-function getEstadoIndex(estado: string): number {
-  if (estado === 'Rechazado' || estado === 'Devuelto') return -1;
-  const idx = FLUJO_APROBACION.findIndex(f => f.key === estado);
-  return idx >= 0 ? idx : 0;
-}
 
 function timeAgo(d: string): string {
   const now = Date.now();
@@ -104,79 +97,116 @@ function timeAgo(d: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// V08: Tracking inline mini-component
+// V08: Component-based approval tracker (Docencia, Inv, Ext, Comp, AADM)
 // ═══════════════════════════════════════════════════════════════════════
-function TrackingBar({ estado }: { estado: string }) {
-  const isDevuelto = estado === 'Devuelto';
-  const isRechazado = estado === 'Rechazado';
-  let internalEstado = estado;
-  
-  if (['EN_CONCERTACION', 'OBJETADO_DOCENTE', 'MODIFICADO_DOCENTE', 'ESCALADO_SNA'].includes(estado)) {
-     internalEstado = 'Pendiente Jefatura';
-  }
-  
-  const idx = getEstadoIndex(internalEstado);
+const COMPONENT_STEPS = [
+  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
+  { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
+  { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
+  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
+  { key: 'academicas_admin', label: 'AADM', icon: Award, color: '#6B21A8' },
+];
+
+function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
+  const isAprobado = estado === 'Aprobado' || estado === 'En Firme';
+  const isBorrador = estado === 'Borrador';
+
+  const getStatusForComponent = (compKeys: string[]) => {
+    if (isAprobado) return 'aprobado';
+    if (isBorrador) return 'pendiente';
+    const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
+    if (approvals.length === 0) return 'pendiente';
+    if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
+    if (approvals.every(a => a.estado === 'aprobado')) return 'aprobado';
+    return 'pendiente';
+  };
 
   return (
-    <div className="relative w-full pt-1 pb-6 mt-1 overflow-visible">
-      {/* Animated glow keyframes */}
-      <style>{`
-        @keyframes stepPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,61,165,0.3); } 50% { box-shadow: 0 0 0 6px rgba(0,61,165,0.08); } }
-        @keyframes stepError { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 6px rgba(239,68,68,0.08); } }
-      `}</style>
-      <div className="flex items-center w-full px-1">
-        {FLUJO_APROBACION.map((step, i) => {
-          const isCompleted = idx > i;
-          const isCurrent = idx === i;
-          const isError = isCurrent && (isDevuelto || isRechazado);
-          const hasNext = i < FLUJO_APROBACION.length - 1;
+    <div className="w-full py-2">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: '6px',
+        width: '100%',
+      }}>
+        {COMPONENT_STEPS.map(step => {
+          const Icon = step.icon;
+          const keys = (step as any).compKeys || [step.key];
+          const status = getStatusForComponent(keys);
+
+          let bg = '#FFFBEB';
+          let borderColor = '#FEF3C7';
+          let statusColor = '#B45309';
+          let statusLabel = 'Pendiente';
+          let iconBg = '#FEF3C7';
+          let iconColor = '#D97706';
+
+          if (status === 'aprobado') {
+            bg = '#F0FDF4';
+            borderColor = '#BBF7D0';
+            statusColor = '#15803D';
+            statusLabel = 'Aprobado';
+            iconBg = '#DCFCE7';
+            iconColor = '#16A34A';
+          } else if (status === 'devuelto') {
+            bg = '#FEF2F2';
+            borderColor = '#FECACA';
+            statusColor = '#B91C1C';
+            statusLabel = 'Devuelto';
+            iconBg = '#FEE2E2';
+            iconColor = '#DC2626';
+          }
 
           return (
-            <div key={step.key} className={`flex items-center relative ${hasNext ? 'flex-1' : ''}`}>
-              <div className="flex flex-col items-center relative z-10">
-                {/* Stepper Dot */}
-                <div
-                  className={`w-6 h-6 md:w-7 md:h-7 rounded-full flex justify-center items-center transition-all duration-500 ${
-                    isCompleted
-                      ? 'bg-gradient-to-br from-[#003DA5] to-[#0052D4] shadow-[0_2px_8px_rgba(0,61,165,0.35)]'
-                      : isError
-                        ? 'bg-red-50 border-2 border-red-400'
-                        : isCurrent
-                          ? 'bg-white border-[2.5px] border-[#003DA5]'
-                          : 'bg-gray-50 border-[1.5px] border-gray-200'
-                  }`}
-                  style={isCurrent && !isError ? { animation: 'stepPulse 2.5s ease-in-out infinite' } : isError ? { animation: 'stepError 2s ease-in-out infinite' } : undefined}
-                >
-                   {isCompleted ? (
-                     <CheckCircle2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-white drop-shadow-sm" />
-                   ) : isError ? (
-                     <XCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-500" />
-                   ) : isCurrent ? (
-                     <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-[#003DA5]" />
-                   ) : (
-                     <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                   )}
-                </div>
-                
-                {/* Label */}
-                <div className="absolute top-8 md:top-9 left-1/2 -translate-x-1/2 w-max text-center">
-                  <span className={`text-[0.58rem] md:text-[0.62rem] uppercase tracking-wider transition-colors duration-300 ${
-                    isCompleted ? 'text-[#003DA5] font-extrabold' : isCurrent ? (isError ? 'text-red-600 font-extrabold' : 'text-[#003DA5] font-extrabold') : 'text-gray-400 font-semibold'
-                  }`}>
-                    {step.short}
-                  </span>
-                </div>
+            <div
+              key={step.key}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                padding: '8px 4px 6px',
+                borderRadius: '10px',
+                border: `1.5px solid ${borderColor}`,
+                background: bg,
+                gap: '3px',
+                minWidth: 0,
+                transition: 'all 0.2s',
+              }}
+            >
+              <div style={{
+                width: 22,
+                height: 22,
+                borderRadius: 6,
+                background: iconBg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Icon style={{ width: 12, height: 12, color: iconColor }} />
               </div>
-
-              {/* Connecting Line — with gradient transition */}
-              {hasNext && (
-                <div className="flex-1 h-[3px] mx-1.5 md:mx-2.5 rounded-full bg-gray-100 relative overflow-hidden">
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#003DA5] to-[#0052D4] transition-all duration-700 ease-out"
-                    style={{ width: idx > i ? '100%' : idx === i ? '0%' : '0%' }}
-                  />
-                </div>
-              )}
+              <span style={{
+                fontSize: '0.58rem',
+                fontWeight: 700,
+                color: '#374151',
+                textAlign: 'center',
+                lineHeight: 1.15,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '100%',
+              }}>
+                {step.label}
+              </span>
+              <span style={{
+                fontSize: '0.5rem',
+                fontWeight: 700,
+                color: statusColor,
+                textAlign: 'center',
+                lineHeight: 1,
+              }}>
+                {statusLabel}
+              </span>
             </div>
           );
         })}
@@ -209,6 +239,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   const [isReporteOpen, setIsReporteOpen] = useState(false);
   const [showSolicitudModal, setShowSolicitudModal] = useState(false);
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
+  const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
 
   // Platform bell notifications
   const { addNotification } = useNotifications();
@@ -219,14 +250,31 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     try {
       const res = await getPTAsByDocente(userPersonId);
       if (res.success && Array.isArray(res.data)) {
-        setPtas(res.data);
+        const loadedPtas = res.data;
+        setPtas(loadedPtas);
+
+        const approvalEntries = await Promise.all(
+          loadedPtas
+            .filter((pta: any) => pta?.id && pta.estado !== 'Borrador')
+            .map(async (pta: any) => {
+              try {
+                const compRes = await getComponentesAprobacion(pta.id);
+                return [pta.id, compRes.success && Array.isArray(compRes.data) ? compRes.data : []] as const;
+              } catch {
+                return [pta.id, []] as const;
+              }
+            })
+        );
+        setComponentApprovalsByPta(Object.fromEntries(approvalEntries));
       } else {
         console.warn('[Portal PTA] Response data is not an array:', res);
         setPtas([]);
+        setComponentApprovalsByPta({});
       }
     } catch (error) {
       console.error('[Portal PTA] Error loading PTAs:', error);
       setPtas([]);
+      setComponentApprovalsByPta({});
     }
     setLoading(false);
   }, [userPersonId]);
@@ -300,6 +348,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
       if (selectedPtaId) {
         loadPtaDetalle(selectedPtaId);
       }
+      // Dispatch custom event for child components (like PTAForm) to reload catalogs
+      window.dispatchEvent(new CustomEvent('pta-realtime-sync', { detail: events }));
       // Show toast + push to platform bell for each event
       events.forEach(evt => {
         const label = evt.estado_nuevo?.replace(/_/g, ' ') || evt.tipo;
@@ -416,7 +466,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
   // ═══ Re-enviar devuelto ═══
   const reenviarPTA = async (ptaId: string) => {
-    const res = await updatePTAStatus(ptaId, { estado: 'PENDIENTE_APROBACION', observaciones: 'Re-envío tras corrección' });
+    const res = await updatePTAStatus(ptaId, { accion: 'reenviar_corregido', observaciones: 'Re-envío tras corrección' });
     if (res.success) {
       toast.success('PTA re-enviado a aprobación');
       loadPtas();
@@ -496,7 +546,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
           {puedeCrearPTA ? (
             <button
               onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
-              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-gradient-to-r from-[#003DA5] to-[#0052D4] hover:from-[#002B75] hover:to-[#003DA5]"
+              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-[#003DA5] hover:bg-[#002B75]"
             >
               <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
             </button>
@@ -609,90 +659,137 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   onAction={puedeCrearPTA ? () => { setVista('v03_formulario'); setEditPtaId(null); } : undefined}
                 />
               ) : (
-                <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-4">
                   {ptas.map((pta, i) => {
                     const cfg = getEstadoCfg(pta.estado);
                     const isEnRevisionDocente = ['REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado);
                     const needsAction = ['NOTIFICADO_DOCENTE', 'Devuelto', 'EN_CONCERTACION'].includes(pta.estado) || isEnRevisionDocente;
+                    const horasTotal = pta.horas_totales ?? pta.total_horas_programadas ?? 0;
+                    const horasMax = pta.horas_asignables ?? pta.horas_a_programar ?? 800;
+                    const horasPct = horasMax > 0 ? Math.min(Math.round((horasTotal / horasMax) * 100), 100) : 0;
 
                     return (
                       <motion.div
-                        key={pta.id}
-                        initial={{ opacity: 0, y: 12 }}
+                        key={pta.id || `pta-${i}`}
+                        initial={{ opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.04, type: 'spring', stiffness: 320, damping: 28 }}
+                        transition={{ delay: i * 0.06, type: 'spring', stiffness: 280, damping: 26 }}
                         onClick={() => navigateToVista('v06_detalle', pta.id)}
-                        className={`group bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:border-gray-300 transition-all duration-300 relative overflow-hidden`}
+                        className="group relative bg-white rounded-2xl border border-gray-100 cursor-pointer transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] hover:border-gray-200 hover:-translate-y-0.5 overflow-hidden"
                       >
-                        {/* Left accent bar for action-needed states */}
-                        {needsAction && <div className="absolute top-0 left-0 bottom-0 w-1 sm:w-1.5 bg-red-500 rounded-r-full" />}
-                        
-                        {/* Card content wrapper */}
-                        <div className={`flex flex-col gap-5 ${needsAction ? 'pl-3' : ''}`}>
-                          {/* Row 1: Title + Status Badge */}
-                          <div className="flex items-start justify-between gap-3">
+                        {/* Top accent gradient — subtle brand touch */}
+                        <div className="h-[3px] w-full" style={{
+                          background: needsAction
+                            ? 'linear-gradient(90deg, #EF4444, #F97316)'
+                            : pta.estado === 'Aprobado' || pta.estado === 'En Firme'
+                              ? 'linear-gradient(90deg, #059669, #10B981)'
+                              : 'linear-gradient(90deg, #003DA5, #0066E6, #3B82F6)',
+                        }} />
+
+                        <div className="p-5 sm:p-6 lg:p-7">
+                          {/* Header: Title + Badge */}
+                          <div className="flex items-start justify-between gap-4 mb-4">
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 mb-1">
-                                <h4 className="text-[1.1rem] sm:text-[1.25rem] font-bold text-gray-900 leading-snug m-0">
-                                  Plan de Trabajo Académico
-                                </h4>
-                                <span className="text-gray-500 font-semibold text-[0.8rem] sm:text-[0.85rem]">
-                                  {pta.periodo || '2025-2'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3 sm:gap-4 mt-1 flex-wrap">
-                                <span className="inline-flex items-center gap-1.5 text-gray-600 text-[0.8rem] font-medium">
-                                  <Clock className="w-3.5 h-3.5 text-gray-400" /> {pta.dedicacion || 'Tiempo Completo'}
-                                </span>
-                                <span className="hidden xs:inline w-1 h-1 rounded-full bg-gray-300" />
-                                <span className="inline-flex items-center gap-1.5 text-[0.8rem] font-medium text-gray-600">
-                                  <Target className="w-3.5 h-3.5 text-gray-400" />
-                                  <strong className="text-gray-900">{pta.horas_totales ?? pta.total_horas_programadas ?? 0}</strong>
-                                  <span className="hidden xs:inline">de {pta.horas_asignables ?? pta.horas_a_programar ?? 800}h</span>
-                                </span>
+                              <div className="flex items-center gap-2.5 mb-2">
+                                <div className="w-8 h-8 rounded-lg bg-[#003DA5]/5 flex items-center justify-center shrink-0">
+                                  <FileText className="w-4 h-4 text-[#003DA5]" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="text-[0.95rem] sm:text-[1.05rem] font-bold text-gray-900 leading-tight m-0 tracking-tight">
+                                    Plan de Trabajo Académico
+                                  </h4>
+                                  <span className="text-[0.72rem] text-gray-400 font-medium">
+                                    Periodo {pta.periodo || '2025-2'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                            {/* Status badges */}
-                            <div className="flex flex-col items-end gap-1.5 shrink-0">
-                              <span className="inline-flex items-center px-3 py-1 rounded-lg text-[0.7rem] sm:text-[0.75rem] font-bold uppercase tracking-wide" style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
-                                {cfg.label}
+
+                            <span
+                              className="inline-flex items-center px-3 py-1.5 rounded-lg text-[0.65rem] sm:text-[0.7rem] font-bold uppercase tracking-wider shrink-0"
+                              style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}
+                            >
+                              {cfg.label}
+                            </span>
+                          </div>
+
+                          {/* Metadata pills */}
+                          <div className="flex items-center gap-2 sm:gap-3 mb-5 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 text-gray-600 text-[0.72rem] font-medium">
+                              <Clock className="w-3 h-3 text-gray-400" />
+                              {pta.dedicacion || 'Tiempo Completo'}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 text-gray-600 text-[0.72rem] font-medium">
+                              <Target className="w-3 h-3 text-gray-400" />
+                              <strong className="text-gray-900">{horasTotal}</strong>
+                              <span className="text-gray-400">/ {horasMax}h</span>
+                            </span>
+                            {needsAction && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-[0.65rem] font-bold border border-red-100">
+                                <AlertTriangle className="w-3 h-3" /> Requiere acción
                               </span>
-                              {needsAction && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-[0.65rem] sm:text-[0.7rem] font-bold uppercase tracking-wide border border-red-100">
-                                  <AlertTriangle className="w-3 h-3" /> Acción
-                                </span>
-                              )}
+                            )}
+                          </div>
+
+                          {/* Hours progress bar — slim and elegant */}
+                          <div className="mb-5">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[0.62rem] font-semibold text-gray-400 uppercase tracking-wider">Progreso de horas</span>
+                              <span className="text-[0.65rem] font-bold text-gray-500">{horasPct}%</span>
+                            </div>
+                            <div className="w-full h-[5px] rounded-full bg-gray-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-700 ease-out"
+                                style={{
+                                  width: `${horasPct}%`,
+                                  background: horasPct >= 100
+                                    ? 'linear-gradient(90deg, #059669, #10B981)'
+                                    : horasPct >= 70
+                                      ? 'linear-gradient(90deg, #003DA5, #0066E6)'
+                                      : 'linear-gradient(90deg, #94A3B8, #CBD5E1)',
+                                }}
+                              />
                             </div>
                           </div>
 
-                          {/* Row 2: Actions */}
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-end gap-5 lg:gap-6 pt-4 border-t border-gray-100">
-                            {/* Action Buttons */}
-                            <div className="flex flex-wrap items-center gap-3 shrink-0">
+                          {/* Component Approval Tracker — per-component status */}
+                          <div className="mb-5">
+                            <ComponentApprovalBar
+                              estado={pta.estado}
+                              componentesAprobacion={componentApprovalsByPta[pta.id] || []}
+                            />
+                          </div>
+
+                          {/* Actions row */}
+                          <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                            <div className="flex items-center gap-2 flex-wrap">
                               {pta.estado === 'NOTIFICADO_DOCENTE' && (
-                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v02_revision', pta.id); }} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-[13px] font-bold hover:bg-amber-600 transition-colors border-none cursor-pointer">
-                                  <MessageSquare className="w-4 h-4" /> <span className="hidden xs:inline">Revisar</span> propuesta
+                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v02_revision', pta.id); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-white text-[0.75rem] font-bold hover:bg-amber-600 active:scale-[0.97] transition-all border-none cursor-pointer shadow-sm">
+                                  <MessageSquare className="w-3.5 h-3.5" /> Revisar propuesta
                                 </button>
                               )}
                               {pta.estado === 'Borrador' && (
-                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#003DA5] text-white text-[13px] font-bold hover:bg-[#002B75] transition-colors shadow-sm border-none cursor-pointer">
-                                  <Edit3 className="w-4 h-4" /> Continuar edición
+                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#003DA5] text-white text-[0.75rem] font-bold hover:bg-[#002B75] active:scale-[0.97] transition-all border-none cursor-pointer shadow-sm">
+                                  <Edit3 className="w-3.5 h-3.5" /> Continuar edición
                                 </button>
                               )}
                               {pta.estado === 'Devuelto' && (
-                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v10_devoluciones'); }} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-[13px] font-bold hover:bg-orange-700 transition-colors border-none cursor-pointer">
-                                  <RotateCcw className="w-4 h-4" /> Subsanar
+                                <button onClick={(e) => { e.stopPropagation(); navigateToVista('v10_devoluciones'); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-600 text-white text-[0.75rem] font-bold hover:bg-orange-700 active:scale-[0.97] transition-all border-none cursor-pointer shadow-sm">
+                                  <RotateCcw className="w-3.5 h-3.5" /> Subsanar
                                 </button>
                               )}
                               {isEnRevisionDocente && (
-                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-[13px] font-bold transition-colors border-none cursor-pointer" style={{ background: '#7C3AED', boxShadow: '0 2px 5px rgba(124,58,237,0.2)' }}>
-                                  <CheckCircle2 className="w-4 h-4" /> Revisar
+                                <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-[0.75rem] font-bold active:scale-[0.97] transition-all border-none cursor-pointer" style={{ background: '#7C3AED', boxShadow: '0 2px 8px rgba(124,58,237,0.18)' }}>
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Revisar
                                 </button>
                               )}
-                              <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-[13px] font-bold hover:bg-gray-100 transition-colors cursor-pointer group">
-                                <span className="hidden sm:inline">Ver detalle</span> <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
-                              </button>
                             </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigateToVista('v06_detalle', pta.id); }}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-500 text-[0.75rem] font-semibold hover:bg-gray-50 hover:text-gray-700 transition-all cursor-pointer border-none bg-transparent group"
+                            >
+                              Ver detalle <ArrowRight className="w-3.5 h-3.5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
                           </div>
                         </div>
                       </motion.div>
@@ -824,7 +921,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
                     <div className="flex flex-col items-center gap-4">
                       {/* Donut Chart */}
-                      <div className="relative w-[110px] h-[110px] shrink-0">
+                      <div className="relative w-[78px] h-[78px] shrink-0">
                         <svg className="w-full h-full" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
                           <circle cx="80" cy="80" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="16" />
                           {donutSegments.map((seg, i) => (
@@ -843,9 +940,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                           ))}
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-[1.1rem] font-black text-gray-900 leading-none">{horasTotal}</span>
-                          <span className="text-[0.5rem] font-bold text-gray-400 uppercase tracking-wider mt-0.5">horas</span>
-                          <span className="text-[0.45rem] text-gray-450 mt-0.5">de {horasMax}h</span>
+                          <span className="text-[0.8rem] font-black text-gray-900 leading-none">{horasTotal}</span>
+                          <span className="text-[0.38rem] font-bold text-gray-400 uppercase tracking-wider mt-0.5">horas</span>
+                          <span className="text-[0.35rem] text-gray-400 mt-0.5">de {horasMax}h</span>
                         </div>
                       </div>
 
@@ -934,6 +1031,65 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
                     <div className="mt-3 px-2.5 py-1.5 rounded-lg bg-blue-50/60 border border-blue-100/60 text-[0.55rem] sm:text-[0.6rem] text-blue-700">
                       <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const acadAdminActs = Array.isArray(selectedPta.academico_admin)
+                  ? selectedPta.academico_admin
+                  : (selectedPta.acad_admin?.actividades || selectedPta.academico_administrativo?.actividades || []);
+                if (!acadAdminActs.length) return null;
+
+                return (
+                  <div className="bg-orange-50/70 rounded-2xl border border-orange-100 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-orange-900 mb-3 flex items-center gap-2">
+                      <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600" />
+                      Actividad Academico-Administrativa
+                    </h4>
+
+                    <div className="space-y-2">
+                      {acadAdminActs.map((actividad: any, idx: number) => (
+                        <div key={actividad.id || actividad.actividad_id || idx} className="bg-white rounded-xl border border-orange-100 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[0.78rem] sm:text-[0.84rem] font-extrabold text-gray-900 leading-tight">
+                                {actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad AADM'}
+                              </div>
+                              {actividad.actividad_id && (
+                                <div className="text-[0.58rem] sm:text-[0.62rem] text-gray-400 font-bold mt-1">
+                                  Codigo: {actividad.actividad_id}
+                                </div>
+                              )}
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-[0.68rem] font-black shrink-0">
+                              {Number(actividad.horas || 0)}h
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-[0.68rem] sm:text-[0.72rem] text-gray-600">
+                            {(actividad.fecha_inicio || actividad.fecha_fin) && (
+                              <div>
+                                <span className="text-gray-400 font-bold">Fechas: </span>
+                                {actividad.fecha_inicio || 'Sin inicio'} - {actividad.fecha_fin || 'Sin fin'}
+                              </div>
+                            )}
+                            {actividad.consumeTotalidad && (
+                              <div>
+                                <span className="text-gray-400 font-bold">Alcance: </span>
+                                Consume el 100% del PTA
+                              </div>
+                            )}
+                          </div>
+
+                          {(actividad.descripcion || actividad.observaciones) && (
+                            <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 text-amber-900 text-[0.68rem] sm:text-[0.72rem] leading-relaxed">
+                              {actividad.descripcion || actividad.observaciones}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
@@ -1081,7 +1237,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {notificaciones.map(notif => {
+                  {notificaciones.map((notif, idx) => {
                     const colors = notif.tipo === 'revision' ? { bg: '#FEF3C7', color: '#92400E', icon: Eye }
                       : notif.tipo === 'devolucion' ? { bg: '#FEE2E2', color: '#991B1B', icon: RotateCcw }
                       : notif.tipo === 'concertacion' ? { bg: '#F3E8FF', color: '#6B21A8', icon: MessageSquare }
@@ -1089,7 +1245,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                     const NotifIcon = colors.icon;
                     return (
                       <motion.div
-                        key={notif.id}
+                        key={notif.id || `notif-${idx}`}
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         style={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
@@ -1165,8 +1321,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {devoluciones.map(pta => (
-                    <div key={pta.id} style={{ background: 'white', borderRadius: 14, border: '1px solid #FDBA74', padding: '18px 22px' }}>
+                  {devoluciones.map((pta, idx) => (
+                    <div key={pta.id || `dev-${idx}`} style={{ background: 'white', borderRadius: 14, border: '1px solid #FDBA74', padding: '18px 22px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
                         <div>
                           <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>Periodo {pta.periodo}</span>
@@ -1209,7 +1365,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
       <AnimatePresence>
         {solicitudesResueltas.map((sol, idx) => (
           <motion.div
-            key={sol.id}
+            key={sol.id || `sol-${idx}`}
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}

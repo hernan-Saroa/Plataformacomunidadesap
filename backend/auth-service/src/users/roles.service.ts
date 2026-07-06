@@ -447,4 +447,31 @@ export class RolesService {
   async getAllPermissions(): Promise<Permission[]> {
     return this.permissionRepo.find({ order: { name: 'ASC' } });
   }
+
+  async getUsersByRole(roleId: string): Promise<any[]> {
+    try {
+      const rows = await this.roleRepo.query(
+        `SELECT 
+           u.id_user AS id,
+           u.username,
+           COALESCE(p.nom_largo, p.nom_tercero || ' ' || p.pri_apellido, '') AS nombre,
+           COALESCE(sec.nom_seccional, '') AS territorial,
+           COALESCE(s.nom_sede, '') AS cetap,
+           '' AS programa
+         FROM auth."user" u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         LEFT JOIN auth.sedes s ON s.id_sede = p.id_sede
+         LEFT JOIN auth.seccionales sec ON sec.id_seccional = COALESCE(p.id_seccional, s.id_seccional)
+         WHERE ur.id_rol = $1 AND u.is_active = TRUE
+         ORDER BY p.pri_apellido ASC NULLS LAST, p.nom_tercero ASC NULLS LAST
+         LIMIT 500`,
+        [roleId],
+      );
+      return rows || [];
+    } catch (error) {
+      console.error('[RolesService] Error en getUsersByRole:', error.message);
+      return [];
+    }
+  }
 }
