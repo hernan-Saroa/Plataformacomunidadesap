@@ -164,8 +164,7 @@ export function GraduatesManagementModule() {
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
   const canEditGraduates = authService.hasPermission(Permissions.GRADUATES_EDIT);
-  const canCreateGraduates =
-    authService.hasPermission(Permissions.GRADUATES_CREATE) || canEditGraduates;
+  const canBulkUploadGraduates = authService.hasPermission(Permissions.GRADUATES_BULK_UPLOAD);
   const canExportGraduates = authService.hasPermission(Permissions.GRADUATES_EXPORT);
   const canVerifyGraduateCertificates = authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE);
   const canShowGraduateRowActions = canEditGraduates || canVerifyGraduateCertificates;
@@ -1600,9 +1599,9 @@ export function GraduatesManagementModule() {
   };
 
   const handleOpenBulkUploadModal = () => {
-    if (!canCreateGraduates) {
+    if (!canBulkUploadGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas permiso para registrar o editar graduados.',
+        description: 'Necesitas el permiso de Carga Masiva de graduados.',
       });
       return;
     }
@@ -2088,7 +2087,7 @@ export function GraduatesManagementModule() {
 
         {/* Derecha: acciones — mantienen su etiqueta y hacen wrap cuando falta espacio */}
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:justify-end lg:flex-shrink-0">
-          {canCreateGraduates && (
+          {canBulkUploadGraduates && (
             <button
               onClick={handleOpenBulkUploadModal}
               title="Carga Masiva"
