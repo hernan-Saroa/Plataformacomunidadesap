@@ -15,6 +15,28 @@ import { UpdateTareaAuditoriaDto } from './dto/update-tarea-auditoria.dto';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
 
+const COLOMBIA_TIME_ZONE = 'America/Bogota';
+
+function getFechaHoraColombia(): { fecha: Date; hora: string } {
+  const ahora = new Date();
+  const fechaString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
+  const hora = new Intl.DateTimeFormat('en-GB', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(ahora);
+  const [year, month, day] = fechaString.split('-').map(Number);
+
+  return { fecha: new Date(year, month - 1, day, 12), hora };
+}
+
 @Injectable()
 export class TareasAuditoriaService {
   constructor(
@@ -39,14 +61,12 @@ export class TareasAuditoriaService {
     if (!auditoriaId) return;
     
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().split(' ')[0];
+      const { fecha, hora } = getFechaHoraColombia();
       
       const historial = new HistorialAuditoria();
       historial.auditoriaId = auditoriaId;
       historial.tipoEvento = tipoEvento;
-      historial.fecha = new Date(fecha);
+      historial.fecha = fecha;
       historial.hora = hora;
       historial.usuarioId = usuarioId || null;
       historial.accion = accion;

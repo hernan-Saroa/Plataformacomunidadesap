@@ -901,7 +901,7 @@ export function EstructuraOrganizacionalModule() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <Input
-                    placeholder="Buscar por nombre o codigo..."
+                    placeholder="Buscar por nombre o código..."
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
                     className="pl-10"

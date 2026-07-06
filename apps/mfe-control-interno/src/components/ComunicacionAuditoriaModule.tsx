@@ -327,7 +327,16 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [recomendacionesFuturas, setRecomendacionesFuturas] = useState('');
   const [loadingInformeCierre, setLoadingInformeCierre] = useState(false);
   const [informeCierreAprobado, setInformeCierreAprobado] = useState(false);
-  const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
+  // const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
+  const estadoAuditoriaNormalizado = String(estadoAuditoriaProp || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const auditoriaFinalizada =
+    readOnly ||
+    estadoAuditoriaNormalizado.includes('finalizada') ||
+    estadoAuditoriaNormalizado.includes('completada');
+  const enSeguimiento = soloSeguimiento || pasamosASeguimiento || estadoAuditoriaNormalizado.includes('seguimiento');
   const planCompleto = planCreado && (planEstadisticas?.porcentajeAvance ?? 0) >= 100;
 
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
@@ -1043,6 +1052,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
   };
 
   const handleFinalizarComunicacion = useCallback(async () => {
+    if (auditoriaFinalizada) {
+      return;
+    }
+
     if (!puedeAvanzar) {
       toast.error('Debe completar todas las secciones antes de finalizar');
       return;
@@ -1064,14 +1077,15 @@ export const ComunicacionAuditoriaModule: React.FC<{
       setSeccionActual(5);
       onComunicacionCompletada?.();
     }
-  }, [puedeAvanzar, useAPI, id, onComunicacionCompletada]);
+  }, [auditoriaFinalizada, puedeAvanzar, useAPI, id, onComunicacionCompletada]);
 
   // Autoguardar el avance a Seguimiento cuando se cumplan las condiciones (Plan creado y finalizado)
   useEffect(() => {
+    if (auditoriaFinalizada) return;
     if (puedeAvanzar && !enSeguimiento && !pasamosASeguimiento) {
       handleFinalizarComunicacion();
     }
-  }, [puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion]);
+  }, [auditoriaFinalizada, puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion]);
 
   // ====================================
   // RENDER
@@ -1464,7 +1478,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
         </div>
 
         {/* BOTÓN FINALIZAR - solo cuando aún no está en Seguimiento y no es vista solo Seguimiento */}
-        {!enSeguimiento && !soloSeguimiento && (
+        {!auditoriaFinalizada && !enSeguimiento && !soloSeguimiento && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1943,7 +1957,7 @@ const SeccionGestionHallazgos: React.FC<{
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 shadow-sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-green-50 shadow-sm"
                             onClick={() => {
                               if (hallazgo.documentoControversiaUrl) {
                                 handleDescargarDocumentoControversia(hallazgo.documentoControversiaUrl, fixEncoding(hallazgo.documentoControversiaNombre) || 'documento');
@@ -3270,4 +3284,3 @@ const ModalPreviewInforme: React.FC<{
 };
 
 export default ComunicacionAuditoriaModule;
-

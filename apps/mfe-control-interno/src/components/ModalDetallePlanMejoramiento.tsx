@@ -432,19 +432,19 @@
                                               if (!plan) return;
                                               const audId = (plan as any).auditoriaId;
                                               if (!audId) {
-                                                toast.error('No se pudo determinar la auditor�a del plan');
+                                                toast.error('No se pudo determinar la auditoría del plan');
                                                 return;
                                               }
                                               setProcesandoRevision(true);
                                               try {
                                                 await controlInternoService.enviarPlanRevision(audId, plan.id);
-                                                toast.success('Plan enviado a revisi�n', {
-                                                  description: 'La OCI revisar� el plan y lo aprobar� o rechazar�.',
+                                                toast.success('Plan enviado a revisión', {
+                                                  description: 'La OCI revisará el plan y lo aprobará o rechazará.',
                                                 });
                                                 await refetch();
                                                 onPlanActualizado?.();
                                               } catch (err: any) {
-                                                toast.error('Error al enviar a revisi�n', {
+                                                toast.error('Error al enviar a revisión', {
                                                   description: err?.message || 'Intenta de nuevo en unos segundos.',
                                                 });
                                               } finally {
@@ -1905,12 +1905,12 @@
                                                     <p className="font-medium">
                                                       {filtroHallazgo !== 'TODOS'
                                                         ? 'No hay hallazgos en este avance'
-                                                        : 'Sin acciones en el plan a�n'}
+                                                        : 'Sin acciones en el plan aún'}
                                                     </p>
                                                     <p className="text-sm mt-1">
                                                       {filtroHallazgo !== 'TODOS'
                                                         ? 'Prueba otro filtro o revisa el tab Hallazgos.'
-                                                        : 'El responsable del �rea debe formular las acciones en el portal del Auditado.'}
+                                                        : 'El responsable del área debe formular las acciones en el portal del Auditado.'}
                                                     </p>
                                                   </div>
                                                 ) : (
@@ -2357,7 +2357,7 @@
                                                   </div>
                                                 </div>
 
-                                                {/* TODO: Modal Editar Acci�n � habilitar cuando OCI pueda editar acciones
+                                                {/* TODO: Modal Editar Acción — habilitar cuando OCI pueda editar acciones
                                                 {modalEditar && (
                                                   <ModalEditarAccion
                                                     accion={accion}
@@ -2367,7 +2367,7 @@
                                                 )}
                                                  */}
 
-                                                {/* TODO: Modal Cargar Evidencia � habilitar cuando OCI gestione evidencias
+                                                {/* TODO: Modal Cargar Evidencia — habilitar cuando OCI gestione evidencias
                                                 {modalEvidencia && (
                                                   <ModalCargarEvidencia
                                                     accion={accion}
@@ -3719,7 +3719,7 @@
                                                 </div>
 
                                                 {/* Botones de Descarga */}
-                                                <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
+                                                {/* <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
                                                   <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                                                     <Download className="w-5 h-5 text-gray-600" />
                                                     Documentos de Cierre
@@ -3740,7 +3740,7 @@
                                                       </div>
                                                     </button>
                                                   </div>
-                                                </div>
+                                                </div> */}
 
                                                 {/* Trazabilidad de Decisiones */}
                                                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

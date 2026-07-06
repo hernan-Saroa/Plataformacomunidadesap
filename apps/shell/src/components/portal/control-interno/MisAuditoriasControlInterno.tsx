@@ -3020,7 +3020,7 @@ function TabPlanMejoramientoAuditado({
                       <span style={{ width: 28, height: 28, borderRadius: 8, background: `${colors.brand}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <ClipboardList style={{ width: 15, height: 15, color: colors.brand }} />
                       </span>
-                      Nueva acción de mejora
+                      Nueva Acción
                       <span style={{ fontSize: 10, fontWeight: 600, color: '#6B7280', background: '#F3F4F6', padding: '2px 8px', borderRadius: 10 }}>EM-FO-002</span>
                     </div>
 

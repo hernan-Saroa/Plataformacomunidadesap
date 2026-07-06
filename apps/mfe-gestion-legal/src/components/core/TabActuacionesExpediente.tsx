@@ -6,7 +6,7 @@
  * ✅ Header con botones parametrizables
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail, Eye } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -409,6 +409,28 @@ export function TabActuacionesExpediente({
     };
   }, [modalFirmaActuacion, modalDevolucionActuacion, actuacionDetalle]);
 
+  /**
+   * El modal de devolución se renderiza con createPortal en document.body, es decir,
+   * FUERA del árbol del <DialogContent> (Radix) del expediente. El FocusScope de Radix
+   * atrapa el foco: al escuchar 'focusin' en document, devuelve el foco al diálogo padre
+   * cada vez que se enfoca un elemento externo, lo que impedía escribir en el textarea.
+   * Detenemos la propagación nativa de focusin/focusout desde este modal para que el
+   * listener de Radix en document nunca se dispare mientras el modal está abierto.
+   */
+  const devolucionModalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modalDevolucionActuacion) return;
+    const el = devolucionModalRef.current;
+    if (!el) return;
+    const stop = (e: Event) => e.stopPropagation();
+    el.addEventListener('focusin', stop);
+    el.addEventListener('focusout', stop);
+    return () => {
+      el.removeEventListener('focusin', stop);
+      el.removeEventListener('focusout', stop);
+    };
+  }, [modalDevolucionActuacion]);
+
   const getFriendlyRoleName = (role: string) => {
     if (role === 'JEFE_GESTION_LEGAL') return 'Jefe de Gestión Legal';
     if (role === 'RESUELVE_GESTION_LEGAL') return 'Abogado Sustanciador (Resuelve)';
@@ -701,18 +723,15 @@ export function TabActuacionesExpediente({
           </h4>
             <div className="flex items-center gap-2">
               {botonesAccion.map((btn, idx) => {
-                const getBtnClasses = (color: string) => {
-                  if (color === '#003DA5') return 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs';
-                  if (color === '#10B981') return 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs';
-                  if (color === '#7C3AED') return 'bg-violet-600 hover:bg-violet-700 text-white shadow-xs';
-                  if (color === '#EF4444') return 'bg-red-600 hover:bg-red-700 text-white shadow-xs';
-                  return 'bg-slate-700 hover:bg-slate-800 text-white shadow-xs';
-                };
                 const isLocked = lockedButtons.includes(idx);
                 return (
                   <Button
                     key={idx}
-                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md' : 'opacity-60 cursor-not-allowed pointer-events-none'} border-none ${getBtnClasses(btn.color)}`}
+                    // El color de fondo y el texto blanco se fuerzan por estilo inline para
+                    // garantizar que el botón siempre sea visible, sin importar el color recibido
+                    // (evita que quede blanco/invisible por conflictos de clases utilitarias).
+                    style={{ backgroundColor: btn.color, color: '#FFFFFF' }}
+                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 border-none shadow-xs transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md hover:brightness-95' : 'opacity-60 cursor-not-allowed pointer-events-none'}`}
                     onClick={() => handleButtonClick(btn, idx)}
                     disabled={isLocked}
                   >
@@ -975,6 +994,13 @@ export function TabActuacionesExpediente({
                             📝 {actuacion.metadata.observaciones}
                           </span>
                         )}
+
+                        {getEstadoFirma(actuacion) === 'DEVUELTO' && actuacion.metadata?.observacionesDevolucion && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-red-700 italic bg-red-50 border border-red-100 rounded px-2 py-0.5 truncate max-w-[220px] sm:max-w-[320px]" title={actuacion.metadata.observacionesDevolucion}>
+                            <CornerUpLeft className="w-3 h-3 text-red-500 shrink-0" />
+                            Motivo: {actuacion.metadata.observacionesDevolucion}
+                          </span>
+                        )}
                       </div>
 
                       {/* Actions and status on the right */}
@@ -1107,7 +1133,8 @@ export function TabActuacionesExpediente({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {modalDevolucionActuacion && (
-              <motion.div 
+              <motion.div
+                ref={devolucionModalRef}
                 key="modal-devolucion-backdrop"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -1155,6 +1182,7 @@ export function TabActuacionesExpediente({
                       Observaciones y motivos del rechazo <span className="text-red-500">*</span>
                     </label>
                     <textarea
+                      autoFocus
                       value={observacionesDevolucion}
                       onChange={(e) => setObservacionesDevolucion(e.target.value)}
                       placeholder="Escriba claramente las razones por las cuales no se aprueba esta actuación..."

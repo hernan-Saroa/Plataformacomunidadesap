@@ -18,10 +18,10 @@ import type { ProcesoAuditable } from '../services/api/controlInternoService';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
-// TIPOS DE PROCESO — Todos en localStorage (editables y eliminables)
+// TIPOS DE PROCESO — Catálogo persistido en base de datos
 // ════════════════════════════════════════════════════════════════════════════
 
-type TipoItem = { value: string; label: string; color: string };
+type TipoItem = { id?: string; value: string; label: string; color: string; activo?: boolean };
 
 const TIPOS_DEFAULT: TipoItem[] = [
   { value: 'estrategico', label: 'Estratégico', color: 'bg-purple-100 text-purple-700' },
@@ -45,27 +45,27 @@ const ALL_COLORS = [
   'bg-lime-100 text-lime-700',
 ];
 
-const TIPOS_STORAGE_KEY = 'esap_tipos_proceso_all';
-
 export function loadTipos(): TipoItem[] {
-  try {
-    const raw = localStorage.getItem(TIPOS_STORAGE_KEY);
-    if (!raw) return TIPOS_DEFAULT;
-    const stored: TipoItem[] = JSON.parse(raw);
-    // Merge: add any missing default types (e.g. 'apoyo') that weren't in old localStorage
-    const existingValues = new Set(stored.map(t => t.value));
-    const missing = TIPOS_DEFAULT.filter(d => !existingValues.has(d.value));
-    if (missing.length > 0) {
-      const merged = [...stored, ...missing];
-      localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(merged));
-      return merged;
-    }
-    return stored;
-  } catch { return TIPOS_DEFAULT; }
+  return TIPOS_DEFAULT;
 }
 
-function saveTipos(tipos: TipoItem[]) {
-  localStorage.setItem(TIPOS_STORAGE_KEY, JSON.stringify(tipos));
+function mapTipoProcesoToItem(tipo: any): TipoItem {
+  return {
+    id: tipo.id,
+    value: tipo.codigo,
+    label: tipo.nombre,
+    color: tipo.color || 'bg-gray-100 text-gray-700',
+    activo: tipo.activo,
+  };
+}
+
+function normalizarCodigoTipo(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -159,6 +159,17 @@ export function ConfiguracionProcesosModule() {
   const [unidadInput, setUnidadInput] = useState('');
 
   // ── Cargar procesos ──
+  const fetchTipos = useCallback(async () => {
+    try {
+      const data = await controlInternoService.getTiposProceso(true);
+      const tipos = Array.isArray(data) ? data.map(mapTipoProcesoToItem) : [];
+      setTiposList(tipos.length > 0 ? tipos : TIPOS_DEFAULT);
+    } catch {
+      setTiposList(TIPOS_DEFAULT);
+      toast.error('Error al cargar tipos de proceso');
+    }
+  }, []);
+
   const fetchProcesos = useCallback(async () => {
     setLoading(true);
     try {
@@ -171,7 +182,10 @@ export function ConfiguracionProcesosModule() {
     }
   }, []);
 
-  useEffect(() => { fetchProcesos(); }, [fetchProcesos]);
+  useEffect(() => {
+    fetchTipos();
+    fetchProcesos();
+  }, [fetchTipos, fetchProcesos]);
 
   const procesosFiltrados = useMemo(() => {
     if (!busqueda.trim()) return procesos;
@@ -189,7 +203,7 @@ export function ConfiguracionProcesosModule() {
 
   const handleOpenCreate = () => {
     setEditando(null);
-    setForm(FORM_VACIO);
+    setForm({ ...FORM_VACIO, tipo: tiposList[0]?.value || FORM_VACIO.tipo });
     setDependencias([]);
     setDepInput('');
     setUnidades([{ id: createClientId(), nombre: '', descripcion: '' }]);
@@ -198,7 +212,7 @@ export function ConfiguracionProcesosModule() {
 
   const handleOpenEdit = (p: ProcesoAuditable) => {
     setEditando(p);
-    const tipoRaw = (p.tipo || '').toLowerCase();
+    const tipoRaw = ((p as any).tipoProceso?.codigo || p.tipo || '').toLowerCase();
     // Buscar el tipo en la lista; si no existe, usar el valor raw de la DB tal cual
     const tipo = tiposList.find(t =>
       t.value === tipoRaw || t.label.toLowerCase() === tipoRaw
@@ -252,6 +266,7 @@ export function ConfiguracionProcesosModule() {
         nombre:       form.nombre,
         codigo:       form.codigo,
         tipo:         form.tipo as any,
+        tipoProcesoId: tiposList.find(t => t.value === form.tipo)?.id,
         macroproceso: filteredUnidades[0].nombre, // Backward compatibility
         unidadesAuditables: filteredUnidades,
         dependencia:  dependenciaStr,
@@ -319,41 +334,55 @@ export function ConfiguracionProcesosModule() {
   };
 
   // ── Gestión de tipos ──
-  const handleAgregarTipo = () => {
+  const handleAgregarTipo = async () => {
     const label = nuevoTipoLabel.trim();
     if (!label) return;
-    const value = label
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, '_');
+    const value = normalizarCodigoTipo(label);
     if (tiposList.some(t => t.value === value)) {
       toast.error('Ya existe un tipo con ese nombre');
       return;
     }
     const color = ALL_COLORS[tiposList.length % ALL_COLORS.length];
-    const nuevos = [...tiposList, { value, label, color }];
-    setTiposList(nuevos);
-    saveTipos(nuevos);
-    setNuevoTipoLabel('');
-    toast.success(`Tipo "${label}" agregado`);
+    try {
+      const created = await controlInternoService.createTipoProceso({ codigo: value, nombre: label, color });
+      setTiposList(prev => [...prev, mapTipoProcesoToItem(created)]);
+      setNuevoTipoLabel('');
+      toast.success(`Tipo "${label}" agregado`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al agregar tipo');
+    }
   };
 
-  const handleGuardarEditTipo = () => {
+  const handleGuardarEditTipo = async () => {
     if (!editandoTipo || !editandoTipoLabel.trim()) return;
-    const nuevos = tiposList.map(t =>
-      t.value === editandoTipo.value ? { ...t, label: editandoTipoLabel.trim() } : t
-    );
-    setTiposList(nuevos);
-    saveTipos(nuevos);
-    setEditandoTipo(null);
-    toast.success('Tipo actualizado');
+    try {
+      if (!editandoTipo.id) {
+        throw new Error('El tipo seleccionado no existe en base de datos');
+      }
+      const updated = await controlInternoService.updateTipoProceso(editandoTipo.id, {
+        nombre: editandoTipoLabel.trim(),
+      });
+      setTiposList(prev => prev.map(t => t.id === updated.id ? mapTipoProcesoToItem(updated) : t));
+      setEditandoTipo(null);
+      toast.success('Tipo actualizado');
+      fetchProcesos();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al actualizar tipo');
+    }
   };
 
-  const handleEliminarTipo = (value: string) => {
-    if (!confirm('¿Eliminar este tipo? Los procesos que lo usen no serán afectados.')) return;
-    const nuevos = tiposList.filter(t => t.value !== value);
-    setTiposList(nuevos);
-    saveTipos(nuevos);
+  const handleEliminarTipo = async (tipo: TipoItem) => {
+    if (!confirm('¿Inactivar este tipo? Solo será posible si no tiene procesos activos asociados.')) return;
+    try {
+      if (!tipo.id) {
+        throw new Error('El tipo seleccionado no existe en base de datos');
+      }
+      await controlInternoService.inactivarTipoProceso(tipo.id);
+      setTiposList(prev => prev.filter(t => t.id !== tipo.id));
+      toast.success('Tipo inactivado');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al inactivar tipo');
+    }
   };
 
   const getTipoInfo = (tipoValue: string): TipoItem =>
@@ -429,17 +458,21 @@ export function ConfiguracionProcesosModule() {
                   <Tag className="w-4 h-4 text-blue-600" />
                   <h3 className="text-sm font-bold text-gray-900">Gestionar Tipos de Proceso</h3>
                 </div>
-                <button
+                {/* <button
                   onClick={() => {
-                    if (!confirm('¿Restaurar los tipos predeterminados? Se perderán los tipos personalizados.')) return;
-                    setTiposList(TIPOS_DEFAULT);
-                    saveTipos(TIPOS_DEFAULT);
-                    toast.success('Tipos restaurados');
+                    if (!confirm('¿Restaurar los tipos predeterminados? Se reactivarán sin eliminar tipos personalizados.')) return;
+                    controlInternoService.seedTiposProcesoDefaults()
+                      .then(data => {
+                        const tipos = Array.isArray(data) ? data.map(mapTipoProcesoToItem).filter(t => t.activo !== false) : TIPOS_DEFAULT;
+                        setTiposList(tipos);
+                        toast.success('Tipos restaurados');
+                      })
+                      .catch(err => toast.error(err instanceof Error ? err.message : 'Error al restaurar tipos'));
                   }}
                   className="text-xs text-gray-400 hover:text-gray-600 underline"
                 >
                   Restaurar predeterminados
-                </button>
+                </button> */}
               </div>
 
               {/* Lista de todos los tipos */}
@@ -475,9 +508,9 @@ export function ConfiguracionProcesosModule() {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleEliminarTipo(t.value)}
+                          onClick={() => handleEliminarTipo(t)}
                           className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                          title="Eliminar"
+                          title="Inactivar"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -536,7 +569,7 @@ export function ConfiguracionProcesosModule() {
               </thead>
               <tbody>
                 {procesosFiltrados.map((p) => {
-                  const tipoInfo = getTipoInfo(p.tipo || '');
+                  const tipoInfo = getTipoInfo((p as any).tipoProceso?.codigo || p.tipo || '');
                   const isExpanded = expandedRows.has(p.id);
                   const units = p.unidadesAuditables || (p.macroproceso ? [{ id: 'old', nombre: p.macroproceso, descripcion: '' }] : []);
                   return (

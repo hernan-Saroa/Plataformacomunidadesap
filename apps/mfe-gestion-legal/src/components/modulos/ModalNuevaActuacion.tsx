@@ -6,19 +6,22 @@
  * ✅ TIPOS DE ACTUACIÓN CONFIGURABLES desde el sistema
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Clock, Calendar, FileText, User, AlertCircle, Save, CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService, type AbogadoResuelve } from '../../../../services/api/authService';
 
 interface ModalNuevaActuacionProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (actuacion: NuevaActuacionData) => void;
   procesoId: string;
+  /** Abogado encargado del proceso (nombre), se preselecciona como responsable */
+  abogadoEncargadoNombre?: string;
 }
 
 export interface NuevaActuacionData {
@@ -31,19 +34,10 @@ export interface NuevaActuacionData {
   archivoAdjunto?: string;
 }
 
-const RESPONSABLES_DISPONIBLES = [
-  'Oficina Control Disciplinario Interno',
-  'Jefe de Control Interno',
-  'Abogado Disciplinario #1',
-  'Abogado Disciplinario #2',
-  'Secretaría General',
-  'Otro'
-];
-
-export function ModalNuevaActuacion({ isOpen, onClose, onSave, procesoId }: ModalNuevaActuacionProps) {
+export function ModalNuevaActuacion({ isOpen, onClose, onSave, procesoId, abogadoEncargadoNombre }: ModalNuevaActuacionProps) {
   // ✅ Obtener tipos de actuaciones desde configuraciones centralizadas
   const { tiposActuacionesActivos } = useConfiguracionModulo('juzgamiento');
-  
+
   const [formData, setFormData] = useState<NuevaActuacionData>({
     fecha: new Date().toISOString().split('T')[0], // Fecha actual por defecto
     tipo: '',
@@ -54,7 +48,62 @@ export function ModalNuevaActuacion({ isOpen, onClose, onSave, procesoId }: Moda
     archivoAdjunto: ''
   });
 
+  // Responsables habilitados por el permiso
+  // 'gestion-legal.juzgamiento-disciplinario.actuacion.responsable'
+  const [responsables, setResponsables] = useState<AbogadoResuelve[]>([]);
+  const [loadingResponsables, setLoadingResponsables] = useState(false);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelado = false;
+    setLoadingResponsables(true);
+
+    authService
+      .getResponsablesActuacionJuzgamiento()
+      .then((lista) => {
+        if (cancelado) return;
+
+        // Asegurar que el abogado encargado del proceso siempre esté disponible
+        // como opción, aunque su rol todavía no tenga el permiso asignado.
+        let opciones = lista;
+        const encargadoEnLista =
+          !!abogadoEncargadoNombre &&
+          lista.some((p) => p.nombreCompleto === abogadoEncargadoNombre);
+        if (!encargadoEnLista && abogadoEncargadoNombre) {
+          opciones = [
+            {
+              id: `encargado:${abogadoEncargadoNombre}`,
+              nombreCompleto: abogadoEncargadoNombre,
+              nombre: abogadoEncargadoNombre,
+              email: '',
+            },
+            ...lista,
+          ];
+        }
+        setResponsables(opciones);
+
+        // Preseleccionar el abogado encargado del proceso.
+        if (abogadoEncargadoNombre) {
+          setFormData((prev) =>
+            prev.responsable ? prev : { ...prev, responsable: abogadoEncargadoNombre },
+          );
+        }
+      })
+      .catch((error) => {
+        console.error('Error cargando responsables de actuación', error);
+        if (!cancelado) setResponsables([]);
+      })
+      .finally(() => {
+        if (!cancelado) setLoadingResponsables(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [isOpen, abogadoEncargadoNombre]);
 
   const handleInputChange = (field: keyof NuevaActuacionData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -246,18 +295,28 @@ export function ModalNuevaActuacion({ isOpen, onClose, onSave, procesoId }: Moda
                     </label>
                     <select
                       value={formData.responsable}
+                      disabled={loadingResponsables}
                       onChange={(e) => handleInputChange('responsable', e.target.value)}
                       className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                        errors.responsable 
-                          ? 'border-red-500 focus:ring-red-500 bg-red-50' 
+                        errors.responsable
+                          ? 'border-red-500 focus:ring-red-500 bg-red-50'
                           : 'border-gray-300 focus:ring-blue-500'
                       }`}
                     >
-                      <option value="">Seleccione un responsable...</option>
-                      {RESPONSABLES_DISPONIBLES.map(resp => (
-                        <option key={resp} value={resp}>{resp}</option>
+                      <option value="">
+                        {loadingResponsables
+                          ? 'Cargando responsables...'
+                          : 'Seleccione un responsable...'}
+                      </option>
+                      {responsables.map(resp => (
+                        <option key={resp.id} value={resp.nombreCompleto}>{resp.nombreCompleto}</option>
                       ))}
                     </select>
+                    {!loadingResponsables && responsables.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        No hay personas con el permiso para ser responsables de actuación.
+                      </p>
+                    )}
                     {errors.responsable && (
                       <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3" />

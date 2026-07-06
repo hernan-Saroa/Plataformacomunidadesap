@@ -29,6 +29,9 @@ export class Actor {
     @Column({ length: 100, nullable: true })
     cargo: string;
 
+    @Column({ length: 150, nullable: true })
+    dependencia: string;
+
     @Column({ length: 255, nullable: true })
     email: string;
 

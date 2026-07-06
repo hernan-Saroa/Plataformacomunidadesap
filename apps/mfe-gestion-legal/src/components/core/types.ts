@@ -181,6 +181,25 @@ export type EtapaJuzgamientoDisciplinario =
 
 export type LeyDisciplinaria = 'Ley 734/2002' | 'Ley 1952/2019';
 
+// Rol de una parte dentro del proceso disciplinario.
+// DISCIPLINADO = denunciado/investigado; DENUNCIANTE y VICTIMA diferencian el rol del denunciante.
+export type RolParteDisciplinaria = 'DISCIPLINADO' | 'DENUNCIANTE' | 'VICTIMA';
+
+// Parte procesal del expediente (se persiste en la tabla `actors` del backend).
+export interface ParteDisciplinaria {
+  id?: string;
+  nombre: string;
+  tipoPersona?: 'NATURAL' | 'JURIDICA';
+  identificacion?: string;
+  rol: RolParteDisciplinaria | string;
+  cargo?: string;
+  dependencia?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  apoderado?: string; // Nombre del apoderado asignado (aplica sobre todo a disciplinados)
+}
+
 export interface ProcesoDisciplinario {
   id: string; // "PD-2025-001"
   etapa: EtapaJuzgamientoDisciplinario;
@@ -196,7 +215,16 @@ export interface ProcesoDisciplinario {
 
   // Hechos
   hechos: string;
+  hechosList?: string[]; // Múltiples hechos del proceso
   faltasCatalogadas: string[];
+
+  // Uniformación de datos (juzgamiento)
+  origen?: string;              // Queja, denuncia, de oficio, etc.
+  territorial?: string;         // Territorial asociada
+  presuntaConducta?: string;    // Presunta conducta indisciplinaria
+
+  // Partes del proceso (se mapean a/desde la tabla `actors` del backend)
+  actors?: ParteDisciplinaria[];
 
   // Términos (10 días TAXATIVO para descargos)
   fechaInicio: Date;

@@ -165,7 +165,7 @@ export function PlanesEstudioDashboard() {
     if (!detailAsignaturas.length) return [];
     const map = new Map<string, { count: number; creditos: number }>();
     detailAsignaturas.forEach(a => {
-      const n = a.nucleoTematico || a.nucleo || 'Sin nucleo';
+      const n = a.nucleoTematico || a.nucleo || 'Sin núcleo';
       const ex = map.get(n) || { count: 0, creditos: 0 };
       map.set(n, { count: ex.count + 1, creditos: ex.creditos + toNumber(a.creditos) });
     });
@@ -214,7 +214,7 @@ export function PlanesEstudioDashboard() {
       <div className="bg-white border border-gray-200 shadow-lg rounded-lg p-3 text-xs max-w-[250px]">
         <p className="font-bold text-gray-900 mb-1">{d.fullName || d.name}</p>
         {d.cobertura !== undefined && <p className="text-gray-600">Cobertura: <span className="font-bold">{d.cobertura}%</span></p>}
-        {d.creditos_plan !== undefined && <p className="text-gray-600">Creditos: <span className="font-bold">{d.creditos_plan}/{d.creditos_target}</span></p>}
+        {d.creditos_plan !== undefined && <p className="text-gray-600">Créditos: <span className="font-bold">{d.creditos_plan}/{d.creditos_target}</span></p>}
         {d.asignaturas !== undefined && <p className="text-gray-600">Asignaturas: <span className="font-bold">{d.asignaturas}</span></p>}
       </div>
     );
@@ -250,8 +250,8 @@ export function PlanesEstudioDashboard() {
       {/* Tab Navigation */}
       <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
         {([
-          { key: 'cobertura', label: 'Cobertura de Creditos', icon: BarChart3 },
-          { key: 'nucleos', label: 'Distribucion por Nivel', icon: PieChartIcon },
+          { key: 'cobertura', label: 'Cobertura de Créditos', icon: BarChart3 },
+          { key: 'nucleos', label: 'Distribución por Nivel', icon: PieChartIcon },
           { key: 'comparativo', label: 'Detalle por Programa', icon: Grid3X3 },
         ] as const).map(tab => (
           <button
@@ -277,9 +277,9 @@ export function PlanesEstudioDashboard() {
           <div className="p-4 border-b border-gray-100">
             <h3 className="font-black text-gray-900 text-sm flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-[#003DA5]" />
-              Cobertura de Creditos por Programa
+              Cobertura de Créditos por Programa
             </h3>
-            <p className="text-[11px] text-gray-500 mt-0.5">Porcentaje de creditos cubiertos en el plan de estudios vs creditos requeridos</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Porcentaje de créditos cubiertos en el plan de estudios vs créditos requeridos</p>
           </div>
           <div className="p-4" style={{ height: Math.max(400, coverageData.length * 35 + 80) }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -352,7 +352,7 @@ export function PlanesEstudioDashboard() {
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100">
-              <h3 className="font-black text-gray-900 text-sm">Asignaturas y Creditos por Nivel</h3>
+              <h3 className="font-black text-gray-900 text-sm">Asignaturas y Créditos por Nivel</h3>
             </div>
             <div className="p-4" style={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -362,7 +362,7 @@ export function PlanesEstudioDashboard() {
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip />
                   <Bar dataKey="asigs" name="Asignaturas" fill="#003DA5" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="credits" name="Creditos" fill="#059669" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="credits" name="Créditos" fill="#059669" radius={[4, 4, 0, 0]} />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                 </BarChart>
               </ResponsiveContainer>
@@ -436,7 +436,7 @@ export function PlanesEstudioDashboard() {
                             {/* Nucleo Pie */}
                             {detailNucleoData.length > 0 && (
                               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                                <h4 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-3">Distribucion por Nucleo</h4>
+                                <h4 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-3">Distribución por Núcleo</h4>
                                 <div className="h-[320px] w-full min-w-0">
                                   <ResponsiveContainer key={`${prog.id}-nucleos`} width="100%" height={320}>
                                     <PieChart margin={{ top: 12, right: 28, bottom: 12, left: 28 }}>
@@ -455,7 +455,7 @@ export function PlanesEstudioDashboard() {
                                           <Cell key={i} fill={entry.color} />
                                         ))}
                                       </Pie>
-                                      <Tooltip formatter={(v: any) => [`${v} cr.`, 'Creditos']} />
+                                      <Tooltip formatter={(v: any) => [`${v} cr.`, 'Créditos']} />
                                     </PieChart>
                                   </ResponsiveContainer>
                                 </div>
@@ -474,7 +474,7 @@ export function PlanesEstudioDashboard() {
                                       <YAxis tick={{ fontSize: 11 }} />
                                       <Tooltip />
                                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                                      <Bar dataKey="creditos" name="Creditos" fill="#003DA5" radius={[6, 6, 0, 0]} maxBarSize={54} />
+                                      <Bar dataKey="creditos" name="Créditos" fill="#003DA5" radius={[6, 6, 0, 0]} maxBarSize={54} />
                                       <Bar dataKey="count" name="Asignaturas" fill="#059669" radius={[6, 6, 0, 0]} maxBarSize={54} />
                                     </BarChart>
                                   </ResponsiveContainer>
@@ -485,7 +485,7 @@ export function PlanesEstudioDashboard() {
                             {/* Nucleo table */}
                             {detailNucleoData.length > 0 && (
                               <div className="md:col-span-2">
-                                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2">Detalle Nucleos Tematicos</h4>
+                                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2">Detalle Núcleos Temáticos</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                   {detailNucleoData.map(nd => (
                                     <div key={nd.name} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 border border-gray-100">

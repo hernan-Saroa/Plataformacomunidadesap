@@ -82,6 +82,10 @@ export class UpdateProcesoAuditableDto {
 
   @IsOptional()
   @IsString()
+  tipoProcesoId?: string;
+
+  @IsOptional()
+  @IsString()
   macroproceso?: string;
 
   @IsOptional()
@@ -129,4 +133,3 @@ export class UpdateProcesoAuditableDto {
   @IsBoolean()
   activo?: boolean;
 }
-

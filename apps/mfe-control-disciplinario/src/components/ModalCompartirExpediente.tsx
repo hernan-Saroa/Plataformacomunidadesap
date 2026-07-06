@@ -241,7 +241,7 @@ const descargarQR = async () => {
 
   // Enviar por correo
   const enviarPorCorreo = async () => {
-    if (!emailDestino) {
+    if (!emailDestino || !validarEmail(emailDestino)) {
       toast.error('Email requerido', {
         description: 'Por favor ingrese un correo electrónico válido'
       });
@@ -592,15 +592,13 @@ const descargarQR = async () => {
               <input
                 type="email"
                 value={emailDestino}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === '' || validarEmail(value)) {
-                    setEmailDestino(value);
-                  }
-                }}
+                onChange={(e) => setEmailDestino(e.target.value)}
                 placeholder="ejemplo@correo.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
               />
+              {emailDestino && !validarEmail(emailDestino) && (
+                <p className="text-xs text-red-600 mt-1">Ingrese un correo electrónico válido</p>
+              )}
             </div>
 
             <div>
@@ -639,7 +637,7 @@ const descargarQR = async () => {
 
         <Button
           onClick={handleAccionPrincipal}
-          disabled={generandoEnlace || enviando || (metodoSeleccionado === 'email' && !emailDestino) || (requiereClave && !clave)}
+          disabled={generandoEnlace || enviando || (metodoSeleccionado === 'email' && !validarEmail(emailDestino)) || (requiereClave && !clave)}
           style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', color: '#FFFFFF' }}
           className={isMobile ? 'w-full' : ''}
         >
