@@ -199,18 +199,26 @@ export class ImportValidator {
           `PROGRAMAS fila ${row}: modalidad_principal "${programa.modalidad_principal}" no es válida.`,
         );
       }
+      // Circular 003: un programa debe tener horas_base_por_credito (APT/Esp/Maestría)
+      // O horas_pregrado_central (Sede Central), o ambas. Al menos una debe estar presente.
+      const tieneHorasBase =
+        Number.isInteger(programa.horas_base_por_credito) &&
+        programa.horas_base_por_credito > 0;
+      const tieneHorasCentral =
+        programa.horas_pregrado_central !== null &&
+        Number.isInteger(programa.horas_pregrado_central) &&
+        programa.horas_pregrado_central > 0;
 
-      if (
-        !Number.isInteger(programa.horas_base_por_credito) ||
-        programa.horas_base_por_credito <= 0
-      ) {
+      if (!tieneHorasBase && !tieneHorasCentral) {
         errors.push(
-          `PROGRAMAS fila ${row}: horas_base_por_credito debe ser un entero positivo.`,
+          `PROGRAMAS fila ${row}: debe tener horas_base_por_credito o horas_pregrado_central como entero positivo.`,
         );
       }
 
       if (
         programa.horas_pregrado_central !== null &&
+        !Number.isNaN(programa.horas_pregrado_central) &&
+        programa.horas_pregrado_central !== 0 &&
         (!Number.isInteger(programa.horas_pregrado_central) ||
           programa.horas_pregrado_central <= 0)
       ) {

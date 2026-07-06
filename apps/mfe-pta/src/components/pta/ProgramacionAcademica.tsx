@@ -133,7 +133,7 @@ export function ProgramacionAcademica() {
       territorial_id: selectedDocente.territorial_id,
       periodo: '2025-2',
       asignaturas,
-      investigacion_proyecto: invProyecto.nombre ? invProyecto : undefined,
+      investigacion_proyecto: (invProyecto.nombre || invProyecto.rol) ? invProyecto : undefined,
       extension_actividades: extActividades,
       creado_por: 'Director Territorial',
       creado_por_id: 'admin-backoffice',

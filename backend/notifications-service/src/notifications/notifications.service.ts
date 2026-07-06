@@ -23,38 +23,52 @@ export class NotificationsService {
   ) {
     const { solo_no_leidas, categoria, prioridad, page = 1, limit = 50 } = params;
 
-    const qb = this.repo
-      .createQueryBuilder('n')
-      .where('n.id_usuario_destinatario = :userId', { userId })
-      .andWhere('n.archivada = false')
-      .orderBy('n.fecha_creacion', 'DESC');
+    try {
+      const qb = this.repo
+        .createQueryBuilder('n')
+        .where('n.id_usuario_destinatario = :userId', { userId })
+        .andWhere('n.archivada = false')
+        .orderBy('n.fecha_creacion', 'DESC');
 
-    if (solo_no_leidas) qb.andWhere('n.leida = false');
-    if (categoria) qb.andWhere('n.categoria = :categoria', { categoria });
-    if (prioridad) qb.andWhere('n.prioridad = :prioridad', { prioridad });
+      if (solo_no_leidas) qb.andWhere('n.leida = false');
+      if (categoria) qb.andWhere('n.categoria = :categoria', { categoria });
+      if (prioridad) qb.andWhere('n.prioridad = :prioridad', { prioridad });
 
-    const offset = (page - 1) * limit;
-    qb.skip(offset).take(limit);
+      const offset = (page - 1) * limit;
+      qb.skip(offset).take(limit);
 
-    const [data, total] = await qb.getManyAndCount();
-    const no_leidas = await this.repo.count({
-      where: { id_usuario_destinatario: userId, leida: false, archivada: false },
-    });
+      const [data, total] = await qb.getManyAndCount();
+      const no_leidas = await this.repo.count({
+        where: { id_usuario_destinatario: userId, leida: false, archivada: false },
+      });
 
-    return { data, total, no_leidas };
+      return { data, total, no_leidas };
+    } catch (error) {
+      // Gracefully handle missing table or DB connectivity issues
+      console.warn('[NotificationsService] getUserNotifications error (table may not exist):', error?.message || error);
+      return { data: [], total: 0, no_leidas: 0 };
+    }
   }
 
   async getUnread(userId: string): Promise<Notification[]> {
-    return this.repo.find({
-      where: { id_usuario_destinatario: userId, leida: false, archivada: false },
-      order: { fecha_creacion: 'DESC' },
-    });
+    try {
+      return await this.repo.find({
+        where: { id_usuario_destinatario: userId, leida: false, archivada: false },
+        order: { fecha_creacion: 'DESC' },
+      });
+    } catch {
+      return [];
+    }
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.repo.count({
-      where: { id_usuario_destinatario: userId, leida: false, archivada: false },
-    });
+    try {
+      return await this.repo.count({
+        where: { id_usuario_destinatario: userId, leida: false, archivada: false },
+      });
+    } catch {
+      return 0;
+    }
   }
 
   async create(dto: CreateNotificationDto): Promise<Notification> {

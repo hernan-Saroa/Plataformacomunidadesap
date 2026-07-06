@@ -129,8 +129,14 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
 
           if (!mountedRef.current || controller.signal.aborted) return;
 
-          if (eventsRes.success && eventsRes.data?.events?.length > 0) {
-            const newEvents = eventsRes.data.events as PTASyncEvent[];
+          const recentEvents = Array.isArray(eventsRes.data)
+            ? eventsRes.data
+            : Array.isArray(eventsRes.data?.events)
+              ? eventsRes.data.events
+              : [];
+
+          if (eventsRes.success && recentEvents.length > 0) {
+            const newEvents = recentEvents as PTASyncEvent[];
             // Filter out events from our own system if needed
             const crossSystemEvents = newEvents.filter(e => e.sistema_origen !== sistema);
 

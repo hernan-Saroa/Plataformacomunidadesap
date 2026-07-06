@@ -393,6 +393,11 @@ export default function App() {
           richColors
           closeButton
           duration={4000}
+          toastOptions={{
+            classNames: {
+              closeButton: 'left-2 right-auto hover:bg-gray-200 bg-white border-gray-200'
+            }
+          }}
         />
       </>
     );
@@ -424,7 +429,7 @@ export default function App() {
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
   const ultimaActividadGuardadaRef = useRef(0);
-  const ultimoRefreshSesionRef = useRef(0);
+  const ultimoRefreshSesionRef = useRef(Date.now());
 
   // ============================================
   // PERSISTENCIA DE SESIÓN
@@ -531,6 +536,7 @@ export default function App() {
         const user = await authService.verifyToken();
         authService.setCurrentUserCache(user as any);
         applySessionFromUser(user);
+        ultimoRefreshSesionRef.current = Date.now();
         console.log('✅ Sesión restaurada desde backend');
       } catch (err) {
         // Token inexistente, expirado o inválido — el backend rechazó el JWT
@@ -1268,7 +1274,17 @@ export default function App() {
           </div>
         )}
 
-      <Toaster position="bottom-right" richColors expand={true} closeButton />
+      <Toaster 
+        position="bottom-right" 
+        richColors 
+        expand={true} 
+        closeButton 
+        toastOptions={{
+          classNames: {
+            closeButton: 'left-2 right-auto hover:bg-gray-200 bg-white border-gray-200'
+          }
+        }}
+      />
 
         {/* INDICADOR GLOBAL DE MODO OFFLINE */}
         {!isOnline && (

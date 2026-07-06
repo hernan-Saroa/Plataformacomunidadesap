@@ -5,21 +5,21 @@
  */
 
 import React from 'react';
-import { 
+import {
   Search, FileDown,
   SlidersHorizontal, Tag, Calendar, GraduationCap,
-  FileText, Clock, CheckCircle, XCircle 
+  FileText, Clock, CheckCircle, XCircle
 } from 'lucide-react';
 
 interface PTAWorldClassToolbarProps {
   // Stats
   estadisticas: any;
-  
+
   // Workflow filter
   filtroEstado: string;
   setFiltroEstado: (v: string) => void;
   ptas: any[];
-  
+
   // Search & filters
   searchQuery: string;
   setSearchQuery: (v: string) => void;
@@ -28,11 +28,11 @@ interface PTAWorldClassToolbarProps {
   filtroPrograma: string;
   setFiltroPrograma: (v: string) => void;
   programas: any[];
-  
+
   // View mode
   vistaActual: string;
   setVistaActual: (v: string) => void;
-  
+
   // Actions
   exportAction?: React.ReactNode;
   /** Extra tool buttons (columns, grouping, activity, refresh) to embed in the toolbar row */
@@ -47,6 +47,42 @@ const WORKFLOW_TABS = [
   { id: 'aprobado', label: 'Aprobado', color: '#10B981' },
   { id: 'sna', label: 'SNA', color: '#EF4444' }, // Pestaña dedicada para SNA
 ];
+
+function normalizeEstadoKey(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+}
+
+function getWorkflowStageId(pta: any) {
+  const estado = pta?.estado || '';
+  const key = normalizeEstadoKey(estado);
+
+  if (key === 'BORRADOR') return 'borrador';
+  if ([
+    'PENDIENTE_JEFATURA',
+    'PENDIENTE_DECANATURA',
+    'PENDIENTE_GESTION_PROFESORAL',
+    'PENDIENTE_APROBACION',
+    'CONCERTADO',
+  ].includes(key)) return 'pendientes';
+  if ([
+    'EN_CONCERTACION',
+    'OBJETADO_DOCENTE',
+    'MODIFICADO_DOCENTE',
+    'DEVUELTO',
+    'PROPUESTO_POR_DIRECCION',
+    'NOTIFICADO_DOCENTE',
+  ].includes(key)) return 'concertacion';
+  if (key === 'ESCALADO_SNA') return 'sna';
+  if (['EN_FIRME', 'RADICADO', 'EN_EJECUCION'].includes(key) || (pta?.dias_en_proceso > 7 && key === 'APROBADO')) return 'SEGUIMIENTO';
+  if (key === 'APROBADO') return 'aprobado';
+
+  return estado || 'sin_estado';
+}
 
 export function PTAWorldClassToolbar({
   estadisticas,
@@ -65,28 +101,12 @@ export function PTAWorldClassToolbar({
   exportAction,
   additionalTools,
 }: PTAWorldClassToolbarProps) {
-  
+
   // Count PTAs per stage
   const stageCounts: Record<string, number> = { '': ptas.length };
   ptas.forEach(pta => {
-    const estado = pta.estado || '';
-    const E = estado.toUpperCase().replace(/\s+/g, '_'); // Normalizar espacios a guiones bajos para atrapar cualquier caso
-    
-    if (E === 'BORRADOR' || estado === 'Borrador') {
-      stageCounts['borrador'] = (stageCounts['borrador'] || 0) + 1;
-    } else if (['PENDIENTE_JEFATURA', 'PENDIENTE_DECANATURA', 'PENDIENTE_GESTIÓN_PROFESORAL', 'PENDIENTE_GESTION_PROFESORAL', 'CONCERTADO'].includes(E) || ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(estado)) {
-      stageCounts['pendientes'] = (stageCounts['pendientes'] || 0) + 1;
-    } else if (['EN_CONCERTACION', 'OBJETADO_DOCENTE', 'MODIFICADO_DOCENTE', 'DEVUELTO', 'PROPUESTO_POR_DIRECCION', 'NOTIFICADO_DOCENTE'].includes(E) || estado === 'Devuelto') {
-      stageCounts['concertacion'] = (stageCounts['concertacion'] || 0) + 1;
-    } else if (['ESCALADO_SNA'].includes(E) || estado === 'Escalado SNA') {
-      stageCounts['sna'] = (stageCounts['sna'] || 0) + 1;
-    } else if (['EN_FIRME', 'RADICADO', 'EN_EJECUCIÓN', 'EN_EJECUCION'].includes(E) || (pta.dias_en_proceso > 7 && E === 'APROBADO')) {
-      stageCounts['SEGUIMIENTO'] = (stageCounts['SEGUIMIENTO'] || 0) + 1;
-    } else if (E === 'APROBADO' || estado === 'Aprobado') {
-      stageCounts['aprobado'] = (stageCounts['aprobado'] || 0) + 1;
-    } else {
-      stageCounts[estado] = (stageCounts[estado] || 0) + 1;
-    }
+    const stageId = getWorkflowStageId(pta);
+    stageCounts[stageId] = (stageCounts[stageId] || 0) + 1;
   });
 
   // Deduplicate programs by ID - Fix for duplicate key warnings
@@ -130,7 +150,7 @@ export function PTAWorldClassToolbar({
           {WORKFLOW_TABS.map(tab => {
             const count = stageCounts[tab.id] || 0;
             const isActive = filtroEstado === tab.id;
-            
+
             return (
               <button
                 key={tab.id}
@@ -185,7 +205,7 @@ export function PTAWorldClassToolbar({
             );
           })}
         </div>
-        
+
         {/* View switcher, Tools & Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {additionalTools && (
@@ -331,4 +351,4 @@ export function PTAWorldClassToolbar({
 }
 
 
-
+

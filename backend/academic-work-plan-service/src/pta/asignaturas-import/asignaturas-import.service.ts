@@ -759,8 +759,8 @@ export class AsignaturasImportService {
       // (no se "mueve" un programa que ya pertenece a otro período).
       const SQL = `
         INSERT INTO academic_work_plan.programa AS p (
-          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo, id_periodo_academico
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (codigo) DO UPDATE SET
           nombre = EXCLUDED.nombre,
           nombre_excel = EXCLUDED.nombre_excel,
@@ -770,10 +770,15 @@ export class AsignaturasImportService {
           modalidad = EXCLUDED.modalidad,
           horas_base_por_credito = EXCLUDED.horas_base_por_credito,
           horas_pregrado_central = EXCLUDED.horas_pregrado_central,
-          activo = EXCLUDED.activo,
-          id_periodo_academico = COALESCE(p.id_periodo_academico, EXCLUDED.id_periodo_academico)
+          activo = EXCLUDED.activo
         RETURNING id;
       `;
+
+      // Si horas_base_por_credito es NaN (Sede Central), usar default 16
+      const horasBase = Number.isFinite(p.horas_base_por_credito) && p.horas_base_por_credito > 0
+        ? p.horas_base_por_credito
+        : 16;
+
       const rows = await queryRunner.query(SQL, [
         p.codigo_programa,
         p.nombre_programa,
@@ -782,10 +787,9 @@ export class AsignaturasImportService {
         facId,
         p.tipo_programa.toLowerCase().trim(),
         p.modalidad_principal.toLowerCase().trim() === 'mixta' ? 'mixto' : p.modalidad_principal.toLowerCase().trim(),
-        p.horas_base_por_credito,
+        horasBase,
         p.horas_pregrado_central,
         p.activo === false || p.activo === 0 || String(p.activo).toLowerCase().trim() === 'false' || String(p.activo).toLowerCase().trim() === 'no' || String(p.activo).toLowerCase().trim() === 'inactivo' ? false : true,
-        periodId,
       ]);
 
       const insertedId = rows[0].id;
