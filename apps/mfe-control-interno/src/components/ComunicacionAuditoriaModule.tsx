@@ -1957,7 +1957,7 @@ const SeccionGestionHallazgos: React.FC<{
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 shadow-sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-green-50 shadow-sm"
                             onClick={() => {
                               if (hallazgo.documentoControversiaUrl) {
                                 handleDescargarDocumentoControversia(hallazgo.documentoControversiaUrl, fixEncoding(hallazgo.documentoControversiaNombre) || 'documento');
